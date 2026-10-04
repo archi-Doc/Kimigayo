@@ -589,6 +589,12 @@
     Category="Unsupported"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
 
+  + Name="UnsupportedIntegerOperation_Kd"
+    Category="Unsupported"
+    Message="The execution profile does not implement {0} for {1}"
+    Arguments="operation:Text,type:Type"
+    Label="{0} for {1} is not implemented"
+
   + Name="DefaultArgumentMove_Kd"
     Category="Language"
     Message="A default expression cannot move a preceding prepared argument or its owned contents"

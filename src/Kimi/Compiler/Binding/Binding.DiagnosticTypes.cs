@@ -9,7 +9,7 @@ public sealed partial class Binding
 {
     // Diagnostic publication needs structural Types, not BoundType.Name (which is only the declaration's short name).
     // Kimi position/range identities are qualified even when a user declaration hides their normal alias.
-    private static string DiagnosticTypeName(object value)
+    internal static string DiagnosticTypeName(object value)
     {
         if (value is not BoundType type)
         {

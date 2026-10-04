@@ -122,6 +122,7 @@ public enum DiagnosticCode
     MovedPlace_Kd,
     ReassignedLet_Kd,
     UnsupportedOwnership_Kd,
+    UnsupportedIntegerOperation_Kd,
     DefaultArgumentMove_Kd,
     TransferRequired_Kd,
     StaticMovePathRequired_Kd,

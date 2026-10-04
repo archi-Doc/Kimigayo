@@ -15,11 +15,18 @@ public sealed partial class OwnershipAnalysis
 
     internal string? InstanceStorageLimit { get; private set; }
 
+    internal OwnershipBody? FailedInstance { get; private set; }
+
     /// <summary>Releases the instance plans of the previous generation request.</summary>
-    internal void ClearInstances()
+    /// <param name="preserveFailure">Keeps the failed body's pooled facts available for immediate diagnostic publication.</param>
+    internal void ClearInstances(bool preserveFailure = false)
     {
         this.instanceCount = 0;
         this.InstanceStorageLimit = null;
+        if (!preserveFailure)
+        {
+            this.FailedInstance = null;
+        }
     }
 
     /// <summary>
@@ -54,6 +61,14 @@ public sealed partial class OwnershipAnalysis
             if (this.instanceFailed || target.IssueStorage.Count != 0 || !target.IsVerified)
             {
                 target.IsVerified = false;
+                this.FailedInstance = target;
+                if (target.IssueStorage.Count == 0)
+                {
+                    // A refused checked instance must retain a cause. An unexplained refusal is an invariant failure,
+                    // never evidence that the user's universally verified generic definition is invalid.
+                    target.ReportIssue(new(generic.Function, OwnershipFailure.Internal));
+                }
+
                 return null;
             }
 

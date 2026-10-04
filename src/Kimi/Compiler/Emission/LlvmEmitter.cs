@@ -23,6 +23,8 @@ public sealed class LlvmEmitter
     private readonly SourceLocationTable staticLocations = new();
     private readonly List<(string Symbol, FunctionAbi Abi)> importAbis = new();
     private bool resourceLimit;
+    private string? instanceFailureContext;
+    private Koto? instanceFailureSite;
 
     internal LlvmEmitter(Compilation compilation)
     {
@@ -40,6 +42,8 @@ public sealed class LlvmEmitter
     /// <summary>Gets a value indicating whether the last failure exceeded a generation resource limit (SPEC 21.3.5: generic contexts, instance ownership storage or inline layout depth, size or count), not a semantic or representation obligation.</summary>
     public bool FailureIsResourceLimit => this.resourceLimit;
 
+    internal BoundCall? FailureInstance { get; private set; }
+
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
     /// <param name="writer">The caller-owned output.</param>
     /// <param name="failure">The failed generation obligation, if any.</param>
@@ -55,14 +59,34 @@ public sealed class LlvmEmitter
         return true;
     }
 
+    // Both generation commands and diagnostic adapters consume the retained failure before another preparation.
+    internal void ReportFailure(string? failure)
+    {
+        var c = this.compilation;
+        c.Diagnostics.Invalidate(DiagnosticPartition.Emission);
+        if (c.Ownership.FailedInstance is { } failed)
+        {
+            c.Ownership.ReportInstanceDiagnostics(failed, this.instanceFailureContext, this.instanceFailureSite);
+        }
+        else
+        {
+            c.Diagnostics.Report(DiagnosticPartition.Emission, this.resourceLimit ? DiagnosticCode.GenerationResourceLimit_Kd : DiagnosticCode.GenerationFailed_Kd, c.Project.FilePath, note: failure);
+        }
+    }
+
     // Consumed synchronously before the next preparation. A failure leaves the module unwritable.
     internal bool TryPrepare(out EmissionModule module, out string? failure)
     {
         module = this.module;
         module.Clear();
         var c = this.compilation;
+        c.Diagnostics.Invalidate(DiagnosticPartition.Emission);
         failure = null;
         this.resourceLimit = false;
+        this.instanceFailureContext = null;
+        this.instanceFailureSite = null;
+        this.FailureInstance = null;
+        c.Ownership.ClearInstances();
         this.generics.Clear();
         try
         {
@@ -254,7 +278,7 @@ public sealed class LlvmEmitter
             this.functions.Clear();
             this.staticGetters.Clear();
             this.generics.Clear();
-            c.Ownership.ClearInstances();
+            c.Ownership.ClearInstances(preserveFailure: true);
             this.objects.Complete();
             this.objects.Clear();
             this.lowering.ClearFunctionContext();
@@ -411,47 +435,54 @@ public sealed class LlvmEmitter
             // No fallback: every generic call context must reach its concrete instance.
             if (!lowered)
             {
-                failure = $"Generic instance {Describe(entry)}: {failure ?? "ownership analysis under the substitution failed."}";
+                this.FailureInstance = call;
+                var description = Describe(entry);
+                this.instanceFailureContext = $"While instantiating {description}";
+                this.instanceFailureSite = this.FindInstanceSite(call, entry);
+                failure = $"Generic instance {description}: {failure ?? "ownership analysis under the substitution failed."}";
                 return false;
             }
         }
 
         return true;
 
-        // The refused instance by its function and closed substitution (type arguments, then length arguments).
+        // The refused instance uses the declaration's slot order; the parallel Type/length arrays do not add slots.
         static string Describe(GenericStoragePlan.CallEntry entry)
         {
-            var arguments = new string[entry.Arguments.Length + entry.Lengths.Length];
-            for (var i = 0; i < entry.Arguments.Length; i++)
+            var arguments = new string[entry.Template.Body.Function.GenericArguments.Count];
+            for (var i = 0; i < arguments.Length; i++)
             {
-                arguments[i] = Text(entry.Arguments[i]);
-            }
-
-            for (var i = 0; i < entry.Lengths.Length; i++)
-            {
-                var length = entry.Lengths[i];
-                arguments[entry.Arguments.Length + i] = length is null ? "?" : length.Parameter?.Name ?? $"{length.Value}";
+                arguments[i] = entry.Template.Body.Function.GenericArguments[i] is LengthParameterKoto
+                    ? entry.Lengths[i] is { } length ? length.Parameter?.Name ?? $"{length.Value}" : "?"
+                    : entry.Arguments[i] is { } type ? Binding.DiagnosticTypeName(type) : "?";
             }
 
             return arguments.Length == 0 ? entry.Template.Body.Function.Name : entry.Template.Body.Function.Name + "<" + string.Join(", ", arguments) + ">";
         }
+    }
 
-        static string Text(BoundType? type)
+    private Koto? FindInstanceSite(BoundCall call, GenericStoragePlan.CallEntry entry)
+    {
+        var root = entry;
+        while (root.Parent is { } parent)
         {
-            if (type is null)
-            {
-                return "?";
-            }
-
-            var components = type.Components.Count == 0 ? string.Empty : string.Join(", ", type.Components.Select(Text));
-            return type.Kind switch
-            {
-                BoundTypeKind.Semantics => type.Semantics.ToString().ToLowerInvariant() + "/" + components,
-                BoundTypeKind.FixedArray => $"[{type.Length} of {components}]",
-                BoundTypeKind.Tuple => "(" + components + ")",
-                _ => type.Components.Count == 0 ? type.Name : type.Name + "<" + components + ">",
-            };
+            root = parent;
         }
+
+        // Only a failure walks source calls. Forwarded instances retain the root call that requested their expansion.
+        foreach (var body in this.compilation.Ownership.Bodies)
+        {
+            foreach (var operation in body.Operations)
+            {
+                if (operation.Source is InvocationKoto { BoundCall: { } sourceCall } source &&
+                    (ReferenceEquals(sourceCall, call) || (this.generics.Calls.TryGetValue(sourceCall, out var sourceEntry) && ReferenceEquals(sourceEntry, root))))
+                {
+                    return source;
+                }
+            }
+        }
+
+        return null;
     }
 
     private bool SkipGenerated(OwnershipBody body)

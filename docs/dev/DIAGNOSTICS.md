@@ -50,6 +50,8 @@ Each rule replaces a family of special cases. A change that needs an exception t
 
 ### 4.1. Facts and keys
 
+Generation retains a refused generic instance's pooled ownership issues and concrete call until publication or the next preparation. `ReportInstanceDiagnostics` uses the ordinary ownership fact reporter in the Emission partition, preserving codes, categories, primary and related locations, and adding instantiation context. A refusal without an issue is Internal; classification never comes from its message. Preparation replaces previous Emission diagnostics, and instance refusal does not invalidate the universally checked definition. `GenericGenerationDiagnosticTest` exercises publication and recovery.
+
 A logical model; it requires no allocation per field.
 
 ```text
