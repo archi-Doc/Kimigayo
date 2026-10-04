@@ -448,18 +448,18 @@ public struct Connection
     private init(socket: Net.Socket)
         self.socket = socket@move
 
-    public func connect(task: Async.Task, url: ref/Url) -> Result<Connection, Net.Error>
+    public func open(task: Async.Task, url: ref/Url) -> Result<Connection, Net.Error>
         let socket = try Net.Socket.connect(task, url)    // Cancellation returns Err(.Cancelled(_)).
         return .Ok(Connection.init(socket@move))
 
 func appendLine(task: Async.Task, path: ref/string, line: ref/string) -> Result<(), Io.Error>
-    var file = try Io.File.openPath(task, path)           // `open` is a reserved keyword (SPEC §2.5.1).
+    var file = try Io.File.open(task, path)
     // defer => _ = file.flush(task)                      // Error: a Deferred Block cannot use task.
     try file.write(task, line)
     return file.flush(task)                               // Finalize on the normal path.
 
 func appendLineAlways(task: Async.Task, path: ref/string, line: ref/string) -> Result<(), Io.Error>
-    var file = try Io.File.openPath(task, path)
+    var file = try Io.File.open(task, path)
     let written = file.write(task, line)                  // No try: flush after every outcome.
     let finish = func [file@uniq] (task: Async.Task) -> Result<(), Io.Error> => file.flush(task)
     let grace = Time.Duration.init(microseconds: 2000000)
@@ -739,9 +739,12 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
 
 ## 13. Specification changes
 
+### 13.1. Changes by location
+
 | Location | Change |
 | --- | --- |
 | New Chapter 24, "Suspension and asynchronous tasks" | Rules 1 and 2, the terms of §4, and references to the facts of §4.3 |
+| SPEC §2.5.1, Appendix F | `open` becomes a contextual keyword (§13.3). No keyword is added for tasks |
 | SPEC §7.2, §7.3.1, §7.6.1, §8.4.5, §9.1, §10.1, §10.7 | References to rule 1: the task-parameter category; a task position matches only a task position in Signatures, implementation identification and callable signature compatibility; the matching key `Task`, which Any does not overlap; a task argument matching only a task parameter; the category taken from an expected signature |
 | SPEC §9.2 | The Core role accepts `Kimi.Async.Task` only as the whole Type of a parameter; no grammar change |
 | SPEC §15.4.3 | In rule 3, "every input Type" excludes task parameters |
@@ -752,16 +755,19 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
 | SPEC §22.4 | None now; the later Console change of §6.6 |
 | SPEC §8.4.10.6, §23.3.6, §23.5.3 | The suspension Reason of `ComparisonLoanConflict_Kd`; `TaskParameterPosition_Kd`; `Repair.PassTask`; the suspension listing; frame size as a measurement; raw-anchor facts |
 | SPEC Appendix D, E | SPEC §D.2: single-thread tasks are specified, threads remain deferred. New terms: task, task tree, task frame, task parameter, task call, suspension point |
-| Unchanged | SPEC §8.1.3, §8.6 and §22.3.2 exclude the category without change; SPEC §2.5.1 and Appendix F (no keyword or grammar change); Chapter 17 |
+| Unchanged | SPEC §8.1.3, §8.6 and §22.3.2 exclude the category without change; Appendix F needs no production for tasks; Chapter 17 |
 | impl §21 | Task ABI, plain instances, coroutine lowering with frames that never move, the O0 step, the completion protocol, child-frame elision, lifetime markers, the inlining policy for hot loops and, once measured, automatic loop outlining (§10.4), and a context pointer without `noalias`. impl §21.4.5 is unchanged |
 | impl §21 or `src/Kimi/Library/README.md` | Executor, timer, IOCP and arena policy (§9) |
 | `docs/dev` | The rule-2 Loan mask (§11) |
-| `docs/STYLE.md` | See below |
+| `docs/STYLE.md` | §13.2 |
 | `docs/LIBRARY.md` | The `Kimi.Async` declarations and their contracts |
+| `src/kimi-ext` | The TextMate grammar treats `open` as contextual (§13.3), following `src/kimi-ext/AGENTS.md` |
 | `docs/SETTLED.md` (on adoption) | An entry for the rejected no-leak guarantee, whose reason records the constraint "safe-code soundness never depends on a destructor running" (§7.3), and entries for the rejected alternatives of §15.2 |
 | Stage 3 | `2026-10-04 Callable Effect Bounds.md`; the `Transferable` Constraint; the SPEC §8.4.10.2 row for `rc` read from immutable statics; cross-thread static initialization; obligation 6 for `offload` children |
 
-`docs/STYLE.md` gains:
+### 13.2. `docs/STYLE.md`
+
+STYLE gains:
 
 - **Task parameters.** Placed right after `self`, otherwise first, and named `task`. Child Closures also name theirs `task`, shadowing the parent's (SPEC §9.2).
 - **APIs.** No task-free or `Async`-suffixed counterpart of a task-taking operation (§6.6). No `try` prefix on task-taking operations that return `Result` (§6.1). Named `limit`, `capacity` and `grace`.
@@ -771,10 +777,47 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
 - **Bridging.** In a body with a task parameter, pass the task on; `Async.run` bridges only from code without one, because it suspends the enclosing tree.
 - **Hot loops.** An inner loop without task calls and an outer loop that calls `checkpoint`, with the inner loop in a plain function until automatic outlining exists (§10.4).
 
+### 13.3. `open` becomes a contextual keyword
+
+The Kimi APIs of this proposal name operations `open`, such as `Io.File.open` and the factory `Connection.open` (§8). `open` is a reserved keyword today (SPEC §2.5.1, class "Access and inheritance"), so it could not be a Name. This change makes it contextual. It is applied together with the rest of this proposal.
+
+- **SPEC §2.5.1, reserved table.** The class "Access and inheritance" becomes "Access", with `public`, `internal`, `private` and `protected`.
+- **SPEC §2.5.1, contextual table.** A new row, "Inheritance modifier": `open` in a declaration's leading modifier sequence. It is recognized as the unavailable modifiers are: before the declaration introducer of the same logical header, without scanning across a newline, indent or dedent. Elsewhere it is an ordinary Name, such as a function, Field, local or member Name.
+- **Validity.** Unchanged: `open` is valid only immediately before `struct` (Appendix F, `StructureDeclaration := Access? "open"? "struct" ...`). Elsewhere in a leading modifier sequence it keeps the existing diagnostic that `open` applies only to structures.
+- **Meaning.** Unchanged: `open` permits derivation and is an inheritance modifier, not an access level (SPEC §6.2.2, §9.3).
+- **Unavailable modifiers.** The paragraph of SPEC §2.5.1 is unchanged; `abstract open struct` still receives the unavailable-feature diagnostic.
+- **Appendix F.** The `StructureDeclaration` production is unchanged; only the class of the `open` token changes.
+
+```kimi
+public open struct Base                             // Before `struct`: the inheritance modifier.
+
+open func helper() -> () => ()                      // Error: `open` applies only to structures.
+
+func appendTwice(task: Async.Task, path: ref/string, line: ref/string) -> Result<(), Io.Error>
+    var file = try Io.File.open(task, path)         // A member Name.
+    let open = 2                                    // A local Name.
+    var count = 0
+    while count < open
+        try file.write(task, line)
+        count += 1
+    return file.flush(task)
+```
+
+Implementation:
+
+- The tokenizer's keyword classification (SPEC §2.5.1) and the parser's recognition of the leading modifier sequence.
+- The kimi-ext TextMate grammar (`src/kimi-ext/syntaxes/kimi.tmLanguage.json`) and the semantic-token classification of contextual keywords.
+- Diagnostic regressions:
+  - `open` as a function, Field, local and member Name;
+  - `public open struct` and `abstract open struct`;
+  - `open func` and `open enum`, rejected as today;
+  - an `open` expression at the start of a line, which must not consume the declaration on the next line.
+
 ## 14. Staged plan
 
 - **Stage 0: specification.**
   - Write rules 1 and 2; implement the rule-1 checks with `TaskParameterPosition_Kd` and the rule-2 comparison. Execution reports `Unsupported`.
+  - Apply the `open` keyword change (§13.3): SPEC §2.5.1, the tokenizer, the parser, the kimi-ext grammar and its regressions.
   - **Prerequisites** (incomplete in `docs/STATUS.md`): the SPEC §15.6.4 caller comparison of environment effects with static Loans, and mutable static Fields.
 - **Stage 1: the smallest sound subset.**
   - Task ABI, coroutine lowering with the O0 step, and the three intrinsics.
@@ -818,13 +861,15 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
 10. **Hot loops.** STYLE guidance plus compiler work: first the inlining policy, then automatic outlining (§10.4).
 11. **Terms.** "Task frame" instead of "activation", which SPEC §15.6.7 already uses (§4).
 12. **`each` and cancellation.** `each` stops pulling once a request applies and reports it (§6.2).
+13. **`open`.** Becomes a contextual keyword, so that Kimi APIs such as `Io.File.open` can use the name (§13.3).
 
 ### 15.2. Rejected alternatives
 
 | Alternative | Reason |
 | --- | --- |
 | `async`/`await` as a Function Type category with keywords | It needs two keywords and an implicit current task for cancellation and spawning (against the explicit context of Principle 2). A parameter category carries the authority itself |
-| A contextual keyword for the category, like `place` | It needs SPEC §2.5.1 and Appendix F changes; declaration identity needs neither |
+| A contextual keyword for the category, like `place` | It needs a new keyword and an Appendix F production; declaration identity needs neither |
+| Keeping `open` reserved and naming operations `connect` or `openPath` | `open` is the natural name for opening files and connections, and a reserved spelling would force a second vocabulary. As an inheritance modifier, `open` is valid only before `struct`, so contextual recognition is unambiguous (§13.3) |
 | The authority as an ordinary `uniq/Async.Task` Type | It needs a list of position bans and a separate fix for associated-Type bindings; the category excludes them through existing rules |
 | Preventing escape with Origins | The hazard is which frames run, not lifetime (§4.3) |
 | A positive "scheduling extent" rule for `resume` | Every point inside a task is within some `run` and some task call, so a containment rule excludes nothing; rule 2 and obligation 1 state the guarantee negatively |
