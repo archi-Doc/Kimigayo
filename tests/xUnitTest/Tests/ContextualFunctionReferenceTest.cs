@@ -155,6 +155,21 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
     }
 
+    // SPEC 7.3.1: waiting slots acquired in different modes violate the group's parameter acquisition shape; the declaration
+    // reports it, and the call selects no candidate instead of reporting an unsupported form.
+    [Theory]
+    [InlineData("choose")]
+    [InlineData("func (x) => x + 1")]
+    public void WaitingSlotsOfDifferentModesSelectNothing(string argument)
+    {
+        var c = MinimalEmissionTest.Analyze(Functions + "func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(4)\n" +
+            "func run<F>(action: F, other: bool = true) -> i32\n    F is Callable<owner, (i32) -> i32>\n    return action@move(5)\nlet result = run(" + argument + ")");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ParameterShapeMismatch_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+    }
+
     [Fact]
     public void TheWinnersSignatureMayFitNoReferenceCandidate()
     {

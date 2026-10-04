@@ -715,23 +715,22 @@ public sealed partial class Binding
 
             if (applicable > 1)
             {
+                var comparable = true;
                 for (var i = 0; i < count; i++)
                 {
                     if (evaluated[i].State == CandidateApplicability.Waiting)
                     {
                         // F will be this argument's concrete callable Type in every candidate. Its Callable signature
                         // is an expectation, not a parameter Type to rank. Select from ordinary inputs/defaults first;
-                        // only the winner supplies a body context, even when the candidates' signatures differ.
-                        if (!ComparableCallableSlots(call, evaluated.AsSpan(0, count), operations, operationStride))
-                        {
-                            return this.FailWaitingSelection(call, BindingFailure.Unsupported);
-                        }
-
+                        // only the winner supplies a body context, even when the candidates' signatures differ. Slots
+                        // acquired in different modes violate the parameter acquisition shape (SPEC 7.3.1), which the
+                        // declarations report; such candidates select nothing.
+                        comparable = ComparableCallableSlots(call, evaluated.AsSpan(0, count), operations, operationStride);
                         break;
                     }
                 }
 
-                winnerIndex = SelectBest(evaluated.AsSpan(0, count), operations, operationStride);
+                winnerIndex = comparable ? SelectBest(evaluated.AsSpan(0, count), operations, operationStride) : -1;
                 if (winnerIndex < 0)
                 {
                     var remaining = new RejectedCandidate[applicable];
