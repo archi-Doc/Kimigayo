@@ -69,7 +69,7 @@ New Chapter 24, "Suspension and asynchronous tasks", is the only normative state
 
 ### 4.2. Rule 2: task calls
 
-> A *task call* is a call whose selected declaration, Function Type or Callable signature has a task parameter. While a task executes a call that is not a task call, no other task of its tree that started before that call runs. A tree started by `Async.run`, or a child started by `TaskBoundary.enter`, during a call runs inside that call as part of the callee, and its effects are compared as effects of that call. In the calling body, a task call is compared as a call with unknown environment effects, whatever its published summary or available effect bounds (SPEC §8.4.10.4), against every potentially affected active static Loan, including those of its own arguments. This comparison enters no effect summary or published record (SPEC §18.7.2); the callee's own effects are summarized as usual.
+> A *task call* is a call whose selected declaration, Function Type or Callable signature has a task parameter. While a task executes a call that is not a task call, no other task of its tree that started before that call runs. A tree started by `Async.run` during a call runs inside that call as part of the callee, and its effects are compared as effects of that call. A child started by `TaskBoundary.enter` runs inside the task call whose task frame executed `enter` (obligation 2), and its effects are compared as effects of that task call. In the calling body, a task call is compared as a call with unknown environment effects, whatever its published summary or available effect bounds (SPEC §8.4.10.4), against every potentially affected active static Loan, including those of its own arguments. This comparison enters no effect summary or published record (SPEC §18.7.2); the callee's own effects are summarized as usual.
 
 - **Why calls that are not task calls.** Only their extent is fixed: their callee has no task to suspend with (rule 1), so such a call is in progress exactly while its callee runs. A task of an enclosing tree is excluded too, because it is itself executing the call that reached `Async.run`.
 - **Why "whatever its published summary or available effect bounds".** Without the clause, rule 2 of SPEC §8.4.10.4 would give a `confined` requirement call no environment effects. A Loan on a mutable static Field could then be held across a suspension while another task replaces the Field: a use after free.
@@ -162,7 +162,7 @@ Kimi obligations:
 2. **Child completion.** A child started by `enter` completes, and its result is taken, before the task frame that executed `enter` completes, and therefore before the public operation returns. A helper that returns without joining its children must not call `enter`. Because `enter`'s `bool` result keeps none of `body`'s dependencies, the checker ends `body`'s Loans when `enter` returns. Until the child completes, the task frame that executed `enter` treats them as its own live Loans: it performs no operation that would conflict with them if `body` were still one of its locals (SPEC §15.6.2), including destroying, replacing or moving a value that they borrow.
 3. **Wait registrations.** Every wait registration (ready link, timer node, `OVERLAPPED`, channel waiter, join count) lives in the waiting task frame or its task record and is removed before the wait returns. An I/O wait, even a cancelled one, returns only after its completion packet is dequeued, so its registration stays until then.
 4. **Shared handles.** A handle whose state another task may change (`Async.Sender`, `Async.Receiver`) never has its inline storage written while it is borrowed. Its mutable state lives in Kimi-internal raw storage behind a loaded pointer, and waiting intrinsics are compiler barriers for that state.
-5. **Commit of observing waits.** A cancellation request applies to every cancellation-observing wait in the task's subtree, whether pending now or started later, except inside `Async.shield` (§6.3). Each such wait *commits* exactly once, either by its operation, at the commit point in the table below, or by cancellation, whichever comes first. It returns what it committed to. Cancellation is reported in the wait's `Result`: as `Err(Async.Cancelled)`, as `Err((value, .Cancelled(reason)))` for `send`, or as the `Cancelled` Case of a domain error (§6.3).
+5. **Commit of observing waits.** A cancellation request for a task applies to every cancellation-observing wait in that task's subtree, whether pending now or started later. A request that applies to the caller of `Async.shield` reaches the body's subtree only once the call's grace has elapsed; requests made by operations inside the body apply as usual (§6.3). Each such wait *commits* exactly once, either by its operation, at the commit point in the table below, or by cancellation, whichever comes first. It returns what it committed to. Cancellation is reported in the wait's `Result`: as `Err(Async.Cancelled)`, as `Err((value, .Cancelled(reason)))` for `send`, or as the `Cancelled` Case of a domain error (§6.3).
    - A wait that starts while a request applies is committed by cancellation at the call, before its operation starts.
    - A request commits a pending wait at once, except an I/O wait: there the request only cancels the backend operation, and the completion packet commits the wait.
    - A commit is final. A later request, close or counterpart leaves it unchanged, and a resumed wait returns its commit, not the state of the request.
@@ -245,7 +245,7 @@ Conventions:
 - **Arity.** `join`, `joinOk` and `race` have one overload per arity; there are no variadic Type arguments (SPEC §8.1).
 - **Children.**
   - A *one-shot child* (of `join`, `joinOk`, `race`, `pipe` and `shield`) is consumed by its call, so it is received as `Callable<owner, ...>`, the "Consume the callback on invocation" row of STYLE §4.3. It may have a Shared, Exclusive or Consuming body (SPEC §8.6). A Non-Copy child held in a `let` is passed with `@move`; a Closure whose captures are all Copy, such as `getA` in §1, is copied.
-  - `each` and `eachReceived` call their child concurrently, so they borrow it shared (`ref/F`, the Shared row of STYLE §4.3), which admits only a Shared body.
+  - `each` and `eachReceived` call their child concurrently, so they borrow it shared (`ref/F`, the "Shared invocation" row of STYLE §4.3), which admits only a Shared body.
   - `each` requires an `Iterator`, whose items may be retained across later `next` calls (SPEC §22.1.2.4), so running children can hold items from several calls at once (§6.2).
 - **Named bounds.** `limit` is the maximum number of children that run at once. `capacity` is the number of items a channel buffers; `capacity: 0` is a rendezvous. `grace` is defined in §6.3. All three are required named arguments without defaults (STYLE §3.2). `limit < 1` and `capacity < 0` Abort as contract violations; `grace` needs no check, because `Time.Duration` is nonnegative (SPEC §22.7.2).
 - **No `try` prefix.** An operation that takes a task and returns `Result` has no `try` prefix: its Result reports its own failure and, for waits, cancellation. STYLE §5.2 gains this rule, with `WriteWindow.push` and `WriteWindow.append` (both returning `Result<(), BufferFull>`) as precedents.
@@ -305,12 +305,12 @@ func retryOnce<F, R>(task: Async.Task, body: ref/F) -> Result<R, Net.Error>
 ### 6.3. Cancellation
 
 - **Sources.** Only Kimi operations request cancellation, for the children they started, under their contracts (§6.2). A request is task state; no value represents it, and no public operation makes one (§15.2).
-- **Observation.** Only waits for events other than the completion of the caller's own children observe a request (obligation 5): `sleep`, `checkpoint`, I/O, `send`, `receive`, the receiving phase of `eachReceived`, and `each` before each pull.
+- **Observation.** Only waits for events other than the completion of the caller's own children observe a request (obligation 5): `sleep`, `checkpoint`, I/O, `send` and `receive`, including the receives of `eachReceived`. In addition, `each` and `offloadEach` (§12) check for a request that applies to them before each pull (§6.2); that check is not a wait and has no commit point.
 - **One Type.** A wait whose only failure is cancellation returns `Result<T, Async.Cancelled>`. A domain error enum that can report cancellation has exactly one cancellation Case, `Cancelled(Async.Cancelled)` (a STYLE §5.1 addition).
 - **Conversion.** `try` combines no error Types (SPEC §17.2.4), so converting `Async.Cancelled` into a domain error is explicit and has the same form everywhere: `.Err(let reason) => return .Err(.Cancelled(reason))`.
 - **`checkpoint`.** Reports a pending request; it yields only when another task is ready or a time slice has elapsed.
 - **`sleep`.** `sleep(task, d)` returns `Ok(())` no earlier than `d` after the call, as measured by the elapsed-time counter of SPEC §22.7, and registering the wait allocates nothing.
-- **Effects of waits.** `sleep`, `checkpoint` and the endpoint operations reach executor state only through the task, which is an input. They are therefore no environment effects and are usable in `confined` implementations; that state matches no user Loan. I/O waits call foreign functions and are environment effects (SPEC §8.4.10.2).
+- **Effects of task operations.** `sleep`, `checkpoint`, `shield`, the structured operations of §6.2 and the endpoint operations reach executor state only through the task, which is an input. Apart from the effects of the children they call, they are therefore no environment effects and are usable in `confined` implementations; that state matches no user Loan. I/O waits call foreign functions and are environment effects (SPEC §8.4.10.2).
 - **Shielding.** `Async.shield(task, body, grace: g)` runs `body` as a child of the calling task while the other tasks keep running, and returns the body's result after the child completes.
   - A request that applies to the calling task, made before or during the call, reaches the child's subtree only once `g` has elapsed since the later of the request and the start of the call. Until then, waits inside behave as if it had not been made.
   - Requests made by operations inside the body apply as usual, so a `race` with `sleep` inside the body still times out.
@@ -371,8 +371,8 @@ func sumEvens(task: Async.Task, limit: u64) -> Result<u64, Async.Cancelled>
 
 ```kimi
 func serve(task: Async.Task, listener: uniq/Net.Listener) -> Result<(), Async.Cancelled>
-    let accept = func [listener] (task: Async.Task, out: uniq/Async.Sender<Net.Connection>)
-        => acceptLoop(task, listener, out)
+    let accept = func [listener] (
+        task: Async.Task, out: uniq/Async.Sender<Net.Connection>) => acceptLoop(task, listener, out)
     let handleAll = func [] (task: Async.Task, inbox: uniq/Async.Receiver<Net.Connection>)
         -> Result<(), Async.Cancelled>
         let handle = func [] (task: Async.Task, conn: Net.Connection) => respond(task, conn@move)
@@ -404,7 +404,7 @@ func countLines(task: Async.Task, reader: uniq/Io.LineReader) -> Result<u64, Io.
 
 ### 6.6. Which operations take a task
 
-- Every Kimi operation that may wait (for I/O, a timer, a channel or its own children) takes a task and has no task-free or `Async`-suffixed counterpart (Principle 1). Console output is the one exception, below.
+- Apart from `Async.run`, the bridge from code without a task (§9.1), every Kimi operation that may wait (for I/O, a timer, a channel or its own children) takes a task and has no task-free or `Async`-suffixed counterpart (Principle 1). Console output is the one exception, below.
 - Console output (`Console.writeLine`, SPEC §22.4) stays synchronous in this proposal and moves to the task form in a separate later change (§14). Until then it blocks the thread, and its implementation must not run other tasks (obligation 1). That change must also decide how code without a task writes output: `drop`, Deferred Blocks, accessors, constructors, and `main` outside `Async.run`.
 
 ## 7. Ownership and lifetime
@@ -448,18 +448,18 @@ public struct Connection
     private init(socket: Net.Socket)
         self.socket = socket@move
 
-    public func open(task: Async.Task, url: ref/Url) -> Result<Connection, Net.Error>
+    public func connect(task: Async.Task, url: ref/Url) -> Result<Connection, Net.Error>
         let socket = try Net.Socket.connect(task, url)    // Cancellation returns Err(.Cancelled(_)).
         return .Ok(Connection.init(socket@move))
 
 func appendLine(task: Async.Task, path: ref/string, line: ref/string) -> Result<(), Io.Error>
-    var file = try Io.File.open(task, path)
+    var file = try Io.File.openPath(task, path)           // `open` is a reserved keyword (SPEC §2.5.1).
     // defer => _ = file.flush(task)                      // Error: a Deferred Block cannot use task.
     try file.write(task, line)
     return file.flush(task)                               // Finalize on the normal path.
 
 func appendLineAlways(task: Async.Task, path: ref/string, line: ref/string) -> Result<(), Io.Error>
-    var file = try Io.File.open(task, path)
+    var file = try Io.File.openPath(task, path)
     let written = file.write(task, line)                  // No try: flush after every outcome.
     let finish = func [file@uniq] (task: Async.Task) -> Result<(), Io.Error> => file.flush(task)
     let grace = Time.Duration.init(microseconds: 2000000)
@@ -483,7 +483,7 @@ func loadConfig(path: ref/string) -> Result<Config, Io.Error>      // A synchron
 
 - **Consequences.**
   - `run` is the only way for code without a task to call task-taking operations. Inside a task it follows the same definition; a nested `run` needs no special rule.
-  - No task of an enclosing tree runs inside `run`: the enclosing task is executing the call that reached `run` (rule 2). So no other task sees a static slot in the Initializing state (SPEC §22.2.3). Reentry within the tree is the ordinary same-thread cycle Abort.
+  - No task of an enclosing tree runs inside `run`: the enclosing task is executing the call that reached `run` (rule 2). So no task of an enclosing tree sees a static slot in the Initializing state (SPEC §22.2.3). Reentry within the tree is the ordinary same-thread cycle Abort.
   - A nested `run` therefore suspends every task of the enclosing trees until it returns. An inner tree that waits for one of them, for example on a channel endpoint whose peer is an outer task, cannot progress. Code that has a task finalizes through `Async.shield` instead (§8).
   - `run` takes no task, so it is no task call. It accesses the per-thread executor state, an environment effect, so it is not `confined` (SPEC §8.4.10.2); that Kimi-internal state matches no user Loan.
   - A tree that cannot progress diverges. Detecting this is an optional diagnostic, never an Abort.
@@ -678,7 +678,7 @@ func sumAll(task: Async.Task, values: ref/Array<u64>) -> Result<u64, Async.Cance
 
 | Diagnostic | Primary range | Related locations | Repair |
 | --- | --- | --- | --- |
-| `ComparisonLoanConflict_Kd` (existing in the implementation), Reason `suspension point (other tasks)` | The task argument of the task call | `loan`, `static`, `suspension`, `use` | Advice only: copy the value before the call, or borrow again after it |
+| `ComparisonLoanConflict_Kd` (existing in the implementation), Reason `suspension point (other tasks)` | The call, as for every record of the static call-effect comparison | `loan`, `static`, `suspension` (the task argument), `use` | Advice only: copy the value before the call, or borrow again after it |
 | `TaskParameterPosition_Kd` (new) | The offending name, Type, capture or binding | The task parameter, when the use names one | Advice: take a task parameter; the signature changes |
 | Missing task argument (an ordinary argument error) | The call | The callee declaration | `Repair.PassTask` (new) under the conditions below. Otherwise Advice: in a Deferred Block or a default expression, move the call onto each path, through `Async.shield` when it must run under cancellation; elsewhere, add a task parameter, or use `Async.run` in code without one |
 | A form ahead of its stage | — | — | An `Unsupported` code (SPEC §23.3.6.1) |
@@ -721,9 +721,9 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
 //  func [] () -> u64 => Metrics.count                       // Error: confined excludes mutable statics.
 ```
 
-1. **Operations.** `Async.offload(task, child)` and `Async.offloadEach(task, items, child: ref/F ! limit: isize)`.
+1. **Operations.** `Async.offload(task, child) -> R` and `Async.offloadEach(task, items, child: ref/F ! limit: isize) -> Result<(), Async.Cancelled>`.
    - Both are task calls. The child runs to completion on a worker thread and is joined before the operation returns.
-   - `offloadEach` requires an `Iterator` and follows the `each` rules of §6.2 for `next` and the Iterator; it calls `next` on the parent's thread.
+   - `offloadEach` requires an `Iterator` and follows the `each` rules of §6.2 for `next`, the Iterator and cancellation: it calls `next` on the parent's thread, checks for a request before each pull, stops pulling once one applies, and returns `Err` after every worker child is joined.
    - No task runs on a worker: the child's signature has no task parameter, and `confined` excludes `Async.run` (§9.1). Structured operations such as `join` never change threads.
 2. **Borrowing.** The parent is suspended until the join, so the child may borrow the parent's locals as `ref` or `uniq`, as with Rust's `thread::scope`. A new obligation 6 provides this: a worker child completes and is joined before the `offload` task frame completes, and until then that task frame treats the child's Loans as live, as obligation 2 requires after `enter`. `offload` children do not pass through `enter`, so obligation 2 does not cover them. No Owned is required.
 3. **Effects.** The child must be `confined`, which excludes authority obtained from the environment: direct access to mutable statics, foreign calls, Console output and raw pointers read from immutable statics. A static borrow that the child receives through a capture is authority from an input; rule 2 rejects it, because it is a static Loan of an argument of the task call. No per-thread rules for statics are needed.
@@ -746,7 +746,7 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
 | SPEC §9.2 | The Core role accepts `Kimi.Async.Task` only as the whole Type of a parameter; no grammar change |
 | SPEC §15.4.3 | In rule 3, "every input Type" excludes task parameters |
 | SPEC §15.6.4 | A reference to rule 2; names `ComparisonLoanConflict_Kd` for the static call-effect comparison, including the task-call comparison |
-| SPEC §22.2.3 | A reference to rule 2: while a task executes a call that is not a task call, no other task of its tree runs |
+| SPEC §22.2.3 | A reference to rule 2: while a task executes a call that is not a task call, no other task of its tree that started before that call runs |
 | SPEC §16.1, §16.2.3, §15.9 | A reference to rule 1.2 (a Deferred Block cannot use its function's task parameter); cleanup neither suspends nor observes cancellation; the cancellation boundary is resolved |
 | SPEC §22.1 | The `Kimi.Async.Task` row; new SPEC §22.1.x with the task boundary (three intrinsics, obligations 1–5 with the commit points of obligation 5), the definition of `Async.run`, and the `Kimi.Async` declarations and contracts of §6, including `shield` and the `sleep` deadline |
 | SPEC §22.4 | None now; the later Console change of §6.6 |
@@ -785,10 +785,10 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
     - Closures with aggregate captures;
     - borrowing entries and lending-loop dispatch.
   - Until these exist, stage 1 covers sequential task calls and `join` over Closures with scalar captures; other forms report `Unsupported`.
-  - Tests include a generic `each` checked against a user `Iterator`.
+  - Tests include a generic `each` checked against a user `Iterator`, and `shield` grace expiry, a request already pending at the call, a request made inside the body, and nested shields.
 - **Stage 2: channels and I/O.**
   - Channels with `uniq` endpoints, `pipe` and `eachReceived`.
-  - Commit-point regressions in both directions and for both capacity kinds: a taken value or delivered item whose waiter is cancelled before it resumes; a pending `send` when `pipe` closes the receiver; a timer and a delivery in one executor round under `race`; waits started under a pending request; `shield` grace expiry.
+  - Commit-point regressions in both directions and for both capacity kinds: a taken value or delivered item whose waiter is cancelled before it resumes; a pending `send` when `pipe` closes the receiver; a timer and a delivery in one executor round under `race`; waits started under a pending request; `shield` around a pending `send` or I/O wait when the grace expires.
   - IOCP for files, pipes and sockets, with the immediate-success path and batched dequeue.
   - Cancellation of I/O waits (`CancelIoEx`, then the packet), so `race`-based timeouts also bound I/O.
   - The inlining policy for hot loops, measured in `src/Benchmark`; then automatic loop outlining, once the policy's gain is confirmed (§10.4).
@@ -845,7 +845,7 @@ func checksumAll(task: Async.Task, blocks: ref/Array<Block>) -> u64
 | Finalizing in a nested `Async.run` | Rule 2 suspends the enclosing tree for its duration: outer timeouts cannot fire, every other task stops, and an inner wait on an outer task's endpoint never progresses |
 | An unbounded `shield`, or a default grace | A deep callee could hold an ancestor's timeout or `joinOk` failure indefinitely; a default would hide the delay (Principle 3), as for `limit` |
 | The name `protect` | `protected` is an access keyword (SPEC §2.5.1), and the name does not say what is withheld |
-| Restricting `Async.run` to the program entry | A dynamic check is the rejected Abort on a nested `run`, and lazy static initialization would make it depend on which read comes first. A static ban on direct calls in bodies with a task is bypassed by any synchronous helper |
+| Restricting `Async.run` to the program entry | A dynamic check is the rejected Abort on a nested `run`, and lazy static initialization would make it depend on which read comes first. A static ban on direct calls in bodies with a task is bypassed by any synchronous helper, and a complete one would need the rejected blocking effect (waits generic over a blocking capability, below) |
 | An `IndependentIterator` Contract, or Owned-only items for `each` | `Iterator` already guarantees retention (SPEC §22.1.2.4); a second Contract duplicates it (Principle 1), and Owned-only items would reject `iterateUniq` |
 | The name `Async.parallel` for `offload` | `offload` names the action; with one child the caller is suspended, so nothing runs in parallel with it |
 | `joinAll`, `joinFailFast` or `all` instead of `joinOk` | Indistinct from `join`, verbose, or silent about what is awaited |
@@ -876,7 +876,7 @@ Taken: static frame sizes and precise borrow checking (Rust); fixed frames in a 
 | Principle | How this proposal meets it |
 | --- | --- |
 | 1. One Concept, One Canonical Form | One suspension marker (the task argument), one way to start children, one cancellation Type, one way to finalize under cancellation (`shield`), one sequence form, and no synchronous/asynchronous API pairs |
-| 2. Local Reasoning | Task calls are known from the selected declaration; no other task runs during any other call; there is no inference and no implicit current task; child lifetimes follow call duration; implicit code never suspends |
+| 2. Local Reasoning | Task calls are known from the selected declaration; during a call that is not a task call, no task of the same tree that started earlier runs; there is no inference and no implicit current task; child lifetimes follow call duration; implicit code never suspends |
 | 3. Explicit Semantics | Suspension authority and child consumption appear in signatures; a cancellation request is task state set only by Kimi operations, and its observation is an `Err` in the wait's result Type; every resource bound (`limit`, `capacity`, `grace`) is written at the call; hidden allocation is limited to arena pushes, with bounds fixed by regressions |
 | 4. Compiler Server Protocol | Listings of suspension points and task boundaries, existing codes with Reason values, repairs whose conditions are verified from facts, and measurements bound to configuration |
 
