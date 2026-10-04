@@ -204,14 +204,18 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        // Fresh direct input Origins and fixed shared capture results retain their complete call contracts.
-        if (!PerCallSignature(signature) && !this.FixedCaptureSignature(signature, call.Method))
+        // Fresh direct input Origins and fixed shared capture results retain their complete call contracts. A result over the
+        // per-call inputs alone takes the arguments' Origins, as an ordinary call's does (SPEC 15.6.4).
+        var inputBinder = PerCallSignature(signature) || this.FixedCaptureSignature(signature, call.Method) ? null : InputDependentBinder(signature);
+        if (inputBinder is null && !PerCallSignature(signature) && !this.FixedCaptureSignature(signature, call.Method))
         {
             return this.Fail(call, BindingFailure.Unsupported);
         }
 
         var operations = this.argumentOperationScratch.Rent(count);
         var instantiated = this.RentTypes(count);
+        var argumentOrigins = this.originScratch.Rent(count);
+        Array.Clear(argumentOrigins, 0, count);
         try
         {
             for (var i = 0; i < count; i++)
@@ -243,6 +247,7 @@ public sealed partial class Binding
 
                 if (parameter.Origin is { Kind: OriginKind.Input } && adapted.Origin is { } argumentOrigin)
                 {
+                    argumentOrigins[i] = argumentOrigin;
                     parameter = this.WithOrigins(parameter, argumentOrigin, (BoundOrigin[])parameter.OriginArguments);
                 }
 
@@ -257,8 +262,18 @@ public sealed partial class Binding
                 instantiated[i] = parameter;
             }
 
+            var result = signature.Components[1];
+            if (inputBinder is not null)
+            {
+                result = this.SubstituteStoredOrigins(result, inputBinder, default, argumentOrigins.AsSpan(0, count));
+                if (HasUnsubstitutedOrigin(result, inputBinder))
+                {
+                    return this.Fail(call, BindingFailure.Unsupported);
+                }
+            }
+
             var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));
-            signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, signature.Components[1]]);
+            signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             call.ValueCallStorage ??= new();
             call.ValueCallStorage.Set(call.Method, signature, operations.AsSpan(0, count));
             call.ValueCallStorage.ReceiverKind = receiver;
@@ -269,6 +284,7 @@ public sealed partial class Binding
         {
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.typeScratch.Return(instantiated, clearArray: true);
+            this.originScratch.Return(argumentOrigins, clearArray: true);
         }
     }
 }

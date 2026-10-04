@@ -2184,6 +2184,12 @@ public sealed partial class OwnershipBody
 
     private int ResultArgument(int call)
     {
+        if (this.Operations[call].Source is InvocationKoto { BoundValueCall: not null })
+        {
+            // SPEC 15.6.3: a value call's result descends from the one argument whose Origins it names, as an ordinary call's.
+            return this.Operations[call].Place >= 0 ? this.SoleResultInput(call, this.Places[this.Operations[call].Place].Type) : -1;
+        }
+
         if (this.Operations[call].Source is not InvocationKoto { BoundValueCall: null, BoundCall: { Target: { CompilerFunction: CompilerFunctionKind.None, Declaration: FunctionKoto target } } plan })
         {
             return -1;

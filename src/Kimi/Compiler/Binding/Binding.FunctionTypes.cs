@@ -11,6 +11,82 @@ public sealed partial class Binding
     private static bool PerCallSignature(BoundType signature)
         => !signature.Components[1].CarriesOrigin && PerCallInputs(signature);
 
+    // SPEC 15.6.4: the binder of a signature whose inputs are fresh per-call borrows and whose result depends on those inputs
+    // or on static storage alone; a call substitutes the arguments' Origins into that result.
+    private static Koto? InputDependentBinder(BoundType signature)
+    {
+        if (!PerCallInputs(signature))
+        {
+            return null;
+        }
+
+        var inputs = signature.Components[0];
+        Koto? binder = null;
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            if (inputs.Components[i].Origin is { Kind: OriginKind.Input } origin)
+            {
+                if (binder is not null && !ReferenceEquals(binder, origin.Binder))
+                {
+                    return null;
+                }
+
+                binder = origin.Binder;
+            }
+        }
+
+        return binder is not null && OverInputs(signature.Components[1], binder, inputs.Components.Count) ? binder : null;
+
+        static bool OverInputs(BoundType part, Koto binder, int count)
+        {
+            if (!OverInput(part.Origin, binder, count))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < part.OriginArguments.Count; i++)
+            {
+                if (!OverInput(part.OriginArguments[i], binder, count))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < part.Components.Count; i++)
+            {
+                if (!OverInputs(part.Components[i], binder, count))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static bool OverInput(BoundOrigin? origin, Koto binder, int count)
+        {
+            if (origin is null || origin.Kind == OriginKind.Static)
+            {
+                return true;
+            }
+
+            if (origin.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < origin.Operands.Count; i++)
+                {
+                    if (!OverInput(origin.Operands[i], binder, count))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            return origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && origin.Slot < count;
+        }
+    }
+
     private static bool PerCallInputs(BoundType signature)
     {
         var inputs = signature.Components[0];

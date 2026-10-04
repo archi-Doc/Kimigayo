@@ -137,6 +137,14 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
+        if (plan.ReceiverKind == SemanticsKind.Owner)
+        {
+            // Preparation owns the receiver until every argument completes. An early return in an argument
+            // must still destroy that prepared value; ownership enters the call only at this common boundary.
+            // The argument entries follow, contiguous before the call, as an ordinary call's are.
+            this.Emit(OwnershipOperationKind.CallEntry, plan.Receiver, receiver);
+        }
+
         var acquired = true;
         for (var i = mark; i < this.arguments.Count; i++)
         {
@@ -151,12 +159,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
-        if (plan.ReceiverKind == SemanticsKind.Owner)
-        {
-            // Preparation owns the receiver until every argument completes. An early return in an argument
-            // must still destroy that prepared value; ownership enters the call only at this common boundary.
-            this.Emit(OwnershipOperationKind.CallEntry, plan.Receiver, receiver);
-        }
 
         var invoke = this.Emit(OwnershipOperationKind.Call, call, input: receiver);
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);

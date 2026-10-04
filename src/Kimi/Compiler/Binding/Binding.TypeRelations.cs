@@ -73,7 +73,7 @@ public sealed partial class Binding
         }
     }
 
-    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool renameInput = false)
+    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool renameInput = false, Koto? actualInputs = null, Koto? expectedInputs = null)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
         {
@@ -122,7 +122,7 @@ public sealed partial class Binding
             {
                 var variance = schema.GenericSlots[i].OriginVariance;
                 if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
-                    !FitsTypeCore(a, b, binding, use, true) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use) : !FitsTypeCore(b, a, binding, use))
+                    !FitsTypeCore(a, b, binding, use, true, actualInputs: actualInputs, expectedInputs: expectedInputs) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use, actualInputs: actualInputs, expectedInputs: expectedInputs) : !FitsTypeCore(b, a, binding, use, actualInputs: expectedInputs, expectedInputs: actualInputs))
                 {
                     return false;
                 }
@@ -130,7 +130,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (actual.Kind == BoundTypeKind.Function && i == 0 && PerCallSignature(actual) && PerCallSignature(expected))
+            if (actual.Kind == BoundTypeKind.Function && i == 0 && PerCallShape(actual) && PerCallShape(expected))
             {
                 // Fresh input binders are local quantifiers of the Function Type, not fixed external Origins.
                 // Rename only the outer input layer; referent Types and their own Origins remain rigid.
@@ -147,9 +147,18 @@ public sealed partial class Binding
                     }
                 }
             }
+            else if (actual.Kind == BoundTypeKind.Function && i == 1 && InputDependentBinder(actual) is { } actualBinder && InputDependentBinder(expected) is { } expectedBinder)
+            {
+                // SPEC 10.7, 15.6.4: a result over the per-call inputs names them through its own Function Type's binders;
+                // the two results are compared with each input of one standing for the same input of the other.
+                if (!FitsTypeCore(a, b, binding, use, invariant, actualInputs: actualBinder, expectedInputs: expectedBinder))
+                {
+                    return false;
+                }
+            }
             else if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
             {
-                if (!FitsTypeCore(a, b, binding, use, true))
+                if (!FitsTypeCore(a, b, binding, use, true, actualInputs: actualInputs, expectedInputs: expectedInputs))
                 {
                     return false;
                 }
@@ -161,7 +170,7 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (!FitsTypeCore(a, b, binding, use))
+            else if (!FitsTypeCore(a, b, binding, use, actualInputs: actualInputs, expectedInputs: expectedInputs))
             {
                 return false;
             }
@@ -169,7 +178,61 @@ public sealed partial class Binding
 
         return true;
 
-        bool OriginFits(BoundOrigin a, BoundOrigin b) => binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+        bool OriginFits(BoundOrigin a, BoundOrigin b) => actualInputs is not null && RenamedInputsOutlive(a, b, actualInputs, expectedInputs!) is { } renamed ? renamed :
+            binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+    }
+
+    // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
+    private static bool PerCallShape(BoundType signature) => PerCallSignature(signature) || InputDependentBinder(signature) is not null;
+
+    // Within two results over per-call inputs, input slot i of one stands for input slot i of the other. An Origin over a set of
+    // inputs outlives one over a superset, the static Origin outlives every such Origin; null when no renamed input occurs.
+    private static bool? RenamedInputsOutlive(BoundOrigin actual, BoundOrigin expected, Koto actualBinder, Koto expectedBinder)
+    {
+        var actualKnown = InputSlots(actual, actualBinder, out var actualSlots, out var actualRenamed);
+        var expectedKnown = InputSlots(expected, expectedBinder, out var expectedSlots, out var expectedRenamed);
+        if (!actualRenamed && !expectedRenamed)
+        {
+            return null;
+        }
+
+        return actualKnown && expectedKnown && (actualSlots & ~expectedSlots) == 0;
+
+        static bool InputSlots(BoundOrigin origin, Koto binder, out ulong slots, out bool renamed)
+        {
+            slots = 0;
+            renamed = false;
+            if (origin.Kind == OriginKind.Static)
+            {
+                return true;
+            }
+
+            if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && origin.Slot is >= 0 and < 64)
+            {
+                slots = 1UL << origin.Slot;
+                renamed = true;
+                return true;
+            }
+
+            if (origin.Kind != OriginKind.Intersection)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (!InputSlots(origin.Operands[i], binder, out var part, out var partRenamed))
+                {
+                    renamed |= partRenamed;
+                    return false;
+                }
+
+                slots |= part;
+                renamed |= partRenamed;
+            }
+
+            return true;
+        }
     }
 
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)

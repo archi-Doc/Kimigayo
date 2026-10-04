@@ -45,7 +45,6 @@ public class ClosureResultOriginTest
 
     [Theory]
     [InlineData("let n = 7\nlet f = func [n] () => n@ref\nf()")]
-    [InlineData("let f = func (n: ref/i32) => n\nlet n = 7\nf(n@ref)")]
     [InlineData("var n = 7\nlet view = n@uniq\nlet f = func [view] () => view\nf()")]
     [InlineData("var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow@ref\nf()")]
     [InlineData("func check(shared: ref/i32 during source, exclusive: uniq/i32 during source)\n    let f = func [shared, exclusive] () => exclusive@follow@ref\n    f()")]

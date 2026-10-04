@@ -96,10 +96,11 @@ public class MemberFunctionReferenceTest
     }
 
     [Fact]
-    public void AnItemCallWithAnInputDependentResultRemainsUnsupported()
+    public void AnItemCallWithAnInputDependentResultTakesTheArgumentOrigin()
     {
-        var c = MinimalEmissionTest.Analyze(Box + "let box = Box<i32>.init(item: 5)\nlet get = Box<i32>.get\nlet r = get(box@ref)");
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        var source = Box + "let box = Box<i32>.init(item: 5)\nlet get = Box<i32>.get\nlet r = get(box@ref)\nrequire r == 5 else => $abort(\"get\")";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        ScalarEmissionTest.EmitFixture("MemberReferenceContainerGet", source, string.Empty);
     }
 }
