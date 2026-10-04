@@ -7,12 +7,13 @@ namespace XunitTest;
 
 internal static class NativeAllocationAudit
 {
-    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0)
+    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0, Func<string, string>? transformIr = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
-        var ir = writer.ToString()
+        var ir = writer.ToString();
+        ir = (transformIr is null ? ir : transformIr(ir))
             .Replace("call ptr @HeapAlloc(", "call ptr @audit_alloc(", StringComparison.Ordinal)
             .Replace("call i32 @HeapFree(", "call i32 @audit_free(", StringComparison.Ordinal)
             .Replace("call void @__kimi_exit(", "call void @__kimi_audit_exit(", StringComparison.Ordinal);

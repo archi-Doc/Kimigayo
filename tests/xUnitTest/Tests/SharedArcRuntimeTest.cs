@@ -91,6 +91,45 @@ public class SharedArcRuntimeTest
     }
 
     [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void FailedComparisonsRetryWithoutPublishingOrFinalizing(bool dynamic, bool smaller)
+    {
+        var source = (dynamic ? "open " : string.Empty) + "struct Item\n    public let value: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
+            "do\n    let owner = Kimi.Intrinsics.makeArc(Item.init())\n    do\n        let copy = Kimi.Intrinsics.clone(owner@ref)\n        require copy.value == 7 else => $abort(\"copy\")\n    Console.writeLine(\"alive\")\n    require owner.value == 7 else => $abort(\"owner\")\nConsole.writeLine(\"done\")";
+        NativeAllocationAudit.WriteFixture("SharedArcRetry" + dynamic + smaller, source, 1, 1, 20, "alive\ndrop\ndone\n", transformIr: ir =>
+        {
+            // Model an intervening count update only by supplying a stale initial observation. The actual control,
+            // CAS, returned observations and success branches remain production IR. Every first CAS must fail.
+            const string Initial = "%initial = load atomic i64, ptr %control monotonic, align 8";
+            Assert.Contains(Initial, Function(ir, "__kimi_clone_arc"), StringComparison.Ordinal);
+            Assert.Contains(Initial, Function(ir, "__kimi_drop_arc"), StringComparison.Ordinal);
+            var stale = "%sampled = load atomic i64, ptr %control monotonic, align 8\n  %larger = add i64 %sampled, 2\n" +
+                (smaller ? "  %smaller = sub i64 %sampled, 2\n  %multiple = icmp ugt i64 %sampled, 2\n  %initial = select i1 %multiple, i64 %smaller, i64 %larger" : "  %initial = add i64 %larger, 0");
+            return ir.Replace(Initial, stale, StringComparison.Ordinal);
+        });
+    }
+
+    [Fact]
+    public void RetainRechecksTheMaximumAfterAFailedComparison()
+    {
+        const string Source = "let owner = Kimi.Intrinsics.makeArc(7)\nlet copy = Kimi.Intrinsics.clone(owner@ref)\nConsole.writeLine(\"unreachable\")";
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
+        const string Initial = "store i64 %controlValue, ptr %control, align 8";
+        Assert.Contains(Initial, ir, StringComparison.Ordinal);
+        ir = ir.Replace(Initial, "store i64 -2, ptr %control, align 8", StringComparison.Ordinal);
+        var clone = Function(ir, "__kimi_clone_arc");
+        const string Load = "%initial = load atomic i64, ptr %control monotonic, align 8";
+        Assert.Contains(Load, clone, StringComparison.Ordinal);
+        // A retain from the preceding count lost the race to another retain reaching the maximum.
+        ir = ir.Replace(clone, clone.Replace(Load, "%initial = add i64 -4, 0", StringComparison.Ordinal), StringComparison.Ordinal);
+        ScalarEmissionTest.WriteFixture("SharedArcRetryMaximum", ir, string.Empty, 1, "Hello.kimi:2:12: abort KIMI_E_REF_COUNT: Reference count limit exceeded\n");
+    }
+
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmAnalysisAndEmissionAllocateNothing()
     {

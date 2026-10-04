@@ -56,6 +56,13 @@ analysis/emission retain zero-byte assertions. Before Weak is opened, both rc an
 dispatch and the remaining IMPL table-resolution/migration/Weak/publication transitions; this proof makes no claim about
 those currently unreachable states or about source-level thread safety.
 
+Controlled O0/O2 retry fixtures replace only the initial SSA observation with a different positive even count. The
+header, compare/exchange, returned observations and success branches are unchanged, so the first comparison must fail.
+Both stale larger and stale smaller counts retain the expected lifetime and exactly one free, for direct Sealed and
+dynamic cleanup. A separate maximum fixture starts a retain with the preceding count while the header is already at
+maximum; its failed CAS must recheck and Abort at the clone location. These fixtures exercise protocol branches without
+claiming to supply concurrent-source or hardware stress coverage.
+
 The ownership and cleanup cases above share the same source workloads and expectations for rc and arc. They cover
 external Loans, destructor observations, dynamic base identity, Tuple/Case/fixed-array/closure storage, Array/Dictionary
 removal and owning exit, abandoned arguments and CLI/LSP handle protection. `GenericObjectFactoryTest` exercises arc
