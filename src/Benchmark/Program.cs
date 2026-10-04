@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
 namespace Benchmark;
@@ -92,6 +93,6 @@ public class BenchmarkConfig : BenchmarkDotNet.Configs.ManualConfig
         this.AddExporter(BenchmarkDotNet.Exporters.MarkdownExporter.GitHub);
         this.AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
 
-        this.AddJob(BenchmarkDotNet.Jobs.Job.MediumRun);
+        this.AddJob(Job.MediumRun.WithToolchain(new BenchmarkToolchain()));
     }
 }
