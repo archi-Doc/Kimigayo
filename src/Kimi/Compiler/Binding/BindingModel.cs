@@ -63,6 +63,7 @@ public enum BoundTypeKind : byte
     Closure,
     Array,
     Dictionary,
+    FunctionItem,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.6.2).</summary>

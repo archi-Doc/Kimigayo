@@ -140,33 +140,27 @@ public class CallbackEmissionTest
         Assert.Empty(output.ToString());
     }
 
-    // SPEC 7.6.4: without a fixed common Function Type a function reference is a value of its own Function Item Type, which is
-    // not yet implemented; the reference itself is reported, without a cascade at the enclosing declaration or requirement.
+    // SPEC 10.5 permits generic reference selection against a fixed signature. That selection is still unsupported;
+    // nongeneric concrete Item storage and its invalid counterparts are exercised by FunctionItemTest.
     [Theory]
-    [InlineData("let f = inc", 1)]
-    [InlineData("let t = (inc, 1)", 1)]
-    [InlineData("let a = [inc]", 1)]
-    [InlineData("let x: i32 = inc", 1)]
-    [InlineData("func g() -> i32 => inc\nlet n = 1", 1)]
-    [InlineData("inc", 1)]
-    [InlineData("let b = inc == inc", 2)]
-    [InlineData("let o = Option.Some(inc)", 1)]
-    public void FunctionItemValuesReportTheReference(string body, int count)
+    [InlineData("let f: (i32) -> i32 = inc")]
+    [InlineData("func g() -> (i32) -> i32 => inc")]
+    public void UnsupportedGenericReferencesReportTheReference(string body)
     {
-        var c = MinimalEmissionTest.Analyze("func inc(v: i32) -> i32 => v + 1\n" + body);
+        var c = MinimalEmissionTest.Analyze("func inc<T>(v: T) -> T => v@move\n" + body);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         c.Ownership.ReportDiagnostics();
         var diagnostics = TestDiagnostics.Of(c);
-        Assert.Equal(count, diagnostics.Length);
+        Assert.Single(diagnostics);
         Assert.All(diagnostics, x => Assert.True(x.Code == "UnsupportedBinding_Kd" && x.Text == "inc", x.ToString() + " " + x.Text));
     }
 
     [Fact]
-    public void CliAndLspPlaceTheFunctionItemValueAtTheReference()
+    public void CliAndLspPlaceUnsupportedGenericReferencesAtTheReference()
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = MinimalEmissionTest.Analyze("func inc(v: i32) -> i32 => v + 1\nlet f = inc", path);
+        var c = MinimalEmissionTest.Analyze("func inc<T>(v: T) -> T => v@move\nlet f: (i32) -> i32 = inc", path);
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
@@ -174,8 +168,8 @@ public class CallbackEmissionTest
         Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains("Hello.kimi:2:9", console.Text, StringComparison.Ordinal);
-        Assert.Contains("let f = inc\n  |         ^^^", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimi:2:23", console.Text, StringComparison.Ordinal);
+        Assert.Contains("let f: (i32) -> i32 = inc\n  |                       ^^^", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("UnresolvedBinding", console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var capability in new[] { false, true })

@@ -21,7 +21,7 @@ public sealed partial class OwnershipAnalysis
         return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceTypes.IsBorrow(type) ||
             (type is not null && ObjectTypes.HandleMode(type) is not null && this.SupportsType(type)) ||
             ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
-            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
+            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
     }
 
     private int PointerAddress(Koto source)
@@ -212,7 +212,7 @@ public sealed partial class OwnershipAnalysis
     private bool SupportsCopySnapshot(BoundType type, Koto source)
         => this.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Proven &&
         (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||
-            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
+            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
     // SPEC 5.2.2: a borrow of a raw Place converts its address. The referent is a fresh anchor that no Loan of another Place
     // covers, so accesses through the result, and Reborrows from it, are checked under the result alone.

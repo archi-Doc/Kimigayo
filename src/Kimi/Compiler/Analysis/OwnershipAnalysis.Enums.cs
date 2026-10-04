@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
     // length zero or of a zero-sized element. Call only after SupportsType accepted the Type (no inline cycles).
     private static bool IsZeroSized(BoundType type)
     {
-        if (ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never))
+        if (ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never) || type.Kind == BoundTypeKind.FunctionItem)
         {
             return true;
         }
@@ -127,7 +127,7 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
         {
             return true;
         }

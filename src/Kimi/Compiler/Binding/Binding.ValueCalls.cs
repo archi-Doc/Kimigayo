@@ -98,6 +98,13 @@ public sealed partial class Binding
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver)
     {
         var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
+        if (this.FunctionItemSignature(owner) is { } itemSignature)
+        {
+            signature = itemSignature;
+            receiver = SemanticsKind.Ref;
+            return true;
+        }
+
         if (owner.Kind == BoundTypeKind.Function)
         {
             signature = owner;

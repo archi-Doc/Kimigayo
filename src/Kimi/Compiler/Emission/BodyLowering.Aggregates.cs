@@ -93,7 +93,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && ObjectTypes.HandleMode(place.Type) is null)
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && ObjectTypes.HandleMode(place.Type) is null)
             {
                 continue;
             }
@@ -348,7 +348,7 @@ internal sealed partial class BodyLowering
 
         switch (operation.Kind)
         {
-            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
+            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure:
             case OwnershipOperationKind.Read when ObjectTypes.HandleMode(place.Type) is not null:
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice:
@@ -362,6 +362,11 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Produce:
+                if (place.Type.Kind == BoundTypeKind.FunctionItem && ReferenceEquals(operation.Source.BoundSymbol, place.Type.Symbol))
+                {
+                    break; // A resolved Item has no runtime payload to initialize.
+                }
+
                 if (id > 0 && body.Values[id - 1].Kind == OwnershipValueKind.PatternProjection &&
                     body.Operations[id - 1] is { Kind: OwnershipOperationKind.Read } candidate && candidate.Input == place.Id &&
                     ReferenceEquals(candidate.Source, operation.Source) && (!body.IsReachable(id) || this.Dominates(id - 1, id)))

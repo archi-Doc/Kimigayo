@@ -646,7 +646,7 @@ public sealed class ControlFlowAnalysis
         }
 
         var referencedFunction = this.types.GetReferencedFunction(node);
-        if (referencedFunction?.Modifier.HasFlag(ModifierKind.Unsafe) == true)
+        if (referencedFunction is not null && (referencedFunction.Modifier & ModifierKind.Unsafe) != 0)
         {
             var reference = node;
             while ((reference.Parent is GenericsKoto generics && generics.Identifier == reference) ||

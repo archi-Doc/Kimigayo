@@ -405,7 +405,7 @@ public sealed partial class Binding
         {
             group = this.Lookup(name.IdentifierName, scope, name, false);
         }
-        else if (callee is MemberAccessKoto member)
+        else if (callee is MemberAccessKoto member && member.Right is not NumberLiteralKoto)
         {
             // The callee is checked in its own frame: what its lookup consults is its prerequisite, not the call's.
             var frame = this.BeginConsultation(member);
@@ -791,7 +791,7 @@ public sealed partial class Binding
 
                     selectedOperations[i] = selectedOperations[i] with { SourceType = call.ArgumentNodes[i].BoundType };
                 }
-                else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure } closureType && selectedOperations[i].ParameterType is { } erased &&
+                else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType && selectedOperations[i].ParameterType is { } erased &&
                     this.ErasesToFunction(call.ArgumentNodes[i], closureType, erased))
                 {
                     // SPEC 7.6.4: the selected parameter fixes the common Function Type the Closure value is converted to.
@@ -1462,7 +1462,11 @@ public sealed partial class Binding
                 return false;
             }
 
-            if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
+            if (pattern.Kind == BoundTypeKind.Function && this.FunctionItemSignature(actual) is { } itemSignature)
+            {
+                actual = itemSignature;
+            }
+            else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
                 actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure })
             {
                 // SPEC 7.6.4: a concrete Closure meets a common Function Type through its signature; the conversion itself is

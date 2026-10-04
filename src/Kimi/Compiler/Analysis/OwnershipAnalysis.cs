@@ -858,6 +858,12 @@ public sealed partial class OwnershipAnalysis
             return this.ConstructEnum(node, construction!);
         }
 
+        if (node.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto itemDefinition } && node.BoundType?.Kind == BoundTypeKind.FunctionItem)
+        {
+            this.CollectLibraryBody(itemDefinition);
+            return this.Temporary(node);
+        }
+
         switch (node)
         {
             case FunctionKoto { BoundClosure: { } } closure:

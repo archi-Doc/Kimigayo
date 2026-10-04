@@ -16,7 +16,7 @@ internal static class MatchTypes
         // common Function values use their operations table; object handles use their static ownership mode.
         if (ScalarTypes.Supports(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ||
             ObjectTypes.HandleMode(type) is not null ||
-            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function)
+            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.FunctionItem)
         {
             return true;
         }

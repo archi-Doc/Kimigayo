@@ -391,9 +391,11 @@ public sealed partial class Binding
     // SPEC 7.6.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
     // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
-        => expected.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
+        => expected.Kind == BoundTypeKind.Function &&
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected)) ||
+            (actual.Kind == BoundTypeKind.Closure &&
             actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
-            CallableSignatureFits(closure.Signature, expected) && this.ProveOwned(actual, node) == ConstraintProof.Proven;
+            CallableSignatureFits(closure.Signature, expected))) && this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
@@ -421,13 +423,10 @@ public sealed partial class Binding
         }
 
         if (actual is null && expected?.Kind != BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
-            node.BoundSymbol is { Kind: BindingSymbolKind.Function } && IsValueUse(node) &&
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } item && IsValueUse(node) &&
             (expected is not null || !TryNameRoot(node, out var root) || root.Parent is not InvocationKoto))
         {
-            // SPEC 7.6.4: without a fixed common Function Type, a function reference is a value of its own Function Item Type,
-            // which is not yet implemented (P26). A call argument bound before selection is left to the call, which converts
-            // it at a common Function parameter or reports it.
-            return this.Fail(node, BindingFailure.Unsupported, true);
+            actual = this.BindFunctionItem(node, item);
         }
 
         if (expected is not null && actual is not null && this.ErasesToFunction(node, actual, expected))

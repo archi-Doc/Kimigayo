@@ -128,6 +128,12 @@ public sealed partial class Binding
             return true;
         }
 
+        if (type.Kind == BoundTypeKind.FunctionItem)
+        {
+            result = ConstraintProof.Proven; // No bound generic arguments or stored environment in this Item profile.
+            return true;
+        }
+
         if (type.Kind == BoundTypeKind.Primitive || (type.Kind == BoundTypeKind.Function && kind == IntrinsicKind.Copy))
         {
             result = kind == IntrinsicKind.Owned || (type.Kind == BoundTypeKind.Primitive && type.Name != "string") ? ConstraintProof.Proven : ConstraintProof.Refuted;

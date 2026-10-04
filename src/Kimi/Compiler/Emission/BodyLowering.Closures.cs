@@ -82,6 +82,22 @@ internal sealed partial class BodyLowering
 
         var input = Input(body, id, 0);
         var source = ValueType(body, input);
+        if (source?.Kind == BoundTypeKind.FunctionItem)
+        {
+            if (operation.Kind != OwnershipOperationKind.Produce || source.Symbol?.Declaration is not FunctionKoto itemDefinition ||
+                !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
+                operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
+                !Binding.CallableSignatureFits(itemSignature, body.Places[operation.Place].Type) ||
+                this.functions?.GetValueOrDefault(itemDefinition) is not { CallerLocation: false } itemEntry ||
+                (body.IsReachable(id) && !this.Dominates(input, id)))
+            {
+                return Fail("Function Item erasure requires an acquired Item and its checked signature.", out failure);
+            }
+
+            function.Instructions.Add(new(EmissionOpcode.EraseClosure, id, operation.Place, Callee: itemEntry, OperandStart: function.Operands.Count));
+            return true;
+        }
+
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
             !ReferenceEquals(operation.Source.ErasedFunctionType, body.Places[operation.Place].Type) ||
@@ -310,13 +326,19 @@ internal sealed partial class BodyLowering
 
         var start = function.Operands.Count;
         var receiverType = receiver.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver;
-        var concreteEntry = receiverType.Kind == BoundTypeKind.Closure && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
+        var itemCall = receiverType.Kind == BoundTypeKind.FunctionItem;
+        var concreteEntry = receiverType.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.functions?.GetValueOrDefault(definition) : null;
+        if (itemCall && concreteEntry is not { CallerLocation: false })
+        {
+            return Fail("Function Item call requires its resolved declaration entry.", out failure);
+        }
+
         var abi = concreteEntry ?? this.ValueCallAbi(signature, returnType);
 
         // A concrete closure body takes its environment before the result slot (FunctionAbiPool.Get); a common value call
         // receives the environment from the value itself, whose address leads the operands when a reference holds it.
-        var borrowed = body.Places[operation.Input].Type.Kind == BoundTypeKind.Semantics;
-        if (concreteEntry is not null || borrowed)
+        var borrowed = !itemCall && body.Places[operation.Input].Type.Kind == BoundTypeKind.Semantics;
+        if (!itemCall && (concreteEntry is not null || borrowed))
         {
             if (borrowed)
             {
@@ -370,7 +392,7 @@ internal sealed partial class BodyLowering
         }
 
         this.arguments.Clear();
-        if (concreteEntry is not null)
+        if (concreteEntry is not null && !itemCall)
         {
             function.Operands.Add(new(EmissionOperandKind.NullAddress, 0));
         }
