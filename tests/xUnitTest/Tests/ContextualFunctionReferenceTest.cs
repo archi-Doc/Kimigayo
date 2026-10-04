@@ -6,6 +6,7 @@ using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -147,7 +148,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
     [Fact]
     public void WarmReferenceSelectionAndEmissionAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Functions + Apply + "let result = apply(41, choose)");
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.ContextualFunctionReference);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));

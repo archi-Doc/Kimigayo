@@ -9,9 +9,9 @@ public class Program
 {
     public static void Main(string[] args)
     {
-        if (args.Length > 0 && args[0] == "--object-plans")
+        if (args.Length > 0 && args[0] is "--object-plans" or "--callable-plans")
         {
-            ObjectPlanMeasurements.Run();
+            CompilerPlanMeasurements.Run(args[0] == "--callable-plans");
             return;
         }
 

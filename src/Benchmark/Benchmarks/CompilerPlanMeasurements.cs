@@ -11,34 +11,46 @@ using Verification;
 
 namespace Benchmark;
 
-// Fixed workloads are shared with object regression tests; timing is opt-in, never a regression assertion.
-internal static class ObjectPlanMeasurements
+// Fixed workloads are shared with regression tests; timing is opt-in, never a regression assertion.
+internal static class CompilerPlanMeasurements
 {
     private const int Warmup = 32;
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run()
+    internal static void Run(bool callable = false)
     {
         var results = new List<object>();
-        foreach (var name in new[] { "direct", "stored", "rc-clone", "arc-clone" })
+        foreach (var name in callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference" } : new[] { "direct", "stored", "rc-clone", "arc-clone" })
         {
             var stored = name == "stored";
-            var source = name is "rc-clone" or "arc-clone" ? VerificationWorkloads.SharedClone(name == "arc-clone") : VerificationWorkloads.ObjectView(stored);
+            var source = name switch
+            {
+                "fixed-reference" => VerificationWorkloads.ContextualFunctionReference,
+                "ranked-reference" => VerificationWorkloads.FunctionReferenceRanking(false),
+                "borrowed-reference" => VerificationWorkloads.FunctionReferenceRanking(true),
+                "rc-clone" or "arc-clone" => VerificationWorkloads.SharedClone(name == "arc-clone"),
+                _ => VerificationWorkloads.ObjectView(stored),
+            };
             var c = Compilation.CreateForTest();
             if (!c.Prepare("x86_64-pc-windows-msvc"))
             {
-                throw new InvalidOperationException("Object workload target must be prepared.");
+                throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument("object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
-                throw new InvalidOperationException("Object workload must bind and verify.");
+                throw new InvalidOperationException("Compiler workload must bind and verify.");
             }
 
-            foreach (var emit in new[] { false, true })
+            foreach (var phase in callable ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
             {
+                if (callable && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
+                {
+                    throw new InvalidOperationException("Rebound workload must pass startup and ownership before measurement.");
+                }
+
                 for (var warm = 0; warm < Warmup; warm++)
                 {
                     RunOnce();
@@ -64,13 +76,19 @@ internal static class ObjectPlanMeasurements
                     milliseconds[sample] = elapsed.TotalMilliseconds / Iterations;
                 }
 
-                results.Add(new { name, stored, phase = emit ? "emission" : "ownership", sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
+                results.Add(new { name, stored, phase, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
 
                 void RunOnce()
                 {
-                    if (emit ? !c.Emission.WriteIr(TextWriter.Null, out _) : !c.Ownership.Analyze().IsVerified)
+                    var valid = phase switch
                     {
-                        throw new InvalidOperationException("Every measured object plan must remain valid.");
+                        "binding" => c.Bind().IsComplete,
+                        "emission" => c.Emission.WriteIr(TextWriter.Null, out _),
+                        _ => c.Ownership.Analyze().IsVerified,
+                    };
+                    if (!valid)
+                    {
+                        throw new InvalidOperationException("Every measured compiler plan must remain valid.");
                     }
                 }
             }
@@ -79,7 +97,7 @@ internal static class ObjectPlanMeasurements
         var report = new
         {
             compiler = Compilation.CompilerVersion,
-            configuration = typeof(ObjectPlanMeasurements).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration,
+            configuration = typeof(CompilerPlanMeasurements).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration,
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
             architecture = RuntimeInformation.ProcessArchitecture.ToString(),

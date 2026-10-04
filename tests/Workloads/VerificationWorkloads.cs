@@ -7,6 +7,20 @@ namespace Verification;
 // Linked into tests and benchmarks so their language inputs cannot drift apart.
 internal static class VerificationWorkloads
 {
+    internal const string ContextualFunctionReference = "func choose(value: i32) -> i32 => value + 1\nfunc choose(value: bool) -> bool => value\nfunc apply<T, F>(value: T, action: ref/F) -> T\n    F is Callable<(T) -> T>\n    return action(value@move)\nlet result = apply(41, choose)";
+
+    internal static string FunctionReferenceRanking(bool borrowed)
+    {
+        const string Source = "func fail(value: i32) -> Never => $abort(\"not called\")\nfunc choose(value: (i32) -> i32) -> i32 => 0\nfunc choose(value: (i32) -> Never) -> i32 => 42\nlet action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nlet result = action(value@move)";
+        return borrowed ? BorrowFunctionReferenceInputs(Source) : Source;
+    }
+
+    internal static string BorrowFunctionReferenceInputs(string source)
+        => source.Replace("func choose(value: (i32) -> i32)", "func choose(value: ref/((i32) -> i32))", StringComparison.Ordinal)
+            .Replace("func choose(value: (i32) -> Never)", "func choose(value: ref/((i32) -> Never))", StringComparison.Ordinal)
+            .Replace("((i32) -> Never) -> i32", "(ref/((i32) -> Never)) -> i32", StringComparison.Ordinal)
+            .Replace("action(value@move)", "action(value@ref)", StringComparison.Ordinal);
+
     internal const string ObjectItem = "struct Item\n    public let id: i32 = 7\n    public func read(self: ref/Self) -> i32 => self.id\n    drop => Console.writeLine(\"drop\")\n";
 
     internal const string RcClone = "struct Item\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n" +
