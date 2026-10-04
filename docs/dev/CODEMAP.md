@@ -102,6 +102,8 @@ Concrete Closure erasure uses `Binding.ErasesToFunction` (Owned proof), `BodyLow
 `Binding.FunctionItems` binds declaration-identified Item Types and supplies call signatures to value calls and `Binding.Constraints`; `AggregateLayout` gives them empty storage and `BodyLowering.Closures` calls/erases their ordinary entries. `FunctionItemTest` and `FunctionItemCallableTest` cover storage, captures, Copy, borrowed calls, erasure, generic receiver contracts, diagnostic display and warm reuse.
 
 `FunctionItemResultTest` covers declaration references in control-flow results; `Binding.ControlFlow` surveys value evidence and `Binding.Expressions` applies fixed Function expectations through ordinary result storage.
+
+`Binding.DiagnosticTypes` retains Function Item declaration qualifiers; `FunctionItemDiagnosticTest` checks public records, CLI/LSP output and nested-group designators in `ControlFlowAnalysis`.
 Shared payload authority failures retain conversion targets and rejected receiver Types in `Binding.Diagnostics`/`Binding.Calls`; `SharedObjectDiagnosticTest` covers intrinsic clone Advice and CLI/LSP output.
 
 Contextually typed anonymous functions also use `BindConcreteClosure`; `Binding.ControlFlow.AddBodyResult` carries their erasure Type through selections. `ContextualClosureTest` covers this path and its public conversion diagnostics.

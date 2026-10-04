@@ -923,6 +923,11 @@ public sealed class ControlFlowAnalysis
             case ParenthesizedKoto p:
                 flow = this.Visit(p.Operand, expected);
                 break;
+            case MemberAccessKoto { BoundSymbol.Kind: BindingSymbolKind.Function, BoundType.Kind: BoundTypeKind.FunctionItem or BoundTypeKind.Function } reference:
+                // A selected function reference names a declaration. Its group/type qualifiers are designators,
+                // including every segment of a nested group, rather than runtime receiver expressions.
+                flow = new(true, this.types.GetExpressionType(reference));
+                break;
             case MemberAccessKoto { BoundSymbol.Property: not null } member:
                 // A selected property name is a designator, not an evaluated local.
                 var ownerFlow = member.Left.BoundSymbol?.Kind == BindingSymbolKind.Container

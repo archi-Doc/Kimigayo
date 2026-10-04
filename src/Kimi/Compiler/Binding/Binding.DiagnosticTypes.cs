@@ -60,7 +60,8 @@ public sealed partial class Binding
 
             if (current.Kind == BoundTypeKind.FunctionItem)
             {
-                text.Append("function item ").Append(current.Symbol!.Name);
+                text.Append("function item ");
+                AppendDeclaration(current.Symbol!);
                 return;
             }
 
@@ -129,6 +130,19 @@ public sealed partial class Binding
 
                 text.Append(current.Kind == BoundTypeKind.Tuple ? ')' : '>');
             }
+        }
+
+        void AppendDeclaration(BindingSymbol symbol)
+        {
+            // Equal call signatures and short names do not identify equal Item Types. Keep the declaring containers.
+            if (symbol.Scope.Owner.BoundSymbol is { Name.Length: > 0 } owner && !ReferenceEquals(owner, symbol) &&
+                owner.Kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.Function)
+            {
+                AppendDeclaration(owner);
+                text.Append('.');
+            }
+
+            text.Append(symbol.Name);
         }
 
         void AppendLength(BoundLength length)
