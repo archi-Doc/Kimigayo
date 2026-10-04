@@ -118,7 +118,7 @@ public class ArrayMembersTest
     // SPEC 4.7.2: a negative capacity Aborts.
     [Fact]
     public void NegativeCapacityAborts()
-        => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARGUMENT: Invalid argument value\n");
+        => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARG_RANGE: Argument out of range\n");
 
     // SPEC 4.7.2, 7.6.4: named Function Items satisfy the generic Callable parameters of the source library members.
     [Fact]

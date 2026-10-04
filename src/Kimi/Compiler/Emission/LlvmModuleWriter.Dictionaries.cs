@@ -71,7 +71,7 @@ internal static partial class LlvmModuleWriter
         }
 
         """.Replace("REASON_DUPLICATE", Reason(WindowsLowering.DuplicateKeyReason), StringComparison.Ordinal)
-            .Replace("REASON_ARGUMENT", Reason(WindowsLowering.ArgumentReason), StringComparison.Ordinal)
+            .Replace("REASON_ARGUMENT", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal)
             .Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal)
             .Replace("REASON_SIZE", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal);
 

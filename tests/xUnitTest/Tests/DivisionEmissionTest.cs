@@ -190,11 +190,13 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("1 / 1");
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Equal(18, WindowsLowering.AbortReasons.Length);
+        Assert.Equal(17, WindowsLowering.AbortReasons.Length);
         var count = WindowsLowering.AbortReasons.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
+        var codes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var reason in WindowsLowering.AbortReasons)
         {
+            Assert.True(codes.Add(reason.Text.Split(':', 2)[0]), "Abort codes must have one canonical catalog entry.");
             Assert.Contains($"{{ ptr, i64 }} {{ ptr @__kimi_{reason.Name}_reason, i64 {reason.Text.Length} }}", ir);
             Assert.Contains($"@__kimi_{reason.Name}_reason = private constant [{reason.Text.Length} x i8] c\"{reason.Text}\"", ir);
         }
@@ -206,11 +208,11 @@ public class DivisionEmissionTest
         Assert.Equal("KIMI_E_FLOAT_CONVERSION: Floating conversion out of range", WindowsLowering.AbortReasons[WindowsLowering.FloatingConversionReason].Text);
         Assert.Equal("KIMI_E_ARG_RANGE: Argument out of range", WindowsLowering.AbortReasons[WindowsLowering.ArgumentRangeReason].Text);
         Assert.Equal("KIMI_E_FORMAT: Formatting failed", WindowsLowering.AbortReasons[WindowsLowering.FormatReason].Text);
-        Assert.Equal(15, WindowsLowering.MissingKeyReason);
+        Assert.Equal(14, WindowsLowering.MissingKeyReason);
         Assert.Equal("KIMI_E_MISSING_KEY: Dictionary key was not found", WindowsLowering.AbortReasons[WindowsLowering.MissingKeyReason].Text);
-        Assert.Equal(16, WindowsLowering.DuplicateKeyReason);
+        Assert.Equal(15, WindowsLowering.DuplicateKeyReason);
         Assert.Equal("KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key", WindowsLowering.AbortReasons[WindowsLowering.DuplicateKeyReason].Text);
-        Assert.Equal(17, WindowsLowering.ReferenceCountReason);
+        Assert.Equal(16, WindowsLowering.ReferenceCountReason);
         Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", WindowsLowering.AbortReasons[WindowsLowering.ReferenceCountReason].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);

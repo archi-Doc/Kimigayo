@@ -171,7 +171,7 @@ public class ArrayBindingTest
 
     // SPEC 4.7.4: a negative reserve amount Aborts before the collection changes.
     [Theory]
-    [InlineData("NegativeReserve", "var values: Array<i32> = []\nlet n: isize = -1\nvalues@uniq.reserve(n)\nConsole.writeLine(\"after\")", "", "Hello.kimi:3:1: abort KIMI_E_ARGUMENT: Invalid argument value\n")]
+    [InlineData("NegativeReserve", "var values: Array<i32> = []\nlet n: isize = -1\nvalues@uniq.reserve(n)\nConsole.writeLine(\"after\")", "", "Hello.kimi:3:1: abort KIMI_E_ARG_RANGE: Argument out of range\n")]
     public void MutationOperationsAbortOnInvalidPositionsAndAmounts(string name, string source, string stdout, string stderr)
         => ScalarEmissionTest.EmitFixture("ArrayOperations" + name, source, stdout, 1, stderr);
 

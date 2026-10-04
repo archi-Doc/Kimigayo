@@ -33,7 +33,7 @@ public class DictionaryStorageTest
         => NativeAllocationAudit.WriteFixture("DictionaryStorageBorrow", "func length(value: ref/Dictionary<i32, i32>) -> isize => value.length\nvar entries: Dictionary<i32, i32> = [:]\nentries.reserve(3)\nrequire length(entries) == 0 else => $abort(\"borrow\")", 1, 1, 96);
 
     [Theory]
-    [InlineData("Negative", "-1", "KIMI_E_ARGUMENT: Invalid argument value")]
+    [InlineData("Negative", "-1", "KIMI_E_ARG_RANGE: Argument out of range")]
     [InlineData("Overflow", "9223372036854775807", "KIMI_E_INT_OVERFLOW: Integer overflow")]
     [InlineData("Size", "9223372036854775806", "KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
     public void ReserveRejectsInvalidOrUnrepresentableCapacityBeforeAllocation(string name, string amount, string reason)
