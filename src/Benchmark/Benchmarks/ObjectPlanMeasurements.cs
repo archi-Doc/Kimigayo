@@ -21,10 +21,10 @@ internal static class ObjectPlanMeasurements
     internal static void Run()
     {
         var results = new List<object>();
-        foreach (var name in new[] { "direct", "stored", "rc-clone" })
+        foreach (var name in new[] { "direct", "stored", "rc-clone", "arc-clone" })
         {
             var stored = name == "stored";
-            var source = name == "rc-clone" ? VerificationWorkloads.RcClone : VerificationWorkloads.ObjectView(stored);
+            var source = name is "rc-clone" or "arc-clone" ? VerificationWorkloads.SharedClone(name == "arc-clone") : VerificationWorkloads.ObjectView(stored);
             var c = Compilation.CreateForTest();
             if (!c.Prepare("x86_64-pc-windows-msvc"))
             {

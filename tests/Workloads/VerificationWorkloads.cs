@@ -12,6 +12,9 @@ internal static class VerificationWorkloads
     internal const string RcClone = "struct Item\n    public let value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n" +
         "let first = Kimi.Intrinsics.makeRc(Item.init(7))\nlet second = Kimi.Intrinsics.clone(first@ref)\nrequire second.value == 7 else => $abort(\"clone\")";
 
+    internal static string SharedClone(bool atomic)
+        => atomic ? RcClone.Replace("makeRc(", "makeArc(", StringComparison.Ordinal) : RcClone;
+
     internal static string ObjectView(bool stored)
         => ObjectItem + "let owner = Kimi.Intrinsics.makeObj(Item.init())\n" +
             (stored ? "let stored = (owner@move, 1)\nrequire stored.0.id == 7" : "require owner.id == 7") + " else => $abort(\"read\")";

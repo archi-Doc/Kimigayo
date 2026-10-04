@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -139,6 +140,19 @@ public class SharedArcRuntimeTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void MeasuredWorkloadSharesItsNativeAndWarmAllocationRegressions()
+    {
+        var source = VerificationWorkloads.SharedClone(atomic: true);
+        NativeAllocationAudit.WriteFixture("SharedArcMeasuredWorkload", source, 1, 1, 20, "drop\n");
+        var c = MinimalEmissionTest.Analyze(source);
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
+        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
     private static string Function(string ir, string name)
