@@ -327,6 +327,25 @@ public sealed partial class Binding
 
     // SPEC 7.1.1: whether the expression is the operand of a return, or the single-item body, of a function with a
     // place uniq/T result; only there does an owned Place adapt to an exclusive expectation without @uniq.
+    // An Origin that a function's signature introduces, over its receiver or parameters, rather than a body-local borrow.
+    private static bool SignatureOrigin(BoundOrigin origin)
+    {
+        if (origin.Kind is OriginKind.Input or OriginKind.Parameter)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (SignatureOrigin(origin.Operands[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsExclusivePlaceResultSource(Koto node) => ResultFunction(node) is { ReturnType: PlaceResultKoto { IsExclusive: true } };
 
     // The function whose result the expression is: the operand of a return, or the single-item body.
@@ -502,12 +521,17 @@ public sealed partial class Binding
             {
                 // An exclusive Reborrow keeps one exclusive layer; a shared layer on the path bounds it.
                 return actual.Semantics == SemanticsKind.Uniq && ReferenceEquals(actual.Components[0], target) && !ReachedThroughShared(node)
-                    ? new(ExpectedAdaptationKind.Reborrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [target], origin: actual.Origin)) : null;
+                    ? new(ExpectedAdaptationKind.Reborrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [target], origin: this.PathReborrowOrigin(node, actual.Origin))) : null;
             }
 
             if (this.SharedReferenceThroughLayers(actual, target, out var layers) is not { } shared)
             {
                 return null;
+            }
+
+            if (actual.Semantics == SemanticsKind.Uniq && shared.Origin is { } layered && this.PathReborrowOrigin(node, layered) is { } bounded && !ReferenceEquals(bounded, layered))
+            {
+                shared = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: bounded);
             }
 
             // A single ref layer is the reference itself: ordinary fitting Copies it.
@@ -555,6 +579,108 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(source) is var place && this.ImplicitPairAdmitted(place) is var admitted && admitted != SemanticsMask.None && place.BoundType is { } pair
             ? this.PairOrigin(place, pair, admitted) : this.PlaceOrigin(source);
 
+    // SPEC 15.6.3: a Reborrow through an exclusive reference stored in a Place is contained in that reference's Origin and in the
+    // Origin of each safe borrow through which the Place is reached, counting outward up to and including the first shared
+    // layer, so a result reached through a borrowed receiver or parameter stays within that borrow. A shared reference is Copied
+    // and keeps its own Origin. Body-local borrows on the path stay ancestors in ownership analysis (SPEC 15.6.2), and an
+    // implementation verified under `preserves results` publishes results independent of its receiver Loan (SPEC 8.4.10.3).
+    private BoundOrigin? PathReborrowOrigin(Koto place, BoundOrigin? origin)
+    {
+        if (origin is null || this.PublishesIndependentResults(place))
+        {
+            return origin;
+        }
+
+        var path = KotoHelper.UnwrapParentheses(place);
+        for (var depth = 0; depth < 64 && origin is not null; depth++)
+        {
+            var outer = path switch
+            {
+                MemberAccessKoto member => member.Left,
+                IndexKoto index => index.Left,
+                ConversionKoto { ConversionBinding: ConversionBinding.Follow } follow => follow.Left,
+                _ => null,
+            };
+            if (outer is null)
+            {
+                break;
+            }
+
+            outer = KotoHelper.UnwrapParentheses(outer);
+            if (outer.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { } layer })
+            {
+                if (SignatureOrigin(layer))
+                {
+                    origin = this.Meet(origin, layer);
+                }
+
+                if (outer.BoundType.Semantics == SemanticsKind.Ref)
+                {
+                    break;
+                }
+            }
+
+            path = outer;
+        }
+
+        return origin;
+    }
+
+    // SPEC 8.4.10.3, 15.6.3: whether the named function enclosing a node implements a requirement whose Contract declares
+    // `preserves results`, such as an Iterator's `next`, so that the bound's verification establishes the independence of its
+    // published results.
+    private bool PublishesIndependentResults(Koto node)
+    {
+        var function = node.Parent;
+        while (function is not null and not FunctionKoto { IsAnonymous: false })
+        {
+            function = function.Parent;
+        }
+
+        if (function is not FunctionKoto { BoundSymbol: { } symbol } named || symbol.Scope.Owner.BoundSymbol is not { } owner ||
+            !this.conformancesByType.TryGetValue(owner, out var conformances))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < conformances.Count; i++)
+        {
+            if (conformances[i].Contract.Contract is { HasEffectBounds: true } shape && PreservesRequirement(shape, named))
+            {
+                return true;
+            }
+
+            for (var a = 0; conformances[i].Contract.Contract is { } contract && a < contract.Ancestors.Count; a++)
+            {
+                if (contract.Ancestors[a].Contract is { HasEffectBounds: true } ancestor && PreservesRequirement(ancestor, named))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+
+        static bool PreservesRequirement(BoundContract shape, FunctionKoto function)
+        {
+            for (var b = 0; b < shape.EffectBoundStorage.Count; b++)
+            {
+                var bound = shape.EffectBoundStorage[b];
+                if (bound.Bound == EffectBoundKind.PreservesResults && bound.Requirement.Name == function.Name &&
+                    bound.Requirement.Declaration is FunctionKoto requirement && requirement.Parameters.Count == function.Parameters.Count)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    // The Origin a followed reference's referent keeps: an exclusive reference's own Origin met with its reaching borrows.
+    private BoundOrigin? FollowedOrigin(Koto reference)
+        => reference.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin: { } origin } ? this.PathReborrowOrigin(reference, origin) : reference.BoundType?.Origin;
+
     private BoundOrigin PlaceOrigin(Koto source)
     {
         if (this.ReadsReferent(source))
@@ -571,9 +697,10 @@ public sealed partial class Binding
 
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)
         {
-            // SPEC 13.5.5: a selected referent or payload keeps the dependencies of its reference or handle,
-            // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent.
-            return selected.Left.BoundType?.Origin ?? this.PlaceOrigin(selected.Left);
+            // SPEC 13.5.5, 15.6.3: a selected referent or payload keeps the dependencies of its reference or handle,
+            // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent; through an
+            // exclusive reference, it also stays within the borrows that reach that reference.
+            return this.FollowedOrigin(selected.Left) ?? this.PlaceOrigin(selected.Left);
         }
 
         if (ElementAccess.PlaceCallReference(source) is { Origin: { } published })
@@ -592,7 +719,7 @@ public sealed partial class Binding
         {
             // SPEC 13.5.5: a part of a selected referent (`p@follow.x`) keeps the dependencies of the reference, as the
             // referent itself does.
-            return reached.Left.BoundType?.Origin ?? this.PlaceOrigin(reached.Left);
+            return this.FollowedOrigin(reached.Left) ?? this.PlaceOrigin(reached.Left);
         }
 
         return ElementAccess.AccessType(source) is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
