@@ -16,6 +16,8 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
     [InlineData("Rc", "rc", false)]
     [InlineData("Obj", "obj", true)]
     [InlineData("Rc", "rc", true)]
+    [InlineData("Arc", "arc", false)]
+    [InlineData("Arc", "arc", true)]
     public void GenericFactoriesExecuteWithIndependentErrorsPreserved(string factory, string mode, bool independent)
     {
         var source = $"func box<T>(value: T) -> {mode}/T\n    T is ObjectPayload\n    return Kimi.Intrinsics.make{factory}(value@move)\n" +
@@ -63,12 +65,14 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
     [Theory]
     [InlineData("Obj")]
     [InlineData("Rc")]
+    [InlineData("Arc")]
     public void NongenericFactoriesRemainExecutable(string factory)
         => NativeAllocationAudit.WriteFixture("GenericObjectCounterpart" + factory, $"func box(value: i32) => Kimi.Intrinsics.make{factory}(value)\nlet boxed = box(7)", 1, 1, 20);
 
     [Theory]
     [InlineData("Obj")]
     [InlineData("Rc")]
+    [InlineData("Arc")]
     public void ContainerParametersUseConcreteFactoryPlans(string factory)
     {
         var source = $"struct Box<T>\n    public func create(self: ref/Self) -> {factory.ToLowerInvariant()}/i32 => Kimi.Intrinsics.make{factory}(1)\nlet box = Box<i32>.init()\nlet value = box.create()\nrequire value@follow == 1 else => $abort(\"payload\")";
@@ -90,7 +94,8 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
                     let middle = Kimi.Intrinsics.makeObj(Inner<T>.init())
                     Console.writeLine("outer")
             """;
-        NativeAllocationAudit.WriteFixture("GenericObjectDestructor" + name, Types + "\n" + root, allocations, allocations, bytes, "outer\ninner\n");
+        NativeAllocationAudit.WriteFixture("GenericObjectDestructorRc" + name, Types + "\n" + root, allocations, allocations, bytes, "outer\ninner\n");
+        NativeAllocationAudit.WriteFixture("GenericObjectDestructorArc" + name, SharedObjectRuntimeTest.ArcSource(Types + "\n" + root), allocations, allocations, bytes, "outer\ninner\n");
     }
 
     [Fact]
@@ -113,10 +118,13 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmGenericFactoryPlansAllocateNothing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WarmGenericFactoryPlansAllocateNothing(bool atomic)
     {
-        var c = MinimalEmissionTest.Analyze("func box<T>(value: T) -> rc/T\n    T is ObjectPayload\n    return Kimi.Intrinsics.makeRc(value@move)\nlet first = box(7)\nlet second = box(true)");
+        const string Source = "func box<T>(value: T) -> rc/T\n    T is ObjectPayload\n    return Kimi.Intrinsics.makeRc(value@move)\nlet first = box(7)\nlet second = box(true)";
+        var c = MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(Source) : Source);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));
@@ -125,9 +133,11 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void SharedPhysicalFactoriesKeepEachCallsExternalLoans(bool conflict)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public void SharedPhysicalFactoriesKeepEachCallsExternalLoans(bool conflict, bool atomic)
     {
         var source = """
             struct View {source}
@@ -141,6 +151,7 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
             let a = box(View.init(first@ref))
             let b = box(View.init(second@ref))
             """ + (conflict ? "\nfirst = 1" : string.Empty) + "\nrequire a.value == 7 and b.value == 9 else => $abort(\"origins\")";
+        source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (conflict)
@@ -153,7 +164,7 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
         {
             Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
             Assert.Single(module.Objects);
-            NativeAllocationAudit.WriteFixture("GenericObjectFactoryOrigins", source, 2, 2, 48);
+            NativeAllocationAudit.WriteFixture("GenericObjectFactoryOrigins" + (atomic ? "Arc" : "Rc"), source, 2, 2, 48);
         }
     }
 
@@ -175,5 +186,6 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
             require copy.value == 7 else => $abort("result")
             """;
         NativeAllocationAudit.WriteFixture("GenericObjectCloneRc", Source, 1, 1, 24);
+        NativeAllocationAudit.WriteFixture("GenericObjectCloneArc", SharedObjectRuntimeTest.ArcSource(Source), 1, 1, 24);
     }
 }

@@ -20,12 +20,14 @@ public class ObjectSlotUpdateTest
     [Theory]
     [InlineData("Obj", "makeObj", "@uniq")]
     [InlineData("Rc", "makeRc", "@uniq")]
+    [InlineData("Arc", "makeArc", "@uniq")]
     public void CompleteSlotsShareTransferAndCleanup(string name, string factory, string borrow)
         => NativeAllocationAudit.WriteFixture("ObjectSlotUpdate" + name, Source(factory, borrow), 3, 3, 60, "three\nupdated\none\ntwo\n");
 
     [Theory]
     [InlineData("makeObj")]
     [InlineData("makeRc")]
+    [InlineData("makeArc")]
     public void AStoredPayloadViewPreventsSlotReplacement(string factory)
     {
         var source = Item + "\nvar owner = Kimi.Intrinsics." + factory + "(Item.init(1))\nlet view = owner@objref\nKimi.Intrinsics.replace(owner@uniq, with: Kimi.Intrinsics." + factory + "(Item.init(2)))\nrequire view.id == 1 else => $abort(\"view\")";
@@ -37,10 +39,12 @@ public class ObjectSlotUpdateTest
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmSlotUpdatesAllocateNothing()
+    [Theory]
+    [InlineData("makeRc")]
+    [InlineData("makeArc")]
+    public void WarmSlotUpdatesAllocateNothing(string factory)
     {
-        var c = MinimalEmissionTest.Analyze(Source("makeRc", "@uniq"));
+        var c = MinimalEmissionTest.Analyze(Source(factory, "@uniq"));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified, iterations: 64, warmupIterations: 32));

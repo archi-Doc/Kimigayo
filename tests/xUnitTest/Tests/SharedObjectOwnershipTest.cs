@@ -20,7 +20,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     [InlineData("Replaced", "var local = Kimi.Intrinsics.makeRc(View.init(n@ref))\nlet copy = Kimi.Intrinsics.clone(local@ref)\nlocal = Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire copy.value == 7 and local.value == 7 else => $abort(\"replace\")", 2)]
     [InlineData("NestedSlot", "let local = Kimi.Intrinsics.makeRc(View.init(n@ref))\nlet stored = (local@move, 1)\nlet copy = Kimi.Intrinsics.clone(stored.0@ref)\n_ = stored@move\nrequire copy.value == 7 else => $abort(\"slot\")", 1)]
     public void CloneRetainsExternalDependenciesWithoutBorrowingItsSourceSlot(string name, string use, int allocations)
-        => NativeAllocationAudit.WriteFixture("SharedRcOrigin" + name, View + "let n = 7\n" + use, allocations, allocations, allocations * 24);
+        => SharedObjectRuntimeTest.WriteModes("Origin" + name, View + "let n = 7\n" + use, allocations, allocations, allocations * 24);
 
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -31,12 +31,12 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     [InlineData("Capture", "let visit = func [owner@move] () => owner.read()\nrequire visit() == 7 and visit() == 7 else => $abort(\"capture\")")]
     [InlineData("Borrow", "let view = owner@objref\nlet payload = owner@follow@ref\nrequire view.value == 7 and payload.value == 7 else => $abort(\"borrow\")")]
     public void OrdinaryStorageAndBorrowPlansPreserveTheFinalRelease(string name, string use)
-        => NativeAllocationAudit.WriteFixture("SharedRcStorage" + name, Item + "let owner = Kimi.Intrinsics.makeRc(Item.init())\n" + use, 1, 1, 20, "drop\n");
+        => SharedObjectRuntimeTest.WriteModes("Storage" + name, Item + "let owner = Kimi.Intrinsics.makeRc(Item.init())\n" + use, 1, 1, 20, "drop\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void EmptyRcCasesNeverReleaseAnInactiveHandle()
-        => NativeAllocationAudit.WriteFixture("SharedRcEmptyOption", Item + "let value: Option<rc/Item> = .None\nmatch value@move\n    .Some(let item) => $abort(\"some\")\n    .None => Console.writeLine(\"none\")", 0, 0, 0, "none\n");
+    public void EmptyCasesNeverReleaseAnInactiveHandle()
+        => SharedObjectRuntimeTest.WriteModes("EmptyOption", Item + "let value: Option<rc/Item> = .None\nmatch value@move\n    .Some(let item) => $abort(\"some\")\n    .None => Console.writeLine(\"none\")", 0, 0, 0, "none\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -44,14 +44,16 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         => NativeAllocationAudit.WriteFixture("SharedRcObjPattern", Item + "let value: Option<obj/Item> = .Some(Kimi.Intrinsics.makeObj(Item.init()))\nmatch value@move\n    .Some(let item)\n        require item.value == 7 else => $abort(\"value\")\n    .None => $abort(\"none\")", 1, 1, 20, "drop\n");
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ExternalLoansRemainLiveForReadsAndDestructorObservations(bool destructor)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void ExternalLoansRemainLiveForReadsAndDestructorObservations(bool destructor, bool atomic)
     {
         var source = View + (destructor ? "    drop => require self.value == 7 else => $abort(\"drop\")\n" : string.Empty) +
             "var n = 7\nlet first = Kimi.Intrinsics.makeRc(View.init(n@ref))\nlet copy = Kimi.Intrinsics.clone(first@ref)\n_ = first@move\nn = 9\n" +
             (destructor ? "()" : "require copy.value == 7 else => $abort(\"read\")");
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(source) : source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
@@ -59,13 +61,16 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void PublicOutputsProtectBorrowedHandlesAgainstMoves(bool conflict)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void PublicOutputsProtectBorrowedHandlesAgainstMoves(bool conflict, bool atomic)
     {
-        var path = Path.GetFullPath("rc-loan.kimi");
+        var path = Path.GetFullPath(atomic ? "arc-loan.kimi" : "rc-loan.kimi");
         var source = Item + "let owner = Kimi.Intrinsics.makeRc(Item.init())\nlet view = owner@objref\n" +
             (conflict ? "let moved = owner@move\n" : string.Empty) + "require view.value == 7 else => $abort(\"live\")";
+        source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Binding.ReportDiagnostics();

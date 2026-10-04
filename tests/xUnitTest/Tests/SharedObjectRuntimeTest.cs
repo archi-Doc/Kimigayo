@@ -51,8 +51,8 @@ public class SharedObjectRuntimeTest
 
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void ObjAndRcSharePayloadMetadataButKeepTheirOwnCleanup()
-        => NativeAllocationAudit.WriteFixture("SharedRcMixedModes", Item + "let exclusive = Kimi.Intrinsics.makeObj(Item.init(1))\nlet shared = Kimi.Intrinsics.makeRc(Item.init(2))\nlet clone = Kimi.Intrinsics.clone(shared@ref)\nrequire exclusive.value == 1 and clone.value == 2 else => $abort(\"modes\")", 2, 2, 40, "drop\ndrop\n");
+    public void OwningModesSharePayloadMetadataButKeepTheirOwnCleanup()
+        => WriteModes("MixedModes", Item + "let exclusive = Kimi.Intrinsics.makeObj(Item.init(1))\nlet shared = Kimi.Intrinsics.makeRc(Item.init(2))\nlet clone = Kimi.Intrinsics.clone(shared@ref)\nrequire exclusive.value == 1 and clone.value == 2 else => $abort(\"modes\")", 2, 2, 40, "drop\ndrop\n");
 
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -97,4 +97,14 @@ public class SharedObjectRuntimeTest
         Assert.EndsWith("call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)\n  br label %done\ndone:\n  ret void", release, StringComparison.Ordinal);
         Assert.DoesNotContain("atomic", clone + release, StringComparison.Ordinal);
     }
+
+    // Both counted modes obey the same ownership and allocation contracts; only their runtime transitions differ.
+    internal static void WriteModes(string name, string rcSource, int allocations, int frees, long bytes, string stdout = "")
+    {
+        NativeAllocationAudit.WriteFixture("SharedRc" + name, rcSource, allocations, frees, bytes, stdout);
+        NativeAllocationAudit.WriteFixture("SharedArc" + name, ArcSource(rcSource), allocations, frees, bytes, stdout);
+    }
+
+    internal static string ArcSource(string source)
+        => source.Replace(".makeRc(", ".makeArc(", StringComparison.Ordinal).Replace("rc/", "arc/", StringComparison.Ordinal);
 }

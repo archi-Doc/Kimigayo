@@ -33,7 +33,7 @@ public class SharedObjectCleanupTest
             require copy is Leaf and copy is Base else => $abort("type")
             Console.writeLine("alive")
             """;
-        NativeAllocationAudit.WriteFixture("SharedRcBaseIdentity", Source, 1, 1, 24, "alive\nleaf\nbase\n");
+        SharedObjectRuntimeTest.WriteModes("BaseIdentity", Source, 1, 1, 24, "alive\nleaf\nbase\n");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -46,7 +46,7 @@ public class SharedObjectCleanupTest
             "values@uniq.append(Kimi.Intrinsics.clone(owner@ref))\nvalues@uniq.append(Kimi.Intrinsics.clone(owner@ref))\n" +
             "_ = owner@move\n" + cleanup + "\nConsole.writeLine(\"done\")";
         // The Windows Array reserve policy rounds the initial nonempty capacity to four pointer-sized slots.
-        NativeAllocationAudit.WriteFixture("SharedRcArray" + name, source, 2, 2, 52, "drop\ndone\n");
+        SharedObjectRuntimeTest.WriteModes("Array" + name, source, 2, 2, 52, "drop\ndone\n");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -60,7 +60,7 @@ public class SharedObjectCleanupTest
             "_ = entries.tryInsert(1, Kimi.Intrinsics.clone(owner@ref))\n_ = entries.tryInsert(2, Kimi.Intrinsics.clone(owner@ref))\n" +
             "_ = owner@move\n" + cleanup + "\nConsole.writeLine(\"done\")";
         // Four entries, each with two links and the aligned (i32, handle) payload, plus one counted object.
-        NativeAllocationAudit.WriteFixture("SharedRcDictionary" + name, source, 2, 2, 148, "drop\ndone\n");
+        SharedObjectRuntimeTest.WriteModes("Dictionary" + name, source, 2, 2, 148, "drop\ndone\n");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -69,12 +69,13 @@ public class SharedObjectCleanupTest
     {
         const string Source = Item + "func take(value: rc/Item, rest: ()) => $abort(\"unreachable\")\n" +
             "func run()\n    let owner = Kimi.Intrinsics.makeRc(Item.init())\n    take(Kimi.Intrinsics.clone(owner@ref), (return))\nrun()\nConsole.writeLine(\"done\")";
-        NativeAllocationAudit.WriteFixture("SharedRcAbandonedArgument", Source, 1, 1, 20, "drop\ndone\n");
+        SharedObjectRuntimeTest.WriteModes("AbandonedArgument", Source, 1, 1, 20, "drop\ndone\n");
     }
 
     [Theory]
     [InlineData("obj")]
     [InlineData("rc")]
+    [InlineData("arc")]
     public void RawStoredHandlesStillRequireExplicitMoves(string mode)
     {
         var c = MinimalEmissionTest.Analyze(Item + $"func bad(value: raw/({mode}/Item)) -> {mode}/Item\n    unsafe => return value[0]\n()");

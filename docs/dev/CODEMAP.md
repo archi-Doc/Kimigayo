@@ -93,7 +93,7 @@ lifetime, generated transitions and warm reuse; `test-milestone34.ps1` executes 
 `MatchTypes.SupportsOwnedPatternValue` treats whole object handles as opaque values with mode-specific cleanup;
 `SharedObjectOwnershipTest` covers Tuple/Case transfer, clone result Origins, destruction observations and CLI/LSP Loans.
 `OwnershipAnalysis.Pointers.SupportsPointerValue` shares executable handle storage with raw Move acquisition;
-`SharedObjectCleanupTest` covers owning Array iteration, clear, abandoned arguments and rc dynamic base identity.
+`SharedObjectCleanupTest` covers rc/arc owning Array/Dictionary iteration, clear, abandoned arguments and dynamic base identity.
 `AggregateLayoutPool.SealedObjectHandle` combines the Sealed proof with concrete payload cleanup; physical handle layouts
 carry its drop identity to `LlvmModuleWriter.WriteSealedObjectDrop`. Open/recursive targets retain dynamic cleanup
 (`SealedObjectFinalizationTest`).

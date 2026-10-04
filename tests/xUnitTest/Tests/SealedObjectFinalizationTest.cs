@@ -11,6 +11,7 @@ public class SealedObjectFinalizationTest
     [Theory]
     [InlineData("Obj")]
     [InlineData("Rc")]
+    [InlineData("Arc")]
     public void SealedPayloadsHaveDirectCleanupAndRelease(string factory)
     {
         var source = "struct Item\n    public let value: i32 = 7\n    drop => Console.writeLine(\"drop\")\n" +
@@ -39,6 +40,8 @@ public class SealedObjectFinalizationTest
     [InlineData("Rc", "7", -1, 20)]
     [InlineData("Obj", "\"value\"", -2, 40)]
     [InlineData("Rc", "\"value\"", -2, 40)]
+    [InlineData("Arc", "7", -1, 20)]
+    [InlineData("Arc", "\"value\"", -2, 40)]
     public void TrivialAndStringPayloadsKeepTheirDistinctCleanup(string factory, string value, int drop, int bytes)
     {
         var source = $"let owner = Kimi.Intrinsics.make{factory}({value})";
@@ -52,12 +55,14 @@ public class SealedObjectFinalizationTest
     [Theory]
     [InlineData("Obj")]
     [InlineData("Rc")]
+    [InlineData("Arc")]
     public void ZeroSizeStillDestroysTheLogicalPayload(string factory)
         => NativeAllocationAudit.WriteFixture("SealedObjectZero" + factory, "struct Item\n    drop => Console.writeLine(\"zero\")\n" + $"let owner = Kimi.Intrinsics.make{factory}(Item.init())", 1, 1, 16, "zero\n");
 
     [Theory]
     [InlineData("obj")]
     [InlineData("rc")]
+    [InlineData("arc")]
     public void OpenTargetsRetainDynamicDestruction(string mode)
     {
         var c = MinimalEmissionTest.Analyze($"open struct Base\n    drop => Console.writeLine(\"base\")\nfunc consume(value: {mode}/Base) => ()\n()");
@@ -88,8 +93,10 @@ public class SealedObjectFinalizationTest
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void RecursivePayloadsKeepFinitePlansAndDestroyEveryNode()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RecursivePayloadsKeepFinitePlansAndDestroyEveryNode(bool atomic)
     {
         const string Source = """
             struct Node
@@ -99,11 +106,12 @@ public class SealedObjectFinalizationTest
             let tail = Kimi.Intrinsics.makeRc(Node.init(Option<rc/Node>.None))
             let head = Kimi.Intrinsics.makeRc(Node.init(Option<rc/Node>.Some(tail@move)))
             """;
-        var c = MinimalEmissionTest.Analyze(Source);
+        var source = atomic ? SharedObjectRuntimeTest.ArcSource(Source) : Source;
+        var c = MinimalEmissionTest.Analyze(source);
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
-        NativeAllocationAudit.WriteFixture("SealedObjectRecursive", Source, 2, 2, 64, "node\nnode\n");
+        NativeAllocationAudit.WriteFixture("SealedObjectRecursive" + (atomic ? "Arc" : "Rc"), source, 2, 2, 64, "node\nnode\n");
     }
 
     [Trait("Purpose", "Allocation")]

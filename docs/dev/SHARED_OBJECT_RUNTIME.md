@@ -55,3 +55,11 @@ clone lifetime, maximum and preceding counts, generic factory/clone calls and ex
 analysis/emission retain zero-byte assertions. Before Weak is opened, both rc and arc retry paths must gain representation
 dispatch and the remaining IMPL table-resolution/migration/Weak/publication transitions; this proof makes no claim about
 those currently unreachable states or about source-level thread safety.
+
+The ownership and cleanup cases above share the same source workloads and expectations for rc and arc. They cover
+external Loans, destructor observations, dynamic base identity, Tuple/Case/fixed-array/closure storage, Array/Dictionary
+removal and owning exit, abandoned arguments and CLI/LSP handle protection. `GenericObjectFactoryTest` exercises arc
+factories in concrete function/container instances. `ObjectSlotUpdateTest` covers complete Owned handle exchange,
+replacement and swap; content-sensitive updates with external Origins remain a separate implementation limit.
+`SealedObjectFinalizationTest` covers direct arc cleanup, zero-sized payloads and recursive dynamic fallback with exact
+allocation/free counts and unchanged zero-allocation compiler measurements.
