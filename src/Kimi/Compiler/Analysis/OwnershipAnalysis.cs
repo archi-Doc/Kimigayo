@@ -214,6 +214,12 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            if (issue.Failure == OwnershipFailure.ComparisonLoanConflict && issue.Destroyed is not null)
+            {
+                ReportDestruction(issue);
+                continue;
+            }
+
             if (issue.Failure == OwnershipFailure.UnprovenOrigin && issue.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } obligation)
             {
                 // SPEC 15.6.1: a fit's relation is reported at the value that supplies the longer end; a well-formedness relation
@@ -331,6 +337,34 @@ public sealed partial class OwnershipAnalysis
                 related: Locations(related),
                 condition: Condition(issue));
         }
+
+        // SPEC 15.6.2, 15.6.5, 16.2.2: a borrowed Place destroyed while a live value keeps its Loan is reported at the destruction,
+        // relating that value and the Borrow or capture entry that created the Loan. A transfer cleans up the scopes it leaves
+        // before it delivers its result, so a secured result never carries a borrow of a destroyed local out of its scope.
+        void ReportDestruction(in OwnershipIssue issue)
+        {
+            var entries = issue.Borrow is FunctionKoto { Captures: { } captured } && (uint)issue.BorrowCapture < (uint)captured.Length ? captured : null;
+            var borrow = entries is not null ? CaptureText(entries[issue.BorrowCapture]) : issue.Borrow?.ToString();
+            var place = issue.Destroyed!.Length > 0 ? $"`{issue.Destroyed}`" : issue.DestroyedTemporary is { } temporary ? $"the temporary `{temporary}`" : "the borrowed Place";
+            var kept = borrow is null ? " is destroyed here while a live value keeps its Loan" : $" is destroyed here while a live value keeps the Loan of `{borrow}`";
+            var transfer = issue.Source is JumpKoto ? "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)" : string.Empty;
+            (string Role, Koto At, string? Label)[]? related = issue.LoanSource is not { } loan ? null
+                : entries is null && issue.Borrow is { } site ? [("loan", loan, RetainedLoanLabel), ("borrow", site, BorrowLabel)]
+                : [("loan", loan, RetainedLoanLabel)];
+            (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = entries is not null ? [("borrow", issue.Borrow!, entries[issue.BorrowCapture].Span, BorrowLabel)] : null;
+            var advice = (issue.Destroyed.Length > 0 ? $"Declare {place} in a scope" : $"Keep {place} in a local") + " that outlives the value keeping its Loan, or keep an owned value instead of the borrow";
+            issue.Source.Report(
+                Requirement(issue),
+                issue.Code,
+                note: Note(char.ToUpperInvariant(place[0]) + place[1..] + kept + transfer),
+                advice: advice,
+                related: Locations(related),
+                relatedSpans: spans,
+                condition: Condition(issue));
+        }
+
+        static string CaptureText(CaptureKoto entry)
+            => (entry.IsMutable ? "var " : string.Empty) + entry.Name + (entry.Operation is { } operation ? "@" + operation : string.Empty);
 
         DiagnosticRequirement Requirement(in OwnershipIssue issue) => requirementOverride ?? DiagnosticRequirement.Ownership(issue.Failure);
 

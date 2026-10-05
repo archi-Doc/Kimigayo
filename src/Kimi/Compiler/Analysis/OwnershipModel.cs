@@ -210,9 +210,13 @@ public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int 
 public readonly record struct OwnershipLending(Koto Input, Koto Call);
 
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
+// Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name, such
+// as DestroyedTemporary); Borrow is the Borrow that created the Loan, with BorrowCapture its capture entry when it is a closure's
+// (SPEC 15.6.2, 16.2.2).
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
-    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null)
+    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null,
+    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null)
 {
     public DiagnosticCode Code => this.Failure switch
     {

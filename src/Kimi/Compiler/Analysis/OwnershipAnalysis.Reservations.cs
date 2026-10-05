@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     private const string RetainedLoanLabel = "value retaining the conflicting loan";
+    private const string BorrowLabel = "borrow that created the loan";
     private const string ReservationLabel = "conflicting exclusive call reservation";
 
     private static bool IsDirectExclusiveBorrow(Koto source)

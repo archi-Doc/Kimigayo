@@ -68,6 +68,11 @@ public class OwnershipJoinTest
         var c = MinimalEmissionTest.Analyze(Pair + "    let selected = label choose: do\n        let local = Cell.init()\n        exit to choose if c => a@ref else => local@ref\n    let n = selected.value\ninspect(true)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Issues, issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+
+        // SPEC 15.6.5, 16.2.2: one record, at the exit whose cleanup destroys `local`, never also at the join or the later use.
+        var conflict = Assert.Single(c.Ownership.Issues);
+        Assert.Equal((OwnershipFailure.ComparisonLoanConflict, "local"), (conflict.Failure, conflict.Destroyed));
+        Assert.IsType<Kimi.Compiler.Parsing.ExitKoto>(conflict.Source);
         Assert.False(c.Emission.Validate(out _));
     }
 
