@@ -24,13 +24,32 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
-    // fixed Origins. A chain with a finite Origin or an inferred region at one end is otherwise Proven: it constrains region
-    // inference, and ownership analysis checks the Loans of those Borrows.
+    // fixed Origins.
     internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use)
+        => this.JudgeOriginRelation(longer, shorter, use) is OriginJudgment.Refuted or OriginJudgment.Unknown;
+
+    // SPEC 15.6.5: Proven by the solver's premises, or because a fixed Origin, which contains every point of the body, outlives a
+    // finite Origin or an inferred region; Refuted when a finite Origin must outlive a fixed one; Unknown between fixed Origins.
+    // A chain between two body Origins is Proven by the spec and constrains region inference, which ownership analysis does not
+    // perform: its Loans follow only the Origins written in a holder's Type. Such a chain is Unrepresentable, a located limit.
+    internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
+        if (this.ProvesOriginOutlives(longer, shorter, use))
+        {
+            return OriginJudgment.Proven;
+        }
+
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        return RefutesOriginRelation(longer, shorter) || (FixedOrigin(longer) && FixedOrigin(shorter));
+        if (RefutesOriginRelation(longer, shorter))
+        {
+            return OriginJudgment.Refuted;
+        }
+
+        return !FixedOrigin(longer) ? OriginJudgment.Unrepresentable
+            : FixedOrigin(shorter) ? OriginJudgment.Unknown
+            : shorter.Kind == OriginKind.Anchor ? OriginJudgment.Unrepresentable
+            : OriginJudgment.Proven;
     }
 
     // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
@@ -137,7 +156,7 @@ public sealed partial class Binding
             // This is a premise of borrowing the Place, not a relation declared by
             // the annotation currently being checked.
             if (shorter is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
-                this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner } stored &&
+                this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
                 !IsWithin(use, variable) && this.ProvesStoredOriginPremise(stored, longer, use))
             {
                 return true;

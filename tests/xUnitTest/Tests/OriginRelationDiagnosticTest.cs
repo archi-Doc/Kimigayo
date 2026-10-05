@@ -93,6 +93,21 @@ public class OriginRelationDiagnosticTest
         Assert.All(errors, static x => Assert.DoesNotContain("bound the", x.Advice, StringComparison.Ordinal));
     }
 
+    // SPEC 15.6.5: a chain between two body Origins is Proven by the spec and constrains region inference, but ownership analysis
+    // keeps Loans only through the Origins written in a holder's Type, so accepting it would lose the longer Borrow's Loan (a use
+    // after the Move of `w` was accepted). It is a located limit at the value, never a relation record and never accepted.
+    [Theory]
+    [InlineData("struct H {s}\n    public let item: ref/string during s\n    public init(item: ref/string during s) => self.item = item\nfunc eat(n: string) -> () => ()\nfunc peek(n: ref/string) -> () => ()\nfunc f() -> ()\n    let v = \"v\"\n    let h = H.init(v@ref)\n    let w = \"w\"\n    let r: ref/string during h.s = w@ref\n    eat(w@move)\n    peek(r)\n")]
+    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\n")]
+    [InlineData("func f() -> ()\n    var x: i32 = 4\n    var y: i32 = 6\n    let r: ref/i32 = x@ref\n    let s: ref/i32 during r = y@ref\n    y = 7\n    Console.writeLine(\"\\(s@follow) \\(r@follow)\")\n")]
+    public void AChainBetweenBodyOriginsIsALocatedLimit(string body)
+    {
+        var source = body + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), error.Code);
+        Assert.EndsWith("@ref", Text(source, error.Span), StringComparison.Ordinal);
+    }
+
     // DIAGNOSTICS.md rule 1: a failed relation leaves the Loan checks of the same body to proceed without it, so an independent Loan
     // conflict stays visible beside it.
     [Fact]

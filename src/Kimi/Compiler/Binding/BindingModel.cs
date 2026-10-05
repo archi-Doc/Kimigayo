@@ -538,4 +538,13 @@ internal readonly record struct LibraryImport(FunctionKoto Function, string Libr
 
 /// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
 /// position, at the value that supplies the longer end; <c>Refuted</c> when the longer end is a body-local finite Origin.</summary>
+// SPEC 15.6.5: the judgment of an Origin relation that the solver may not prove.
+internal enum OriginJudgment : byte
+{
+    Proven,
+    Refuted,
+    Unknown,
+    Unrepresentable,
+}
+
 internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted);

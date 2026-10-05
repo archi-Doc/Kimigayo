@@ -17,11 +17,22 @@ public sealed partial class OwnershipAnalysis
         var stop = false;
         for (var i = 0; i < obligations.Count; i++)
         {
-            if (this.UncheckedOriginObligation(obligations[i]))
+            if (!this.UncheckedOriginObligation(obligations[i]))
             {
-                this.issues.Add(new(obligations[i].Use, OwnershipFailure.UnprovenOrigin, Obligation: obligations[i]));
-                stop |= obligations[i] is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
+                continue;
             }
+
+            if (obligations[i] is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter, Use: var use } &&
+                this.compilation.Binding.JudgeOriginRelation(longer, shorter, use) == OriginJudgment.Unrepresentable)
+            {
+                // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
+                var at = use is VariableKoto { InitializerKoto: { } initializer } && (obligations[i].Type is null || ReferenceEquals(obligations[i].Type!.Origin, shorter)) ? initializer : use;
+                this.issues.Add(new(at, OwnershipFailure.Unsupported));
+                continue;
+            }
+
+            this.issues.Add(new(obligations[i].Use, OwnershipFailure.UnprovenOrigin, Obligation: obligations[i]));
+            stop |= obligations[i] is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
         }
 
         return stop;
@@ -51,7 +62,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.IsVerifiedOriginObligation(obligation) ||
             (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } &&
-            !this.compilation.Binding.OriginRelationFails(longer, shorter, obligation.Use)))
+            this.compilation.Binding.JudgeOriginRelation(longer, shorter, obligation.Use) == OriginJudgment.Proven))
         {
             return false;
         }
