@@ -219,13 +219,20 @@ public sealed partial class Binding
         {
             if (qualifier.Type is not null)
             {
-                if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected) : this.BindType(member.Left, scope)) is not { } qualifiedType)
+                var originQualifier = qualifier.Declaration is not EnumKoto && qualifier.Schema is { Origins.Count: > 0 };
+                var callQualifier = originQualifier && IsCallee(member);
+                if ((qualifier.Declaration is EnumKoto ? this.EnumQualifierType(member.Left, qualifier, scope, expected)
+                    : this.BindType(member.Left, scope, this.TypeContext(member.Left, scope) with { CallQualifier = callQualifier })) is not { } qualifiedType)
                 {
                     return null;
                 }
 
                 typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member ?? typeMember;
+                if (originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !typeSelection.Ambiguous ? typeSelection.Member : null, scope))
+                {
+                    return null;
+                }
             }
             else if (qualifier.Declaration is GroupKoto { IsRoot: false } &&
                 this.BindContainerQualifier(member.Left, qualifier, scope, this.TypeContext(member.Left, scope)) is { } groupType)

@@ -66,6 +66,9 @@ public sealed partial class Binding
             : inner == OriginVariance.Covariant ? outer
             : outer == OriginVariance.Covariant ? OriginVariance.Contravariant : OriginVariance.Covariant;
 
+    // SPEC 15.3.1, 23.3.6.4: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
+    private static bool RepeatedSet(TypeSemanticsKoto set) => set.BindingFailure == BindingFailure.Duplicate;
+
     private OriginDeclaration OriginDeclarationFor(Koto owner)
     {
         if (!this.originDeclarations.TryGetValue(owner, out var declaration))
@@ -254,7 +257,10 @@ public sealed partial class Binding
                 var scalar = current.Origins?.ContainsKey(entry.Key) == true;
                 var value = current.Values.TryGetValue(entry.Key, out var symbol) && symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
                     (symbol.Kind != BindingSymbolKind.Local || symbol.Declaration.Span.Start <= owner.Span.Start);
-                var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(entry.Key) ?? current.OriginSets?.GetValueOrDefault(entry.Key);
+                // Like a value, a local's set is visible only to declarations that follow it (SPEC 15.3.1, 15.4.4).
+                var local = current.OriginSets?.GetValueOrDefault(entry.Key);
+                var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(entry.Key) ??
+                    (local is not null && OriginOwner(local) is { } localOwner && localOwner.Span.Start <= owner.Span.Start ? local : null);
                 if (scalar || value || (set is not null && !ReferenceEquals(set, entry.Value)))
                 {
                     this.Fail(entry.Value, BindingFailure.Duplicate);
@@ -266,15 +272,18 @@ public sealed partial class Binding
         return declaration;
     }
 
-    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier)
+    // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
+    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
         carrier = null;
+        repeated = null;
         var owner = OriginOwner(use);
         if (owner is not null && !ReferenceEquals(owner, scope.Owner) &&
             this.originDeclarations.GetValueOrDefault(owner)?.Sets.TryGetValue(name, out var localSet) == true)
         {
             carrier = this.BindOriginSetType(localSet, scope);
+            repeated = RepeatedSet(localSet) ? localSet : null;
             return true;
         }
 
@@ -293,6 +302,7 @@ public sealed partial class Binding
             if (sets?.TryGetValue(name, out var set) == true)
             {
                 carrier = this.BindOriginSetType(set, current);
+                repeated = RepeatedSet(set) ? set : null;
                 return true;
             }
 
@@ -300,6 +310,7 @@ public sealed partial class Binding
                 (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
             {
                 carrier = this.BindOriginSetType(local, current);
+                repeated = RepeatedSet(local) ? local : null;
                 return true;
             }
 
@@ -340,6 +351,19 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 15.3.1, 23.3.6.4: a name that resolves to a binding set that failed as a repeat names neither that set nor the outer
+    // declaration it repeats, so the Origin it would denote, as in a clause attached to the same declaration or `during a` beside
+    // it, rests on that DuplicateBinding_Kd and reports nothing of its own; it never resolves to the outer name.
+    private void RestOnRepeatedSet(Koto use, TypeSemanticsKoto set)
+    {
+        if (use.BindingFailure == BindingFailure.None)
+        {
+            this.prerequisites[use] = (this.prerequisiteStore.Count, 1);
+            this.prerequisiteStore.Add(set);
+            this.Fail(use, BindingFailure.MissingName, true);
+        }
     }
 
     private BoundType? BindOriginSetType(TypeSemanticsKoto syntax, BindingScope scope)

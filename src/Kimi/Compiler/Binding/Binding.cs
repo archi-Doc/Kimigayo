@@ -715,6 +715,14 @@ public sealed partial class Binding
         {
             ReportArity(issue.Node, arity, requirement, issue.Code);
         }
+        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.originQualifierLimits?.TryGetValue(issue.Node, out var qualifierLimit) == true)
+        {
+            this.ReportOriginQualifier(issue.Node, qualifierLimit, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
+        {
+            this.ReportDuplicateBindingSet(bindingSet, reusedSet, requirement, issue.Code);
+        }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
             this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, entry.Source, requirement, issue.Code);
