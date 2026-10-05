@@ -600,7 +600,6 @@ public sealed partial class Binding
         }
 
         var path = KotoHelper.UnwrapParentheses(place);
-        var shared = false;
         for (var depth = 0; depth < 64 && origin is not null; depth++)
         {
             var outer = path switch
@@ -625,7 +624,6 @@ public sealed partial class Binding
 
                 if (outer.BoundType.Semantics == SemanticsKind.Ref)
                 {
-                    shared = true;
                     break;
                 }
             }
@@ -633,10 +631,7 @@ public sealed partial class Binding
             path = outer;
         }
 
-        // SPEC 15.8.2 row 3, 15.6.3: an environment binding is a Field of the closure's receiver, so a Reborrow through an exclusive
-        // reference it stores, with no shared layer between, also stays within that binding's Place.
-        return !shared && origin is not null && path is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Capture, Declaration: { } closure } capture }
-            ? this.Meet(origin, this.OriginAtom(closure, OriginKind.Projection, EnvironmentSlot(capture.Slot))) : origin;
+        return origin;
     }
 
     // SPEC 8.4.10.3, 15.6.3: whether the named function enclosing a node implements a requirement whose Contract declares

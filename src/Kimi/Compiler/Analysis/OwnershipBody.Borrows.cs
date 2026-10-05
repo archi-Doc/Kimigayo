@@ -256,7 +256,8 @@ public sealed partial class OwnershipBody
                             continue;
                         }
 
-                        var external = this.Places[root].Kind == OwnershipPlaceKind.Anchor || (this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type) || this.IsPairInput(root)));
+                        var external = this.Places[root].Kind == OwnershipPlaceKind.Anchor || (this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type) || this.IsPairInput(root))) ||
+                            this.IsEnvironmentBorrow(root);
                         var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
                         var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
                             this.ElementAccessConflicts(operation, root, authority);
@@ -423,6 +424,7 @@ public sealed partial class OwnershipBody
 
         void AddOrigin(int place, BoundOrigin origin, LoanRequirement mode, bool referent = false)
         {
+            var rooted = false;
             if (origin.Kind == OriginKind.Intersection)
             {
                 for (var i = 0; i < origin.Operands.Count; i++)
@@ -430,7 +432,7 @@ public sealed partial class OwnershipBody
                     AddOrigin(place, origin.Operands[i], mode, referent);
                 }
             }
-            else if (origin.Kind is OriginKind.Projection or OriginKind.Anchor || (origin.Kind == OriginKind.Input && (ReferenceEquals(origin.Binder, this.Function) || ReferenceEquals(origin.Binder, this.Function.Accessor?.Declaration))))
+            else if (origin.Kind is OriginKind.Projection or OriginKind.Anchor or OriginKind.Input)
             {
                 if (origin.Kind == OriginKind.Anchor)
                 {
@@ -440,6 +442,7 @@ public sealed partial class OwnershipBody
                         Record(anchor);
                     }
 
+                    RecordCarriers();
                     return;
                 }
 
@@ -469,9 +472,12 @@ public sealed partial class OwnershipBody
                     }
                 }
 
+                // Only the body's own inputs name its Places; an enclosing function's input reaches a closure body through its
+                // environment bindings alone (RecordCarriers).
+                var own = origin.Kind != OriginKind.Input || ReferenceEquals(origin.Binder, this.Function) || ReferenceEquals(origin.Binder, this.Function.Accessor?.Declaration);
                 foreach (var entry in this.SymbolPlaces)
                 {
-                    if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && (origin.Kind == OriginKind.Input ? entry.Key.Slot == origin.InputIndex : Binding.SymbolOriginSlot(entry.Key) == origin.Slot) &&
+                    if (own && ReferenceEquals(entry.Key.Declaration, origin.Binder) && (origin.Kind == OriginKind.Input ? entry.Key.Slot == origin.InputIndex : Binding.SymbolOriginSlot(entry.Key) == origin.Slot) &&
                         (origin.Kind != OriginKind.Input || entry.Key.Kind == BindingSymbolKind.Parameter))
                     {
                         if (origin.Kind == OriginKind.Input && this.Places[entry.Value].Type.Semantics == SemanticsKind.Owner &&
@@ -506,8 +512,31 @@ public sealed partial class OwnershipBody
                     }
                 }
 
+                RecordCarriers();
+
+                // SPEC 7.6.2, 15.8.2: in a closure body an Origin that names no Place of the body, such as the referent of a captured
+                // exclusive reference or an enclosing function's input, is reached only through the environment bindings whose
+                // Types carry it. Those bindings are Fields of the closure's receiver, so the Loans fall on their Places.
+                void RecordCarriers()
+                {
+                    if (rooted || this.Function is not { IsAnonymous: true, ClosureStorage: { } plan })
+                    {
+                        return;
+                    }
+
+                    for (var i = 0; i < plan.Storage.Count; i++)
+                    {
+                        var environment = plan.Storage[i].Environment;
+                        if (environment.Type is { } carried && Binding.ContainsOrigin(carried, origin) && this.SymbolPlaces.TryGetValue(environment, out var binding))
+                        {
+                            Record(binding);
+                        }
+                    }
+                }
+
                 void Record(int root)
                 {
+                    rooted = true;
                     if (mode == LoanRequirement.None)
                     {
                         return;
@@ -1179,6 +1208,12 @@ public sealed partial class OwnershipBody
         => this.ConditionalReborrows is { Count: > 0 } && this.Places[place].Kind == OwnershipPlaceKind.Parameter && Binding.TryPairLayer(this.Places[place].Type, out _, out _);
 
     // Declared lifetime parameters need a capability root independent of their shared Origin name.
+    // SPEC 7.6.2, 15.8.2: an environment binding that stores a reference is, like a borrowed parameter, a root whose referent lies
+    // outside the closure body; the body reaches that referent only through the binding.
+    private bool IsEnvironmentBorrow(int place)
+        => this.Places[place].Kind == OwnershipPlaceKind.Local && this.Function.IsAnonymous && ReferenceEquals(this.Places[place].Source, this.Function) &&
+            ReferenceTypes.IsBorrow(this.Places[place].Type);
+
     private bool IsExclusiveBorrowInput(int place)
         => this.Places[place].Kind == OwnershipPlaceKind.Parameter &&
             this.Places[place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin.Kind: OriginKind.Parameter };
