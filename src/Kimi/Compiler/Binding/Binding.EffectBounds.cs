@@ -932,7 +932,7 @@ public sealed partial class Binding
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
                 CompilerFunctionKind.StorageOwn or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageShrinkDictionary or
+                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageTransferBytes or
                 >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice => true, // SPEC 5.6: an allocation and raw accesses.
             _ => false,
         };

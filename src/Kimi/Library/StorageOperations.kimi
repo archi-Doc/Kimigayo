@@ -21,12 +21,13 @@ internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (r
 // Fails with the caller location carried by the standard operation's private ABI.
 internal func missingDictionaryKey() -> Never
 internal func argumentOutOfRange() -> Never
+internal func countOverflow() -> Never
+internal func allocationSizeExceeded() -> Never
+// The nullable form of Alloc (SPEC 22.5.2): null wherever Alloc would Abort; Raw.release releases the result.
+internal func tryAllocateBytes(bytes: isize) -> raw/u8
+// Copies `count` bytes between nonoverlapping allocated ranges whatever their initialization state; no responsibility
+// moves and no user code runs.
+internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: isize)
 // Appends one slot, growing the storage first, and transfers `key` and `value` into it. The ordinary source decides that
 // no equal key is stored; growth failure Aborts at the standard operation's caller location.
 internal unsafe func placeEntry<K, V>(handle: raw/u8, key: K, value: V)
-// Capacity bridges carrying the standard operation's caller location: the Kimigayo decisions of DictionaryStorage.kimi
-// run over compiler-supplied allocation, release and byte-transfer callbacks.
-internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)
-    K is Equatable
-internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
-    K is Equatable

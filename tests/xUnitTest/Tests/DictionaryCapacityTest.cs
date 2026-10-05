@@ -15,10 +15,11 @@ public class DictionaryCapacityTest
         var maximum = long.MaxValue / stride;
         var capacity = (maximum / 2) + 1;
         var minimum = capacity + 1;
-        var ir = DynamicArrayCapacityLimitTest.ReplaceDefinition(RuntimeIr(), "__kimi_alloc", "define internal ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length) {\nentry:\n  store i64 %size, ptr @probe_size, align 8\n  ret ptr @probe_memory\n}");
+        var (runtime, reserve, _) = Runtime();
+        var ir = DynamicArrayCapacityLimitTest.ReplaceDefinition(runtime, "__kimi_alloc", "define internal ptr @__kimi_alloc(i64 %size, ptr %location, i64 %location_length) {\nentry:\n  store i64 %size, ptr @probe_size, align 8\n  ret ptr @probe_memory\n}");
         var body = $$"""
             {{Handle(0, capacity)}}
-              call void @__kimi_dictionary_reserve(ptr %handle, i64 {{stride}}, i64 {{minimum}}, ptr @probe_location, i64 5)
+              %reserved = call i64 @{{reserve}}(ptr %handle, i64 {{stride}}, i64 {{minimum}}, ptr @probe_location, i64 5)
               %actual_capacity = load i64, ptr %capacity_ptr, align 8
               %enough = icmp uge i64 %actual_capacity, {{minimum}}
               %representable = icmp ule i64 %actual_capacity, {{maximum}}
@@ -40,12 +41,16 @@ public class DictionaryCapacityTest
 
     [Fact]
     public void InsertionRejectsLengthOverflowBeforeAccessingStorage()
-        => WriteProbe("InsertionLimit", RuntimeIr(), Handle(long.MaxValue, long.MaxValue) + "\n  %slot = call ptr @__kimi_dictionary_append_slot(ptr %handle, i64 24, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+    {
+        var (ir, _, append) = Runtime();
+        WriteProbe("InsertionLimit", ir, Handle(long.MaxValue, long.MaxValue) + $"\n  %slot = call ptr @{append}(ptr %handle, i64 24, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 1, "probe: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
+    }
 
     [Fact]
     public void AllocationFailureLeavesThePreviousHandleUntouched()
     {
-        var ir = RuntimeIr().Replace("call ptr @HeapAlloc(", "call ptr @probe_fail_alloc(", StringComparison.Ordinal);
+        var (runtime, reserve, _) = Runtime();
+        var ir = runtime.Replace("call ptr @HeapAlloc(", "call ptr @probe_fail_alloc(", StringComparison.Ordinal);
         const string abort = """
             define internal void @__kimi_abort(i32 %reason, ptr %location, i64 %location_length, i64 %error) noreturn #0 {
             entry:
@@ -69,7 +74,7 @@ public class DictionaryCapacityTest
         ir = DynamicArrayCapacityLimitTest.ReplaceDefinition(ir, "__kimi_abort", abort);
         ir += "\n@probe_handle = private global { ptr, i64, i64, i64, i64, i64, i64 } { ptr @probe_memory, i64 0, i64 4, i64 0, i64 0, i64 0, i64 0 }\n" +
             "define internal ptr @probe_fail_alloc(ptr %heap, i32 %flags, i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
-        WriteProbe("AllocationFailure", ir, "  call void @__kimi_dictionary_reserve(ptr @probe_handle, i64 24, i64 5, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
+        WriteProbe("AllocationFailure", ir, $"  %reserved = call i64 @{reserve}(ptr @probe_handle, i64 24, i64 5, ptr @probe_location, i64 5)\n  call void @__kimi_exit(i32 93)\n  unreachable", 0, string.Empty);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -96,8 +101,14 @@ public class DictionaryCapacityTest
         NativeAllocationAudit.WriteFixture("DictionaryCapacityHoles", source, 2, 2, 288, maxTransferredBytes: 96, minTransferredBytes: 96);
     }
 
-    private static string RuntimeIr()
-        => CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)"));
+    // The compiled DictionaryStorage reserve and append, called with their private caller-location pair (SPEC 22.5.1).
+    private static (string Ir, string Reserve, string Append) Runtime()
+    {
+        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)");
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
+        Assert.True(module.DictionaryReserveStorage!.CallerLocation && module.DictionaryAppend!.CallerLocation);
+        return (CompilationTestHelper.WriteIr(c), module.DictionaryReserveStorage.Name, module.DictionaryAppend.Name);
+    }
 
     private static string Handle(long length, long capacity) => $$"""
               %handle = alloca { ptr, i64, i64, i64, i64, i64, i64 }, align 8

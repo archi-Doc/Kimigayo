@@ -11,6 +11,7 @@ internal sealed partial class BodyLowering
     private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Result, string Related), DictionaryHelper> dictionaryHelpers = new();
     private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Result, string Related), DictionaryHelper> dictionaryHelperCache = new();
     private bool dictionaryRuntimeUsed;
+    private bool storageBytesUsed;
 
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
@@ -108,22 +109,27 @@ internal sealed partial class BodyLowering
             : element.IsScalar ? this.PhysicalOperand(body, Input(body, id, operand)) : new(EmissionOperandKind.SlotAddress, place);
     }
 
-    // SPEC 4.7.4: reserveEntries and shrinkEntries run the Kimigayo capacity decisions of DictionaryStorage.kimi over
-    // compiler-constructed platform callbacks; failure reports the standard operation's forwarded caller location.
-    private bool LowerDictionaryCapacity(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    // SPEC 22.1.2.5: the nullable form of Alloc and the unsafe byte copy that the DictionaryStorage capacity bodies use; neither
+    // reports a failure, so neither needs a location.
+    private bool LowerStorageBytes(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;
-        var reserve = plan.Target.CompilerFunction == CompilerFunctionKind.StorageReserveDictionary;
-        var inputs = reserve ? 2 : 1;
+        var transfer = plan.Target.CompilerFunction == CompilerFunctionKind.StorageTransferBytes;
+        var inputs = transfer ? 3 : 1;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
-            plan.ArgumentToParameter[0] != 0 || (reserve && plan.ArgumentToParameter[1] != 1) ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } input ||
-            !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
-            (reserve && !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), BoundType.ISize)) ||
-            !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
+            !(transfer ? ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit) : BytePointer(SignatureType(this, call.BoundType))))
         {
-            return Fail("Dictionary capacity operation requires its exclusive Dictionary and entry layout.", out failure);
+            return Fail("A private storage byte primitive requires its fixed signature.", out failure);
+        }
+
+        for (var i = 0; i < inputs; i++)
+        {
+            var parameter = SignatureType(this, plan.ArgumentOperations[i].ParameterType);
+            if (plan.ArgumentToParameter[i] != i || !(i == inputs - 1 ? ReferenceEquals(parameter, BoundType.ISize) : BytePointer(parameter)))
+            {
+                return Fail("A private storage byte primitive requires its arguments in order.", out failure);
+            }
         }
 
         if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
@@ -136,44 +142,22 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (!this.ScalarArrayArgument(body, id, 0, input, out var handle))
-        {
-            return Fail("Dictionary capacity operation has no acquired handle.", out failure);
-        }
-
         this.callOperands.Clear();
-        this.callOperands.Add(handle);
-        this.callOperands.Add(new(EmissionOperandKind.Integer, GetDictionaryEntryLayout(key, value).Stride));
-        if (reserve)
+        for (var i = 0; i < inputs; i++)
         {
-            if (!this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var additional))
+            if (!this.ScalarArrayArgument(body, id, i, SignatureType(this, plan.ArgumentOperations[i].ParameterType)!, out var operand))
             {
-                return Fail("Dictionary reserve amount is unavailable.", out failure);
+                return Fail("A private storage byte primitive argument is unavailable at the call.", out failure);
             }
 
-            this.callOperands.Add(additional);
+            this.callOperands.Add(operand);
         }
 
-        if (function.Abi.CallerLocation)
-        {
-            this.callOperands.Add(new(EmissionOperandKind.CallerLocation, 0));
-            this.callOperands.Add(new(EmissionOperandKind.CallerLocationLength, 0));
-        }
-        else
-        {
-            if (!this.TryGetLocation(call, directory, constants, out var location))
-            {
-                return Fail("Dictionary capacity operation has no diagnostic source location.", out failure);
-            }
-
-            this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
-            this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
-        }
-
-        this.dictionaryRuntimeUsed = true;
-        this.arrayRuntimeUsed = true;
-        function.AddCall(id, reserve ? WindowsLowering.DictionaryReserve : WindowsLowering.DictionaryShrink, CollectionsMarshal.AsSpan(this.callOperands));
+        function.AddCall(id, transfer ? WindowsLowering.TransferBytes : WindowsLowering.TryAllocateBytes, CollectionsMarshal.AsSpan(this.callOperands));
+        this.storageBytesUsed = true;
         return true;
+
+        static bool BytePointer(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } && ReferenceEquals(pointee, BoundType.Primitives["u8"]);
     }
 
     // SPEC 4.7.5: placeEntry appends one slot, growing the storage first, and transfers the acquired key and value into

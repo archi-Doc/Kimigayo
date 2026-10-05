@@ -82,9 +82,14 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (id is KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange)
+        if (id is KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded)
         {
             return ReferenceEquals(symbol.Type, BoundType.Never);
+        }
+
+        if (id is KimiDeclarationId.StorageTryAllocateBytes or KimiDeclarationId.StorageTransferBytes)
+        {
+            return ValidBoundStorageBytes(symbol, id);
         }
 
         if (id == KimiDeclarationId.StorageDictionaryLayout)
@@ -100,11 +105,6 @@ public sealed partial class KimiLibrary
         if (id is >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice)
         {
             return ValidBoundRawOperation(symbol, id);
-        }
-
-        if (id is KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary)
-        {
-            return this.ValidBoundDictionaryCapacity(symbol, id);
         }
 
         if (id is >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder)

@@ -29,11 +29,11 @@ public struct Dictionary<K, V>
     /// Secures capacity for `additional` more entries without touching the stored entries; a negative or unrepresentable
     /// amount Aborts at the caller.
     public func reserve(self: uniq/Self, additional: isize)
-        Storage.reserveEntries(self, additional)
+        DictionaryStorage.reserveEntries(self, additional)
 
     /// Releases unused capacity, compacting the live entries in insertion order; an allocation failure keeps the storage.
     public func shrinkToFit(self: uniq/Self)
-        Storage.shrinkEntries(self)
+        DictionaryStorage.shrinkEntries(self)
 
     /// Appends the pair when no equal key is stored; otherwise returns both inputs unchanged as `Err`.
     public func tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>

@@ -111,8 +111,7 @@ public sealed partial class OwnershipAnalysis
             this.CollectLibraryBody(this.compilation.Library.DictionaryClearLinks);
             this.CollectLibraryBody(this.compilation.Library.DictionaryFind);
             this.CollectLibraryBody(this.compilation.Library.DictionaryClear);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryShrink);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryReserveStorage);
+            // The typed placement helper calls append by name; reserve and shrinkToFit are reached through ordinary calls.
             this.CollectLibraryBody(this.compilation.Library.DictionaryAppend);
         }
 

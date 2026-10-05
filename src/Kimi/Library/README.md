@@ -104,9 +104,12 @@ iteration entries and their `starting` helpers, and Array `truncate`. Their Kimi
 `Storage.placeEntry` appends one slot and transfers the acquired pair, carrying the standard operation's caller location
 for growth failure; `Storage.placeValue` refills a live slot after `valueAt` moved its value out, so replacement secures
 the old value before placing the new one and destroys the unused input key through ordinary cleanup.
-`reserve` and `shrinkToFit` are source bodies over the private `Storage.reserveEntries`/`shrinkEntries` bridges, which
-run the Kimigayo capacity decisions with compiler-constructed platform callbacks and the standard operation's caller
-location; callback construction stays in the compiler until general closures (P26) can express it in source.
+`reserve` and `shrinkToFit` call `DictionaryStorage.reserveEntries`/`shrinkEntries`, caller-location source bodies like
+`resolve`: growth, append and compaction call `Raw.allocate`/`Raw.release`, which report the forwarded location inside
+such bodies, and the private `Storage.countOverflow`, `allocationSizeExceeded`, `tryAllocateBytes` and `transferBytes`
+primitives (SPEC 22.1.2.5). No callback carries the location: a call through an erased or generic Callable value has
+unknown environment effects, which `confined` users of `reserve`/`tryInsert`/`shrinkToFit` exclude, and a captured
+location would need a heap environment.
 Move the remaining operation bodies into Kimigayo over common memory/ownership
 primitives; do not add new Dictionary algorithms as hand-written LLVM IR.
 Platform allocation/release, byte transfer, physical representation and verified

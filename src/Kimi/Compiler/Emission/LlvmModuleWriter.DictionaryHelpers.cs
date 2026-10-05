@@ -25,7 +25,7 @@ internal static partial class LlvmModuleWriter
                     WriteDictionaryKeyCheck(output, helper, module.DictionaryRequireAbsent!);
                     break;
                 case DictionaryHelperKind.Place:
-                    WriteDictionaryInsertion(output, helper);
+                    WriteDictionaryInsertion(output, helper, module.DictionaryAppend ?? throw new InvalidOperationException("Dictionary append source was not compiled."));
                     output.Write("  ret void\n");
                     break;
                 case DictionaryHelperKind.Find:
@@ -182,10 +182,13 @@ internal static partial class LlvmModuleWriter
         output.Write("(i64 %link, ptr %duplicate)\n  ret void\n");
     }
 
-    private static void WriteDictionaryInsertion(TextWriter output, DictionaryHelper helper)
+    private static void WriteDictionaryInsertion(TextWriter output, DictionaryHelper helper, FunctionAbi append)
     {
-        // Typed placement only; the ordinary source appendSlot body owns ordering and free-slot reuse.
-        output.Write("  %new_slot = call ptr @__kimi_dictionary_append_slot(ptr %handle, i64 ");
+        // Typed placement only; the ordinary source append body owns growth, ordering and free-slot reuse, and reports its
+        // failures at the forwarded caller location.
+        output.Write("  %new_slot = call ptr @");
+        output.Write(append.Name);
+        output.Write("(ptr %handle, i64 ");
         WriteNumber(output, helper.Stride);
         output.Write(", ptr %location, i64 %location_length)\n");
         DictionaryAddress(output, "%new_key", "%new_slot", helper.KeyOffset);

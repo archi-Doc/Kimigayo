@@ -73,6 +73,7 @@ public class DictionaryCostTest
         const string Source = """
             var entries: Dictionary<(i32, i32), i32> = [:]
             _ = entries.tryInsert((1, 2), 3)
+            entries.reserve(2)
             entries[(1, 2)] = 4
             entries.indexUniq((1, 2)) = 4
             require entries.index((1, 2)) == 4 else => $abort("indexed")
@@ -82,6 +83,7 @@ public class DictionaryCostTest
                 .Some(let value) => require value == 4 else => $abort("value")
                 .None => $abort("missing")
             for (key, value) in entries => require value == 4 else => $abort("shared")
+            entries.shrinkToFit()
             for (key, value) in entries@move => require value == 4 else => $abort("owner")
             """;
         var c = MinimalEmissionTest.Analyze(prefix == 0 ? Source : string.Join('\n', Source.Split('\n')[..prefix]));

@@ -57,6 +57,8 @@ internal sealed partial class BodyLowering
 
         module.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
         this.dictionaryRuntimeUsed = false;
+        module.NeedsStorageBytes |= this.storageBytesUsed;
+        this.storageBytesUsed = false;
         this.dictionaryHelpers.Clear();
         module.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
         this.formattingRuntimeUsed = false;

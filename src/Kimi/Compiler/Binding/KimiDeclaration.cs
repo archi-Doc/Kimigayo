@@ -126,8 +126,8 @@ public enum KimiDeclarationId : byte
     DictionaryIndexUniq,
     StorageMissingDictionaryKey,
     StoragePlaceDictionaryEntry,
-    StorageReserveDictionary,
-    StorageShrinkDictionary,
+    StorageReserveDictionary, // Reserved legacy ID; capacity is DictionaryStorage source since G20.
+    StorageShrinkDictionary, // Reserved legacy ID; capacity is DictionaryStorage source since G20.
     RawAllocate,
     RawRelease,
     RawInitialize,
@@ -149,6 +149,16 @@ public enum KimiDeclarationId : byte
     RangeIteratorStarting,
     ClosedRangeIteratorStarting,
     ArrayTruncate,
+    StorageCountOverflow,
+    StorageAllocationSizeExceeded,
+    StorageTryAllocateBytes,
+    StorageTransferBytes,
+    DictionaryStorageReserveEntries,
+    DictionaryStorageReserve,
+    DictionaryStorageGrow,
+    DictionaryStorageAppend,
+    DictionaryStorageShrinkEntries,
+    DictionaryStorageShrinkToFit,
 }
 
 public enum KimiDeclarationState : byte

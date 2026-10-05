@@ -71,9 +71,12 @@ internal static partial class WindowsLowering
     // SPEC 4.7.4, 4.7.7: capacity routines move element bytes by stride and run no user code; the writer emits them only for modules that use Arrays.
     internal static readonly FunctionAbi ArrayGrow = new("__kimi_array_grow", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "minimum"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi ArrayReserve = new("__kimi_array_reserve", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "additional"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi DictionaryReserve = new("__kimi_dictionary_reserve", Unit.ComputationType, ArrayReserve.Parameters);
     internal static readonly FunctionAbi ArrayShrink = new("__kimi_array_shrink", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi DictionaryShrink = new("__kimi_dictionary_shrink", Unit.ComputationType, ArrayShrink.Parameters);
+
+    // SPEC 22.1.2.5: the private nullable Alloc and byte copy behind Kimi.Storage; the writer emits them only for modules whose
+    // bodies call them.
+    internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes")]);
+    internal static readonly FunctionAbi TransferBytes = new("__kimi_transfer_bytes", Unit.ComputationType, [new("ptr", "destination"), new("ptr", "source"), new("i64", "size")]);
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters, noReturn: true);
     internal static readonly FunctionAbi TestTempDirectory = new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true);
 

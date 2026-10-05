@@ -335,19 +335,25 @@ internal sealed partial class BodyLowering
             return this.LowerDictionaryPlacement(body, function, constants, directory, id, call, plan, out failure);
         }
 
-        if (kind is CompilerFunctionKind.StorageReserveDictionary or CompilerFunctionKind.StorageShrinkDictionary)
+        if (kind is CompilerFunctionKind.StorageTryAllocateBytes or CompilerFunctionKind.StorageTransferBytes)
         {
-            return this.LowerDictionaryCapacity(body, function, constants, directory, id, call, plan, out failure);
+            return this.LowerStorageBytes(body, function, id, call, plan, out failure);
         }
 
-        if (kind is CompilerFunctionKind.StorageMissingDictionaryKey or CompilerFunctionKind.StorageArgumentOutOfRange)
+        if (kind is CompilerFunctionKind.StorageMissingDictionaryKey or CompilerFunctionKind.StorageArgumentOutOfRange or CompilerFunctionKind.StorageCountOverflow or CompilerFunctionKind.StorageAllocationSizeExceeded)
         {
             if (!function.Abi.CallerLocation || plan.ArgumentOperations.Length != 0 || plan.Receiver is not null || !ReferenceEquals(plan.ReturnType, BoundType.Never))
             {
                 return Fail("A standard precondition failure requires its entry's forwarded caller location.", out failure);
             }
 
-            var reason = kind == CompilerFunctionKind.StorageMissingDictionaryKey ? WindowsLowering.MissingKeyReason : WindowsLowering.ArgumentRangeReason;
+            var reason = kind switch
+            {
+                CompilerFunctionKind.StorageMissingDictionaryKey => WindowsLowering.MissingKeyReason,
+                CompilerFunctionKind.StorageCountOverflow => WindowsLowering.IntegerOverflowReason,
+                CompilerFunctionKind.StorageAllocationSizeExceeded => WindowsLowering.AllocationSizeReason,
+                _ => WindowsLowering.ArgumentRangeReason,
+            };
             function.AddCall(id, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, reason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
             function.Add(EmissionOpcode.Unreachable, id);
             return true;

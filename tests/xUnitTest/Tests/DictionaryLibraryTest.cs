@@ -89,8 +89,16 @@ public class DictionaryLibraryTest
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        // SPEC 22.1.2.5, 22.5.1: the capacity decisions are DictionaryStorage source over located primitives; the compiler builds
+        // no bridges, platform callbacks or callback tables.
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, name == "Reserve" ? c.Library.DictionaryReserveStorage : c.Library.DictionaryShrink));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains(name == "Reserve" ? "@__kimi_dictionary_reserve(" : "@__kimi_dictionary_shrink(", ir, StringComparison.Ordinal);
+        foreach (var bridge in (string[])["@__kimi_dictionary_reserve(", "@__kimi_dictionary_shrink(", "@__kimi_dictionary_append_slot(", "__kimi_dictionary_allocate", "__kimi_dictionary_release", "__kimi_dictionary_transfer", "__kimi_dictionary_capacity_failure"])
+        {
+            Assert.DoesNotContain(bridge, ir, StringComparison.Ordinal);
+        }
+
+        Assert.Contains(name == "Reserve" ? "call ptr @__kimi_raw_allocate(" : "call ptr @__kimi_try_allocate(", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
 
@@ -109,11 +117,14 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)");
         Assert.True(c.Library.IsValid, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
+        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
+        var reserve = module.DictionaryReserveStorage!.Name;
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.Contains(c.Ownership.Bodies, static body => body.Function.Name == "grow" && body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
-        var wrapper = System.Text.RegularExpressions.Regex.Match(ir, @"(?ms)^define[^\n]*@__kimi_dictionary_reserve\([^\n]*\n.*?^\}").Value;
-        Assert.NotEmpty(wrapper);
-        Assert.DoesNotContain("__kimi_array_grow", wrapper, StringComparison.Ordinal);
+        var compiled = System.Text.RegularExpressions.Regex.Match(ir, @"(?ms)^define[^\n]*@" + reserve + @"\([^\n]*\n.*?^\}").Value;
+        Assert.NotEmpty(compiled);
+        Assert.Contains("ptr %location, i64 %location_length)", compiled.Split('\n')[0], StringComparison.Ordinal);
+        Assert.DoesNotContain("__kimi_array_grow", compiled, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -125,6 +136,10 @@ public class DictionaryLibraryTest
                 public func find() => $abort("user find")
                 public func unlink() => $abort("user unlink")
                 public func compact() => $abort("user compact")
+                public func reserve() => $abort("user reserve")
+                public func grow() => $abort("user grow")
+                public func append() => $abort("user append")
+                public func shrinkToFit() => $abort("user shrinkToFit")
             var entries: Dictionary<i32, i32> = [:]
             entries.reserve(8)
             _ = entries.tryInsert(1, 10)
@@ -138,6 +153,58 @@ public class DictionaryLibraryTest
         ScalarEmissionTest.EmitFixture("DictionaryLibraryIdentity", Source, string.Empty);
     }
 
+    // SPEC 22.5.1, 22.5.2: an Alloc failure inside the DictionaryStorage capacity bodies reports the standard operation the user
+    // wrote, through tryInsert, insertOrReplace, a literal's key and a generic helper's call, never a library position.
+    [Theory]
+    [InlineData("Reserve", "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(4)", "Hello.kimi:2:1")]
+    [InlineData("TryInsert", "var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)", "Hello.kimi:2:5")]
+    [InlineData("InsertOrReplace", "var entries: Dictionary<i32, i32> = [:]\n_ = entries.insertOrReplace(1, 2)", "Hello.kimi:2:5")]
+    [InlineData("Literal", "let n = 1\nvar entries = [n: 10, 2: 20]", "Hello.kimi:2:16")]
+    [InlineData("Generic", "func put<K, V>(target: uniq/Dictionary<K, V>, key: K, value: V)\n    K is Equatable\n    _ = target.tryInsert(key@move, value@move)\nvar entries: Dictionary<i32, i32> = [:]\nput(entries@uniq, 1, 2)", "Hello.kimi:3:9")]
+    public void CapacityAllocationFailuresReportTheCallerLocation(string name, string source, string location)
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(source)).Replace("call ptr @HeapAlloc(", "call ptr @fail_dictionary_alloc(", StringComparison.Ordinal) +
+            "\ndefine internal ptr @fail_dictionary_alloc(ptr %heap, i32 %flags, i64 %bytes) {\nentry:\n  ret ptr null\n}\n";
+        ScalarEmissionTest.WriteFixture("DictionaryLibraryAllocation" + name, ir, string.Empty, 1, location + ": abort KIMI_E_ALLOC: Failed to allocate memory\n");
+    }
+
+    // SPEC 22.5.1, 22.5.2: the release of the old storage after shrinking reports the user's shrinkToFit call.
+    [Fact]
+    public void ShrinkReleaseFailureReportsTheCallerLocation()
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)\nentries.shrinkToFit()"))
+            .Replace("call i32 @HeapFree(", "call i32 @fail_dictionary_free(", StringComparison.Ordinal)
+            .Replace("call i32 @GetLastError()", "call i32 @fail_dictionary_error()", StringComparison.Ordinal) +
+            "\ndefine internal i32 @fail_dictionary_free(ptr %heap, i32 %flags, ptr %memory) {\nentry:\n  ret i32 0\n}\n" +
+            "define internal i32 @fail_dictionary_error() {\nentry:\n  ret i32 5\n}\n";
+        ScalarEmissionTest.WriteFixture("DictionaryLibraryReleaseFailure", ir, string.Empty, 1, "Hello.kimi:4:1: abort KIMI_E_FREE: Failed to free memory (win32=5)\n");
+    }
+
+    // SPEC 4.7.5, 8.4.10.2: the capacity bodies call located primitives directly rather than callbacks, so a confined
+    // implementation may reserve, insert, replace and shrink.
+    [Fact]
+    public void ConfinedImplementationsUseCapacityOperations()
+    {
+        const string Source = """
+            contract Sink
+                func put(self: uniq/Self, value: i32) -> i32
+                    effect confined
+            struct CountingSink
+                Self is Sink
+                var seen: Dictionary<i32, i32>
+                public init() => self.seen = [:]
+                public func put(self: uniq/Self, value: i32) -> i32
+                    self.seen.reserve(1)
+                    _ = self.seen.tryInsert(value, value)
+                    _ = self.seen.insertOrReplace(value, value + 1)
+                    self.seen.shrinkToFit()
+                    return self.seen[value]
+            var sink = CountingSink.init()
+            require sink.put(3) == 4 else => $abort("put")
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryLibraryConfined", Source, string.Empty);
+    }
+
     [Fact]
     public void ProgramsWithoutDictionariesDoNotCompileStorageAlgorithms()
     {
@@ -145,6 +212,8 @@ public class DictionaryLibraryTest
         var outputIr = CompilationTestHelper.WriteIr(c);
         Assert.DoesNotContain(c.Ownership.Bodies, body => body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
         Assert.DoesNotContain("__kimi_dictionary_", outputIr);
+        Assert.DoesNotContain("__kimi_try_allocate", outputIr);
+        Assert.DoesNotContain("__kimi_transfer_bytes", outputIr);
     }
 
     [Fact]
@@ -187,8 +256,10 @@ public class DictionaryLibraryTest
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClearLinks));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryFind));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClear));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryCompact));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryShrink));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryAppend));
+        // Shrinking is reached only through shrinkToFit calls; no bridge compiles it eagerly.
+        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryCompact));
+        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryShrink));
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.BoundSymbol!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         Assert.DoesNotContain("%left_index = sub", outputIr);
@@ -200,8 +271,14 @@ public class DictionaryLibraryTest
     [InlineData("unsafe => Kimi.DictionaryStorage.initialize(null)")]
     [InlineData("unsafe => Kimi.DictionaryStorage.clearLinks(null)")]
     [InlineData("unsafe => Kimi.Storage.placeEntry<i32, i32>(null, 1, 2)")]
-    [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.reserveEntries(entries@uniq, 4)")]
-    [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.Storage.shrinkEntries(entries@uniq)")]
+    [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.DictionaryStorage.reserveEntries(entries@uniq, 4)")]
+    [InlineData("var entries: Dictionary<i32, i32> = [:]\nKimi.DictionaryStorage.shrinkEntries(entries@uniq)")]
+    [InlineData("unsafe => _ = Kimi.DictionaryStorage.reserve(null, 24, 4)")]
+    [InlineData("unsafe => Kimi.DictionaryStorage.grow(null, 24, 4)")]
+    [InlineData("unsafe => Kimi.Storage.transferBytes(null, null, 0)")]
+    [InlineData("let memory = Kimi.Storage.tryAllocateBytes(8)")]
+    [InlineData("Kimi.Storage.countOverflow()")]
+    [InlineData("Kimi.Storage.allocationSizeExceeded()")]
     public void PrivateStorageFunctionsAreNotAPublicUnsafeAPI(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

@@ -96,10 +96,14 @@ internal static partial class LlvmModuleWriter
             WriteFormattingWrappers(module, output);
         }
 
+        if (module.NeedsStorageBytes)
+        {
+            output.Write(StorageBytePrimitives);
+        }
+
         if (module.NeedsDictionaryRuntime)
         {
-            WriteDictionaryCapacity(module, output, append: false);
-            WriteDictionaryShrink(module, output);
+            output.Write(DictionaryDuplicateAdapter);
             WriteDictionaryStorage(module, output);
             WriteDictionaryHelpers(module, output);
         }
