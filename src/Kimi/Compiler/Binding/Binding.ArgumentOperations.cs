@@ -52,8 +52,9 @@ public enum ExpectedAdaptationKind : byte
 /// <summary>The one recorded adaptation of an expression and the Type it supplies; the node keeps its own Type.</summary>
 public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, BoundType Type);
 
-/// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it.</summary>
-public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven);
+/// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it. AdaptedType is
+/// the Type the adaptation supplies, whose Origin relations to ParameterType are judged after selection (SPEC 15.6.1).</summary>
+public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null);
 
 public sealed partial class Binding
 {

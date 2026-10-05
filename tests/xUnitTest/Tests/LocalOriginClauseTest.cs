@@ -318,19 +318,32 @@ public class LocalOriginClauseTest
 
     // SPEC 23.3.6.5: a meet's body-local operand is shown by the Borrow that supplies it, found through the local the value reads or
     // moves; it was the text of the whole function that binds the borrowed parameter's Place. A declared relation keeps the meet whole;
-    // a fit names the failing operand that decides its judgment, the Refuted Borrow before the Unknown `a` (SPEC 15.3.6, 15.6.5).
+    // a fit names the failing operand that decides its judgment, the Refuted Borrow before the Unknown `a` (SPEC 15.3.6, 15.6.5), and
+    // reports every failed chain (SPEC 15.6.1), so the Unknown `a` is its own record at that value.
     [Theory]
     [InlineData("func f(a: uniq/i32) -> i32\n    let h0 = H.init(a@ref)\n    let h: H{x} = h0@move\n        origin x.s outlives static\n    return 0\n", "h0@move", "(a and a@ref)")]
     [InlineData("func f(a: uniq/i32) -> ref/i32 during static\n    let h0 = H.init(a@ref)\n    return h0.item\n", "h0.item", "a@ref")]
     public void AMeetShowsTheBorrowOfItsBodyLocalOperand(string body, string at, string longer)
     {
         var source = Holder + body + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        var error = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), DiagnosticCategory.Language), (error.Code, error.Category));
         var shown = longer.StartsWith('(') ? longer : "the borrow " + longer;
         Assert.Equal((at, $"requires {shown} outlives static, which is false"), (Text(source, error.Span), error.Label));
         Assert.Equal(source.IndexOf(at, source.IndexOf("let h0", StringComparison.Ordinal) + 6, StringComparison.Ordinal), error.Span!.Value.Start);
         Assert.Equal((longer, "static"), (error.Reason![1].Value, error.Reason[2].Value));
+        if (longer.StartsWith('('))
+        {
+            Assert.Single(errors);
+            return;
+        }
+
+        var unknown = Assert.Single(errors, static x => x.Code != nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
+        Assert.Equal(
+            (nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires a outlives static, which is not proven", "a is an exclusive borrow, which cannot be bound to static; return an owned value instead"),
+            (unknown.Code, unknown.Span, unknown.Label, unknown.Advice));
+        Assert.Equal(["outlives", "a", "static", "fit", "ref/i32 during static"], unknown.Reason!.Select(static x => x.Value));
     }
 
     // The accepted forms run: each returns the value behind `a`.

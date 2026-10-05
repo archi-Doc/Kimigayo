@@ -916,6 +916,8 @@ public sealed partial class Binding
                 }
             }
 
+            // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources.
+            this.JudgeSelectedCall(call, selected, selectedOperations, argumentCount, origins, inputs, selectedType);
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;
             if (defaultCount != 0)
             {
@@ -1300,7 +1302,7 @@ public sealed partial class Binding
             originInference = this.BeginOriginInference(call, function);
         }
 
-        if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType))
+        if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType, select: true))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -1313,7 +1315,8 @@ public sealed partial class Binding
                 return CandidateApplicability.Pending;
             }
 
-            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true) || !this.FitsTypeAt(adaptedReceiver, requiredReceiver, call))
+            // SPEC 15.6.1: applicability uses the structural part of each fit; its Origin relations are judged after selection.
+            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true) || !this.FitsStructurallyAt(adaptedReceiver, requiredReceiver, call))
             {
                 if (SharedObjectAuthorityMismatch(receiver.BoundType!, requiredReceiver))
                 {
@@ -1323,7 +1326,7 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            operations[^1] = new(receiver, receiver.BoundType, requiredReceiver, kind, quality, receiverPath, receiverSlot);
+            operations[^1] = new(receiver, receiver.BoundType, requiredReceiver, kind, quality, receiverPath, receiverSlot, AdaptedType: adaptedReceiver);
         }
 
         var ordinaryPasses = contextualInputs ? 2 : 1;
@@ -1447,7 +1450,8 @@ public sealed partial class Binding
                         return CandidateApplicability.Inapplicable;
                     }
 
-                    operations[i] = new(call.ArgumentNodes[i], borrowed.Components[0], type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, ParameterIndex: mapping[i]);
+                    var literalBorrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [borrowed.Components[0]], origin: this.PlaceOrigin(argument));
+                    operations[i] = new(call.ArgumentNodes[i], borrowed.Components[0], type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, ParameterIndex: mapping[i], AdaptedType: literalBorrow);
                     continue;
                 }
 
@@ -1483,21 +1487,24 @@ public sealed partial class Binding
 
                 var quality = ArgumentAdaptation.Literal;
                 var kind = ArgumentOperationKind.Value;
+                BoundType? adaptedType = null;
                 if (argument.BoundType is { } actual)
                 {
-                    if (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !this.FitsTypeAt(adapted, type, call))
+                    if (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !this.FitsStructurallyAt(adapted, type, call))
                     {
                         return CandidateApplicability.Inapplicable;
                     }
+
+                    adaptedType = adapted;
                 }
 
-                operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i]);
+                operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i], AdaptedType: adaptedType);
             }
         }
 
         // Fitted literals can add Origin evidence after the first contextual pass.
         // Publish only the final substituted parameter Types, never preliminary binders.
-        if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType))
+        if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType, select: true))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -1536,11 +1543,6 @@ public sealed partial class Binding
             return result is null && CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
         }
 
-        if (!this.CheckCallOriginRelations(function, origins, inputs, call, declaringType))
-        {
-            return CandidateApplicability.Inapplicable;
-        }
-
         if (function.IsConstructor)
         {
             result = declaringType!;
@@ -1548,12 +1550,12 @@ public sealed partial class Binding
 
         if (placeExpected is not null && result is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placeResult)
         {
-            if (!this.FitsTypeAt(placeResult.Components[0], this.ContractType(placeExpected, scope), call))
+            if (!this.FitsStructurallyAt(placeResult.Components[0], this.ContractType(placeExpected, scope), call))
             {
                 return CandidateApplicability.Inapplicable;
             }
         }
-        else if (expected is not null && result is not null && !this.FitsTypeAt(result, this.ContractType(expected, scope), call))
+        else if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call))
         {
             return CandidateApplicability.Inapplicable;
         }

@@ -206,7 +206,7 @@ let value: i32 = read(1@i32)  // The argument selects; the result is then read.
 Pairwise comparison yields better, worse, equivalent or incomparable. **Only equivalent candidates proceed to the next step.** A candidate is selected only if it is better than every other applicable candidate:
 
 1. Compare adaptation quality for each explicit source argument. The receiver is excluded: its acquisition is common to the function group, because every function with a receiver in the group shares one receiver shape ([§7.3](07-functions-and-callable-values.md#73-explicit-receivers)). A dominates B only if it is no worse everywhere and better somewhere; all-equal proceeds, and opposing advantages are incomparable. Named arguments are matched by the same source expression, not by candidate parameter order. Defaults are excluded, and numeric costs are never summed.
-2. Compare substituted parameter Types at the same positions. A dominates B if every Type is equal or a defined subtype and at least one is a strict subtype; all-equal proceeds, and unrelated Types or opposing subtype advantages are incomparable.
+2. Compare substituted parameter Types at the same positions. A dominates B if every Type is equal or a defined subtype and at least one is a strict subtype; all-equal proceeds, and unrelated Types or opposing subtype advantages are incomparable. Parameter Types are compared by their structural part ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-constraints)); Origin bindings never rank candidates.
 3. Prefer a function with no generic parameters of its own, including length parameters. A generic enclosing Type alone does not make the function generic.
 4. Prefer fewer defaults used by this call.
 5. Otherwise, report ambiguity.

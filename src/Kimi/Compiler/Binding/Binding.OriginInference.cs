@@ -79,7 +79,9 @@ public sealed partial class Binding
         }
     }
 
-    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null)
+    // With `select`, candidate applicability: the bounds are not judged, since the Origin relations of a fit never change a selection
+    // (SPEC 15.6.1, 10.4); the selected call judges them after selection.
+    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
     {
         var binder = inference.Binder;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
@@ -156,6 +158,22 @@ public sealed partial class Binding
             }
         }
 
+        if (select)
+        {
+            // SPEC 15.6.1: a selection judges no Origin relation. A variable without a principal solution takes a representative,
+            // so that the selected call's relations are judged at their own sources: an invariant variable its first equality
+            // partner, any other its first upper bound, else its first lower bound. A variable with no bound stays open.
+            foreach (var variable in inference.Variables)
+            {
+                if (Get(variable.Origin) is null && this.RepresentativeOrigin(inference, variable.Origin, variable.Polarity) is { } representative)
+                {
+                    Set(variable.Origin, representative);
+                }
+            }
+
+            return true;
+        }
+
         if (!converged)
         {
             return false;
@@ -221,6 +239,38 @@ public sealed partial class Binding
 
             return meet;
         }
+    }
+
+    // The representative of a variable without a principal solution: for an invariant one the first Origin that bounds it from both
+    // sides (an equality), for a contravariant one its first lower bound, otherwise its first upper bound, else its first lower bound.
+    // Only bounds whose other end is a fixed value count.
+    private BoundOrigin? RepresentativeOrigin(OriginInference inference, BoundOrigin variable, int polarity)
+    {
+        BoundOrigin? upper = null;
+        BoundOrigin? lower = null;
+        foreach (var bound in inference.Bounds)
+        {
+            if (bound.ShorterVariable && !bound.LongerVariable && ReferenceEquals(bound.Shorter, variable))
+            {
+                if (polarity == 3 && inference.Bounds.Contains((variable, bound.Longer, true, false)))
+                {
+                    return bound.Longer;
+                }
+
+                upper ??= bound.Longer;
+            }
+            else if (bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable))
+            {
+                if (polarity == 3 && inference.Bounds.Contains((bound.Shorter, variable, false, true)))
+                {
+                    return bound.Shorter;
+                }
+
+                lower ??= bound.Shorter;
+            }
+        }
+
+        return polarity == 2 ? lower ?? upper : upper ?? lower;
     }
 
     private sealed class OriginInference(Koto binder)

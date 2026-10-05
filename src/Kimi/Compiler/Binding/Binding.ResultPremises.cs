@@ -140,12 +140,13 @@ public sealed partial class Binding
 
     // SPEC 15.6.4 steps 1-4: a call's fresh Origins satisfy its callee's result premises where a solution does, so a result over
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
-    // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1).
-    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType)
+    // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
+    // the solve without them judges no bound either (SolveOriginInference).
+    private bool SolveCallOriginInference(FunctionKoto function, OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType, bool select = false)
     {
         if (!CarriesResultPremises(function))
         {
-            return this.SolveOriginInference(inference, origins, inputs, use, declaringType);
+            return this.SolveOriginInference(inference, origins, inputs, use, declaringType, select);
         }
 
         var result = function.BoundSymbol!.Type!;
@@ -164,7 +165,7 @@ public sealed partial class Binding
             inference.Variables.RemoveRange(variables, inference.Variables.Count - variables); // The result-only Origins they discovered.
         }
 
-        return this.SolveOriginInference(inference, origins, inputs, use, declaringType);
+        return this.SolveOriginInference(inference, origins, inputs, use, declaringType, select);
     }
 
     // SPEC 15.3.7: the selected call's obligations for its substituted result.

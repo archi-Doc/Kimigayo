@@ -730,6 +730,7 @@ public sealed partial class Binding
         else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
         {
             ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.BorrowOriginHint(issue.Node));
+            this.ReportMoreCallRelations(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
         {

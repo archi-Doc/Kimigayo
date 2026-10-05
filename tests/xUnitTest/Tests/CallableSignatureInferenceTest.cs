@@ -240,6 +240,19 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
 
+    // The instantiated open region still takes no later borrow (the located limit), and a universal that a clause bounds by an input
+    // is not result-only, so only a per-call Origin would satisfy the slot: the call stays NoApplicableOverload_Kd (STATUS limit).
+    [Theory]
+    [InlineData("    var r = make(constant)\n    let local: i32 = 3\n    r = local@ref\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "r = local@ref")]
+    [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "makeOf(bounded)")]
+    public void AResultOnlyInstantiationKeepsItsLimits(string body, string code, string text)
+    {
+        var source = "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc bounded(n: ref/i32) -> ref/i32 during s\n    origin n outlives s\n    return n\n" +
+            "func make<T>(f: () -> T) -> T => f()\nfunc makeOf<T>(f: (ref/i32) -> T) -> T => $abort(\"never\")\npublic func main() -> ()\n" + body;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, text), (error.Code, Text(source, error.Span)));
+    }
+
     // SPEC 10.8: no argument fixes a slot first by traversal order; the value's Origin fills the open region in either order, so the
     // result keeps the Loan of x and a later write is a Loan conflict.
     [Theory]
@@ -297,10 +310,11 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     }
 
     // SPEC 15.6.5: an open region holds no Loans, so a later borrow fitted into it would lose its Loan. Such a fit is never accepted:
-    // the assignment is rejected, and a call whose argument would store into it is not applicable.
+    // the spec proves it and leaves it to region inference, so it is the located limit at the value fitted into the region, at an
+    // assignment and at a call argument alike (SPEC 15.6.1: the call is selected by the structural part of its fits).
     [Theory]
-    [InlineData("    var z = runOnly(len)\n    z = .Some(y@ref)\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(y@ref)")]
-    [InlineData("    let z = keepSome(len, .Some(y@ref))\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "keepSome(len, .Some(y@ref))")]
+    [InlineData("    var z = runOnly(len)\n    z = .Some(y@ref)\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
+    [InlineData("    let z = keepSome(len, .Some(y@ref))\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
     public void AnOpenRegionTakesNoLaterBorrow(string body, string code, string text)
     {
         var source = "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nfunc keepSome<T>(action: (T) -> i32, value: Option<T>) -> Option<T> => value@move\n" +

@@ -361,7 +361,8 @@ public class ResultPremiseTest
         Assert.Equal(("origin", "local@ref"), (related.Role, Text(source, related.Span)));
     }
 
-    // SPEC 15.6.5: a Binding fit names one failing operand, the one that decides the judgment: a Refuted Borrow before an Unknown
+    // SPEC 15.6.5: a Binding fit's own record names the failing operand that decides the judgment, and each other failing operand is a
+    // record of its own: a Refuted Borrow before an Unknown
     // parameter, whatever their order, under a written clause or the result premise, and also after the Unknown one is proven. It named
     // the first failing operand, an Unknown `b`, with Advice to add a premise or to bound the result by the meet, which holds the body-local
     // `local`; neither repair applied. With no body-local operand, both repairs that the Advice offers make the program valid.
@@ -374,7 +375,8 @@ public class ResultPremiseTest
     {
         const string callees = ClauseCallee + "func w(p: ref/i32, q: ref/i32, r: ref/i32) -> (Option<ref/(ref/i32 during p) during q>, Option<ref/(ref/i32 during r) during q>, ref/i32 during q)\n    return (.None, .None, q)\n\n";
         var source = callees + "func h(x: ref/i32, b: ref/i32) -> ref/i32 during x\n" + body + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        var error = Assert.Single(errors, static x => x.Code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), DiagnosticCategory.Language), (error.Code, error.Category));
         Assert.Equal((at, source.IndexOf("return " + at, StringComparison.Ordinal) + 7), (Text(source, error.Span), error.Span!.Value.Start));
         Assert.Equal("requires the borrow local@ref outlives x, which is false", error.Label);
@@ -382,6 +384,19 @@ public class ResultPremiseTest
         Assert.Equal("Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body", error.Advice);
         var related = Assert.Single(error.Related!);
         Assert.Equal(("origin", source.IndexOf("local@ref", StringComparison.Ordinal)), (related.Role, related.Span!.Value.Start));
+
+        // SPEC 15.6.1: every failed chain is reported, so an Unknown `b` that no premise proves is its own record at that value (U3-B),
+        // with the premise as Advice and no result bound, since the meet holds the body-local `local`.
+        if (body.Contains("origin b", StringComparison.Ordinal))
+        {
+            Assert.Single(errors);
+        }
+        else
+        {
+            var other = Assert.Single(errors, static x => x.Code != nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd));
+            Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), error.Span, "requires b outlives x, which is not proven"), (other.Code, other.Span, other.Label));
+            Assert.Equal("If b always outlives x, add 'origin b outlives x', which changes the public contract", other.Advice);
+        }
 
         var valid = source.Replace("local@ref", "x", StringComparison.Ordinal);
         if (!body.Contains("origin b", StringComparison.Ordinal))

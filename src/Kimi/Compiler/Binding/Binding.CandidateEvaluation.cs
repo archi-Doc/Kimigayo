@@ -85,9 +85,10 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    // Only existing operation-free Type relations participate here.
-                    var xy = x is not null && y is not null && FitsType(x, y);
-                    var yx = x is not null && y is not null && FitsType(y, x);
+                    // Only existing operation-free Type relations participate here, by their structural part: Origin bindings never
+                    // rank candidates (SPEC 10.4 step 2, 15.6.1), also inside Function Types.
+                    var xy = x is not null && y is not null && FitsStructuralPart(x, y);
+                    var yx = x is not null && y is not null && FitsStructuralPart(y, x);
                     better |= xy && !yx;
                     worse |= !xy;
                 }

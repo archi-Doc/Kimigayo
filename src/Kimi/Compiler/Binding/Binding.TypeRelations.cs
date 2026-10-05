@@ -18,7 +18,17 @@ public sealed partial class Binding
     /// <returns>Whether the implemented rules prove the relation.</returns>
     public static bool FitsType(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null);
 
+    // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
+    // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
+    internal static bool FitsStructurally(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null, structural: true);
+
+    // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
+    // bindings never rank candidates.
+    internal static bool FitsStructuralPart(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null, structural: true, everywhere: true);
+
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
+
+    internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use, structural: true);
 
     // Only Origin restriction is inferred here. No Core conversion or common base search is
     // introduced; every invariant position stays identical and both inputs must fit the result.
@@ -75,8 +85,9 @@ public sealed partial class Binding
 
     // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
     // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
-    // Callable comparison whose per-call Origins the parts are compared under.
-    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
+    // Callable comparison whose per-call Origins the parts are compared under; `structural` treats Origin bindings as equal outside
+    // Function Types, and `everywhere` inside them too.
+    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null, bool structural = false, bool everywhere = false)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
         {
@@ -94,7 +105,7 @@ public sealed partial class Binding
         }
 
         if (!skipOrigin && !ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
-            !OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))
+            (!structural && (!OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))))
         {
             return false;
         }
@@ -103,7 +114,7 @@ public sealed partial class Binding
         {
             var a = actual.OriginArguments[i];
             var b = expected.OriginArguments[i];
-            if (ReferenceEquals(a, b))
+            if (ReferenceEquals(a, b) || structural)
             {
                 continue;
             }
@@ -118,7 +129,7 @@ public sealed partial class Binding
 
         if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
         {
-            return FunctionFits(actual, expected, binding, use, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)));
+            return FunctionFits(actual, expected, binding, use, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)), everywhere);
         }
 
         for (var i = 0; i < actual.Components.Count; i++)
@@ -129,7 +140,7 @@ public sealed partial class Binding
             {
                 var variance = schema.GenericSlots[i].OriginVariance;
                 if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
-                    !FitsTypeCore(a, b, binding, use, true, instance: instance) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use, instance: instance) : !FitsTypeCore(b, a, binding, use, instance: instance))
+                    !FitsTypeCore(a, b, binding, use, true, instance: instance, structural: structural, everywhere: everywhere) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use, instance: instance, structural: structural, everywhere: everywhere) : !FitsTypeCore(b, a, binding, use, instance: instance, structural: structural, everywhere: everywhere))
                 {
                     return false;
                 }
@@ -139,12 +150,12 @@ public sealed partial class Binding
 
             if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
             {
-                if (!FitsTypeCore(a, b, binding, use, true, instance: instance))
+                if (!FitsTypeCore(a, b, binding, use, true, instance: instance, structural: structural, everywhere: everywhere))
                 {
                     return false;
                 }
             }
-            else if (!FitsTypeCore(a, b, binding, use, instance: instance))
+            else if (!FitsTypeCore(a, b, binding, use, instance: instance, structural: structural, everywhere: everywhere))
             {
                 return false;
             }
@@ -163,7 +174,7 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
     // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
     // per call or fixed, so only its referent is compared; every other input is compared as written, contravariantly.
-    private static bool FunctionFits(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant, CallableInstance instance)
+    private static bool FunctionFits(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant, CallableInstance instance, bool everywhere = false)
     {
         var actualInputs = actual.Components[0];
         var expectedInputs = expected.Components[0];
@@ -178,14 +189,14 @@ public sealed partial class Binding
             {
                 var input = actualInputs.Components[i];
                 var required = expectedInputs.Components[i];
-                if (!FitsTypeCore(required, input, binding, use, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance))
+                if (!FitsTypeCore(required, input, binding, use, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance, structural: everywhere, everywhere: everywhere))
                 {
                     return false;
                 }
             }
         }
 
-        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance);
+        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere);
     }
 
     // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The

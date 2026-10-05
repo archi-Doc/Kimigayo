@@ -165,7 +165,7 @@ public sealed partial class Binding
             else
             {
                 input = source.BoundType is not { } actual ? CandidateApplicability.Pending :
-                    this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out _, out _) && FitsType(adapted, type) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+                    this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out _, out _) && FitsStructurally(adapted, type) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
             }
 
             // Error remains visible even if another payload cannot fit this candidate.
@@ -337,6 +337,14 @@ public sealed partial class Binding
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
                     if (!(hint is not null && this.FitsTypeAt(adapted, hint, source)) && !this.Infer(inferred, adapted, declaration, arguments, true))
                     {
+                        // SPEC 15.6.1: a payload that fits its expected payload Type only structurally fails in its Origin relations, at
+                        // the payload value, never as a Type mismatch.
+                        if (hint is not null && this.FitsStructurallyAt(adapted, hint, source))
+                        {
+                            this.RecordMismatch(source, source, adapted, hint);
+                            return Complete(use, null);
+                        }
+
                         return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
@@ -363,7 +371,16 @@ public sealed partial class Binding
             var result = this.InternType(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
-                return this.Fail(use, BindingFailure.TypeMismatch);
+                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch.
+                if (!FitsStructurally(result, expected))
+                {
+                    return this.Fail(use, BindingFailure.TypeMismatch);
+                }
+
+                if (!this.FitsTypeAt(result, expected, use))
+                {
+                    return this.RecordMismatch(use, use, result, expected);
+                }
             }
 
             for (var i = 0; i < count; i++)
