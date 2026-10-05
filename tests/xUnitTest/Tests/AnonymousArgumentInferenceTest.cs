@@ -103,13 +103,18 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
+    // SPEC 10.8: the body is checked with the closed parts of S, and its inferred i32 result never binds T; the call is the
+    // inference-boundary record of the SPEC 10.8 `consume` example.
     [Fact]
     public void AWaitingBodyCannotInferAnotherOuterSlot()
     {
         var c = MinimalEmissionTest.Analyze(Consume + "let result = consume(func [] () => 42)");
         Assert.False(c.Binding.Result.IsComplete);
-        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
-        Assert.Null(closure.BoundClosure);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.Method is IdentifierNameKoto { IdentifierName: "consume" });
+        Assert.Null(call.BoundCall);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "Write the anonymous function's result Type, or annotate the Type of the call's result"), (error.Code, error.Advice));
     }
 
     [Fact]

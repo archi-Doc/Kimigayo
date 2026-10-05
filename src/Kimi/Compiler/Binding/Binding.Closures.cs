@@ -261,11 +261,12 @@ public sealed partial class Binding
             expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: not null } && expected.Semantics == written.Semantics &&
             ReferenceEquals(expected.Components[0], written.Components[0]);
 
-    private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
+    // With `openResult`, the signature's result is open (SPEC 10.8): only its parameter Types guide the body, whose result is inferred.
+    private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature, bool openResult = false)
     {
         // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
         var parent = this.BeginConsultation(closure);
-        this.BindClosure(closure, this.NodeScope(closure, scope), signature);
+        this.BindClosure(closure, this.NodeScope(closure, scope), signature, openResult);
         this.EndConsultation(closure, parent);
         return this.BindNode(argument, scope);
     }
@@ -347,7 +348,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool ClosureSignatureFits(FunctionKoto function, BoundType expected)
+    private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, bool openResult = false)
     {
         if (expected.Kind != BoundTypeKind.Function)
         {
@@ -378,12 +379,12 @@ public sealed partial class Binding
             }
         }
 
-        return function.ReturnType is null || ReferenceEquals(this.BindType(function.ReturnType, scope), expected.Components[1]);
+        return openResult || function.ReturnType is null || ReferenceEquals(this.BindType(function.ReturnType, scope), expected.Components[1]);
     }
 
-    private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected)
+    private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
     {
-        if (expected is not null && !this.ClosureSignatureFits(function, expected))
+        if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
         {
             // SPEC 10.5, 23.3.6.4: the written header disagrees with the fixed signature; the omitted parameter Types that
             // signature would have supplied rest on this failure.
@@ -400,7 +401,7 @@ public sealed partial class Binding
 
         // A fixed signature supplies header inference, never a different capture or ownership model. The ordinary
         // expected-Type adaptation erases the resulting concrete value only after its body and receiver are known.
-        return this.BindConcreteClosure(function, scope, expected);
+        return this.BindConcreteClosure(function, scope, expected, openResult);
     }
 
     // An unsupported captured Type is reported at the written capture entry when there is one.
@@ -520,7 +521,7 @@ public sealed partial class Binding
         return null;
     }
 
-    private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope, BoundType? expected)
+    private BoundType? BindConcreteClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
     {
         expected = expected is null ? null : this.ClosureExpectation(function, expected);
         var plan = function.ClosureStorage ??= new();
@@ -531,7 +532,7 @@ public sealed partial class Binding
         var symbol = this.symbols[function];
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        symbol.Type = function.ReturnType is { } annotation ? this.BindType(annotation, scope) : expected?.Components[1];
+        symbol.Type = function.ReturnType is { } annotation ? this.BindType(annotation, scope) : openResult ? null : expected?.Components[1];
         symbol.HeaderBound = true;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
@@ -629,7 +630,7 @@ public sealed partial class Binding
         }
 
         (this.closureEffects ??= new(this)).Classify(function, plan);
-        if (function.ReturnType is null && expected is null && CallLocalOrigin(symbol.Type, function, plan.Receiver == SemanticsKind.Owner) is { } local)
+        if (function.ReturnType is null && (expected is null || openResult) && CallLocalOrigin(symbol.Type, function, plan.Receiver == SemanticsKind.Owner) is { } local)
         {
             // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,
             // or an environment binding the call consumes) cannot outlive the call; the relation is Refuted at that Borrow.

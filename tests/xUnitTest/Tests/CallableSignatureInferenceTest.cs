@@ -343,14 +343,16 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     }
 
     // SPEC 10.8, 10.6: a header that omits its result supplies no evidence for T, which only the waiting body could fix; that is the
-    // inference-boundary record, not a per-call Origin. Interim: the fact-less UnprovenConstraint_Kd at the call.
+    // inference-boundary record at the call, relating the anonymous function, not a per-call Origin.
     [Fact]
     public void AnOmittedHeaderResultLeavesTheSlotUnbound()
     {
         var c = MinimalEmissionTest.Analyze("func make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(func (n: ref/i32) => n)");
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make(func (n: ref/i32) => n)"), (error.Code, error.Text));
+        Assert.Equal("Write the anonymous function's result Type", error.Advice);
     }
 
     // SPEC 15.3.6: other Constraints still decide applicability, so a slot that the stand-in fails another Constraint for stays

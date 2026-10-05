@@ -179,13 +179,7 @@ public sealed partial class Binding
         {
             if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
             {
-                foreach (var parameter in closure.Parameters)
-                {
-                    if (parameter.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred)
-                    {
-                        this.CompleteDependent(inferred, call);
-                    }
-                }
+                this.MarkOmittedHeaders(closure, call);
             }
         }
 
@@ -193,7 +187,7 @@ public sealed partial class Binding
     }
 
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, ClosureReceiverRefutation? ClosureReceiver = null);
+    private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, ulong Unsolved = 0, ClosureReceiverRefutation? ClosureReceiver = null);
 
     // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);

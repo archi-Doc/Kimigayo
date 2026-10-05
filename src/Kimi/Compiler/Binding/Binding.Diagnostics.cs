@@ -1902,6 +1902,7 @@ public sealed partial class Binding
         this.arityFailures?.Clear();
         this.originQualifierLimits?.Clear();
         this.rejectedCandidates?.Clear();
+        this.unboundSlots?.Clear();
         this.acquisitionPlaces?.Clear();
         this.ResetParameterShapes();
         this.duplicateDeclarations?.Clear();

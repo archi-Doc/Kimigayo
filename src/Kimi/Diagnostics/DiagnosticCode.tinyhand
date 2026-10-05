@@ -955,10 +955,9 @@
 
   + Name="UnboundTypeArgument_Kd"
     Category="Language"
-    Message="A generic function reference without a fixed expected call signature or explicit Type arguments leaves its Type parameters unbound; it is not a value"
+    Message="Neither explicit Type arguments nor inference evidence bind a Type parameter of the referenced or called function"
     Evidence="parameter:Text"
     Label="Type parameter '{0}' is not bound"
-    Advice="Write explicit Type arguments, as in identity<i32>, or annotate the expected Function Type, as in let f: (i32) -> i32 = identity"
 
   + Name="BoundMethodValue_Kd"
     Category="Language"

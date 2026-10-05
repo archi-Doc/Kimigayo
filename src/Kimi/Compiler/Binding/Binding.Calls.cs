@@ -146,6 +146,10 @@ public sealed partial class Binding
     // SPEC 10.8, 15.3.6: the Type slots (below 64) of the candidate being evaluated whose binding comes from an invariant position.
     private ulong invariantSlots;
 
+    // Set when a known call signature's result over its closure's hidden environment receiver supplied no evidence for a slot: that slot
+    // is not unsolved but judged by the Callable proof or the conversion (SPEC 8.6, 7.6.4).
+    private bool environmentEvidence;
+
     private static Koto? IncompleteSignature(FunctionKoto function)
     {
         if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
@@ -629,6 +633,7 @@ public sealed partial class Binding
             var winnerIndex = -1;
             var pending = false;
             var error = false;
+            var anyUnsolved = false;
             Koto? incompleteSignature = null;
             FunctionKoto? pendingFunction = null;
             Koto? invalidDeclaration = null;
@@ -646,6 +651,7 @@ public sealed partial class Binding
                 var state = CandidateApplicability.Inapplicable;
                 var defaultsUsed = 0;
                 ClosureReceiverRefutation? closureReceiver = null;
+                var unsolved = 0UL;
                 // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
                 if (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
                 {
@@ -656,11 +662,12 @@ public sealed partial class Binding
                     }
 
                     this.activeRequirementContract = requirementGroup?.Contracts[index];
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out closureReceiver);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver);
                     this.activeRequirementContract = null;
                 }
 
-                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, closureReceiver);
+                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver);
+                anyUnsolved |= unsolved != 0;
                 pending |= state == CandidateApplicability.Pending;
                 pendingFunction ??= state == CandidateApplicability.Pending ? function : null;
                 error |= state == CandidateApplicability.Error;
@@ -689,6 +696,9 @@ public sealed partial class Binding
                 return invalidDeclaration is not null ? this.CompleteDependent(call, invalidDeclaration) : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
+            // Ranking a candidate with an unsolved slot against others is not yet implemented; such a selection stays pending, as it was
+            // before the slot was recorded (PLAN G10).
+            pending |= anyUnsolved && applicable > 1;
             if (pending)
             {
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
@@ -805,6 +815,12 @@ public sealed partial class Binding
                 allMaps.AsSpan(winnerIndex * argumentCount, argumentCount).CopyTo(mapping);
                 allOrigins.AsSpan(winnerIndex * originSlots, originSlots).CopyTo(origins);
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
+            }
+
+            if (evaluated[winnerIndex].Unsolved != 0)
+            {
+                // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
+                return this.FailUnboundSlots(call, selected, scope, scratch, lengthArguments, mapping, operations.AsSpan(winnerIndex * operationStride, operationStride), evaluated[winnerIndex].Unsolved, expected, self, origins, inputs, selectedType);
             }
 
             if (evaluated[winnerIndex].State == CandidateApplicability.Waiting)
@@ -1096,24 +1112,30 @@ public sealed partial class Binding
     }
 
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ClosureReceiverRefutation? closureReceiver)
+    // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
+    // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ulong unsolved, out ClosureReceiverRefutation? closureReceiver)
     {
         var saved = this.invariantSlots;
+        var savedEnvironment = this.environmentEvidence;
         this.invariantSlots = 0;
+        this.environmentEvidence = false;
         try
         {
-            return this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out closureReceiver);
+            return this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver);
         }
         finally
         {
             this.invariantSlots = saved;
+            this.environmentEvidence = savedEnvironment;
         }
     }
 
-    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ClosureReceiverRefutation? closureReceiver)
+    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ulong unsolved, out ClosureReceiverRefutation? closureReceiver)
     {
         defaultsUsed = 0;
         closureReceiver = null;
+        unsolved = 0;
         if (function.IsConstructor && declaringType is null)
         {
             return CandidateApplicability.Inapplicable;
@@ -1222,6 +1244,8 @@ public sealed partial class Binding
         var contextualCallables = false;
         var waitingCallables = false;
         var waiting = 0UL;
+        var open = 0UL; // SPEC 10.8: arguments whose parameter Type holds a slot that no evidence binds.
+        var openSignatures = 0UL; // Waiting arguments whose fixed expected call signature holds such a slot.
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if (!function.TryMapArgument(call.GetArgumentLabel(i), ref next, ref named, used, out var slot))
@@ -1300,10 +1324,11 @@ public sealed partial class Binding
         var placeExpected = function.ReturnType is PlaceResultKoto && expected is not null
             ? expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? expected.Components[0] : expected
             : null;
+        var expectedStructure = true; // SPEC 10.8: the slot-free structure of a result that keeps an unsolved slot is still checked.
         if (placeExpected is not null && function.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placePattern)
         {
             var stored = this.MemberType(self is null ? placePattern.Components[0] : this.ContractType(placePattern.Components[0], scope, self), declaringType)!;
-            this.Infer(stored, placeExpected, function, arguments, true, lengths);
+            expectedStructure = this.Infer(stored, placeExpected, function, arguments, true, lengths);
         }
         else if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
         {
@@ -1313,7 +1338,7 @@ public sealed partial class Binding
 
             // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
             // the completed result are judged at the destination.
-            this.Infer(returnPattern, expected, function, arguments, true, lengths);
+            expectedStructure = this.Infer(returnPattern, expected, function, arguments, true, lengths);
             this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
             if (returnPattern.CarriesOrigin)
             {
@@ -1385,10 +1410,17 @@ public sealed partial class Binding
                             signature = this.CallType(required, function, arguments, scope, self, origins, inputs, declaringType, lengths);
                             if (signature is null)
                             {
-                                return CandidateApplicability.Pending;
-                            }
+                                // SPEC 10.8: every other piece of evidence is in, so a slot of S that is still unbound stays unsolved; the
+                                // candidate stays applicable on its other checks, and the header parts it writes were matched by
+                                // InferClosureHeader. Anything else S lacks keeps the candidate pending.
+                                if (i >= 64 || !MentionsSlots(required, function, UnboundTypeSlots(function, arguments)))
+                                {
+                                    return CandidateApplicability.Pending;
+                                }
 
-                            if (argument is FunctionKoto anonymous && !this.ClosureSignatureFits(anonymous, signature))
+                                openSignatures |= 1UL << i;
+                            }
+                            else if (argument is FunctionKoto anonymous && !this.ClosureSignatureFits(anonymous, signature))
                             {
                                 return CandidateApplicability.Inapplicable;
                             }
@@ -1406,6 +1438,17 @@ public sealed partial class Binding
                     // Default only otherwise unconstrained literals; all established inputs were processed above.
                     if (this.LiteralDefault(argument) is not { } literalDefault)
                     {
+                        if (i < 64 && argument.BoundType is null && !IsUnfittedLiteral(argument) && MentionsSlots(pattern, function, UnboundTypeSlots(function, arguments)))
+                        {
+                            // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
+                            // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
+                            // candidate stays applicable on its other checks; it is completed only if the candidate is selected.
+                            open |= 1UL << i;
+                            var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
+                            operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
+                            continue;
+                        }
+
                         return CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                     }
 
@@ -1573,10 +1616,24 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
+        // SPEC 10.8: the structural slots that no evidence binds, other than an F that a waiting argument binds. A length slot, or a
+        // slot beyond the masks, keeps the candidate pending; so does an open position that a later literal default closed.
+        var unsolvedSlots = UnsolvedSlots(call, function, arguments, lengths, mapping, out var unrepresentable);
+        unrepresentable |= this.environmentEvidence;
+        if ((open | openSignatures) != 0 && (unrepresentable || !this.OpenPositionsHold(call, function, arguments, mapping, open, openSignatures, unsolvedSlots, scope, self, origins, inputs, declaringType, lengths)))
+        {
+            return CandidateApplicability.Pending;
+        }
+
+        if (unrepresentable)
+        {
+            unsolvedSlots = 0;
+        }
+
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var completed = this.CallType(function.Parameters[i].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
-            if (completed is null ? !waitingCallables : !this.ProveTypeLengths(completed, scope.Function))
+            if (completed is null ? !(waitingCallables || OpenParameter(i)) : !this.ProveTypeLengths(completed, scope.Function))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1598,7 +1655,10 @@ public sealed partial class Binding
             result = this.CallType(resultPattern!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
         }
 
-        if ((result is null && !waitingCallables) || (result is not null && HasUnsubstitutedOrigin(result, function)))
+        // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
+        // still checked against an expected result (SPEC 10.3).
+        var openResult = result is null && resultPattern is not null && MentionsSlots(resultPattern, function, unsolvedSlots);
+        if ((result is null && !waitingCallables && !openResult) || (result is not null && HasUnsubstitutedOrigin(result, function)))
         {
             // Result-only Origin inference needs the later call-site solver. Never retain a
             // requirement's abstract binder as though it were this call's concrete Origin.
@@ -1621,8 +1681,12 @@ public sealed partial class Binding
         {
             return CandidateApplicability.Inapplicable;
         }
+        else if (expected is not null && result is null && openResult && !expectedStructure)
+        {
+            return CandidateApplicability.Inapplicable;
+        }
 
-        var proof = ProveCandidate(arguments.AsSpan(0, function.GenericArguments.Count), waitingCallables);
+        var proof = ProveCandidate(arguments.AsSpan(0, function.GenericArguments.Count), waitingCallables, unsolvedSlots);
         if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && PerCallCallables(operations))
         {
             proof = ConstraintProof.Proven;
@@ -1630,30 +1694,14 @@ public sealed partial class Binding
 
         if (waitingCallables && proof is ConstraintProof.Proven or ConstraintProof.Unknown)
         {
-            // Only the concrete Types of waiting anonymous arguments may remain open. A body cannot solve
-            // an outer input/result slot, even if its inferred signature would happen to provide that Type.
-            for (var g = 0; g < function.GenericArguments.Count; g++)
+            // Only the concrete Types of waiting anonymous arguments may remain open. A body cannot solve an outer input/result slot,
+            // even if its inferred signature would happen to provide that Type: such a slot is unsolved (SPEC 10.8).
+            if (unrepresentable)
             {
-                if (function.GenericArguments[g] is LengthParameterKoto ? lengths[g] is not null : arguments[g] is not null)
-                {
-                    continue;
-                }
-
-                var supplied = false;
-                for (var a = 0; a < call.ArgumentNodes.Count; a++)
-                {
-                    var pattern = function.Parameters[mapping[a]].Type.BoundType!;
-                    var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-                    supplied |= IsWaitingCallable(call.ArgumentNodes[a]) &&
-                        slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(function, slotType.Symbol!) == g;
-                }
-
-                if (!supplied)
-                {
-                    return CandidateApplicability.Pending;
-                }
+                return CandidateApplicability.Pending;
             }
 
+            unsolved = unsolvedSlots;
             return CandidateApplicability.Waiting;
         }
 
@@ -1672,6 +1720,7 @@ public sealed partial class Binding
             }
         }
 
+        unsolved = proof == ConstraintProof.Proven ? unsolvedSlots : 0;
         return proof switch
         {
             ConstraintProof.Proven => CandidateApplicability.Applicable,
@@ -1679,6 +1728,18 @@ public sealed partial class Binding
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
         };
+        bool OpenParameter(int parameter)
+        {
+            for (var a = 0; a < call.ArgumentNodes.Count && a < 64; a++)
+            {
+                if ((open & (1UL << a)) != 0 && mapping[a] == parameter)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
 
         bool InferAggregateInputs(bool fitLiterals)
         {
@@ -1912,9 +1973,10 @@ public sealed partial class Binding
             }
         }
 
-        ConstraintProof ProveCandidate(ReadOnlySpan<BoundType?> slots, bool incomplete)
+        // SPEC 10.8: the Constraints and premises whose judgment needs an unsolved slot are not judged.
+        ConstraintProof ProveCandidate(ReadOnlySpan<BoundType?> slots, bool incomplete, ulong unbound = 0)
         {
-            var proof = this.CheckConstraints(function.TypeConstraints, function, slots, scope, self, declaringType, lengths, incomplete: incomplete);
+            var proof = this.CheckConstraints(function.TypeConstraints, function, slots, scope, self, declaringType, lengths, incomplete: incomplete || unbound != 0, skipUnresolved: unbound != 0);
             if (declaringType is not null)
             {
                 proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
@@ -1927,7 +1989,8 @@ public sealed partial class Binding
             {
                 var argumentProof = function.GenericArguments[i] is LengthParameterKoto
                     ? lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown
-                    : slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope) : ConstraintProof.Unknown;
+                    : slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
+                    : i < 64 && (unbound & (1UL << i)) != 0 ? ConstraintProof.Proven : ConstraintProof.Unknown;
                 proof = CombineProof(proof, argumentProof, true);
             }
 
@@ -2043,6 +2106,7 @@ public sealed partial class Binding
             {
                 // SPEC 8.6, 7.6.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
                 // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
+                this.environmentEvidence = true;
                 return true;
             }
 
