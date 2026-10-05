@@ -380,8 +380,7 @@ public sealed partial class Binding
     // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
         => expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected, SignatureOwner(actual)) &&
-            this.ItemConditionsHold(actual, expected, use)) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
             (actual.Kind == BoundTypeKind.Closure && actual.Symbol?.Declaration is FunctionKoto { BoundClosure: not null } &&
             this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
 

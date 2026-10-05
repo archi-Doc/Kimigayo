@@ -39,6 +39,51 @@ public sealed partial class Binding
         Unbound,
     }
 
+    // SPEC 15.3.7, 10.7: instantiate all of an Item's call Origins together, including named and result-only universals, against the
+    // required contract. Repeated invariant occurrences and declared conditions constrain the same solution. An open evidence region
+    // still uses the known-signature comparison until other evidence fixes it (SPEC 10.8).
+    internal bool ItemContractFits(BoundType item, BoundType signature, BoundType required, Koto use)
+    {
+        if (item.Kind != BoundTypeKind.FunctionItem || item.Symbol is not { Declaration: FunctionKoto function } symbol)
+        {
+            return false;
+        }
+
+        if (function.Origins.Count == 0 || HasOpenOrigin(required))
+        {
+            if (!CallableSignatureFits(signature, required, SignatureOwner(item)))
+            {
+                return false;
+            }
+
+            if (!this.HasOriginConditions(function))
+            {
+                return true;
+            }
+        }
+
+        if (required is not { Kind: BoundTypeKind.Function, Components.Count: 2 } ||
+            (ReferenceEquals(required.Components[0], BoundType.Unit) ? 0 : required.Components[0].Components.Count) != function.Parameters.Count)
+        {
+            return false;
+        }
+
+        var origins = this.originScratch.Rent(function.Origins.Count);
+        var inputCount = InputOriginCount(function);
+        var inputs = this.originScratch.Rent(inputCount);
+        Array.Clear(origins, 0, function.Origins.Count);
+        Array.Clear(inputs, 0, inputCount);
+        try
+        {
+            return this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs);
+        }
+        finally
+        {
+            this.originScratch.Return(origins, clearArray: true);
+            this.originScratch.Return(inputs, clearArray: true);
+        }
+    }
+
     private static bool KnownToInference(OriginInference inference, BoundOrigin origin)
     {
         if (origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto })
@@ -188,20 +233,19 @@ public sealed partial class Binding
         => this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0 ||
             (CarriesResultPremises(function) && !this.VisitResultPremises(function, function.BoundSymbol!.Type!, function.BoundSymbol!.Type!, function, ResultPremiseAction.Detect, null, null));
 
-    // SPEC 15.3.7, 10.7: a Function Item with Origin conditions converts to a required signature, or proves its Callable requirement, only
-    // when its call Origins solve against the required contract under those conditions, as a function reference does: the conditions are
-    // proven from the required contract's premises, never assumed. An Item without conditions keeps the structural comparison alone.
-    private bool ItemConditionsHold(BoundType item, BoundType required, Koto use)
+    // A failed Item comparison explains the same joint instantiation as acceptance. A representative is chosen only to locate
+    // the refuted/Unknown relation; it never admits the contract. In particular, repeated invariant occurrences name the two
+    // required Origins whose equality cannot be proven, rather than an uninstantiated universal of the implementation.
+    private OriginContractFact? ItemContractFailure(BoundType item, BoundType signature, BoundType required, Koto at, Koto use)
     {
-        if (item.Kind != BoundTypeKind.FunctionItem || item.Symbol is not { Declaration: FunctionKoto function } symbol || !this.HasOriginConditions(function))
+        if (item.Symbol is not { Declaration: FunctionKoto function } symbol)
         {
-            return true;
+            return null;
         }
 
-        if (required is not { Kind: BoundTypeKind.Function, Components.Count: 2 } ||
-            (ReferenceEquals(required.Components[0], BoundType.Unit) ? 0 : required.Components[0].Components.Count) != function.Parameters.Count)
+        if (function.Origins.Count == 0 || HasOpenOrigin(required))
         {
-            return false;
+            return this.ConversionContractFailure(signature, required, function, at, use) ?? this.ConditionContractFailure(function, signature, required, at, use);
         }
 
         var origins = this.originScratch.Rent(function.Origins.Count);
@@ -211,7 +255,10 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            return this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs);
+            this.ContractFits(use, symbol, function, required, null, item, null, default, origins, inputs, explain: true);
+            var substituted = this.SubstituteStoredOrigins(signature, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
+            return this.ConversionContractFailure(substituted, required, function, at, use) ??
+                this.ConditionContractFailure(function, substituted, required, at, use, origins, inputs);
         }
         finally
         {
@@ -223,7 +270,7 @@ public sealed partial class Binding
     // SPEC 10.7, 15.6.1, 23.3.6.5: the record of a conversion whose structural comparison holds but whose implementation conditions do not,
     // judged under the comparison's instantiation: the first declared relation, else the first result premise, that is not proven. A meet at
     // the longer end names its first failing operand (SPEC 15.3.6), and a repair writes the required input that supplies it, if any.
-    private OriginContractFact? ConditionContractFailure(FunctionKoto function, BoundType actual, BoundType expected, Koto at, Koto use)
+    private OriginContractFact? ConditionContractFailure(FunctionKoto function, BoundType actual, BoundType expected, Koto at, Koto use, BoundOrigin[]? origins = null, BoundOrigin[]? inputs = null)
     {
         if (actual.Components.Count != 2 || expected.Components.Count != 2)
         {
@@ -235,10 +282,12 @@ public sealed partial class Binding
         {
             foreach (var relation in declaration.Relations)
             {
-                if (!InstanceOutlives(relation.Longer, relation.Shorter, instance, this, use, 0) ||
-                    (relation.Equality && !InstanceOutlives(relation.Shorter, relation.Longer, instance, this, use, 0)))
+                var longer = origins is null ? relation.Longer : this.SubstituteStoredOrigin(relation.Longer, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, InputOriginCount(function)));
+                var shorter = origins is null ? relation.Shorter : this.SubstituteStoredOrigin(relation.Shorter, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, InputOriginCount(function)));
+                if (!InstanceOutlives(longer, shorter, instance, this, use, 0) ||
+                    (relation.Equality && !InstanceOutlives(shorter, longer, instance, this, use, 0)))
                 {
-                    return this.ConditionFact(at, $"the clause '{relation.Syntax}'", relation.Longer, relation.Shorter, relation.Equality, expected, instance, use);
+                    return this.ConditionFact(at, $"the clause '{relation.Syntax}'", longer, shorter, relation.Equality, expected, instance, use);
                 }
             }
         }
@@ -254,7 +303,7 @@ public sealed partial class Binding
         try
         {
             var result = function.BoundSymbol!.Type!;
-            return !this.VisitResultPremises(function, result, result, use, ResultPremiseAction.Instance, null, null) && this.failedResultPremise is { } failed
+            return !this.VisitResultPremises(function, result, actual.Components[1], use, ResultPremiseAction.Instance, null, null) && this.failedResultPremise is { } failed
                 ? this.ConditionFact(at, "the result's well-formedness", failed.Longer, failed.Shorter, false, expected, instance, use) : null;
         }
         finally
@@ -451,12 +500,12 @@ public sealed partial class Binding
             case ResultPremiseAction.Detect:
                 return false;
             case ResultPremiseAction.Instance:
-                if (InstanceOutlives(longer, outer, this.resultPremiseInstance, this, use, 0))
+                if (InstanceOutlives(value, substituted, this.resultPremiseInstance, this, use, 0))
                 {
                     return true;
                 }
 
-                this.failedResultPremise = (longer, outer);
+                this.failedResultPremise = (value, substituted);
                 return false;
             case ResultPremiseAction.Bound:
                 if (KnownToInference(inference!, longer) && KnownToInference(inference!, outer))

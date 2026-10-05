@@ -845,6 +845,7 @@ public sealed partial class Binding
         var condition = contract.Member == "the result's well-formedness" || contract.Member.StartsWith("the clause '", StringComparison.Ordinal);
         var without = contract.Member == "the result's well-formedness" ? "whose result Type needs no such relation" : "without that clause";
         var advice = condition ? contract.Input is { } input ? $"Write {input} of the required Type over {shorter.Text}, or convert an implementation {without}" : $"Convert an implementation {without}"
+            : contract.Equality ? "Use equal Origin bindings at the compared positions, or convert an implementation whose bindings match the required Type"
             : contract.Member != "the result" ? $"Write {contract.Member} of the required Type over {shorter.Text}, or convert an implementation that accepts any borrow there"
             : longer.Kind == "omitted" ? $"Leave the required result's Origin omitted, which bounds it by the borrowed inputs, or convert an implementation whose result outlives {shorter.Text}"
             : $"Write the required result over {longer.Text}, or convert an implementation whose result outlives {shorter.Text}";
@@ -1409,8 +1410,8 @@ public sealed partial class Binding
         // one UnprovenOriginContract_Kd at the converted value, never a Type mismatch or a relation per position.
         if (expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
             this.ConversionSignature(implementation, node, out var signature, out var own) && ReferenceTypes.StorageMatches(required, signature) &&
-            (this.ConversionContractFailure(signature, required, own, at, node) ??
-            (implementation.Kind == BoundTypeKind.FunctionItem && own is FunctionKoto item ? this.ConditionContractFailure(item, signature, required, at, node) : null)) is { } contract)
+            (implementation.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFailure(implementation, signature, required, at, node)
+            : this.ConversionContractFailure(signature, required, own, at, node)) is { } contract)
         {
             return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
         }

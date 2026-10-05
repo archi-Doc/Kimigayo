@@ -114,7 +114,7 @@ internal sealed partial class BodyLowering
             if (operation.Kind != OwnershipOperationKind.Produce || source.Symbol?.Declaration is not FunctionKoto itemDefinition ||
                 !ReferenceEquals(SignatureType(this, operation.Source.ErasedFunctionType), body.Places[operation.Place].Type) ||
                 operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
-                !Binding.CallableSignatureFits(itemSignature, body.Places[operation.Place].Type, itemDefinition) ||
+                !operation.Source.CodeContext.Compilation.Binding.ItemContractFits(source, itemSignature, body.Places[operation.Place].Type, operation.Source) ||
                 this.ClosureEntry(source, itemDefinition) is not { CallerLocation: false } itemEntry ||
                 (body.IsReachable(id) && !this.Dominates(input, id)))
             {

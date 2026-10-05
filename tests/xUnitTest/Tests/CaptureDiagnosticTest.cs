@@ -184,7 +184,6 @@ public class CaptureDiagnosticTest
     [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", new[] { "run: closure requires uniq; Callable requires ref", "run" }, "run: closure requires uniq; Callable requires ref. The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.6.3, 8.6)", "Declare f as uniq/F, with F is Callable<uniq, ...>, and pass the closure with @uniq, or change the closure so that a Shared call suffices")]
     [InlineData("func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref, true))\")", "run(count@ref, true)", new[] { "run" }, null, null)]
     [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Text + "Console.writeLine(\"\\(run(text@ref))\")", "run(text@ref)", new[] { "run: callable signature is () -> string; requires () -> i32", "run: callable signature is () -> string; requires () -> i32" }, "The argument's known call signature is () -> string; the candidate requires () -> i32 from the supplied Type evidence", null)]
-    [InlineData("func pass(f: () -> i32) -> i32 => f()\n" + Count + "Console.writeLine(\"\\(pass(count@move))\")", "pass(count@move)", new[] { "pass" }, null, null)]
     public void AClosureReceiverIsNamedOnlyWhereItIsTheFailure(string source, string text, string[] labels, string? note, string? advice)
     {
         var output = DiagnosticCorpus.Check(source);
@@ -193,6 +192,18 @@ public class CaptureDiagnosticTest
         Assert.Equal(labels, error.Related!.Select(static x => x.Label).ToArray());
         Assert.Equal(note, error.Note);
         Assert.Equal(advice, error.Advice);
+    }
+
+    // SPEC 10.5, 7.6.4: erasure receiver conditions are checked at the argument after selection, without a Callable Constraint.
+    [Fact]
+    public void ACommonFunctionReceiverFailureNamesTheConvertedArgument()
+    {
+        const string Source = "func pass(f: () -> i32) -> i32 => f()\n" + Count + "Console.writeLine(\"\\(pass(count@move))\")";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
+        Assert.Equal("count@move", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Contains("Exclusive call", error.Note, StringComparison.Ordinal);
+        Assert.DoesNotContain("Callable Constraint", error.Note!, StringComparison.Ordinal);
     }
 
     // The receivers reach the command rendering and both language-server placements.

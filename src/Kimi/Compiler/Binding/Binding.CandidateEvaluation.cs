@@ -71,7 +71,7 @@ public sealed partial class Binding
                 {
                     if (candidates[a].State == CandidateApplicability.Waiting && candidates[b].State == CandidateApplicability.Waiting &&
                         operations[(a * stride) + i].Adaptation != ArgumentAdaptation.Erasure &&
-                        operations[(a * stride) + i].Source is { } source && IsWaitingCallable(source))
+                        operations[(a * stride) + i].Source is { } source && (IsWaitingCallable(source) || IsWaitingNestedCall(source)))
                     {
                         // ComparableCallableSlots proved matching acquisition. A waiting argument is completed only for the
                         // selected candidate, so its Callable constraint signature never ranks.
@@ -219,7 +219,11 @@ public sealed partial class Binding
     {
         foreach (var argument in call.ArgumentNodes)
         {
-            if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
+            if (IsWaitingNestedCall(argument))
+            {
+                this.CompleteDependent(argument, call);
+            }
+            else if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
             {
                 this.MarkOmittedHeaders(closure, call);
             }

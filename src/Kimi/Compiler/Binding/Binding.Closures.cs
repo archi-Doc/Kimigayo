@@ -163,6 +163,14 @@ public sealed partial class Binding
         return finder.Found;
     }
 
+    // SPEC 3, 10.7, 10.8: a written input that the anonymous function binds per call fits an expected input over any other Origin
+    // with the same referent, fixed or an open region, by instantiating that call-time Origin; the header is compatible, not equal.
+    private static bool InstantiatesPerCallInput(BoundType written, BoundType expected, FunctionKoto function, int position)
+        => written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
+            ReferenceEquals(origin.Binder, function) && origin.Slot == position &&
+            expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: not null } && expected.Semantics == written.Semantics &&
+            ReferenceEquals(expected.Components[0], written.Components[0]);
+
     // SPEC 7.6.2, 23.3.6.4: a repeated capture name is one problem at the later entry or parameter, with the entry it repeats related.
     // Another entry that failed on its own is reported beside the repeats, exactly as it is in a list that repeats no name.
     private void ReportCaptureRepeats(Koto function, CaptureListFailure list, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -239,14 +247,6 @@ public sealed partial class Binding
 
         return found;
     }
-
-    // SPEC 3, 10.7, 10.8: a written input that the anonymous function binds per call fits an expected input over any other Origin
-    // with the same referent, fixed or an open region, by instantiating that call-time Origin; the header is compatible, not equal.
-    private static bool InstantiatesPerCallInput(BoundType written, BoundType expected, FunctionKoto function, int position)
-        => written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
-            ReferenceEquals(origin.Binder, function) && origin.Slot == position &&
-            expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: not null } && expected.Semantics == written.Semantics &&
-            ReferenceEquals(expected.Components[0], written.Components[0]);
 
     // With `openResult`, the signature's result is open (SPEC 10.8): only its parameter Types guide the body, whose result is inferred.
     private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature, bool openResult = false)

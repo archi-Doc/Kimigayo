@@ -571,12 +571,13 @@ public sealed partial class Binding
                     (this.referenceSlotFacts ??= new(ReferenceEqualityComparer.Instance))[use] = new(generic, slotFailure.Slot, slotFailure.Failure, KotoHelper.UnwrapParentheses(use) is GenericsKoto);
                 }
 
-                if (count == 1 && this.FunctionItemSignature(this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, [])) is { } actual)
+                var candidateItem = this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
+                if (count == 1 && this.FunctionItemSignature(candidateItem) is { } actual)
                 {
                     // SPEC 10.7, 15.6.1: when the one candidate's signature matches and only its Origin contract fails, the record names
                     // that contract, with the candidate's own inputs instantiated: a member, else a condition of the candidate.
                     return ReferenceTypes.StorageMatches(required, actual) &&
-                        (this.ConversionContractFailure(actual, required, symbol.Declaration, use, use) ?? this.ConditionContractFailure((FunctionKoto)symbol.Declaration, actual, required, use, use)) is { } contract
+                        this.ItemContractFailure(candidateItem, actual, required, use, use) is { } contract
                         ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, contract)
                         : this.FailMismatch(use, use, actual, required);
                 }
@@ -1002,7 +1003,7 @@ public sealed partial class Binding
     // Origins stay rigid, under its declared relations and result premises; then the required inputs fit the implementation's, its
     // result fits the required one, and its conditions are proven for the solution. The implementation's Types are its members within
     // `container` with `arguments` bound, or those of the Function Item `item`.
-    private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, bool explain = false)
     {
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
@@ -1026,7 +1027,7 @@ public sealed partial class Binding
             this.CollectOriginInference(produced, required.Components[1], inference, result: true);
         }
 
-        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null))
+        if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: explain))
         {
             return false;
         }

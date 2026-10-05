@@ -21,7 +21,7 @@ internal static class CompilerPlanMeasurements
     internal static void Run(bool callable = false)
     {
         var results = new List<object>();
-        foreach (var name in callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference" } : new[] { "direct", "stored", "rc-clone", "arc-clone" })
+        foreach (var name in callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" })
         {
             var stored = name == "stored";
             var source = name switch
@@ -29,6 +29,7 @@ internal static class CompilerPlanMeasurements
                 "fixed-reference" => VerificationWorkloads.ContextualFunctionReference,
                 "ranked-reference" => VerificationWorkloads.FunctionReferenceRanking(false),
                 "borrowed-reference" => VerificationWorkloads.FunctionReferenceRanking(true),
+                "nested-universal" => VerificationWorkloads.NestedInferenceAndUniversalErasure,
                 "rc-clone" or "arc-clone" => VerificationWorkloads.SharedClone(name == "arc-clone"),
                 _ => VerificationWorkloads.ObjectView(stored),
             };

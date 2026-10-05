@@ -481,8 +481,13 @@ public sealed partial class Binding
             }
 
             // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
-            if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindNode(argument, scope) is null)
+            if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindIndependentArgument(argument, scope) is null)
             {
+                if (IsWaitingNestedCall(argument))
+                {
+                    continue; // SPEC 10.5: only a determined outer candidate supplies the missing expectation.
+                }
+
                 if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                 {
                     if (this.TakesCallableContext(group) && !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)) &&
@@ -636,7 +641,7 @@ public sealed partial class Binding
             CallableConstraintFact? callableFailure = null;
             var error = false;
             Koto? incompleteSignature = null;
-            FunctionKoto? pendingFunction = null;
+            Koto? failedPendingSignature = null;
             Koto? invalidDeclaration = null;
             this.transferRequired = this.lendingRequired = false;
             foreach (var candidate in candidates)
@@ -669,7 +674,7 @@ public sealed partial class Binding
 
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver);
                 pending |= state == CandidateApplicability.Pending;
-                pendingFunction ??= state == CandidateApplicability.Pending ? function : null;
+                failedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? FailedSignaturePart(function) : null;
                 if (state == CandidateApplicability.Pending)
                 {
                     // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
@@ -707,7 +712,7 @@ public sealed partial class Binding
             {
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
                 // pending at every call; the selection rests on that failure (SPEC 23.3.6.4). Omitted header Types rest on the call.
-                return applicable == 0 && pendingFunction is not null && (IncompleteSignature(pendingFunction) ?? FailedSignaturePart(pendingFunction)) is { } failedSignature
+                return failedPendingSignature is { } failedSignature
                     ? this.CompleteDependent(call, failedSignature)
                     : pendingCount == 1 && callableFailure is { } callable ? this.FailCallableSelection(call, callable)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
@@ -795,6 +800,11 @@ public sealed partial class Binding
                 winnerIndex = comparable ? SelectBest(evaluated.AsSpan(0, count), operations, operationStride) : -1;
                 if (winnerIndex < 0)
                 {
+                    if (this.DeferNestedCall(call, expected))
+                    {
+                        return Complete(call, null);
+                    }
+
                     var remaining = new RejectedCandidate[applicable];
                     var next = 0;
                     var erasure = ErasureIncomparable(evaluated.AsSpan(0, count), operations, operationStride, argumentCount);
@@ -826,6 +836,11 @@ public sealed partial class Binding
 
             if (evaluated[winnerIndex].Unsolved != 0)
             {
+                if (this.DeferNestedCall(call, expected))
+                {
+                    return Complete(call, null);
+                }
+
                 // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
                 return this.FailUnboundSlots(call, selected, scope, scratch, lengthArguments, mapping, operations.AsSpan(winnerIndex * operationStride, operationStride), evaluated[winnerIndex].Unsolved, expected, self, origins, inputs, selectedType);
             }
@@ -837,7 +852,7 @@ public sealed partial class Binding
                 var waitingOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
                 for (var i = 0; i < argumentCount; i++)
                 {
-                    if (IsWaitingCallable(call.ArgumentNodes[i]))
+                    if (IsWaitingCallable(call.ArgumentNodes[i]) || IsWaitingNestedCall(call.ArgumentNodes[i]))
                     {
                         var contract = this.activeRequirementContract;
                         this.activeRequirementContract = null;
@@ -862,7 +877,7 @@ public sealed partial class Binding
                     }
                 }
 
-                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _);
+                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _);
                 if (state != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
@@ -1494,6 +1509,13 @@ public sealed partial class Binding
                     }
                 }
 
+                if (IsWaitingNestedCall(argument))
+                {
+                    waitingCallables = true;
+                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                    continue;
+                }
+
                 if (IsAggregateArgument(argument))
                 {
                     var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
@@ -1835,7 +1857,8 @@ public sealed partial class Binding
             }
 
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null, structural: pattern.Kind == BoundTypeKind.Function, evidence: known, relateLater: true);
+            // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
+            return WasWaitingNestedCall(source) || this.Infer(pattern, actual, function, arguments, true, lengths, generic is null, structural: pattern.Kind == BoundTypeKind.Function, evidence: known, relateLater: true);
         }
 
         bool InferClosureHeader(BoundType signature, FunctionKoto literal)
@@ -1881,7 +1904,7 @@ public sealed partial class Binding
                 var callableSlot = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
                     ? pattern.Components[0] : pattern;
                 if (callableSlot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, callableSlot.Symbol!) < 0 ||
-                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || source.BoundType is not { } actual ||
+                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || WasWaitingNestedCall(source) || source.BoundType is not { } actual ||
                     !this.TryCallable(callableSlot, this.ConstraintScope(function), out var requiredSignature, out _) ||
                     !this.TryCallable(actual, scope, out var actualSignature, out _))
                 {

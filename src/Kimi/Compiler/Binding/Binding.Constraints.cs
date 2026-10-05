@@ -233,7 +233,8 @@ public sealed partial class Binding
             // never Refuted (CallableOriginFailure explains it). A required signature over an open region is decided by the per-call
             // stand-in instead (SPEC 15.3.6, PerCallCallables). A Function Item's Origin conditions, its clauses and result premises, are
             // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
-            return CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject)) && this.ItemConditionsHold(subject, proposition.RequiredType!, scope.Owner) ? ConstraintProof.Proven
+            return (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, proposition.RequiredType!, scope.Owner)
+                : CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject))) ? ConstraintProof.Proven
                 : ReferenceTypes.StorageMatches(proposition.RequiredType, signature) && !HasOpenOrigin(proposition.RequiredType!) ? ConstraintProof.Unknown
                 : ConstraintProof.Refuted;
         }
