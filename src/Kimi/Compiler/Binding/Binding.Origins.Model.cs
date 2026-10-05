@@ -129,6 +129,10 @@ public sealed class BoundOrigin
 
     internal int TargetSlot { get; init; }
 
+    // SPEC 10.8, 15.3.6: an inferred local region that stands for a known call signature's own Origin in a slot solution. It holds no
+    // Loans and is never displayed; Binder is the argument whose signature supplied it, so each call site has its own region.
+    internal bool Open { get; init; }
+
     internal BindingSymbol? BorrowCondition { get; set; }
 }
 
@@ -190,6 +194,67 @@ internal readonly struct CallableInstance
     internal bool IsRequiredSlot(BoundOrigin origin)
         => this.expected is not null && this.expectedBinder is not null && origin is { Kind: OriginKind.Input, Occurrence: null } && ReferenceEquals(origin.Binder, this.expectedBinder) &&
             (uint)origin.Slot < (uint)this.expected.Components[0].Components.Count && ReferenceEquals(this.expected.Components[0].Components[origin.Slot].Origin, origin);
+
+    // SPEC 10.7, 15.3.6: a universal Origin of the implementation that none of its inputs mentions, such as the result-only `s` of
+    // `constant() -> ref/i32 during s`, is a call-time Origin that each call instantiates; it is instantiated to an open region of the
+    // call, a local region that holds no Loans and is solved by its uses.
+    internal bool IsResultOnlyOrigin(BoundOrigin origin)
+        => this.actual is not null && this.actualBinder is FunctionKoto && origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, this.actualBinder) &&
+            !Mentions(this.actual.Components[0], origin, 0);
+
+    private static bool Mentions(BoundType type, BoundOrigin origin, int depth)
+    {
+        if (depth > 64 || !type.CarriesOrigin)
+        {
+            return depth > 64;
+        }
+
+        if (Names(type.Origin, origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (Names(type.OriginArguments[i], origin))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (Mentions(type.Components[i], origin, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool Names(BoundOrigin? candidate, BoundOrigin origin)
+        {
+            if (candidate is null)
+            {
+                return false;
+            }
+
+            if (ReferenceEquals(candidate, origin) || (candidate.Kind == OriginKind.Parameter && ReferenceEquals(candidate.Binder, origin.Binder) && candidate.Slot == origin.Slot))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < candidate.Operands.Count; i++)
+            {
+                if (Names(candidate.Operands[i], origin))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
 }
 
 // One closure call whose result is bound to its receiver (SPEC 15.8.2): the closure, its environment plan, the receiver's Place Origin

@@ -253,6 +253,14 @@ public sealed partial class Binding
         return found;
     }
 
+    // SPEC 3, 10.7, 10.8: a written input that the anonymous function binds per call fits an expected input over any other Origin
+    // with the same referent, fixed or an open region, by instantiating that call-time Origin; the header is compatible, not equal.
+    private static bool InstantiatesPerCallInput(BoundType written, BoundType expected, FunctionKoto function, int position)
+        => written is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
+            ReferenceEquals(origin.Binder, function) && origin.Slot == position &&
+            expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin: not null } && expected.Semantics == written.Semantics &&
+            ReferenceEquals(expected.Components[0], written.Components[0]);
+
     private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
     {
         // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
@@ -364,7 +372,7 @@ public sealed partial class Binding
             }
 
             var type = this.BindType(function.Parameters[i].Type, scope);
-            if (type is null || !ReferenceEquals(type, inputs.Components[i]))
+            if (type is null || !(ReferenceEquals(type, inputs.Components[i]) || InstantiatesPerCallInput(type, inputs.Components[i], function, i)))
             {
                 return false;
             }

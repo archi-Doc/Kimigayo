@@ -304,10 +304,12 @@ internal sealed partial class GenericStoragePlan
             parameters[i] = type;
         }
 
+        // SPEC 15.3.7, IMPL 21.3: the open regions of a call site's slot solutions are Origin differences alone and never select
+        // another instance.
         foreach (var existing in this.calls.Values)
         {
-            if (ReferenceEquals(existing.Template, template) && ReferenceEquals(existing.Result, result) &&
-                existing.Parameters.AsSpan().SequenceEqual((ReadOnlySpan<BoundType>)parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && existing.Arguments.AsSpan().SequenceEqual(call.TypeArguments) && existing.Lengths.AsSpan().SequenceEqual(call.LengthArguments))
+            if (ReferenceEquals(existing.Template, template) && Binding.SameModuloOpenOrigins(existing.Result, result) &&
+                Binding.SameModuloOpenOrigins(existing.Parameters, parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && Binding.SameModuloOpenOrigins(existing.Arguments, call.TypeArguments) && existing.Lengths.AsSpan().SequenceEqual(call.LengthArguments))
             {
                 entry = existing;
                 this.calls.Add(call, entry);

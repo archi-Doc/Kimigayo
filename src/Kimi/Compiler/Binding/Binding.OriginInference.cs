@@ -20,7 +20,7 @@ public sealed partial class Binding
         return inference;
     }
 
-    private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false)
+    private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false, Koto? known = null)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
         {
@@ -54,13 +54,18 @@ public sealed partial class Binding
                 sign = Compose(polarity, schema.GenericSlots[i].OriginVariance);
             }
 
-            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result);
+            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result, known);
         }
 
         static int Compose(int sign, OriginVariance variance) => variance == OriginVariance.Covariant ? sign : variance == OriginVariance.Contravariant ? -sign : 0;
 
         void Add(BoundOrigin parameter, BoundOrigin value, int sign)
         {
+            if (known is not null && QuantifiedBy(value, known))
+            {
+                return; // SPEC 10.8: a known call signature's own Origin is no bound for the callee's Origins.
+            }
+
             inference.Discover(parameter, sign == 0 ? 3 : sign > 0 ? 1 : 2);
             if ((sign >= 0) != result || sign == 0)
             {

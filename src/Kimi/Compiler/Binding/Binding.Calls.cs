@@ -1679,6 +1679,7 @@ public sealed partial class Binding
                 return false;
             }
 
+            var callee = actual;
             if (pattern.Kind == BoundTypeKind.Function && this.FunctionItemSignature(actual) is { } itemSignature)
             {
                 actual = itemSignature;
@@ -1692,15 +1693,17 @@ public sealed partial class Binding
             }
 
             pattern = this.FormedApplication(pattern, function, arguments);
-            this.MatchInputOrigins(pattern, actual, function, origins, inputs);
+            var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
+            var quantifier = known is { } evidence ? evidence.Binder ?? evidence.Source : null; // The argument itself binds nothing.
+            this.MatchInputOrigins(pattern, actual, function, origins, inputs, quantifier);
             if (pattern.CarriesOrigin && actual.CarriesOrigin)
             {
                 originInference ??= this.BeginOriginInference(call, function);
-                this.CollectOriginInference(pattern, actual, originInference);
+                this.CollectOriginInference(pattern, actual, originInference, known: quantifier);
             }
 
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null, structural: pattern.Kind == BoundTypeKind.Function);
+            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null, structural: pattern.Kind == BoundTypeKind.Function, evidence: known);
         }
 
         bool InferClosureHeader(BoundType signature, FunctionKoto literal)
@@ -1724,21 +1727,21 @@ public sealed partial class Binding
                 var written = literal.Parameters[i].Type;
                 if (written is not SyntaxFormKoto { Akind: KotoKind.InferredType } &&
                     (this.BindType(written, headerScope) is not { } actual ||
-                    !this.Infer(parameterTypes.Components[i], actual, function, arguments, lengths: lengths, structural: true, perCallInputs: literal)))
+                    !this.Infer(parameterTypes.Components[i], actual, function, arguments, lengths: lengths, structural: true, evidence: new(literal, literal))))
                 {
                     return false;
                 }
             }
 
             return literal.ReturnType is null || (this.BindType(literal.ReturnType, headerScope) is { } result &&
-                this.Infer(signature.Components[1], result, function, arguments, lengths: lengths, structural: true, perCallInputs: literal));
+                this.Infer(signature.Components[1], result, function, arguments, lengths: lengths, structural: true, evidence: new(literal, literal)));
         }
 
         bool InferCallableSignatures(Span<BoundArgumentOperation> signatureOperations)
         {
             // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence
             // alongside ordinary inputs, before expected results and literal defaults. An anonymous waiting body is
-            // never evidence; its written header is handled separately. Per-call Origins need the signature solver.
+            // never evidence; its written header is handled separately. The signature's own Origins become open regions.
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
                 var source = call.ArgumentNodes[i];
@@ -1759,12 +1762,7 @@ public sealed partial class Binding
                 }
 
                 requiredSignature = this.ContractType(memberSignature, scope, self);
-                if (requiredSignature.CarriesOrigin || actualSignature.CarriesOrigin)
-                {
-                    continue;
-                }
-
-                if (!this.Infer(requiredSignature, actualSignature, function, arguments, lengths: lengths, structural: true))
+                if (!this.Infer(requiredSignature, actualSignature, function, arguments, lengths: lengths, structural: true, evidence: new(CalleeBinder(actual, actualSignature), source)))
                 {
                     var required = this.CallType(requiredSignature, function, arguments, scope, self, origins, inputs, declaringType, lengths) ?? requiredSignature;
                     signatureOperations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
@@ -1820,10 +1818,11 @@ public sealed partial class Binding
         return pattern;
     }
 
-    // With `perCallInputs`, the actual is a written anonymous header (SPEC 10.5). Only its structure is evidence: applicability
-    // judges no Origin part (SPEC 15.6.1), and the bound closure fits its expectation after selection. A Type over the header's
-    // own per-call inputs never solves a slot, since a per-call Origin lies beyond the call (SPEC 10.8).
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, Koto? perCallInputs = null)
+    // With `evidence`, the actual is a known call signature (SPEC 10.5, 10.8): an argument's, or the parts an anonymous header writes.
+    // Its structure and Semantics are evidence, and its Origins are not compared: applicability judges no Origin part (SPEC 15.6.1),
+    // and the argument fits the substituted parameter after selection. An Origin the signature itself quantifies, such as a per-call
+    // input, lies beyond the call and never solves an Origin in a slot: it becomes an open region that other evidence fills.
+    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null)
     {
         // A Never-valued expression supplies no input value; a Never Type inside a known signature is exact evidence.
         if (!structural && ReferenceEquals(actual, BoundType.Never))
@@ -1848,18 +1847,18 @@ public sealed partial class Binding
 
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs);
+                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs);
+                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence);
         }
 
         // SPEC 3.1.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs);
+            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
@@ -1877,18 +1876,34 @@ public sealed partial class Binding
                 actual = referent;
             }
 
-            if (perCallInputs is not null && HasUnsubstitutedOrigin(actual, perCallInputs))
+            if (evidence is { Binder: FunctionKoto { BoundClosure: not null } closure } && HasEnvironmentOrigin(actual, closure))
             {
-                return false;
+                // SPEC 8.6, 7.6.4: a result over the closure's hidden environment receiver satisfies no Callable signature and no
+                // erasure, so that part is no evidence for the slot; the Callable proof or the conversion judges it against the rest.
+                return true;
+            }
+
+            if (evidence is { Binder: { } binder } known)
+            {
+                actual = this.OpenKnownOrigins(actual, binder, known.Source);
             }
 
             if (arguments[slot] is { } previous)
             {
+                if (!ReferenceEquals(previous, actual) && (HasOpenOrigin(previous) || HasOpenOrigin(actual)))
+                {
+                    // SPEC 10.8: no argument fixes a slot first by traversal order. Another argument's Origin at an open position
+                    // solves it, whichever comes first; two open positions keep the earlier region.
+                    previous = this.FillOpenOrigins(previous, actual, false);
+                    actual = this.FillOpenOrigins(actual, previous, true);
+                }
+
                 // SPEC 10.8: structural matching compares normalized Types, so two spellings of one Function Type, whose per-call
                 // inputs have distinct binders, are one binding.
                 if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && FitsType(actual, previous)) ||
                     (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && FitsType(actual, previous) && FitsType(previous, actual)))
                 {
+                    arguments[slot] = previous;
                     return true;
                 }
 
@@ -1912,14 +1927,14 @@ public sealed partial class Binding
 
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
             !(lengths is not null && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, lengths) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
-            (!inferOrigins && perCallInputs is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.Components.Count == 0)
+            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.Components.Count == 0)
         {
             return false;
         }
 
         for (var i = 0; i < pattern.OriginArguments.Count; i++)
         {
-            if (!inferOrigins && perCallInputs is null && !ReferenceEquals(pattern.OriginArguments[i], actual.OriginArguments[i]))
+            if (!inferOrigins && evidence is null && !ReferenceEquals(pattern.OriginArguments[i], actual.OriginArguments[i]))
             {
                 return false;
             }
@@ -1927,7 +1942,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs))
+            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence))
             {
                 return false;
             }

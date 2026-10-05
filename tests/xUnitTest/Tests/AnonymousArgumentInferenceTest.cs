@@ -64,8 +64,8 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
     }
 
     // SPEC 10.5, 10.8: a written header over per-call inputs is structural evidence at a common Function parameter or a Callable
-    // slot. Its own inputs stand for the expected inputs, a slot is solved from their referents, and the bound closure then fits
-    // the expectation after selection.
+    // slot. Its own inputs stand for the expected inputs, a slot is solved from their referents (keeping an open region where only a
+    // per-call Origin occurs), and the bound closure then fits the expectation after selection by instantiating its per-call inputs.
     [Theory]
     [InlineData("Common", "func call(action: (ref/i32) -> ref/i32, x: ref/i32) -> ref/i32 during x\n    return action(x)\n", "require call(func (n: ref/i32) => n, x@ref)@follow == 5 else => $abort(\"call\")")]
     [InlineData("Callable", "func apply<F>(action: ref/F, x: ref/i32) -> ref/i32 during x\n    F is Callable<(ref/i32) -> ref/i32>\n    return action(x)\n", "require apply(func (n: ref/i32) -> ref/i32 => n, x@ref)@follow == 5 else => $abort(\"apply\")")]
@@ -73,22 +73,21 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
     [InlineData("SlotFromHeader", "func run<T, F>(action: ref/F) -> i32\n    F is Callable<(ref/T) -> i32>\n    return 7\n", "require run(func (n: ref/i32) -> i32 => n@follow) == 7 else => $abort(\"run\")")]
     [InlineData("GenericCommon", "func run<T>(value: ref/T, action: (ref/T) -> i32) -> i32\n    return action(value)\n", "require run(x@ref, func (n: ref/i32) => n@follow) == 5 else => $abort(\"run\")")]
     [InlineData("TwoInputs", "func both<F>(action: ref/F, p: ref/i32, q: ref/i32) -> i32\n    F is Callable<(ref/i32, ref/i32) -> ref/i32>\n    return action(p, q)@follow\n", "let w: i32 = 6\nrequire both(func (a: ref/i32, b: ref/i32) -> ref/i32 => a, x@ref, w@ref) == 5 else => $abort(\"both\")")]
+    [InlineData("SlotStructure", "func run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> ()>\n    return 7\n", "require run(func (n: ref/i32) => ()) == 7 else => $abort(\"slot\")")]
+    [InlineData("FixedInput", "", "let r: ref/i32 = x@ref\nlet g: (ref/i32 during r) -> i32 = func (n: ref/i32) => n@follow\nrequire g(r) == 5 else => $abort(\"fixed\")")]
     public void WrittenPerCallHeadersAreSignatureEvidence(string name, string declarations, string use)
         => ScalarEmissionTest.EmitFixture("AnonymousArgumentPerCall" + name, declarations + "let x: i32 = 5\n" + use, string.Empty);
 
-    // SPEC 10.8: a per-call Origin of the header never solves a slot; it stays rejected until the inference-boundary record of
-    // SPEC 10.6 reports it. A header whose layers differ from the expected ones gives no evidence and the candidate does not apply.
-    [Theory]
-    [InlineData("func run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> ()>\n    return 7\nlet r = run(func (n: ref/i32) => ())", false)]
-    [InlineData("func run<T, F>(action: ref/F) -> i32\n    F is Callable<(ref/T) -> i32>\n    return 7\nlet r = run(func (n: i32) => n)", true)]
-    public void APerCallHeaderNeverSolvesASlotAndMustMatchItsLayers(string source, bool layers)
+    // SPEC 10.8: a header whose layers differ from the expected ones gives no evidence, and the candidate does not apply. A per-call
+    // Origin of the header leaves the slot's Origin open instead (the SlotStructure row above).
+    [Fact]
+    public void AHeaderMustMatchTheExpectedLayers()
     {
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = MinimalEmissionTest.Analyze("func run<T, F>(action: ref/F) -> i32\n    F is Callable<(ref/T) -> i32>\n    return 7\nlet r = run(func (n: i32) => n)");
         Assert.False(c.Binding.Result.IsComplete);
-        if (layers)
-        {
-            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
-        }
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "run(func (n: i32) => n)"), (error.Code, error.Text));
     }
 
     [Trait("Purpose", "Allocation")]

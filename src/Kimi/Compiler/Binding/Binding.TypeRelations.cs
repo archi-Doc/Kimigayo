@@ -237,6 +237,11 @@ public sealed partial class Binding
             return false;
         }
 
+        if (b is { Kind: OriginKind.Inference, Open: true } && instance.IsResultOnlyOrigin(a))
+        {
+            return true;
+        }
+
         return binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
     }
 

@@ -19,7 +19,8 @@ public sealed partial class Binding
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
         {
-            return this.OriginAtUse(pending, obligation.Use).Kind is not (OriginKind.Inference or OriginKind.Unbound);
+            // SPEC 15.3.6: an Origin resolved to an open region is that local region; it needs no annotation.
+            return this.OriginAtUse(pending, obligation.Use) is { Kind: not (OriginKind.Inference or OriginKind.Unbound) } or { Open: true };
         }
 
         if (obligation.Kind == BindingObligationKind.OriginOutlives && obligation.Longer is { } longer && obligation.Shorter is { } shorter)
@@ -167,7 +168,8 @@ public sealed partial class Binding
             return true;
         }
 
-        if (shorter.Kind == OriginKind.Inference && this.OpenInitializerInference(shorter, use) is { } pending)
+        // An open region holds no Loans, so a value fitted into it would lose its Loans: such a fit is never proven here.
+        if (shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
         {
             // SPEC 15.4.4: an Origin omitted in a local annotation or initializer Type expression is
             // inferred from the values fitted to it: each one bounds it, and the relation is proven again once the local's
