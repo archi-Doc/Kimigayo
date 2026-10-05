@@ -182,11 +182,11 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     // SPEC 15.6.5, PLAN G56: a call whose argument would store a borrow into a body Origin needs region-inference Loan edges, so it
     // stays the located limit at the argument; it is never accepted, also where the stored borrow would dangle. A generic `put<T>`
-    // takes the meet of both Origins for T (Type-argument inference keeps a covariant meet), so its exclusive target does not fit.
+    // solves T from its exclusive target, an invariant binding (SPEC 10.8), so the stored value is the argument that does not fit.
     [Theory]
     [InlineData("func put(anchor: ref/i32, target: uniq/(ref/i32 during anchor)) -> () => ()\nfunc f() -> ()\n    let a = 1\n    let c = 3\n    var slot: ref/i32 = c@ref\n    put(a@ref, slot@uniq)\n    Console.writeLine(\"\\(slot@follow)\")\n", "a@ref")]
-    [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    let b = 2\n    var slot = a@ref\n    put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "slot@uniq")]
-    [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    var slot = a@ref\n    if true\n        let b = 2\n        put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "slot@uniq")]
+    [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    let b = 2\n    var slot = a@ref\n    put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "b@ref")]
+    [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    var slot = a@ref\n    if true\n        let b = 2\n        put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "b@ref")]
     [InlineData("func put(target: uniq/(ref/i32 during o), value: ref/i32 during o) -> () => ()\nfunc g(x: ref/i32) -> i32\n    let local = 1\n    var slot = local@ref\n    put(slot@uniq, x)\n    return slot@follow\n", "x")]
     public void CallsThatStoreIntoBodyOriginsAreALocatedLimit(string body, string text)
     {

@@ -61,6 +61,43 @@ public sealed partial class Binding
         return false;
     }
 
+    // The input, other than the failing one, whose parameter names the callee's Type parameter `slot` and whose adapted Type carries
+    // `value`, the Origin of the slot's solution: the input whose invariant binding fixed it. Receiver first, then the arguments.
+    private static Koto? SlotEqualitySource(in CallFit context, BoundType slot, BoundOrigin value)
+    {
+        for (var n = 0; n <= context.ArgumentCount; n++)
+        {
+            var i = n == 0 ? context.ArgumentCount : n - 1;
+            var operation = context.Operations[i];
+            if (operation is { Source: { } source, AdaptedType: { } adapted } && !ReferenceEquals(source, context.At) &&
+                operation.ParameterIndex >= 0 && operation.ParameterIndex < context.Selected.Parameters.Count &&
+                context.Selected.Parameters[operation.ParameterIndex].Type.BoundType is { } pattern && MentionsSlot(pattern, slot.Symbol!) && MentionsOrigin(adapted, value))
+            {
+                return source;
+            }
+        }
+
+        return null;
+
+        static bool MentionsSlot(BoundType type, BindingSymbol symbol)
+        {
+            if (type.Kind == BoundTypeKind.Parameter && ReferenceEquals(type.Symbol, symbol))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (MentionsSlot(type.Components[i], symbol))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     // SPEC 15.6.1, 15.6.5, 10.1: applicability uses only the structural part of each fit, so the Origin relations of the selected
     // candidate are judged here, after selection and at their own sources: the receiver's and each argument's fit to its completed
     // parameter Type, then each substituted clause. Refuted and Unknown relations are UnsatisfiedOriginRelation_Kd and
@@ -132,17 +169,23 @@ public sealed partial class Binding
 
         var pattern = operation.ParameterIndex >= 0 && operation.ParameterIndex < selected.Parameters.Count ? selected.Parameters[operation.ParameterIndex].Type.BoundType : null;
         var context = new CallFit(selected, operations, argumentCount, at, parameter);
-        this.CollectCallRelations(adapted, parameter, pattern, false, context, 0);
+        this.CollectCallRelations(adapted, parameter, pattern, false, context, 0, null);
     }
 
     // SPEC 15.6.1: the Origin positions of a fit, in the order of the outer borrow layer, the Semantics target, then slots and Type
     // arguments, each with the variance of the relation table; `pattern` follows the uninstantiated parameter while it has the same
-    // structure, so that a fresh Origin's equality can be related to the input that fixed it.
-    private void CollectCallRelations(BoundType actual, BoundType expected, BoundType? pattern, bool invariant, in CallFit context, int depth)
+    // structure, so that a fresh Origin's equality can be related to the input that fixed it; `slot` is the callee's Type parameter
+    // whose solution holds the positions below it, so that an equality with that solution is related to the input that fixed it.
+    private void CollectCallRelations(BoundType actual, BoundType expected, BoundType? pattern, bool invariant, in CallFit context, int depth, BoundType? slot)
     {
         if (depth > 64 || actual.Kind == BoundTypeKind.Function || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return; // SPEC 10.7: a Function Type is a whole contract, compared during applicability.
+        }
+
+        if (pattern is { Kind: BoundTypeKind.Parameter, Symbol: { } parameter } && ContainerSlot(context.Selected, parameter) >= 0)
+        {
+            slot = pattern;
         }
 
         if (pattern is not null && (pattern.Kind != actual.Kind || pattern.Components.Count != actual.Components.Count || pattern.OriginArguments.Count != actual.OriginArguments.Count))
@@ -152,13 +195,13 @@ public sealed partial class Binding
 
         if (actual.Origin is { } longer && expected.Origin is { } shorter)
         {
-            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern?.Origin, null, context: context);
+            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern?.Origin, null, context: context, slot: slot);
         }
 
         var exclusive = actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw;
         for (var i = 0; i < actual.Components.Count && actual.Kind == BoundTypeKind.Semantics; i++)
         {
-            this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, depth + 1);
+            this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, depth + 1, slot);
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -167,11 +210,11 @@ public sealed partial class Binding
             var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
             if (both || variance == OriginVariance.Covariant)
             {
-                this.JudgeCallPosition(context.At, actual.OriginArguments[i], expected.OriginArguments[i], both, pattern?.OriginArguments[i], null, context: context);
+                this.JudgeCallPosition(context.At, actual.OriginArguments[i], expected.OriginArguments[i], both, pattern?.OriginArguments[i], null, context: context, slot: slot);
             }
             else
             {
-                this.JudgeCallPosition(context.At, expected.OriginArguments[i], actual.OriginArguments[i], false, pattern?.OriginArguments[i], null, context: context);
+                this.JudgeCallPosition(context.At, expected.OriginArguments[i], actual.OriginArguments[i], false, pattern?.OriginArguments[i], null, context: context, slot: slot);
             }
         }
 
@@ -183,27 +226,27 @@ public sealed partial class Binding
                 var variance = schema.GenericSlots[i].OriginVariance;
                 if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused)
                 {
-                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, true, context, depth + 1);
+                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, true, context, depth + 1, slot);
                 }
                 else if (variance == OriginVariance.Covariant)
                 {
-                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, false, context, depth + 1);
+                    this.CollectCallRelations(actual.Components[i], expected.Components[i], part, false, context, depth + 1, slot);
                 }
                 else
                 {
-                    this.CollectCallRelations(expected.Components[i], actual.Components[i], null, false, context, depth + 1);
+                    this.CollectCallRelations(expected.Components[i], actual.Components[i], null, false, context, depth + 1, slot);
                 }
 
                 continue;
             }
 
-            this.CollectCallRelations(actual.Components[i], expected.Components[i], part, invariant, context, depth + 1);
+            this.CollectCallRelations(actual.Components[i], expected.Components[i], part, invariant, context, depth + 1, slot);
         }
     }
 
     // SPEC 15.6.5: judges `longer outlives shorter` (and the reverse for `==`) at `at`. A meet at the longer end decomposes, so each
     // failing operand is its own record (SPEC 15.3.6).
-    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default)
+    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null)
     {
         if (ReferenceEquals(longer, shorter))
         {
@@ -214,7 +257,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context);
+                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context, slot);
             }
 
             return;
@@ -224,8 +267,11 @@ public sealed partial class Binding
         var backward = !equality || this.ProvesOriginOutlives(shorter, longer, at) ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at);
         if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
         {
-            // An equality fails as one `==` record; a fresh Origin fixed by another input relates that input (SPEC 15.6.1, Location).
-            var fixedBy = clause is null && equality && variable is not null && context.Operations.Length != 0 ? this.EqualitySource(context, variable, shorter) : null;
+            // An equality fails as one `==` record; a fresh Origin or a Type slot fixed by another input relates that input (SPEC 15.6.1,
+            // Location; SPEC 10.8: the first invariant binding of a slot is its solution).
+            var fixedBy = clause is not null || !equality || context.Operations.Length == 0 ? null
+                : variable is not null ? this.EqualitySource(context, variable, shorter)
+                : slot is not null ? SlotEqualitySource(context, slot, shorter) : null;
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
             this.callRelationScratch.Add((at, new(at, longer, shorter, equality, declared ? null : context.Parameter, refuted, declared ? clause : null, Substituted: declared, FixedBy: fixedBy)));
             return;

@@ -143,6 +143,9 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<BoundDefaultArgument> defaultArgumentScratch = new();
 
+    // SPEC 10.8, 15.3.6: the Type slots (below 64) of the candidate being evaluated whose binding comes from an invariant position.
+    private ulong invariantSlots;
+
     private static Koto? IncompleteSignature(FunctionKoto function)
     {
         if (function.ReturnType is { BindingState: not BindingState.Resolved } result)
@@ -1083,7 +1086,22 @@ public sealed partial class Binding
         return proof;
     }
 
+    // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ClosureReceiverRefutation? closureReceiver)
+    {
+        var saved = this.invariantSlots;
+        this.invariantSlots = 0;
+        try
+        {
+            return this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out closureReceiver);
+        }
+        finally
+        {
+            this.invariantSlots = saved;
+        }
+    }
+
+    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ClosureReceiverRefutation? closureReceiver)
     {
         defaultsUsed = 0;
         closureReceiver = null;
@@ -1276,14 +1294,17 @@ public sealed partial class Binding
         if (placeExpected is not null && function.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placePattern)
         {
             var stored = this.MemberType(self is null ? placePattern.Components[0] : this.ContractType(placePattern.Components[0], scope, self), declaringType)!;
-            this.Infer(stored, placeExpected, function, arguments, lengths: lengths);
+            this.Infer(stored, placeExpected, function, arguments, true, lengths);
         }
         else if (expected is not null && function.BoundSymbol?.Type is { } returnPattern)
         {
             // Result expectations use the selected receiver's container Origins, just like inputs.
             // An abstract container binder must not become a rigid call-site lifetime constraint.
             returnPattern = this.MemberType(self is null ? returnPattern : this.ContractType(returnPattern, scope, self), declaringType)!;
-            this.Infer(returnPattern, expected, function, arguments, lengths: lengths);
+
+            // SPEC 10.1 step 4, 15.6.1: the expected result fills the still-unbound slots by its structure; its Origin relations to
+            // the completed result are judged at the destination.
+            this.Infer(returnPattern, expected, function, arguments, true, lengths);
             this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
             if (returnPattern.CarriesOrigin)
             {
@@ -1713,7 +1734,7 @@ public sealed partial class Binding
             }
 
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null, structural: pattern.Kind == BoundTypeKind.Function, evidence: known);
+            return this.Infer(pattern, actual, function, arguments, true, lengths, generic is null, structural: pattern.Kind == BoundTypeKind.Function, evidence: known, relateLater: true);
         }
 
         bool InferClosureHeader(BoundType signature, FunctionKoto literal)
@@ -1832,7 +1853,10 @@ public sealed partial class Binding
     // Its structure and Semantics are evidence, and its Origins are not compared: applicability judges no Origin part (SPEC 15.6.1),
     // and the argument fits the substituted parameter after selection. An Origin the signature itself quantifies, such as a per-call
     // input, lies beyond the call and never solves an Origin in a slot: it becomes an open region that other evidence fills.
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null)
+    // With `relateLater`, the actual is a value's Type whose Origin relations to the solution are judged after selection (SPEC 15.6.1),
+    // so Origin evidence never fails a structurally equal slot binding; `invariant` marks a position below an exclusive layer or an
+    // invariant schema slot.
+    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
     {
         // A Never-valued expression supplies no input value; a Never Type inside a known signature is exact evidence.
         if (!structural && ReferenceEquals(actual, BoundType.Never))
@@ -1857,18 +1881,18 @@ public sealed partial class Binding
 
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence);
+                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence);
+                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant || whole.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw);
         }
 
         // SPEC 3.1.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence);
+            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
@@ -1908,6 +1932,30 @@ public sealed partial class Binding
                     actual = this.FillOpenOrigins(actual, previous, true);
                 }
 
+                if (relateLater && !structural && !ReferenceEquals(previous, actual) && FitsStructurally(actual, previous) && FitsStructurally(previous, actual))
+                {
+                    // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
+                    // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
+                    // kept over covariant ones and the first invariant one over later ones, whatever the argument order, and covariant
+                    // bindings meet.
+                    var bit = slot < 64 ? 1UL << slot : 0UL;
+                    if (!commonOrigins || (this.invariantSlots & bit) != 0)
+                    {
+                        arguments[slot] = previous;
+                    }
+                    else if (invariant && bit != 0)
+                    {
+                        arguments[slot] = actual;
+                        this.invariantSlots |= bit;
+                    }
+                    else
+                    {
+                        arguments[slot] = FitsType(actual, previous) ? previous : this.CommonOriginType(previous, actual) ?? previous;
+                    }
+
+                    return true;
+                }
+
                 // SPEC 10.8: structural matching compares normalized Types, so two spellings of one Function Type, whose per-call
                 // inputs have distinct binders, are one binding.
                 if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && FitsType(actual, previous)) ||
@@ -1927,6 +1975,11 @@ public sealed partial class Binding
             }
 
             arguments[slot] = actual;
+            if (relateLater && invariant && slot < 64)
+            {
+                this.invariantSlots |= 1UL << slot;
+            }
+
             return true;
         }
 
@@ -1952,7 +2005,9 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence))
+            var below = invariant || pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ||
+                (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
+            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, below))
             {
                 return false;
             }
