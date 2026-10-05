@@ -9,6 +9,15 @@ namespace Kimi.Compiler;
 /// scope of a body.</summary>
 public sealed partial class Binding
 {
+    /// <summary>Tells whether a pair layer is invariant in its target (SPEC 15.3.5): its binder admits <c>uniq</c>, <c>obj</c>,
+    /// <c>objuniq</c> or <c>raw</c>, so a relation between its targets must hold as an equality in a generic body; the admitted set
+    /// is the binder's own, from its declaring scope.</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>Whether <paramref name="type"/> is a pair layer with an invariant admitted Semantics.</returns>
+    internal bool InvariantAdmitted(BoundType type)
+        => TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } &&
+            (this.AdmittedSemantics(whole, scope) & (SemanticsMask.Uniq | SemanticsMask.Obj | SemanticsMask.ObjUniq | SemanticsMask.Raw)) != 0;
+
     /// <summary>Gets the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1): one fixed Origin per pair binder, shared by every
     /// occurrence of the original <c>s/T</c>, present only in the admitted borrow cases and never written in source. The whole Type
     /// itself keeps no Origin; this atom is the binder's and is obtained only through <see cref="OuterOrigin"/>.</summary>

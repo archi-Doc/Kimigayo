@@ -52,7 +52,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < left.Components.Count; i++)
             {
-                var covariant = left.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw) &&
+                var covariant = !IsInvariantLayer(left, this) &&
                     !(left.Kind == BoundTypeKind.Function && i == 0) &&
                     (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
                 if ((covariant ? this.CommonOriginType(left.Components[i], right.Components[i]) : ReferenceEquals(left.Components[i], right.Components[i]) ? left.Components[i] : null) is not { } part)
@@ -85,6 +85,12 @@ public sealed partial class Binding
 
     // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
     // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
+    // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
+    // layer whose binder admits one of them (InvariantAdmitted), since a relation between pair layers must hold for every admitted
+    // Semantics. A comparison without a Binding sees only the concrete layers.
+    private static bool IsInvariantLayer(BoundType type, Binding? binding)
+        => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type));
+
     // Callable comparison whose per-call Origins the parts are compared under; `structural` treats Origin bindings as equal outside
     // Function Types, and `everywhere` inside them too.
     private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null, bool structural = false, bool everywhere = false)
@@ -148,7 +154,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
+            if (invariant || IsInvariantLayer(actual, binding))
             {
                 if (!FitsTypeCore(a, b, binding, use, true, instance: instance, structural: structural, everywhere: everywhere))
                 {
@@ -301,8 +307,8 @@ public sealed partial class Binding
             return (instance.Instantiate(a), instance.Instantiate(b), invariant);
         }
 
-        var exclusive = longer.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
-        for (var i = 0; i < longer.Components.Count && longer.Kind == BoundTypeKind.Semantics; i++)
+        var exclusive = longer.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || this.InvariantAdmitted(longer);
+        for (var i = 0; i < longer.Components.Count && longer.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
         {
             if (this.FailedInstancePart(longer.Components[i], shorter.Components[i], invariant || exclusive, instance, use, depth + 1) is { } target)
             {
@@ -377,7 +383,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
+            if (IsInvariantLayer(actual, this))
             {
                 if (!ReferenceEquals(actual.Components[i], expected.Components[i]))
                 {

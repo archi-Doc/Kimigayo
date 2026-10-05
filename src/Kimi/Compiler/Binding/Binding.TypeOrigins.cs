@@ -329,7 +329,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
+            var sign = IsInvariantLayer(type, this) ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (type.Kind == BoundTypeKind.Constructed && declared is { } target && i < target.GenericSlots.Count)
             {
                 var variance = target.GenericSlots[i].OriginVariance;

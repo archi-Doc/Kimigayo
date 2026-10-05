@@ -710,7 +710,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)
             {
-                var component = pattern.Kind == BoundTypeKind.Semantics ? (pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? OriginVariance.Invariant : OriginVariance.Covariant)
+                var component = pattern.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication ? (IsInvariantLayer(pattern, this) ? OriginVariance.Invariant : OriginVariance.Covariant)
                     : pattern.Kind == BoundTypeKind.Function && pattern.Components.Count == 2 ? (i == 0 ? OriginVariance.Contravariant : OriginVariance.Covariant)
                     : pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
                     : OriginVariance.Covariant;

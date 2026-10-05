@@ -47,7 +47,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
-            var sign = pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? 0 :
+            var sign = IsInvariantLayer(pattern, this) ? 0 :
                 pattern.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema)
             {

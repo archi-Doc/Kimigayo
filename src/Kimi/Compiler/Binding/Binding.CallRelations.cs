@@ -198,8 +198,8 @@ public sealed partial class Binding
             this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern?.Origin, null, context: context, slot: slot);
         }
 
-        var exclusive = actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw;
-        for (var i = 0; i < actual.Components.Count && actual.Kind == BoundTypeKind.Semantics; i++)
+        var exclusive = IsInvariantLayer(actual, this);
+        for (var i = 0; i < actual.Components.Count && actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
         {
             this.CollectCallRelations(actual.Components[i], expected.Components[i], pattern?.Components[i], invariant || exclusive, context, depth + 1, slot);
         }

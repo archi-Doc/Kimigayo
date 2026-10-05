@@ -2244,7 +2244,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            var below = invariant || pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ||
+            var below = invariant || IsInvariantLayer(pattern, this) ||
                 (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
             if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, below))
             {

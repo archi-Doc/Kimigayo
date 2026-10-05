@@ -1484,8 +1484,8 @@ public sealed partial class Binding
             first ??= layer;
         }
 
-        var exclusive = actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw;
-        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind == BoundTypeKind.Semantics; i++)
+        var exclusive = IsInvariantLayer(actual, this);
+        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
         {
             var target = exclusive ? OriginVariance.Invariant : polarity;
             if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, target, depth + 1, judged, all) is { } failed)
@@ -1513,7 +1513,7 @@ public sealed partial class Binding
             }
         }
 
-        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind != BoundTypeKind.Semantics; i++)
+        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind is not (BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication); i++)
         {
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
                 : actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2 && i == 0 ? OriginVariance.Contravariant
