@@ -158,6 +158,9 @@ internal enum BindingFailure : byte
     // SPEC 7.3: value.method without invocation forms no bound-method value.
     BoundMethodValue,
 
+    // SPEC 15.6.1: a fit whose structural part holds and whose Origin part is Refuted or not proven.
+    OriginRelation,
+
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,
@@ -532,3 +535,7 @@ public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount,
 /// <summary>A validated <c>#LibraryImport</c> declaration: its external symbol and the supply kind that
 /// selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.8.2.1, 22.3).</summary>
 internal readonly record struct LibraryImport(FunctionKoto Function, string Library, string Symbol, string Kind);
+
+/// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
+/// position, at the value that supplies the longer end; <c>Refuted</c> when the longer end is a body-local finite Origin.</summary>
+internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted);

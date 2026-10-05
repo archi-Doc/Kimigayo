@@ -462,6 +462,7 @@ public sealed partial class Binding
 
         var suppliedValue = types.Count > 0;
         var common = context.Expected;
+        BoundType? failed = null;
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
@@ -469,16 +470,22 @@ public sealed partial class Binding
         }
         else
         {
+            // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
+            // is the explained one, an Origin relation when only its Origin part fails.
             for (var i = 0; i < types.Count; i++)
             {
-                context.Invalid |= !FitsType(types[i], common);
+                if (!this.FitsTypeAt(types[i], common, node))
+                {
+                    context.Invalid = true;
+                    failed ??= types[i];
+                }
             }
         }
 
         types.Clear();
         if (context.Invalid)
         {
-            return this.Fail(node, BindingFailure.TypeMismatch);
+            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common) : this.Fail(node, BindingFailure.TypeMismatch);
         }
 
         if (context.Pending)

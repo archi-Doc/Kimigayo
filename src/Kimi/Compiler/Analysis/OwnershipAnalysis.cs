@@ -93,11 +93,10 @@ public sealed partial class OwnershipAnalysis
             return this.Result;
         }
 
-        if (this.UnprovenOriginObligation() is { } unproven)
+        if (this.ReportUnprovenOriginObligations())
         {
-            // An unchecked Origin obligation rejects the program with a diagnostic at its use, never silently.
-            this.issues.Add(new(unproven, OwnershipFailure.UnprovenOrigin));
-            return this.Result = new(false, 0, 1, 0);
+            // An unchecked Origin obligation that is not a relation rejects the program with a diagnostic at its use, never silently.
+            return this.Result = new(false, 0, this.issues.Count, 0);
         }
 
         foreach (var module in this.compilation.SourceModules)
@@ -205,6 +204,18 @@ public sealed partial class OwnershipAnalysis
             if (issue.Failure == OwnershipFailure.CallEffectConflict)
             {
                 ReportCallEffect(issue);
+                continue;
+            }
+
+            if (issue.Failure == OwnershipFailure.UnprovenOrigin && issue.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } obligation)
+            {
+                // SPEC 15.6.1: a fit's relation is reported at the value that supplies the longer end; a well-formedness relation
+                // at its Type occurrence.
+                var fit = obligation.Type is null || ReferenceEquals(obligation.Type.Origin, shorter);
+                var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
+                var relation = new OriginRelationFact(at, longer, shorter, false, obligation.Type, Binding.RefutesOriginRelation(longer, shorter));
+                var (evidence, advice, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : "wellFormed");
+                at.Report(requirement, issue.Code, note: Note(null), evidence: evidence, advice: advice, related: Locations(related), condition: Condition(issue));
                 continue;
             }
 

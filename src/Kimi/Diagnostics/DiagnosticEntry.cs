@@ -164,6 +164,7 @@ public partial record class DiagnosticEntry
             DiagnosticValueKind.Enumeration => value is Enum e && Enum.IsDefined(e.GetType(), e),
             DiagnosticValueKind.Text => value is not null,
             DiagnosticValueKind.Requirement => value is DiagnosticRequirement requirement && DiagnosticRequirements.TryGetPhrase(requirement, out _),
+            DiagnosticValueKind.Origin => value is DiagnosticOrigin { Kind: "expression" or "borrow" or "omitted" or "closure" },
             _ => false,
         };
         if (!valid)

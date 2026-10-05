@@ -8,38 +8,63 @@ public sealed partial class OwnershipAnalysis
 {
     internal bool SupportsOriginObligations() => this.UnprovenOriginObligation() is null;
 
+    // SPEC 15.6.1: every Origin obligation that Binding left unproven and this analysis cannot check is its own record, reported
+    // without adding constraints. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it;
+    // any other unchecked obligation, such as an unsolved inference, stops the analysis.
+    private bool ReportUnprovenOriginObligations()
+    {
+        var obligations = this.compilation.Binding.Obligations;
+        var stop = false;
+        for (var i = 0; i < obligations.Count; i++)
+        {
+            if (this.UncheckedOriginObligation(obligations[i]))
+            {
+                this.issues.Add(new(obligations[i].Use, OwnershipFailure.UnprovenOrigin, Obligation: obligations[i]));
+                stop |= obligations[i] is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
+            }
+        }
+
+        return stop;
+    }
+
     // The use of the first Origin obligation that Binding left unproven and this analysis cannot check, or null.
     private Koto? UnprovenOriginObligation()
     {
         var obligations = this.compilation.Binding.Obligations;
         for (var i = 0; i < obligations.Count; i++)
         {
-            var obligation = obligations[i];
-            if (this.compilation.Binding.IsVerifiedLengthObligation(obligation))
+            if (this.UncheckedOriginObligation(obligations[i]))
             {
-                continue; // Definition conditions and each call's substituted lengths were checked by Binding.
-            }
-
-            if (this.compilation.Binding.IsVerifiedOriginObligation(obligation))
-            {
-                continue;
-            }
-
-            // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
-            // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
-            // nested dependencies, including drop uses, in VerifyBorrows.
-            if (obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins ||
-                obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
-                (uint)outer.Slot >= (uint)function.Parameters.Count ||
-                function.Parameters[outer.Slot].Type.BoundType is not { } input || !(ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) ||
-                !ReferenceEquals(input.Origin, outer) || !ReferenceEquals(input.Components[0], obligation.Type) ||
-                !(input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer)))
-            {
-                return obligation.Use;
+                return obligations[i].Use;
             }
         }
 
         return null;
+    }
+
+    private bool UncheckedOriginObligation(in BindingObligation obligation)
+    {
+        if (this.compilation.Binding.IsVerifiedLengthObligation(obligation))
+        {
+            return false; // Definition conditions and each call's substituted lengths were checked by Binding.
+        }
+
+        if (this.compilation.Binding.IsVerifiedOriginObligation(obligation) ||
+            (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } &&
+            !this.compilation.Binding.OriginRelationFails(longer, shorter, obligation.Use)))
+        {
+            return false;
+        }
+
+        // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
+        // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
+        // nested dependencies, including drop uses, in VerifyBorrows.
+        return obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins ||
+            obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
+            (uint)outer.Slot >= (uint)function.Parameters.Count ||
+            function.Parameters[outer.Slot].Type.BoundType is not { } input || !(ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) ||
+            !ReferenceEquals(input.Origin, outer) || !ReferenceEquals(input.Components[0], obligation.Type) ||
+            !(input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer));
     }
 
     private int BorrowStruct(Koto source, BoundType type, int reservation = -1)

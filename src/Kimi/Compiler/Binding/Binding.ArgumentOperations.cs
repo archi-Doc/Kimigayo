@@ -681,6 +681,14 @@ public sealed partial class Binding
     private BoundOrigin? FollowedOrigin(Koto reference)
         => reference.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin: { } origin } ? this.PathReborrowOrigin(reference, origin) : reference.BoundType?.Origin;
 
+    // SPEC 13.5.5.2, 15.6.5: a borrow of a slot that stores a reference depends on that slot. A slot reached through a reference
+    // keeps that reference's dependencies, whereas the own slot of a local, a parameter or a temporary ends with the body.
+    private BoundOrigin SlotOrigin(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is var slot &&
+            (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } ||
+            (slot is InvocationKoto && ElementAccess.PlaceCallReference(slot) is null && ElementAccess.IndexerCall(slot, false) is null))
+            ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source);
+
     private BoundOrigin PlaceOrigin(Koto source)
     {
         if (this.ReadsReferent(source))
@@ -972,7 +980,7 @@ public sealed partial class Binding
             referent = actual;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
-            adapted = this.InternType(BoundTypeKind.Semantics, null, target, [referent], origin: this.PlaceOrigin(source));
+            adapted = this.InternType(BoundTypeKind.Semantics, null, target, [referent], origin: this.SlotOrigin(source));
             return true;
         }
 

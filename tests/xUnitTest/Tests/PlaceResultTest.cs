@@ -44,7 +44,7 @@ public class PlaceResultTest
     [InlineData("func bad(values: ref/Array<i32>) -> place uniq/i32 during values\n    return values[0]", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func bad(values: ref/Array<i32>) -> place ref/i32 during values\n    return if true => values[0] else => values[1]", DiagnosticCode.PlaceRequired_Kd)]
     [InlineData("func bad() -> place ref/i32 during static => 42", DiagnosticCode.PlaceRequired_Kd)]
-    [InlineData("func make() -> Array<i32> => [1]\nfunc bad() -> place ref/i32 during static\n    return make()[0]", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("func make() -> Array<i32> => [1]\nfunc bad() -> place ref/i32 during static\n    return make()[0]", DiagnosticCode.UnsatisfiedOriginRelation_Kd)]
     [InlineData(First + "let f: (ref/Array<i32>) -> place ref/i32 = first", DiagnosticCode.UnsupportedBinding_Kd)]
     [InlineData("let g = func (values: ref/Array<i32>) -> place ref/i32 => values[0]", DiagnosticCode.UnsupportedBinding_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)

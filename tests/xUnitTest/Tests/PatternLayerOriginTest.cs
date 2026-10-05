@@ -16,7 +16,7 @@ public class PatternLayerOriginTest
     {
         var c = MinimalEmissionTest.Analyze("func f(" + Parameter + ") -> ref/i32 during b\n    match r\n        .Some(let v) => return v\n        .None => $abort(\"none\")");
         var issue = Assert.Single(c.Binding.Issues);
-        Assert.Equal(DiagnosticCode.TypeMismatch_Kd, issue.Code);
+        Assert.Equal(DiagnosticCode.UnprovenOriginRelation_Kd, issue.Code);
         Assert.Empty(c.AnalyzeControlFlow().Issues); // The failed return reports no dependent result mismatch.
     }
 

@@ -212,7 +212,7 @@ public readonly record struct OwnershipLending(Koto Input, Koto Call);
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
-    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null)
+    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -224,7 +224,9 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
             this.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
         OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
         OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-        OwnershipFailure.UnprovenOrigin => DiagnosticCode.UnprovenConstraint_Kd,
+        OwnershipFailure.UnprovenOrigin => this.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter }
+            ? Binding.RefutesOriginRelation(longer, shorter) ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd
+            : DiagnosticCode.UnprovenConstraint_Kd,
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,

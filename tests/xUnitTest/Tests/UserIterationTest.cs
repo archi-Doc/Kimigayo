@@ -206,7 +206,8 @@ public class UserIterationTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+            // SPEC 15.6.1: a ∧ b outlives a only under a premise that b outlives a, which no input supplies.
+            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOriginRelation_Kd);
         }
     }
 

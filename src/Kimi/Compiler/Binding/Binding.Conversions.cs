@@ -489,7 +489,7 @@ public sealed partial class Binding
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
-                var storage = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.PlaceOrigin(conversion.Left));
+                var storage = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
                 Complete(conversion.Right, storage);
                 conversion.ConversionBinding = ConversionBinding.Borrow;
                 return Complete(conversion, storage);

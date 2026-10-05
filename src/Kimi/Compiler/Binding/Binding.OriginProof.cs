@@ -23,6 +23,36 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
+    // fixed Origins. A chain with a finite Origin or an inferred region at one end is otherwise Proven: it constrains region
+    // inference, and ownership analysis checks the Loans of those Borrows.
+    internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use)
+    {
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        return RefutesOriginRelation(longer, shorter) || (FixedOrigin(longer) && FixedOrigin(shorter));
+    }
+
+    // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
+    // static, or a meet of them.
+    private static bool FixedOrigin(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (!FixedOrigin(origin.Operands[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
+    }
+
     private static bool IsWithin(Koto use, Koto declaration)
     {
         for (var current = use; current is not null; current = current.Parent)

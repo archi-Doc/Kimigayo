@@ -585,6 +585,9 @@
   + Name="Binding.BoundMethodValue"
     Description="a method is referenced as a value only through its Type, as an unbound reference"
 
+  + Name="Binding.OriginRelation"
+    Description="the Origin relation of a fit holds"
+
   + Name="Binding.BareOwningShorthand"
     Description="the owning shorthand names a Type"
 

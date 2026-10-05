@@ -221,6 +221,9 @@ public enum DiagnosticCode
     TryPayloadMismatch_Kd,
     UnboundTypeArgument_Kd,
     BoundMethodValue_Kd,
+    UnsatisfiedOriginRelation_Kd,
+    UnprovenOriginRelation_Kd,
+    UnprovenOriginContract_Kd,
 
     Count, // Last sentinel
 }

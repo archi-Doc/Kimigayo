@@ -43,7 +43,7 @@ public class BorrowedSlotReferenceTest
     {
         var source = "struct H {a}\n    public let item: ref/i32 during a\n    public init(item: ref/i32 during a) => self.item = item\nfunc pick(p: ref/H, q: ref/i32) -> ref/(ref/i32 during q) during p => p.item@ref\npublic func main() => ()\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.UnprovenOriginRelation_Kd), error.Code);
         Assert.Equal("p.item@ref", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
     }
 

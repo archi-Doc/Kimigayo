@@ -262,7 +262,7 @@ public sealed class DiagnosticOwner
     }
 
     internal static object? Capture(object? value)
-        => value is null or string or bool or Enum or DiagnosticRequirement or byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal or float or double
+        => value is null or string or bool or Enum or DiagnosticRequirement or DiagnosticOrigin or byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal or float or double
             ? value : value.ToString();
 
     internal static object?[]? Capture(object?[]? values)
@@ -478,6 +478,14 @@ public sealed class DiagnosticOwner
         _ => value?.ToString() ?? string.Empty,
     };
 
+    // SPEC 23.3.6.5: the borrow `local@ref`, the omitted Origin of `View<T>`, the closure's call receiver.
+    private static string OriginPhrase(string kind, string text) => kind switch
+    {
+        "borrow" => "the borrow " + text,
+        "omitted" => "the omitted Origin of " + text,
+        _ => "the closure's " + text,
+    };
+
     // SPEC 23.3.6.2, 23.3.6.5: the code's facts, typed by its catalog schema (arguments, then evidence) and bounded once here;
     // the message and the label display the bounded values. The Types of one record are bounded as a pair.
     private static (DiagnosticValue[]? Reason, string Message, string? Label) Describe(DiagnosticEntry entry, in DiagnosticFact fact)
@@ -506,13 +514,15 @@ public sealed class DiagnosticOwner
                 firstType = firstType < 0 ? i : firstType;
             }
 
-            var (bounded, elided) = parameter.Kind == DiagnosticValueKind.Text ? DiagnosticText.Bound(full[i]) : (full[i], false);
-            values[i] = new(parameter.Name, parameter.Kind, bounded, elided);
+            var (bounded, elided) = parameter.Kind is DiagnosticValueKind.Text or DiagnosticValueKind.Origin ? DiagnosticText.Bound(full[i]) : (full[i], false);
+            values[i] = new(parameter.Name, parameter.Kind, bounded, elided, value is DiagnosticOrigin origin ? origin.Kind : null);
             // A requirement is an exact fact by its stable name; the message and label display its phrase.
             shown[i] = parameter.Kind switch
             {
                 DiagnosticValueKind.Number => value,
                 DiagnosticValueKind.Requirement when value is DiagnosticRequirement requirement && DiagnosticRequirements.TryGetPhrase(requirement, out var phrase) => phrase,
+                // SPEC 23.3.6.5: a borrow, omitted or closure string is named as such, never as an Origin expression.
+                DiagnosticValueKind.Origin when value is DiagnosticOrigin { Kind: not "expression" } display => OriginPhrase(display.Kind, bounded),
                 _ => bounded,
             };
         }

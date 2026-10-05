@@ -965,3 +965,21 @@
     Evidence="method:Text"
     Label="'{0}' is named through a value"
     Advice="Reference the method through its Type, as in Counter.peek, and pass the receiver as an argument, or write an anonymous function that calls the method"
+
+  + Name="UnsatisfiedOriginRelation_Kd"
+    Category="Language"
+    Message="The Origin relation that this position requires does not hold"
+    Evidence="relation:Text,longer:Origin,shorter:Origin,source:Text,destination:Type"
+    Label="requires {1} {0} {2}, which is false"
+
+  + Name="UnprovenOriginRelation_Kd"
+    Category="Proof"
+    Message="The Origin relation that this position requires is not proven"
+    Evidence="relation:Text,longer:Origin,shorter:Origin,source:Text,destination:Type"
+    Label="requires {1} {0} {2}, which is not proven"
+
+  + Name="UnprovenOriginContract_Kd"
+    Category="Proof"
+    Message="This implementation's Origin contract is not proven to admit every call of the required contract and provide its result guarantees"
+    Evidence="comparison:Text,member:Text,relation:Text,longer:Origin,shorter:Origin"
+    Label="{1} requires {3} {2} {4}, which is not proven"

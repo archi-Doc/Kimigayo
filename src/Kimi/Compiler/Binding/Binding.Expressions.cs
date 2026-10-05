@@ -1457,7 +1457,8 @@ public sealed partial class Binding
             left = right;
         }
 
-        if (!Compatible(right, left))
+        // SPEC 15.6.1: an assignment's Origin part is judged under the premises in scope, such as `origin other outlives anchor`.
+        if (comparison ? !Compatible(right, left) : !this.FitsTypeAt(right, left, binary))
         {
             if (comparison && this.CommonOriginType(left, right) is { } common)
             {

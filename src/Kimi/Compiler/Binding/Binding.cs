@@ -699,6 +699,10 @@ public sealed partial class Binding
         {
             ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
         }
+        else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
+        {
+            ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.BorrowOriginHint(issue.Node));
+        }
         else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
         {
             ReportArity(issue.Node, arity, requirement, issue.Code);
@@ -866,6 +870,7 @@ public sealed partial class Binding
                     BindingFailure.ParameterShapeMismatch => DiagnosticCode.ParameterShapeMismatch_Kd,
                     BindingFailure.UnboundTypeArgument => DiagnosticCode.UnboundTypeArgument_Kd,
                     BindingFailure.BoundMethodValue => DiagnosticCode.BoundMethodValue_Kd,
+                    BindingFailure.OriginRelation => this.OriginRelationCode(node),
                     BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,

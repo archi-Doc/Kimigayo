@@ -46,6 +46,9 @@ public sealed partial class Binding
     // SPEC 23.3.6.2: the Types a mismatch compared and the syntax that shows it, recorded only when a check fails.
     private Dictionary<Koto, (Koto At, object Actual, object Expected)>? mismatches;
 
+    // SPEC 15.6.1: the Origin relation that an Origin-only fit failure leaves, at the value that supplies its longer end.
+    private Dictionary<Koto, OriginRelationFact>? originRelations;
+
     // SPEC 13.2, 13.3: the operand Type an operator rejected, or the count Type a shift rejected, recorded only when the check fails.
     private Dictionary<Koto, BoundType>? operatorOperands;
 
@@ -70,6 +73,149 @@ public sealed partial class Binding
     private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
 
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false);
+
+    // SPEC 15.6.1, 23.3.6.5: the Reason facts, Advice and related locations of an Origin relation record, shared by every phase that
+    // reports one; `source` is `fit` for a fit and `wellFormed` for a Type occurrence.
+    internal static (object[] Evidence, string Advice, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
+    {
+        // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location.
+        var borrow = BorrowSource(relation.At, relation.Longer);
+        var longer = OriginDisplay(relation.Longer, borrow);
+        var shorter = OriginDisplay(relation.Shorter, null);
+        var operation = relation.Equality ? "==" : "outlives";
+        var destination = relation.Destination is not { } type ? $"during {shorter.Text}"
+            : ReferenceEquals(type.Origin, relation.Shorter) ? $"{DiagnosticTypeName(type)} during {shorter.Text}" : DiagnosticTypeName(type);
+        var advice = OriginRelationAdvice(relation, longer, shorter, source);
+        // SPEC 23.3.6.5: a borrow or omitted end is also related at its syntax.
+        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? relation.Longer.Occurrence : null;
+        var shorterAt = shorter.Kind == "omitted" ? relation.Shorter.Occurrence : null;
+        (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
+            : longerAt is not null ? [("origin", longerAt, null)]
+            : shorterAt is not null ? [("origin", shorterAt, null)]
+            : null;
+        return ([operation, longer, shorter, source, destination], advice, related);
+    }
+
+    // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one.
+    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter) => BodyLocalOrigin(longer) && !BodyLocalOrigin(shorter);
+
+    internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
+        => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
+
+    // SPEC 15.6.1: conditional Advice, never a repair candidate. A Refuted relation is not repaired by an annotation; an omitted end is
+    // named by a set first; bounding the result is offered only at a result source, and binding to static never for an exclusive input.
+    private static string OriginRelationAdvice(OriginRelationFact relation, DiagnosticOrigin longer, DiagnosticOrigin shorter, string source)
+    {
+        if (relation.Refuted)
+        {
+            return "Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body";
+        }
+
+        var omitted = longer.Kind == "omitted" ? longer.Text : shorter.Kind == "omitted" ? shorter.Text : null;
+        if (omitted is not null)
+        {
+            return $"Name the omitted Origin with a set on that Type, as in '{omitted}{{name}}', then relate it by that name";
+        }
+
+        var inner = relation.Destination is { } type && !ReferenceEquals(type.Origin, relation.Shorter);
+        var bound = source == "fit" && IsResultValue(relation.At) ? $", or bound the {(inner ? "inner result" : "result")} by {longer.Text}" : string.Empty;
+        var input = OuterInput(relation.Longer);
+        var advice = relation.Equality ? $"Use one Origin at both positions, or bind {shorter.Text} to {longer.Text} where it is introduced"
+            : relation.Shorter.Kind != OriginKind.Static ? $"If {longer.Text} always outlives {shorter.Text}, add 'origin {longer.Text} outlives {shorter.Text}', which changes the public contract{bound}"
+            : input?.Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq } ? $"{longer.Text} is an exclusive borrow, which cannot be bound to static; return an owned value instead"
+            : $"Bind {longer.Text} to static where it is introduced, as in '{(input is not null ? $"{input.InternalName}: {input.Type} during static" : "during static")}'{bound}";
+        return (SimilarNames(relation.Shorter) ?? SimilarNames(relation.Longer)) is { } similar ? advice + similar : advice;
+    }
+
+    // The parameter whose outer borrow an Input Origin is.
+    private static FunctionParameterKoto? OuterInput(BoundOrigin origin)
+        => origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionKoto function } && origin.InputIndex >= 0 && origin.InputIndex < function.Parameters.Count
+            ? function.Parameters[origin.InputIndex] : null;
+
+    // SPEC 15.6.1: a signature Origin name is introduced by writing it, so a misspelling introduces a new one; similar names visible in
+    // the signature, its parameters and the Origins written on their Types and on the result, are shown.
+    private static string? SimilarNames(BoundOrigin origin)
+    {
+        if (origin is not { Kind: OriginKind.Parameter, Binder: FunctionKoto function } || origin.Name.Length < 3)
+        {
+            return null;
+        }
+
+        List<string>? similar = null;
+        for (var i = 0; i <= function.Parameters.Count; i++)
+        {
+            var type = i < function.Parameters.Count ? function.Parameters[i].Type : function.ReturnType;
+            if (i < function.Parameters.Count)
+            {
+                Consider(function.Parameters[i].InternalName);
+            }
+
+            for (var depth = 0; depth < 16 && type is TypeSemanticsKoto layer; depth++, type = layer.Type)
+            {
+                Consider(layer.OriginName);
+            }
+        }
+
+        return similar is null ? null : $"; {origin.Name} is introduced by this signature, so if {string.Join(" or ", similar)} was meant, write it instead";
+
+        void Consider(string? name)
+        {
+            if (name is not null && name != origin.Name && !(similar?.Contains(name) ?? false) && EditDistance(name, origin.Name) is var distance &&
+                distance <= 2 && distance * 2 < origin.Name.Length)
+            {
+                (similar ??= new(1)).Add(name);
+            }
+        }
+    }
+
+    private static int EditDistance(string a, string b)
+    {
+        if (Math.Abs(a.Length - b.Length) > 2 || a.Length > 64 || b.Length > 64)
+        {
+            return int.MaxValue;
+        }
+
+        Span<int> row = stackalloc int[b.Length + 1];
+        for (var j = 0; j <= b.Length; j++)
+        {
+            row[j] = j;
+        }
+
+        for (var i = 1; i <= a.Length; i++)
+        {
+            var diagonal = row[0];
+            row[0] = i;
+            for (var j = 1; j <= b.Length; j++)
+            {
+                var above = row[j];
+                row[j] = Math.Min(Math.Min(row[j] + 1, row[j - 1] + 1), diagonal + (a[i - 1] == b[j - 1] ? 0 : 1));
+                diagonal = above;
+            }
+        }
+
+        return row[b.Length];
+    }
+
+    // The value of a return or of an expression body, through parentheses, blocks and if or match arms, is a result source.
+    private static bool IsResultValue(Koto at)
+    {
+        for (Koto? node = at, parent = at.Parent; parent is not null; node = parent, parent = parent.Parent)
+        {
+            switch (parent)
+            {
+                case ReturnKoto returned:
+                    return KotoHelper.ResolveTransferTarget(returned) is FunctionKoto;
+                case FunctionKoto function:
+                    return ReferenceEquals(function.ExpressionBody, node);
+                case ParenthesizedKoto or IfKoto or MatchKoto or CodeBlockKoto:
+                    continue;
+                default:
+                    return false;
+            }
+        }
+
+        return false;
+    }
 
     private static bool SharedObjectAuthorityMismatch(BoundType actual, BoundType expected)
         => ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref } &&
@@ -131,6 +277,11 @@ public sealed partial class Binding
 
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
     internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
+
+    // SPEC 15.6.1: the Origin relation that a structurally fitting value leaves at its destination, for phases that judge the fit.
+    internal OriginRelationFact? OriginRelationOf(BoundType actual, BoundType expected, Koto at)
+        => ReferenceTypes.StorageMatches(expected, actual) && this.FailedOriginRelation(actual, expected, at, false) is { } relation
+            ? relation with { At = at, Destination = expected } : null;
 
     /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
     /// <param name="node">The node.</param>
@@ -269,6 +420,96 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.6.1, 23.3.6.5: an Origin relation record at the value that supplies the longer end, with both ends as Origin
+    // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
+    // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
+    private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note)
+    {
+        var (evidence, advice, related) = OriginRelationFacts(relation, "fit");
+        node.Report(requirement, code, note: note, evidence: evidence, related: related, advice: advice, at: relation.At);
+    }
+
+    private static bool BodyLocalOrigin(BoundOrigin origin)
+    {
+        if (origin.Kind is OriginKind.Projection or OriginKind.Anchor)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (BodyLocalOrigin(origin.Operands[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The Borrow that supplies a body-local Origin: the value itself, or the initializer of the local it names.
+    private static Koto? BorrowSource(Koto value, BoundOrigin origin)
+    {
+        var unwrapped = KotoHelper.UnwrapParentheses(value);
+        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Borrow })
+        {
+            return unwrapped;
+        }
+
+        return origin.Kind == OriginKind.Projection && unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } initializer } } } &&
+            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
+    }
+
+    // SPEC 15.2.1: the omitted slot of a parameter's Type, written directly or under one borrow layer, is the projection `p.slot`;
+    // any other omitted slot has no name.
+    private static string? SlotProjection(BoundOrigin origin, Koto occurrence)
+    {
+        if (origin.Binder is not FunctionKoto function || origin.InputIndex < 0 || origin.InputIndex >= function.Parameters.Count)
+        {
+            return null;
+        }
+
+        var type = function.Parameters[origin.InputIndex].Type;
+        if (!ReferenceEquals(type, occurrence) && !(type is TypeSemanticsKoto { Type: { } target } && ReferenceEquals(target, occurrence)))
+        {
+            return null;
+        }
+
+        return occurrence.BoundType?.Symbol?.Schema?.Origins is { } slots && origin.TargetSlot >= 0 && origin.TargetSlot < slots.Count
+            ? function.Parameters[origin.InputIndex].InternalName + "." + slots[origin.TargetSlot].Name : null;
+    }
+
+    // SPEC 23.3.6.5: an Origin by its display kind and string: an Origin expression for static, a parameter or receiver, a slot or
+    // a meet; the source text of a Borrow, or of its Place, for a body-local finite Origin; the Type occurrence of an omitted slot.
+    private static DiagnosticOrigin OriginDisplay(BoundOrigin origin, Koto? value)
+    {
+        switch (origin.Kind)
+        {
+            case OriginKind.Static:
+                return new("expression", "static");
+            case OriginKind.Intersection:
+                var parts = new string[origin.Operands.Count];
+                for (var i = 0; i < parts.Length; i++)
+                {
+                    parts[i] = OriginDisplay(origin.Operands[i], null).Text;
+                }
+
+                return new("expression", "(" + string.Join(" and ", parts) + ")");
+            case OriginKind.Input when origin.Occurrence is { } occurrence:
+                return SlotProjection(origin, occurrence) is { } projection ? new("expression", projection) : new("omitted", occurrence.ToString());
+            case OriginKind.Input when origin.Binder is { } binder && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder):
+                return new("expression", InputName(binder, origin.InputIndex));
+            case OriginKind.Parameter:
+                return new("expression", origin.Binder is DeclarationContainerKoto ? "self." + origin.Name : origin.Name);
+            case OriginKind.Projection or OriginKind.Anchor:
+                var text = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? borrow.ToString()
+                    : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName : origin.Binder?.ToString() ?? origin.Name;
+                return new("borrow", text);
+            default:
+                return new("omitted", origin.Occurrence?.ToString() ?? origin.Name);
+        }
+    }
+
     // SPEC 9.6.1: a Type's own Type arguments are written in full, and those of a container are never inferred from call
     // arguments or an expected Type; outside a generic container, a nested declaration is named through that container.
     private static void ReportArity(Koto node, (BindingSymbol Declaration, int Declared, int Written, bool Outer) arity, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -370,9 +611,63 @@ public sealed partial class Binding
     private BoundType? FailMismatch(Koto node, Koto at, string actual, string expected)
         => this.RecordMismatch(node, at, actual, expected);
 
-    // Keep semantic identities even when their short names agree. Format only at publication, never during Binding.
+    // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
+    // structural part holds failed only in its Origin part, which is an Origin relation, never a Type mismatch (SPEC 15.6.1).
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
-        => this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+        => actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
+            this.FailedOriginRelation(actualType, expectedType, node, false) is { } relation
+            ? this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, relation with { At = at, Destination = expectedType })
+            : this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+
+    // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.
+    private DiagnosticCode OriginRelationCode(Koto node)
+        => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
+
+    // SPEC 15.6.1: the first Origin position of a fit, in the order of the outer borrow layer, the Semantics target, then slots and
+    // Type arguments, whose relation is not proven; `==` at an invariant position. It is Refuted when the longer end is a body-local
+    // finite Origin and the shorter end a fixed one, and Unknown otherwise.
+    private OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, Koto use, bool invariant, int depth = 0)
+    {
+        if (depth > 64)
+        {
+            return null;
+        }
+
+        if (actual.Origin is { } longer && expected.Origin is { } shorter && !ReferenceEquals(longer, shorter) &&
+            (!this.ProvesOriginOutlives(longer, shorter, use) || (invariant && !this.ProvesOriginOutlives(shorter, longer, use))))
+        {
+            return new(use, longer, shorter, invariant, expected, RefutesOriginRelation(longer, shorter));
+        }
+
+        var exclusive = actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
+        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind == BoundTypeKind.Semantics; i++)
+        {
+            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, invariant || exclusive, depth + 1) is { } target)
+            {
+                return target;
+            }
+        }
+
+        for (var i = 0; i < actual.OriginArguments.Count && i < expected.OriginArguments.Count; i++)
+        {
+            var a = actual.OriginArguments[i];
+            var b = expected.OriginArguments[i];
+            if (!ReferenceEquals(a, b) && (!this.ProvesOriginOutlives(a, b, use) || (invariant && !this.ProvesOriginOutlives(b, a, use))))
+            {
+                return new(use, a, b, invariant, expected, RefutesOriginRelation(a, b));
+            }
+        }
+
+        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind != BoundTypeKind.Semantics; i++)
+        {
+            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, invariant, depth + 1) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        return null;
+    }
 
     // Fails a node with the facts that explain the failure. A node keeps its first failure only, so the facts are recorded only
     // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.
@@ -625,6 +920,7 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.mismatches?.Clear();
+        this.originRelations?.Clear();
         this.operatorOperands?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();

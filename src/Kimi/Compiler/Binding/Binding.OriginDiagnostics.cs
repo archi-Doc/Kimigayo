@@ -111,7 +111,7 @@ public sealed partial class Binding
             return "An Origin intersection requires parentheses: 'during (a and b)'. Here 'and' separates constraint requirements.";
         }
 
-        if (node.BindingFailure == BindingFailure.TypeMismatch)
+        if (node.BindingFailure is BindingFailure.TypeMismatch or BindingFailure.OriginRelation)
         {
             var returned = node as ReturnKoto ?? node.Parent as ReturnKoto;
             var function = returned is not null ? KotoHelper.ResolveTransferTarget(returned) as FunctionKoto : node.Parent as FunctionKoto;
@@ -209,7 +209,7 @@ public sealed partial class Binding
     // returned values without the intended contract; those failures rest on the projection, not on independent causes.
     private bool RestsOnAbsentSlot(Koto node)
     {
-        if (this.absentSlotFunctions is not { Count: > 0 } functions || node.BindingFailure is not (BindingFailure.MissingOrigin or BindingFailure.TypeMismatch))
+        if (this.absentSlotFunctions is not { Count: > 0 } functions || node.BindingFailure is not (BindingFailure.MissingOrigin or BindingFailure.TypeMismatch or BindingFailure.OriginRelation))
         {
             return false;
         }
@@ -220,9 +220,11 @@ public sealed partial class Binding
         {
             if (current is FunctionKoto function)
             {
-                // A returned value is affected only where it differs from the result in its bindings, not in its Type.
+                // A returned value is affected only where it differs from the result in its bindings, not in its Type; an Origin
+                // relation differs in its Origins only by construction.
                 if (!functions.TryGetValue(function, out var projection) ||
                     !(node.BindingFailure == BindingFailure.MissingOrigin ? inResult
+                        : node.BindingFailure == BindingFailure.OriginRelation ? returned
                         : returned && this.mismatches?.TryGetValue(node, out var mismatch) == true && mismatch.Actual is BoundType { Symbol: { } actual } &&
                             mismatch.Expected is BoundType { Symbol: var expected } && ReferenceEquals(actual, expected)))
                 {

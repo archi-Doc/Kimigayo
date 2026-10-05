@@ -32,6 +32,9 @@ public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Ar
     /// <summary>Gets the repair candidates the warning offers (SPEC 23.3.6.9).</summary>
     internal DiagnosticRepairFact[]? Repairs { get; init; }
 
+    /// <summary>Gets the related locations of an Error formed from Binding's facts, such as an Origin relation's borrow end.</summary>
+    internal (string Role, Koto At, string? Label)[]? Related { get; init; }
+
     internal int Priority { get; init; } = 4;
 
     /// <summary>Gets the syntax whose normal completion, down to the node, decided a check of a discarded tail.</summary>
@@ -185,7 +188,7 @@ public sealed class ControlFlowAnalysis
             }
             else
             {
-                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument, issue.Argument2, issue.Note, evidence: issue.Evidence);
+                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument, issue.Argument2, issue.Note, evidence: issue.Evidence, advice: issue.Advice, related: issue.Related);
             }
         }
 
@@ -300,7 +303,7 @@ public sealed class ControlFlowAnalysis
     {
         var binding = issue.Node.CodeContext.Compilation.Binding;
         var causes = binding.FailureCauses(issue.Node);
-        if (causes is not null || issue.Code != DiagnosticCode.IncompatibleResult_Kd)
+        if (causes is not null || issue.Code is not (DiagnosticCode.IncompatibleResult_Kd or DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd))
         {
             return causes;
         }
@@ -1724,6 +1727,16 @@ public sealed class ControlFlowAnalysis
             else if (source.Type is null)
             {
                 this.Error(source.Node, DiagnosticCode.UntypedNull_Kd); // Only a null literal is judged without its own Type.
+            }
+            else if (this.types.OriginRelation(source, type) is { } relation)
+            {
+                // SPEC 15.6.1: a result whose structural part fits fails only an Origin relation, never as an incompatible Type.
+                var code = Binding.OriginRelationCode(relation);
+                var (evidence, advice, related) = Binding.OriginRelationFacts(relation, "fit");
+                if (this.reported.Add((source.Node, code)))
+                {
+                    this.issues.Add(new(source.Node, code) { Evidence = evidence, Advice = advice, Related = related });
+                }
             }
             else
             {
