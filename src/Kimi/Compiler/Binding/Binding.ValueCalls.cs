@@ -177,9 +177,42 @@ public sealed partial class Binding
                 return true;
             }
 
-            return origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner);
+            return FixedInBodyOrigin(origin, use);
         }
     }
+
+    // Whether every Origin of an argument is the parameter's own at that position or static, so the argument needs no relation.
+    private static bool OriginsAsWritten(BoundType actual, BoundType expected)
+    {
+        if (!SameOrStatic(actual.Origin, expected.Origin) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < actual.OriginArguments.Count; i++)
+        {
+            if (!SameOrStatic(actual.OriginArguments[i], expected.OriginArguments[i]))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < actual.Components.Count; i++)
+        {
+            if (!ReferenceEquals(actual.Components[i], expected.Components[i]) && !OriginsAsWritten(actual.Components[i], expected.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        static bool SameOrStatic(BoundOrigin? actual, BoundOrigin? expected) => ReferenceEquals(actual, expected) || actual?.Kind == OriginKind.Static;
+    }
+
+    // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
+    private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
+        => origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner);
 
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
 
@@ -307,8 +340,7 @@ public sealed partial class Binding
         {
             inputBinder = ownBinder;
         }
-        else if (!PerCallSignature(signature, ownBinder) && !this.FixedCaptureSignature(signature, call.Method) &&
-            !(FixedInBody(signature.Components[1], call) && this.EnvironmentLeavesResultFixed(signature.Components[1], call.Method)))
+        else if (!PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(signature.Components[1], call.Method, call))
         {
             return this.Fail(call, BindingFailure.Unsupported);
         }
@@ -350,6 +382,13 @@ public sealed partial class Binding
                 {
                     argumentOrigins[i] = argumentOrigin;
                     parameter = this.WithOrigins(parameter, argumentOrigin, (BoundOrigin[])parameter.OriginArguments);
+                }
+                else if (!OriginsAsWritten(adapted, parameter) && this.FitsTypeAt(adapted, parameter, source))
+                {
+                    // SPEC 15.6.5: a fixed Origin of the calling body contains every later point of it, so an argument that fits it only
+                    // through a premise keeps its Loans for that whole region; ownership does not extend them yet (PLAN G65).
+                    this.Fail(source, BindingFailure.Unsupported);
+                    return Complete(call, null);
                 }
 
                 if (!this.CheckTypeUse(adapted, parameter, source))

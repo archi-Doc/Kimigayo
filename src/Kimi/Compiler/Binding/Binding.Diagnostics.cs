@@ -89,8 +89,8 @@ public sealed partial class Binding
             : ReferenceEquals(type.Origin, relation.Shorter) ? $"{DiagnosticTypeName(type)} during {shorter.Text}" : DiagnosticTypeName(type);
         var advice = OriginRelationAdvice(relation, longer, shorter, source);
         // SPEC 23.3.6.5: a borrow or omitted end is also related at its syntax.
-        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? relation.Longer.Occurrence ?? OmittedInput(relation.Longer) : null;
-        var shorterAt = shorter.Kind == "omitted" ? relation.Shorter.Occurrence ?? OmittedInput(relation.Shorter) : null;
+        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer) : null;
+        var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : null;
         (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
             : longerAt is not null ? [("origin", longerAt, null)]
             : shorterAt is not null ? [("origin", shorterAt, null)]
@@ -99,7 +99,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one.
-    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter) => BodyLocalOrigin(longer) && !BodyLocalOrigin(shorter);
+    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter) => BodyLocalOrigin(longer) && FixedOrigin(shorter);
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
@@ -127,12 +127,18 @@ public sealed partial class Binding
         var inner = relation.Destination is { } type && !ReferenceEquals(type.Origin, relation.Shorter);
         var bound = source == "fit" && IsResultValue(relation.At) ? $", or bound the {(inner ? "inner result" : "result")} by {longer.Text}" : string.Empty;
         var input = OuterInput(relation.Longer);
+        var anonymous = relation.Longer is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } };
         var advice = relation.Equality ? $"Use one Origin at both positions, or bind {shorter.Text} to {longer.Text} where it is introduced"
+            : anonymous && relation.Shorter.Kind != OriginKind.Static ? $"An anonymous function has no origin clauses; write the input as '{(input is not null ? $"{input.InternalName}: {input.Type} during {shorter.Text}" : $"during {shorter.Text}")}' so that it accepts only borrows that outlive {shorter.Text}{bound}"
             : relation.Shorter.Kind != OriginKind.Static ? $"If {longer.Text} always outlives {shorter.Text}, add 'origin {longer.Text} outlives {shorter.Text}', which changes the public contract{bound}"
             : input?.Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq } ? $"{longer.Text} is an exclusive borrow, which cannot be bound to static; return an owned value instead"
             : $"Bind {longer.Text} to static where it is introduced, as in '{(input is not null ? $"{input.InternalName}: {input.Type} during static" : "during static")}'{bound}";
         return (SimilarNames(relation.Shorter) ?? SimilarNames(relation.Longer)) is { } similar ? advice + similar : advice;
     }
+
+    // SPEC 23.3.6.5: the Type occurrence that an omitted Origin end is related at.
+    private static Koto? OmittedAt(BoundOrigin origin)
+        => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: TypeKoto occurrence } ? occurrence : null);
 
     // SPEC 23.3.6.5: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
     private static Koto? OmittedInput(BoundOrigin origin)
@@ -516,6 +522,8 @@ public sealed partial class Binding
                 return new("expression", InputName(binder, origin.InputIndex));
             case OriginKind.Parameter:
                 return new("expression", origin.Binder is DeclarationContainerKoto ? "self." + origin.Name : origin.Name);
+            case OriginKind.Inference when origin.Occurrence is null && origin.Binder is TypeKoto occurrence:
+                return new("omitted", occurrence.ToString());
             case OriginKind.Projection or OriginKind.Anchor:
                 var text = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? borrow.ToString()
                     : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName : origin.Binder?.ToString() ?? origin.Name;

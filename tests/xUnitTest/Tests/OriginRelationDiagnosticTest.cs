@@ -110,6 +110,30 @@ public class OriginRelationDiagnosticTest
         Assert.EndsWith("@ref", Text(source, error.Span), StringComparison.Ordinal);
     }
 
+    // SPEC 15.6.5: only a finite Origin that must outlive a fixed one is Refuted. An annotated local's omitted Origin is an inferred
+    // region, so a borrow fitted to it is a chain between body Origins, the located limit, never a Language record; it was "requires
+    // the borrow x@ref outlives the omitted Origin of Inference, which is false" (review of 2549bce2).
+    [Fact]
+    public void AnInferredLocalRegionIsNeverRefuted()
+    {
+        var source = "public func main() -> ()\n    let x: i32 = 4\n    let r: ref/i32 = x@ref\n    let f = func (n: ref/i32 during r) -> i32 => n@follow\n    require f(x@ref) == 4 else => $abort(\"v5\")\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.NotEmpty(errors);
+        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), x.Code));
+    }
+
+    // SPEC 7.6.1, 15.6.1: an anonymous function has no origin clauses, so Advice for its input writes the Origin on that input.
+    [Fact]
+    public void AnAnonymousInputIsBoundByItsWrittenOrigin()
+    {
+        var source = "func use(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var inner = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
+            "        let old = start\n        start = n\n        return old\n    var outer = func [var inner] (a: ref/i32) -> i32\n        let got = inner(a)\n" +
+            "        return got@follow\n    return inner(x)\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "a"), (error.Code, Text(source, error.Span)));
+        Assert.Equal("An anonymous function has no origin clauses; write the input as 'a: ref/i32 during x' so that it accepts only borrows that outlive x", error.Advice);
+    }
+
     // DIAGNOSTICS.md rule 1: a failed relation leaves the Loan checks of the same body to proceed without it, so an independent Loan
     // conflict stays visible beside it.
     [Fact]

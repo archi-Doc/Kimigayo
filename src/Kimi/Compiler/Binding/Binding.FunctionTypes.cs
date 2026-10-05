@@ -207,16 +207,27 @@ public sealed partial class Binding
         return false;
     }
 
-    private bool FixedCaptureSignature(BoundType signature, Koto receiver)
+    // SPEC 15.6.4, 15.8.2: a value call whose result names none of the callee's per-call inputs keeps that result as written when
+    // it is independent of the call: each Origin is static, carried only by Copy captures of a Copy result (a Copy of a captured
+    // shared reference keeps its external Origin), or, carried by no capture, a fixed Origin of a function enclosing the call. A Non-Copy
+    // carrier would need a receiver-dependent reborrow (G65), and equal lifetime names never prove which capture supplied the result.
+    private bool ResultFixedForCall(BoundType result, Koto receiver, Koto use)
     {
-        var result = signature.Components[1];
         var type = receiver.BoundType!;
         type = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
-        return type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure } declaration &&
-            PerCallInputs(signature, declaration) && this.ProveCopy(result, receiver) == ConstraintProof.Proven && FixedType(result);
+        if (type.Kind != BoundTypeKind.Closure)
+        {
+            return FixedInBody(result, use);
+        }
 
-        // A concrete Copy result may retain shared external Origins already carried by Copy captures. No per-call
-        // substitution or receiver-storage Loan is needed; erased, exclusive and receiver-dependent results stay closed.
+        if (type.Symbol?.Declaration is not FunctionKoto { BoundClosure: { } closure })
+        {
+            return false;
+        }
+
+        var copy = this.ProveCopy(result, receiver) == ConstraintProof.Proven;
+        return FixedType(result);
+
         bool FixedType(BoundType part)
         {
             if (!FixedOrigin(part.Origin))
@@ -263,102 +274,22 @@ public sealed partial class Binding
                 return true;
             }
 
-            var found = false;
+            var carried = false;
             for (var i = 0; i < closure.Captures.Count; i++)
             {
                 var captured = closure.Captures[i].Environment.Type!;
                 if (ContainsOrigin(captured, origin))
                 {
-                    // Equal lifetime names do not prove which capture supplied the result. A Non-Copy carrier may
-                    // require a receiver-dependent reborrow even when another capture carries the same Origin.
                     if (this.ProveCopy(captured, receiver) != ConstraintProof.Proven)
                     {
                         return false;
                     }
 
-                    found = true;
+                    carried = true;
                 }
             }
 
-            return found;
-        }
-    }
-
-    // SPEC 7.6.2, 15.6.4: a closure result over fixed Origins of the calling body is independent of the environment unless a capture
-    // carries one of them; a Non-Copy carrier, or any carrier of a Non-Copy result, needs a receiver-dependent reborrow (G65).
-    private bool EnvironmentLeavesResultFixed(BoundType result, Koto receiver)
-    {
-        var type = receiver.BoundType!;
-        type = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
-        if (type.Kind != BoundTypeKind.Closure)
-        {
-            return true;
-        }
-
-        if (type.Symbol?.Declaration is not FunctionKoto { BoundClosure: { } closure })
-        {
-            return false;
-        }
-
-        var copy = this.ProveCopy(result, receiver) == ConstraintProof.Proven;
-        return IndependentType(result);
-
-        bool IndependentType(BoundType part)
-        {
-            if (!IndependentOrigin(part.Origin))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < part.OriginArguments.Count; i++)
-            {
-                if (!IndependentOrigin(part.OriginArguments[i]))
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < part.Components.Count; i++)
-            {
-                if (!IndependentType(part.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        bool IndependentOrigin(BoundOrigin? origin)
-        {
-            if (origin is null || origin.Kind == OriginKind.Static)
-            {
-                return true;
-            }
-
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    if (!IndependentOrigin(origin.Operands[i]))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            for (var i = 0; i < closure.Captures.Count; i++)
-            {
-                var captured = closure.Captures[i].Environment.Type!;
-                if (ContainsOrigin(captured, origin) && (!copy || this.ProveCopy(captured, receiver) != ConstraintProof.Proven))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            return carried ? copy : FixedInBodyOrigin(origin, use);
         }
     }
 
