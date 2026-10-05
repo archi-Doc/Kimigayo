@@ -166,7 +166,8 @@ public sealed partial class Binding
     }
 
     // SPEC 13.5.5.1: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow) and
-    // otherwise on the stored reference (Reborrow).
+    // otherwise on the layer's outer-Origin slot and the parent Loan (Reborrow): `o` for the original pair, the annotation or
+    // the application's own slot otherwise, and the Place only for an application without a slot.
     private BoundOrigin PairOrigin(Koto node, BoundType pair, SemanticsMask admitted)
-        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : pair.Origin ?? this.PlaceOrigin(node);
+        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : this.OuterOrigin(pair) ?? this.PlaceOrigin(node);
 }

@@ -11,7 +11,7 @@ public sealed partial class OwnershipAnalysis
         var type = this.Concrete(source.BoundType);
         // SPEC 5.2, 21.3.1: a generic read acquires CopyOrMove without inventing a Loan.
         // The closed ownership plan must still prove a supported pointee representation.
-        if (abstractRead && this.instance is null && type?.Kind == BoundTypeKind.Parameter)
+        if (abstractRead && this.instance is null && type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
         {
             return true;
         }
@@ -102,12 +102,11 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None && this.compilation.Binding.TryGetAdaptation(source, out var read))
         {
-            // SPEC 3.5.3, 13.5.5.1: a Scalar read through a pair layer. Owner reads the operand itself; ref and uniq load
-            // through the stored reference; the universal verification reads through a shared borrow of the operand.
-            var operand = KotoHelper.UnwrapParentheses(source);
+            // SPEC 3.5.3, 13.5.5.1: a Scalar read through a pair layer. The owner case reads the operand itself; ref and uniq
+            // load through the stored reference.
             if (layers == 0)
             {
-                return !this.Substituting ? this.CopyThroughPair(source, operand, read.Type) : this.ExpressionCore(operand, PlaceUseKind.Consume, null);
+                return this.ExpressionCore(KotoHelper.UnwrapParentheses(source), PlaceUseKind.Consume, null);
             }
         }
 

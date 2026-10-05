@@ -74,7 +74,7 @@ public sealed partial class OwnershipBody
         this.reservationOverlaps?.Clear();
         this.overlapActivations?.Clear();
         var count = this.Places.Count;
-        var dependent = this.ConditionalReborrows is { Count: > 0 } || this.RequirementResults is { Count: > 0 };
+        var dependent = this.RequirementResults is { Count: > 0 };
         for (var p = 0; p < count && !dependent; p++)
         {
             dependent = HasProjection(this.Places[p].Type) || this.IsExclusiveBorrowInput(p);
@@ -123,7 +123,7 @@ public sealed partial class OwnershipBody
         }
 
         this.requirementHolders.Clear();
-        if (this.ConditionalReborrows is { Count: > 0 } || this.RequirementResults is { Count: > 0 })
+        if (this.RequirementResults is { Count: > 0 })
         {
             AddExplicitDependencies();
         }
@@ -292,7 +292,7 @@ public sealed partial class OwnershipBody
                             continue;
                         }
 
-                        var external = this.Places[root].Kind == OwnershipPlaceKind.Anchor || (this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type) || this.IsPairInput(root))) ||
+                        var external = this.Places[root].Kind == OwnershipPlaceKind.Anchor || (this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type))) ||
                             this.IsEnvironmentBorrow(root);
                         var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
                         var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
@@ -468,8 +468,7 @@ public sealed partial class OwnershipBody
                 return; // SPEC 7.6.4: a common Function value holds no Loan; its signature's Origins constrain its calls only.
             }
 
-            // SPEC 13.5.5.1: a pair parameter's Origin is the caller-side dependency of a reference it may hold, never a local root.
-            if (type.Origin is { } origin && !(this.Places[place].Kind == OwnershipPlaceKind.Parameter && Binding.TryPairLayer(type, out _, out _)))
+            if (type.Origin is { } origin)
             {
                 // SPEC 15.6.2: a value borrow reaches only its referent, whose own Origins are added below; a part of an
                 // owned root, such as item.1@ref, does not acquire what the root's other parts depend on.
@@ -649,48 +648,19 @@ public sealed partial class OwnershipBody
             }
         }
 
-        // SPEC 8.9, 8.4.10.4: dependencies that no Origin of a Type carries. A conditional plan's Reborrow case is checked like a
-        // concrete exclusive reference: each pair parameter is an external capability root, and the reborrowed value inherits the
-        // dependencies of the Place it Reborrows; a Place with no known root keeps itself as the root, and the Copy cases add no
-        // Loan. The result of a generic requirement call keeps the Loans of the effect regions its call reached. Both follow the
-        // value, whole or as a part, into the Places whose Types have abstract parts.
+        // SPEC 8.4.10.4: dependencies that no Origin of a Type carries. The result of a generic requirement call keeps the Loans of
+        // the effect regions its call reached, and follows the value, whole or as a part, into the Places whose Types have abstract
+        // parts.
         void AddExplicitDependencies()
         {
-            var conditional = this.ConditionalReborrows;
-            if (conditional is { Count: > 0 })
+            var results = this.RequirementResults!;
+            for (var i = 0; i < results.Count; i++)
             {
-                for (var p = 0; p < count; p++)
-                {
-                    if (this.IsPairInput(p))
-                    {
-                        RecordDependency(p, p, LoanRequirement.Uniq);
-                    }
-                }
-            }
-
-            if (this.RequirementResults is { Count: > 0 } results)
-            {
-                for (var i = 0; i < results.Count; i++)
-                {
-                    RecordDependency(results[i].Result, results[i].Region, results[i].Mode);
-                    this.requirementHolders.Add((results[i].Result, i));
-                }
+                RecordDependency(results[i].Result, results[i].Region, results[i].Mode);
+                this.requirementHolders.Add((results[i].Result, i));
             }
 
             Propagate();
-            var unrooted = false;
-            for (var i = 0; conditional is not null && i < conditional.Count; i++)
-            {
-                if (!HasDependency(conditional[i].Place))
-                {
-                    unrooted |= RecordDependency(conditional[i].Place, conditional[i].Root, LoanRequirement.Uniq);
-                }
-            }
-
-            if (unrooted)
-            {
-                Propagate();
-            }
 
             void Propagate()
             {
@@ -698,11 +668,6 @@ public sealed partial class OwnershipBody
                 do
                 {
                     changed = false;
-                    for (var i = 0; conditional is not null && i < conditional.Count; i++)
-                    {
-                        changed |= Inherit(conditional[i].Place, conditional[i].Root);
-                    }
-
                     for (var id = 0; id < this.Operations.Count; id++)
                     {
                         var (destination, source) = this.Operations[id] switch
@@ -765,19 +730,6 @@ public sealed partial class OwnershipBody
                 }
 
                 return changed;
-            }
-
-            bool HasDependency(int place)
-            {
-                for (var rootIndex = 0; rootIndex < (this.borrowRoots?.Count ?? 0); rootIndex++)
-                {
-                    if (this.borrowDependencies[(place * count) + this.borrowRoots![rootIndex]] != LoanRequirement.None)
-                    {
-                        return true;
-                    }
-                }
-
-                return false;
             }
         }
 
@@ -1284,10 +1236,6 @@ public sealed partial class OwnershipBody
         return -1;
     }
 
-    // SPEC 8.9: a pair parameter whose Reborrow case a definition's conditional plan checks; its referent is external.
-    private bool IsPairInput(int place)
-        => this.ConditionalReborrows is { Count: > 0 } && this.Places[place].Kind == OwnershipPlaceKind.Parameter && Binding.TryPairLayer(this.Places[place].Type, out _, out _);
-
     // Declared lifetime parameters need a capability root independent of their shared Origin name.
     // SPEC 7.6.2, 15.8.2: an environment binding that stores a reference is, like a borrowed parameter, a root whose referent lies
     // outside the closure body; the body reaches that referent only through the binding.
@@ -1582,13 +1530,12 @@ public sealed partial class OwnershipBody
         return -1;
     }
 
-    // SPEC 8.9, 8.4.10.4: whether the explicit dependencies of a generic body reach `holder` other than through the definitions the
-    // carrying walk classifies: a conditional reborrow's Place, a holder of a requirement result, or a Place with an abstract part,
-    // which inherits through payloads and decompositions too (AddExplicitDependencies).
+    // SPEC 8.4.10.4: whether the explicit dependencies of a generic body reach `holder` other than through the definitions the
+    // carrying walk classifies: a holder of a requirement result, or a Place with an abstract part, which inherits through
+    // payloads and decompositions too (AddExplicitDependencies).
     private bool HasExplicitDependency(int holder)
     {
-        var conditional = this.ConditionalReborrows;
-        if (conditional is not { Count: > 0 } && this.RequirementResults is not { Count: > 0 })
+        if (this.RequirementResults is not { Count: > 0 })
         {
             return false;
         }
@@ -1596,14 +1543,6 @@ public sealed partial class OwnershipBody
         if (AbstractTypes.HasAbstractPart(this.Places[holder].Type))
         {
             return true;
-        }
-
-        for (var i = 0; conditional is not null && i < conditional.Count; i++)
-        {
-            if (conditional[i].Place == holder)
-            {
-                return true;
-            }
         }
 
         for (var i = 0; i < this.requirementHolders.Count; i++)
@@ -2102,7 +2041,7 @@ public sealed partial class OwnershipBody
                 {
                     OwnershipOperationKind.Read when operation.Place >= 0 &&
                         this.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Mutable: false } local &&
-                        (ReferenceTypes.IsBorrow(local.Type) || (this.ConditionalReborrows is { Count: > 0 } && Binding.TryPairLayer(local.Type, out _, out _))) => operation.Place,
+                        ReferenceTypes.IsBorrow(local.Type) => operation.Place,
                     OwnershipOperationKind.AcquirePattern => this.PayloadSubject(operation.Place),
                     OwnershipOperationKind.InitializeSubject => operation.Input,
                     OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Copy && operation.Place >= 0 &&
