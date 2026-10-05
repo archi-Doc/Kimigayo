@@ -1530,10 +1530,18 @@ public sealed partial class Binding
             }
         }
 
-        var result = function.BoundSymbol!.Type is { } resultPattern ? this.CallType(resultPattern, function, arguments, scope, self, origins, inputs, declaringType, lengths) : null;
+        var resultPattern = function.BoundSymbol!.Type;
+        var result = resultPattern is not null ? this.CallType(resultPattern, function, arguments, scope, self, origins, inputs, declaringType, lengths) : null;
         if (result is not null && !this.ProveTypeLengths(result, scope.Function))
         {
             return CandidateApplicability.Inapplicable;
+        }
+
+        if (result is not null && HasUnsubstitutedOrigin(result, function) && this.OpenResultOnlyOrigins(call, function, origins))
+        {
+            // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
+            // ref/i32 during s` initializing an unannotated local, is a local region of the call, never a pending candidate.
+            result = this.CallType(resultPattern!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
         }
 
         if ((result is null && !waitingCallables) || (result is not null && HasUnsubstitutedOrigin(result, function)))

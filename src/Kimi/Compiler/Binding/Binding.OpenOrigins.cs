@@ -10,6 +10,9 @@ internal readonly record struct SignatureEvidence(Koto? Binder, Koto Source);
 
 public sealed partial class Binding
 {
+    // The key of a call's own open region for the callee's i-th Origin, apart from the keys of argument evidence.
+    private const int ResultOnlyKey = int.MinValue / 2;
+
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
 
@@ -138,6 +141,91 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 15.3.6: a callee's own Origin that no parameter Type and no relation clause mentions, such as the result-only `s` of
+    // `constant() -> ref/i32 during s`, has no bound at a call that no expected result fixes. It is a local region of the call, solved
+    // with the body's other local regions by its uses; it needs no annotation and is never replaced by static. No input supplies it,
+    // so the result holds no Loan through it: the call's open region (keyed apart from argument evidence by ResultOnlyKey).
+    private bool OpenResultOnlyOrigins(Koto call, FunctionKoto function, BoundOrigin[] origins)
+    {
+        var opened = false;
+        var relations = this.originDeclarations.GetValueOrDefault(function)?.Relations;
+        for (var i = 0; i < function.Origins.Count; i++)
+        {
+            if (origins[i] is not null)
+            {
+                continue;
+            }
+
+            var mentioned = false;
+            for (var p = 0; p < function.Parameters.Count && !mentioned; p++)
+            {
+                mentioned = function.Parameters[p].Type.BoundType is not { } parameter || MentionsOriginSlot(parameter, function, i);
+            }
+
+            for (var r = 0; relations is not null && r < relations.Count && !mentioned; r++)
+            {
+                mentioned = NamesSlot(relations[r].Longer, function, i) || NamesSlot(relations[r].Shorter, function, i);
+            }
+
+            if (!mentioned)
+            {
+                origins[i] = this.OpenOrigin(call, ResultOnlyKey + i);
+                opened = true;
+            }
+        }
+
+        return opened;
+
+        static bool MentionsOriginSlot(BoundType type, Koto binder, int slot)
+        {
+            if (!type.CarriesOrigin)
+            {
+                return false;
+            }
+
+            if (NamesSlot(type.Origin, binder, slot))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (NamesSlot(type.OriginArguments[i], binder, slot))
+                {
+                    return true;
+                }
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (MentionsOriginSlot(type.Components[i], binder, slot))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool NamesSlot(BoundOrigin? origin, Koto binder, int slot)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (NamesSlot(origin.Operands[i], binder, slot))
+                {
+                    return true;
+                }
+            }
+
+            return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot == slot;
+        }
     }
 
     private BoundOrigin OpenOrigin(Koto source, int key)
