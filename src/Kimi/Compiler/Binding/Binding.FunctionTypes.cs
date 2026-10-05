@@ -262,6 +262,84 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 7.6.2, 15.6.4: a closure result over fixed Origins of the calling body is independent of the environment unless a capture
+    // carries one of them; a Non-Copy carrier, or any carrier of a Non-Copy result, needs a receiver-dependent reborrow (G65).
+    private bool EnvironmentLeavesResultFixed(BoundType result, Koto receiver)
+    {
+        var type = receiver.BoundType!;
+        type = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
+        if (type.Kind != BoundTypeKind.Closure)
+        {
+            return true;
+        }
+
+        if (type.Symbol?.Declaration is not FunctionKoto { BoundClosure: { } closure })
+        {
+            return false;
+        }
+
+        var copy = this.ProveCopy(result, receiver) == ConstraintProof.Proven;
+        return IndependentType(result);
+
+        bool IndependentType(BoundType part)
+        {
+            if (!IndependentOrigin(part.Origin))
+            {
+                return false;
+            }
+
+            for (var i = 0; i < part.OriginArguments.Count; i++)
+            {
+                if (!IndependentOrigin(part.OriginArguments[i]))
+                {
+                    return false;
+                }
+            }
+
+            for (var i = 0; i < part.Components.Count; i++)
+            {
+                if (!IndependentType(part.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool IndependentOrigin(BoundOrigin? origin)
+        {
+            if (origin is null || origin.Kind == OriginKind.Static)
+            {
+                return true;
+            }
+
+            if (origin.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < origin.Operands.Count; i++)
+                {
+                    if (!IndependentOrigin(origin.Operands[i]))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                var captured = closure.Captures[i].Environment.Type!;
+                if (ContainsOrigin(captured, origin) && (!copy || this.ProveCopy(captured, receiver) != ConstraintProof.Proven))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+    }
+
     private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope, bool erase = true)
     {
         if (this.BoundMethodReference(use, symbol))

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Verification;
 using Xunit;
@@ -84,6 +85,67 @@ public class InputDependentValueCallTest
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.InvocationKoto>(), x => x.BoundValueCall is not null);
         var origin = call.BoundType!.Origin!;
         Assert.Equal(OriginKind.Projection, origin.Kind);
+    }
+
+    private const string Swap = "func pass(x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n" +
+        "        let old = start\n        start = n\n        return old\n";
+
+    // SPEC 8.6, 15.6.4: an input or result written over a fixed Origin of the calling body, here an input of the enclosing function,
+    // is no per-call input of the callee: the argument is fitted to it as written and the result keeps it, whatever slot it occupies.
+    [Theory]
+    [InlineData("TupleInput", "func use(x: ref/i32) -> i32\n    let c = func (pair: (ref/i32 during x, i32)) => pair.0@follow + pair.1\n    return c((x, 1))\nlet n: i32 = 2\nrequire use(n@ref) == 3 else => $abort(\"tuple\")")]
+    [InlineData("OptionInput", "func use(x: ref/i32) -> i32\n    let d = func (o: Option<ref/i32 during x>) -> i32\n        match o\n            .Some(let r) => return r@follow\n            .None => return 0\n    return d(.Some(x))\nlet n: i32 = 2\nrequire use(n@ref) == 2 else => $abort(\"option\")")]
+    [InlineData("Coincident", "func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    return c(x)\nlet a: i32 = 3\nrequire use(a@ref) == 3 else => $abort(\"coincident\")")]
+    [InlineData("FixedResult", Swap + "    let r = c(x)\n    return c(r)\nlet a: i32 = 3\nrequire pass(a@ref)@follow == 3 else => $abort(\"fixed result\")")]
+    public void FixedInputsAreOrdinaryArguments(string name, string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        ScalarEmissionTest.EmitFixture("FixedInputCall" + name, source, string.Empty);
+    }
+
+    // F1 (PLAN G65): a fixed input was taken for a per-call input when its slot number coincided with the parameter's position, so a
+    // local borrow passed for it and the stored result dangled. The relation is now judged at the argument; a fixed Origin of the
+    // calling body other than an enclosing function's input stays a located limit at the call.
+    [Theory]
+    [InlineData(Swap + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
+    [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
+    [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let local: i32 = 5\n    return c(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
+    [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "c(y@ref)")]
+    public void AFixedInputIsNoPerCallInput(string body, string code, string text)
+    {
+        var source = body + "public func main() => ()\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.NotEmpty(errors);
+        Assert.All(errors, x => Assert.Equal(code, x.Code));
+        Assert.Equal(text, errors[0].Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty);
+    }
+
+    // SPEC 15.6.4: a value call through a Function Type whose result is written over an input of the enclosing function binds as an
+    // ordinary call with that fixed result, and a result returned through it keeps the caller's Loan.
+    [Fact]
+    public void AFixedResultKeepsItsLoans()
+    {
+        var c = MinimalEmissionTest.Analyze("func apply(x: ref/i32, f: ref/((i32) -> ref/i32 during x)) -> ref/i32 during x\n    return f(1)\n");
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        c = MinimalEmissionTest.Analyze(Swap + "    return c(x)\nvar a: i32 = 3\nlet r = pass(a@ref)\na = 4\nrequire r@follow == 3 else => $abort(\"read\")");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmFixedInputValueCallsAllocateNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.FixedInputValueCall);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
     [Trait("Purpose", "Allocation")]

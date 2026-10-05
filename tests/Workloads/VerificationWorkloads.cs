@@ -11,6 +11,10 @@ internal static class VerificationWorkloads
 
     internal const string GenericFunctionReference = "func identity<T>(value: T) -> T => value@move\nfunc apply<T, F>(value: T, action: ref/F) -> T\n    F is Callable<(T) -> T>\n    return action(value@move)\nlet erased: (i32) -> i32 = identity\nlet result = apply(41, identity) + erased(1)";
 
+    internal const string FixedInputValueCall = "func use(x: ref/i32) -> i32\n    let c = func (pair: (ref/i32 during x, i32)) => pair.0@follow + pair.1\n" +
+        "    let d = func (o: Option<ref/i32 during x>) -> i32\n        match o\n            .Some(let r) => return r@follow\n            .None => return 0\n" +
+        "    let e = func (n: ref/i32 during x) => n@follow\n    return c((x, 1)) + d(.Some(x)) + e(x)\nlet n: i32 = 2\nlet v = use(n@ref)";
+
     internal const string InputDependentValueCall = "struct Box<T>\n    var item: T\n\n    public init(item: T)\n        self.item = item@move\n\n    public func get(self) -> ref/T during self => self.item@ref\nfunc bump(value: uniq/i32) -> uniq/i32 => value\nlet box = Box<i32>.init(item: 5)\nlet get: (ref/Box<i32>) -> ref/i32 = Box<i32>.get\nlet r = get(box@ref)\nvar k: i32 = 1\nlet b = bump\nlet d = b(k@uniq)\nlet e = b(d)\ne@follow = r@follow\nd@follow += 1";
 
     internal static string FunctionReferenceRanking(bool borrowed)

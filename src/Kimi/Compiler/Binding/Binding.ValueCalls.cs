@@ -98,6 +98,104 @@ public sealed partial class Binding
     private static bool CallableReceiverFits(SemanticsKind actual, SemanticsMask required)
         => actual == SemanticsKind.Ref || required == SemanticsMask.Owner || (actual == SemanticsKind.Uniq && required == SemanticsMask.Uniq);
 
+    // SPEC 15.6.4, 8.6: the binder of a callee's own per-call input Origins: its Item or closure declaration, otherwise the
+    // Function Type of the signature, whose own inputs are the only Input atoms it binds at an outer layer.
+    private static Koto? CalleeBinder(BoundType? callee, BoundType signature)
+    {
+        var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
+        if (owner is { Kind: BoundTypeKind.FunctionItem or BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration })
+        {
+            return declaration;
+        }
+
+        var inputs = signature.Components[0];
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            if (inputs.Components[i].Origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto binder } origin && origin.Slot == i)
+            {
+                return binder;
+            }
+        }
+
+        return null;
+    }
+
+    // Every input Origin the callee binds is the outer Origin of a direct borrowed input at its own position (SPEC 15.6.4); other
+    // inputs mention none of them.
+    private static bool OwnInputsAreDirect(BoundType signature, Koto binder)
+    {
+        var inputs = signature.Components[0];
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            var input = inputs.Components[i];
+            if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
+                ReferenceEquals(origin.Binder, binder))
+            {
+                if (origin.Slot != i || HasUnsubstitutedOrigin(input.Components[0], binder))
+                {
+                    return false;
+                }
+            }
+            else if (HasUnsubstitutedOrigin(input, binder))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
+    // which the callee's body was checked against.
+    private static bool FixedInBody(BoundType type, Koto use)
+    {
+        if (!FixedOrigin(type.Origin, use))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (!FixedOrigin(type.OriginArguments[i], use))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (!FixedInBody(type.Components[i], use))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        static bool FixedOrigin(BoundOrigin? origin, Koto use)
+        {
+            if (origin is null || origin.Kind == OriginKind.Static)
+            {
+                return true;
+            }
+
+            if (origin.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < origin.Operands.Count; i++)
+                {
+                    if (!FixedOrigin(origin.Operands[i], use))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            return origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner);
+        }
+    }
+
     private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver)
     {
         var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
@@ -205,9 +303,21 @@ public sealed partial class Binding
         }
 
         // Fresh direct input Origins and fixed shared capture results retain their complete call contracts. A result over the
-        // per-call inputs alone takes the arguments' Origins, as an ordinary call's does (SPEC 15.6.4).
-        var inputBinder = PerCallSignature(signature) || this.FixedCaptureSignature(signature, call.Method) ? null : InputDependentBinder(signature);
-        if (inputBinder is null && !PerCallSignature(signature) && !this.FixedCaptureSignature(signature, call.Method))
+        // per-call inputs alone takes the arguments' Origins, as an ordinary call's does (SPEC 15.6.4). A per-call input is one
+        // bound by the callee's own binder; an input or result written over a fixed Origin of the calling body is fitted as written.
+        var ownBinder = CalleeBinder(call.Method.BoundType, signature);
+        var inputBinder = (Koto?)null;
+        if (ownBinder is not null && !OwnInputsAreDirect(signature, ownBinder))
+        {
+            return this.Fail(call, BindingFailure.Unsupported);
+        }
+
+        if (ownBinder is not null && HasUnsubstitutedOrigin(signature.Components[1], ownBinder))
+        {
+            inputBinder = ownBinder;
+        }
+        else if (!PerCallSignature(signature) && !this.FixedCaptureSignature(signature, call.Method) &&
+            !(FixedInBody(signature.Components[1], call) && this.EnvironmentLeavesResultFixed(signature.Components[1], call.Method)))
         {
             return this.Fail(call, BindingFailure.Unsupported);
         }
@@ -245,7 +355,7 @@ public sealed partial class Binding
                         : this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
-                if (parameter.Origin is { Kind: OriginKind.Input } && adapted.Origin is { } argumentOrigin)
+                if (parameter.Origin is { Kind: OriginKind.Input } own && ReferenceEquals(own.Binder, ownBinder) && adapted.Origin is { } argumentOrigin)
                 {
                     argumentOrigins[i] = argumentOrigin;
                     parameter = this.WithOrigins(parameter, argumentOrigin, (BoundOrigin[])parameter.OriginArguments);
