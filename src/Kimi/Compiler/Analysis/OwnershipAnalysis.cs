@@ -164,6 +164,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.issues.Clear();
+        this.definiteDefaults.Clear();
         this.candidates.Clear();
         this.unmatchedCheckingSeeds.Clear();
     }
@@ -192,6 +193,12 @@ public sealed partial class OwnershipAnalysis
             {
                 var span = SignatureSpan(issue.Source) ?? issue.Source.Span;
                 issue.Source.Report(requirement, issue.Code, issue.RequiredBytes, issue.LimitBytes, note: Note(null), evidence: [issue.StorageTable], related: Locations(null), span: span, condition: Condition(issue));
+                continue;
+            }
+
+            if (issue.Failure == OwnershipFailure.DefaultArgumentMove)
+            {
+                ReportDefaultMove(issue);
                 continue;
             }
 
@@ -255,6 +262,37 @@ public sealed partial class OwnershipAnalysis
             !diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership) && FirstPending(flow) is { } pending)
         {
             pending.ReportDerived(DiagnosticRequirement.ControlFlow, [DiagnosticKey.Unresolved]);
+        }
+
+        // SPEC 7.2.3: a default may Copy a preceding Copy value or inspect it through temporary shared access; it never moves the
+        // prepared argument. A capture entry is located at the entry; no repair is offered, since the needed value is the author's.
+        void ReportDefaultMove(in OwnershipIssue issue)
+        {
+            var entries = issue.Source is FunctionKoto { Captures: { } captured } && issue.Capture >= 0 && issue.Capture < captured.Length ? captured : null;
+            var name = entries is not null ? entries[issue.Capture].Name : KotoHelper.UnwrapParentheses(issue.Source).ToString();
+            var type = entries is not null ? CapturedType((FunctionKoto)issue.Source, name) : issue.Source.BoundType;
+            var copy = type is not null && this.compilation.Binding.ProveCopy(type, issue.Source) == ConstraintProof.Proven;
+            var advice = entries is not null
+                ? copy ? $"Capture a Copy of the prepared argument instead, as in [{name}]"
+                    : "A default closure can neither move nor borrow a preceding argument that is not Copy; build an independent value inside the default and capture that"
+                : copy ? $"Copy the prepared argument instead, as in {name} or {name}@copy"
+                : $"Inspect the prepared argument through a temporary shared borrow, such as Text.toString({name}), or build an independent value";
+            var span = entries is not null ? entries[issue.Capture].Span : (SourceSpan?)null;
+            issue.Source.Report(Requirement(issue), issue.Code, note: Note(null), related: Locations(null), condition: Condition(issue), advice: advice, span: span);
+        }
+
+        static BoundType? CapturedType(FunctionKoto closure, string name)
+        {
+            var storage = closure.ClosureStorage?.Storage;
+            for (var i = 0; i < (storage?.Count ?? 0); i++)
+            {
+                if (storage![i].Source.Name == name)
+                {
+                    return storage[i].Source.Type;
+                }
+            }
+
+            return null;
         }
 
         // SPEC 7.6.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry.
@@ -448,9 +486,9 @@ public sealed partial class OwnershipAnalysis
                 this.SetValue(initialized, OwnershipValueKind.Parameter, [], constant: i);
             }
 
-            if (declarationDefault < 0 && parameter.DefaultValue is not null && !ScalarDefaults.Supports(function, i))
+            if (declarationDefault < 0 && parameter.DefaultValue is { } defaultValue && !ScalarDefaults.Supports(function, i) && !this.DefiniteDefaultMove(function, i, defaultValue))
             {
-                this.Unsupported(parameter.DefaultValue ?? parameter.Type);
+                this.Unsupported(defaultValue);
             }
         }
 

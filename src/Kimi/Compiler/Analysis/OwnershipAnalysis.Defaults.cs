@@ -48,7 +48,10 @@ public sealed partial class OwnershipAnalysis
                 var place = -1;
                 if (!ScalarDefaults.Supports(target, this.defaultParameter))
                 {
-                    this.Unsupported(omitted.Expression);
+                    if (!this.DefiniteDefaultMove(target, this.defaultParameter, omitted.Expression))
+                    {
+                        this.Unsupported(omitted.Expression);
+                    }
                 }
                 else if (complete)
                 {
