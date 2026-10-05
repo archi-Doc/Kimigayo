@@ -891,6 +891,16 @@ public sealed partial class Binding
                     call.ArgumentNodes[i].ErasedFunctionType = erased;
                     selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
                 }
+
+                if (selected.Parameters[mapping[i]].Type.BoundType is { } declared && selectedOperations[i].SourceType is { } supplied &&
+                    !EnclosingOriginsAsWritten(supplied, declared, selected, call))
+                {
+                    // SPEC 15.6.5: a nested function's parameter over a fixed Origin of an enclosing body extends the argument's Loans to
+                    // that Origin's whole region; an argument that fits it only through a premise loses them after the call, since
+                    // ownership does not extend them yet (PLAN G65). Value calls apply the same limit.
+                    this.Fail(selectedOperations[i].Source ?? call.ArgumentNodes[i], BindingFailure.Unsupported);
+                    return Complete(call, null);
+                }
             }
 
             var defaultCount = evaluated[winnerIndex].DefaultsUsed;

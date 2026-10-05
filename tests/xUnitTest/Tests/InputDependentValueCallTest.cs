@@ -99,6 +99,7 @@ public class InputDependentValueCallTest
     [InlineData("FixedResult", Swap + "    let r = c(x)\n    return c(r)\nlet a: i32 = 3\nrequire pass(a@ref)@follow == 3 else => $abort(\"fixed result\")")]
     [InlineData("CopyCaptureResult", "func use(x: ref/i32) -> i32\n    let b = 5\n    let rb = b@ref\n    let f = func [rb] (n: ref/i32 during x) => rb\n    let r = f(x)\n    return r@follow + x@follow\nlet n: i32 = 2\nrequire use(n@ref) == 7 else => $abort(\"capture\")")]
     [InlineData("FunctionValueHoldsNoLoan", "func bump(n: uniq/i32) -> uniq/i32 => n\nfunc apply(x: uniq/i32, f: (uniq/i32 during x) -> uniq/i32 during x) -> i32\n    let r = f(x)\n    r@follow = 4\n    return x@follow\nvar p: i32 = 1\nrequire apply(p@uniq, bump) == 4 else => $abort(\"apply\")")]
+    [InlineData("NestedFunction", "func use(x: ref/i32) -> i32\n    func helper(b: ref/i32 during x, h: (ref/i32 during x, i32)) -> ref/i32 during x => b\n    let r = helper(x, (x, 1))\n    return r@follow\nlet n: i32 = 2\nrequire use(n@ref) == 2 else => $abort(\"nested\")")]
     public void FixedInputsAreOrdinaryArguments(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -110,7 +111,8 @@ public class InputDependentValueCallTest
     // local borrow passed for it and the stored result dangled. The relation is now judged at the argument; a fixed Origin of the
     // calling body other than an enclosing function's input is a chain between body Origins, a located limit at the argument. An argument that fits a fixed-Origin
     // input only through a premise would need its Loans kept for that Origin's whole region, which ownership does not do yet; it was
-    // accepted and a stashed or returned alias saw later writes (review of 2549bce2), so it is a located limit at the argument.
+    // accepted and a stashed or returned alias saw later writes (review of 2549bce2), so it is a located limit at the argument. A
+    // nested named function's parameter over an enclosing input is the same limit (review p60, p68; both printed 40).
     [Theory]
     [InlineData(Swap + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
     [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
@@ -118,6 +120,8 @@ public class InputDependentValueCallTest
     [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", nameof(DiagnosticCode.UnsupportedOwnership_Kd), "y@ref")]
     [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    let c = func (b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = c(z)\n    r@follow = 1\n    return z@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z")]
     [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z@follow@ref")]
+    [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    func helper(b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = helper(z)\n    let view = z@follow@ref\n    r@follow = view@follow + 40\n    return view@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z")]
+    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    func helper(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    var holder: ref/i32 during x = x\n    helper(holder@uniq, z@follow@ref)\n    z@follow = 41\n    return holder@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z@follow@ref")]
     public void AFixedInputIsNoPerCallInput(string body, string code, string text)
     {
         var source = body + "public func main() => ()\n";

@@ -300,6 +300,91 @@ public sealed partial class Binding
         static bool SameOrStatic(BoundOrigin? actual, BoundOrigin? expected) => ReferenceEquals(actual, expected) || actual?.Kind == OriginKind.Static;
     }
 
+    // SPEC 15.6.5: whether every position at which a parameter names a fixed Origin of a function enclosing the call, rather than an
+    // Origin of the callee itself, receives that Origin as written or static, so the argument's Loans need no extension to that region.
+    private static bool EnclosingOriginsAsWritten(BoundType actual, BoundType expected, Koto callee, Koto use)
+    {
+        if (!Fits(actual.Origin, expected.Origin, callee, use))
+        {
+            return false;
+        }
+
+        if (actual.Kind != expected.Kind || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        {
+            // An implicit borrow adds the parameter's borrow layer, whose Origin was compared above; any other adapted argument has no
+            // position to compare, so only a parameter without such an Origin needs none.
+            return expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && actual.Kind != BoundTypeKind.Semantics
+                ? EnclosingOriginsAsWritten(actual, expected.Components[0], callee, use)
+                : !Names(expected, callee, use);
+        }
+
+        for (var i = 0; i < expected.OriginArguments.Count; i++)
+        {
+            if (!Fits(actual.OriginArguments[i], expected.OriginArguments[i], callee, use))
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < expected.Components.Count; i++)
+        {
+            if (expected.Kind != BoundTypeKind.Function && !ReferenceEquals(actual.Components[i], expected.Components[i]) &&
+                !EnclosingOriginsAsWritten(actual.Components[i], expected.Components[i], callee, use))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        static bool Fits(BoundOrigin? actual, BoundOrigin? expected, Koto callee, Koto use)
+            => expected is null || ReferenceEquals(actual, expected) || actual?.Kind == OriginKind.Static || !Atom(expected, callee, use);
+
+        static bool Names(BoundType type, Koto callee, Koto use)
+        {
+            if ((type.Origin is { } origin && Atom(origin, callee, use)) || (type.Kind != BoundTypeKind.Function && AnyComponent(type, callee, use)))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                if (Atom(type.OriginArguments[i], callee, use))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool AnyComponent(BoundType type, Koto callee, Koto use)
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (Names(type.Components[i], callee, use))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        static bool Atom(BoundOrigin origin, Koto callee, Koto use)
+        {
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (Atom(origin.Operands[i], callee, use))
+                {
+                    return true;
+                }
+            }
+
+            return !ReferenceEquals(origin.Binder, callee) && FixedInBodyOrigin(origin, use);
+        }
+    }
+
     // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
     private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
         => origin.Kind is OriginKind.Input or OriginKind.Parameter && origin.Binder is FunctionKoto { IsAnonymous: false } owner && IsWithin(use, owner);
