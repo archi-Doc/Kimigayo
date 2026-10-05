@@ -469,6 +469,15 @@ public sealed partial class Binding
     private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note)
     {
         var (evidence, advice, related) = OriginRelationFacts(relation, "fit");
+        if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
+        {
+            // SPEC 23.3.6.5: a closure end is related at the anonymous function's header, from `func` through the parameter list.
+            var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
+            const string Owned = "Return an owned or Copied value instead of a borrow of storage that ends with the call";
+            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], advice: Owned, at: relation.At);
+            return;
+        }
+
         node.Report(requirement, code, note: note, evidence: evidence, related: related, advice: advice, at: relation.At);
     }
 
@@ -499,8 +508,14 @@ public sealed partial class Binding
             return unwrapped;
         }
 
-        return origin.Kind == OriginKind.Projection && unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } initializer } } } &&
-            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
+        if (origin.Kind == OriginKind.Projection && unwrapped is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } initializer } } } &&
+            KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin))
+        {
+            return source;
+        }
+
+        // A value that contains the Borrow, such as a call or Tuple over it, names that Borrow.
+        return origin.Kind is OriginKind.Projection or OriginKind.Anchor ? LocalBorrow(value, origin) : null;
     }
 
     // SPEC 15.2.1: the omitted slot of a parameter's Type, written directly or under one borrow layer, is the projection `p.slot`;
@@ -548,6 +563,8 @@ public sealed partial class Binding
                 return new("expression", origin.Binder is DeclarationContainerKoto ? "self." + origin.Name : origin.Name);
             case OriginKind.Inference when origin.Occurrence is null && origin.Binder is TypeKoto occurrence:
                 return new("omitted", occurrence.ToString());
+            case OriginKind.Projection when origin.Slot == CallResultSlot && origin.Binder is FunctionKoto { IsAnonymous: true }:
+                return new("closure", "call result");
             case OriginKind.Projection or OriginKind.Anchor:
                 var text = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? borrow.ToString()
                     : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName : origin.Binder?.ToString() ?? origin.Name;

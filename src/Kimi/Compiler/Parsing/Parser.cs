@@ -219,6 +219,7 @@ public static partial class Parser
             parameters,
             returnType);
         functionKoto.NameBoundaryIndex = nameBoundary;
+        functionKoto.HeaderEnd = closeParenthesisRange.End;
         functionKoto.IsAnonymous = anonymous;
         functionKoto.IsConstructor = constructor;
         functionKoto.IsSpecialization = specialization;

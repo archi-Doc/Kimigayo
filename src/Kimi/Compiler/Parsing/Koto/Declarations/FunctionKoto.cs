@@ -239,6 +239,9 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal BoundClosure? ClosureStorage { get; set; }
 
+    /// <summary>Gets or sets the end of the header, the closing parenthesis of the parameter list (SPEC 23.3.6.5 relates a closure end there).</summary>
+    internal int HeaderEnd { get; set; }
+
     internal void SetCaptures(CaptureKoto[]? captures) => this.Captures = captures;
 
     internal void SetBaseInitializer(InvocationKoto initializer)

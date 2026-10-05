@@ -109,6 +109,9 @@ public sealed partial class Binding
     // the closure as binder; the i-th binding's Projection slot is -2 - i.
     internal static int EnvironmentSlot(int index) => -2 - index;
 
+    // The Projection slot of a closure's call result, a display end only (SPEC 23.3.6.5).
+    internal const int CallResultSlot = -1;
+
     // The Projection slot that names a binding's own Place.
     internal static int SymbolOriginSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.Capture ? EnvironmentSlot(symbol.Slot) : symbol.Slot;
 

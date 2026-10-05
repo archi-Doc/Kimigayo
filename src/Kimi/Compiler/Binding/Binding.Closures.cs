@@ -55,6 +55,67 @@ public sealed partial class Binding
             _ => false,
         };
 
+    // SPEC 15.8.2: the first Origin of an inferred closure result that names the call's own storage: a parameter slot or a body local
+    // of the closure, or, in a Consuming call, an environment binding. Origins of the enclosing body and receiver-dependent bindings
+    // of a borrowed environment are no such storage.
+    private static BoundOrigin? CallLocalOrigin(BoundType type, FunctionKoto function, bool consuming)
+    {
+        if (CallLocal(type.Origin) is { } found)
+        {
+            return found;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (CallLocal(type.OriginArguments[i]) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (type.Kind != BoundTypeKind.Function && CallLocalOrigin(type.Components[i], function, consuming) is { } part)
+            {
+                return part;
+            }
+        }
+
+        return null;
+
+        BoundOrigin? CallLocal(BoundOrigin? origin)
+        {
+            if (origin is null)
+            {
+                return null;
+            }
+
+            if (origin.Kind == OriginKind.Intersection)
+            {
+                for (var i = 0; i < origin.Operands.Count; i++)
+                {
+                    if (CallLocal(origin.Operands[i]) is { } operand)
+                    {
+                        return operand;
+                    }
+                }
+
+                return null;
+            }
+
+            return origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is { } binder &&
+                (ReferenceEquals(binder, function) ? origin.Slot >= 0 || (consuming && origin.Slot <= EnvironmentSlot(0)) : IsWithin(binder, function)) ? origin : null;
+        }
+    }
+
+    // The Borrow in a closure's result expression whose Origin is the call-local one, which the record names and relates.
+    private static Koto? LocalBorrow(Koto value, BoundOrigin origin)
+    {
+        var finder = new LocalBorrowFinder(origin);
+        finder.Visit(value);
+        return finder.Found;
+    }
+
     private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
     {
         // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
@@ -276,6 +337,9 @@ public sealed partial class Binding
         return environment;
     }
 
+    // SPEC 23.3.6.5: the `closure` display `call result`, the shorter end of a result that outlives its call.
+    private BoundOrigin CallResultOrigin(FunctionKoto function) => this.OriginAtom(function, OriginKind.Projection, CallResultSlot);
+
     // SPEC 7.6.2: each explicit entry initializes one environment binding exactly as `let x = x` or `let x = x@op` would.
     // A bare entry Copies a Copy binding and Reborrows a binding storing an exclusive reference; `x@ref` and `x@uniq`
     // borrow the outer binding's slot, adding a reference layer, and an exclusive slot borrow needs a writable slot.
@@ -407,6 +471,13 @@ public sealed partial class Binding
         }
 
         (this.closureEffects ??= new(this)).Classify(function, plan);
+        if (function.ReturnType is null && expected is null && CallLocalOrigin(symbol.Type, function, plan.Receiver == SemanticsKind.Owner) is { } local)
+        {
+            // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,
+            // or an environment binding the call consumes) cannot outlive the call; the relation is Refuted at that Borrow.
+            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, new(function.ExpressionBody ?? function, local, this.CallResultOrigin(function), false, null, true));
+        }
+
         return Complete(function, plan.EnvironmentType);
     }
 
@@ -592,6 +663,46 @@ public sealed partial class Binding
                 target.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
                 (target.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selectedCall } } receiverAccess && ReferenceEquals(receiverAccess.Left, target) &&
                     ReferenceEquals(selectedCall.Receiver, target) && selectedCall.ReceiverOperation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
+        }
+    }
+
+    // The first Borrow in a result expression whose Origin contains the call-local atom.
+    private sealed class LocalBorrowFinder(BoundOrigin atom) : KotoVisitor
+    {
+        internal Koto? Found { get; private set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Found is not null)
+            {
+                return;
+            }
+
+            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Origin: { } borrowed } && this.Contains(borrowed))
+            {
+                this.Found = node;
+                return;
+            }
+
+            node.VisitChildren(this);
+        }
+
+        private bool Contains(BoundOrigin origin)
+        {
+            if (ReferenceEquals(origin, atom))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (this.Contains(origin.Operands[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

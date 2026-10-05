@@ -51,6 +51,32 @@ public class ClosureEnvironmentOriginTest
         Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), "f()"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
     }
 
+    // SPEC 15.8.2, 15.6.1, 23.3.6.5: a result inferred from the body that borrows the call's own storage, a parameter, a body local or
+    // an environment binding that a Consuming call consumes, is Refuted at the returned value, with the borrow as the longer end and the
+    // closure's call result as the shorter, related at the Borrow and at the header. These were a Loan conflict at the closure or
+    // accepted (the Consuming forms).
+    [Theory]
+    [InlineData("func keep(s: string, r: ref/string) -> ref/string during r => r\n" + Main + "    let a = \"x\"\n    let b = \"y\"\n    let take = func [a@move, b@move] () => keep(a@move, b@ref)\n", "keep(a@move, b@ref)", "b@ref")]
+    [InlineData("func keep(s: string, r: ref/i32) -> ref/i32 during r => r\n" + Main + "    let a = \"x\"\n    let n = 7\n    let take = func [a@move, n] () => keep(a@move, n@ref)\n", "keep(a@move, n@ref)", "n@ref")]
+    [InlineData(Main + "    let s = \"x\"\n    let n = 7\n    let take = func [s@move, n] () => (s@move, n@ref)\n", "(s@move, n@ref)", "n@ref")]
+    [InlineData(Main + "    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "x@ref", "x@ref")]
+    public void AResultOverCallLocalStorageIsRefuted(string source, string text, string borrow)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        var related = error.Related!.Select(x => x.Span is { } at ? source.Substring(at.Start, at.Length) : string.Empty).ToArray();
+        Assert.Contains(borrow, related);
+        Assert.Contains(related, static x => x.StartsWith("func", StringComparison.Ordinal) && x.EndsWith(')'));
+    }
+
+    // A Reborrow or Copy of a captured reference keeps its external Origin, and a moved-out owned value is no borrow.
+    [Theory]
+    [InlineData("    let text = \"abc\"\n    let view = text@ref\n    let item = \"x\"\n    let take = func [view, item@move] () => view\n    let r = take@move()\n")]
+    [InlineData("    let text = \"abc\"\n    let take = func [text@move] () => text@move\n    let r = take@move()\n")]
+    [InlineData("    var n = 7\n    let view = n@uniq\n    let s = \"x\"\n    let take = func [view@move, s@move] () => keep2(s@move, view)\n")]
+    public void AResultOverExternalOriginsOutlivesTheCall(string body)
+        => Assert.Empty(DiagnosticCorpus.Check("func keep2(s: string, v: uniq/i32) -> uniq/i32 during v => v\n" + Main + body).Diagnostics);
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEnvironmentBorrowsAllocateNothing()
