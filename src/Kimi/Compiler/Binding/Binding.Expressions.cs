@@ -370,14 +370,20 @@ public sealed partial class Binding
 
     // SPEC 7.6.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
     // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
-    // A Function Item's Origin conditions are proven from the required contract (SPEC 15.3.7).
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
+        => this.ErasureSignatureFits(actual, expected, node) &&
+            (actual.Kind != BoundTypeKind.Closure || actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref }) &&
+            this.ProveOwned(actual, node) == ConstraintProof.Proven;
+
+    // SPEC 7.6.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
+    // environment are judged after selection, at the argument, and a failure there never selects another candidate. A Function Item's
+    // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
         => expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected, SignatureOwner(actual)) &&
-            this.ItemConditionsHold(actual, expected, node)) ||
-            (actual.Kind == BoundTypeKind.Closure &&
-            actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref } &&
-            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual)))) && this.ProveOwned(actual, node) == ConstraintProof.Proven;
+            this.ItemConditionsHold(actual, expected, use)) ||
+            (actual.Kind == BoundTypeKind.Closure && actual.Symbol?.Declaration is FunctionKoto { BoundClosure: not null } &&
+            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {

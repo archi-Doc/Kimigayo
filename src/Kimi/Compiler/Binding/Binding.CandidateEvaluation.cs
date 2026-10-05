@@ -175,6 +175,31 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 10.2.1, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
+    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
+    {
+        for (var a = 0; a < arguments; a++)
+        {
+            var erased = false;
+            var direct = false;
+            for (var i = 0; i < candidates.Length; i++)
+            {
+                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                {
+                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
+                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
+                }
+            }
+
+            if (erased && direct)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private BoundType? FailWaitingSelection(InvocationKoto call, BindingFailure failure)
     {
         this.MarkWaitingHeaders(call);

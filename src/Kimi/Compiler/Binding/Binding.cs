@@ -626,6 +626,11 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (candidate.ErasureIncomparable && issue.Code == DiagnosticCode.AmbiguousBinding_Kd)
+                {
+                    shapeNote = ErasureAmbiguityNote;
+                }
+
                 if (candidate.Selected)
                 {
                     shapeNote = "This declaration was selected before completing its callable arguments; its argument constraints failed. Another overload is not selected";

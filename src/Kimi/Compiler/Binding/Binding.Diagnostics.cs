@@ -16,6 +16,10 @@ public sealed partial class Binding
     // SPEC 15.3.6, 10.8: a per-call Origin lies beyond the call, so no annotation of the slot can name it; conditional prose only.
     private const string PerCallOriginAdvice = "If the argument's result is meant to borrow its own input, use it where that input is known, such as in an anonymous function written at the call; otherwise pass a function whose result does not borrow its input, such as one that returns a Copy of the borrowed value";
 
+    // SPEC 10.2.1, 10.7: no ordering is defined between an erasure and a direct match at one argument; the erasure's receiver and Owned
+    // conditions are judged only after selection, so they never make it inapplicable.
+    private const string ErasureAmbiguityNote = "At one argument, one candidate erases the argument to a common Function Type and another takes it directly; these adaptations are incomparable (SPEC 10.2.1, 10.7), and the erasure's receiver and Owned conditions are judged only after selection";
+
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
     private const string StrongCloneAdvice = "Strong clone accepts only rc or arc handles; obj ownership cannot be duplicated";
 
@@ -88,7 +92,7 @@ public sealed partial class Binding
     // the generic container that declares it (Outer), with the declared and the written counts.
     private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
 
-    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1);
+    private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1, bool ErasureIncomparable = false);
 
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
     // slot would hold (as bits), that signature and the parameters that the advised wrapper passes with @move (as bits), or null when

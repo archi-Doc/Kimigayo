@@ -797,11 +797,12 @@ public sealed partial class Binding
                 {
                     var remaining = new RejectedCandidate[applicable];
                     var next = 0;
+                    var erasure = ErasureIncomparable(evaluated.AsSpan(0, count), operations, operationStride, argumentCount);
                     for (var i = 0; i < count; i++)
                     {
                         if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                         {
-                            remaining[next++] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null);
+                            remaining[next++] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null, ErasureIncomparable: erasure);
                         }
                     }
 
@@ -919,6 +920,7 @@ public sealed partial class Binding
                 }
             }
 
+            var erasureFailed = false;
             for (var i = 0; i < argumentCount; i++)
             {
                 if (call.ArgumentNodes[i].BoundType is null)
@@ -935,9 +937,19 @@ public sealed partial class Binding
 
                     selectedOperations[i] = selectedOperations[i] with { SourceType = call.ArgumentNodes[i].BoundType };
                 }
-                else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType && selectedOperations[i].ParameterType is { } erased &&
-                    this.ErasesToFunction(call.ArgumentNodes[i], closureType, erased))
+                else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType && selectedOperations[i].ParameterType is { Kind: BoundTypeKind.Function } erased &&
+                    selectedOperations[i].Adaptation == ArgumentAdaptation.Erasure)
                 {
+                    if (!this.ErasesToFunction(call.ArgumentNodes[i], closureType, erased))
+                    {
+                        // SPEC 10.5, 7.6.4: the erasure conditions are judged after selection, at the argument: an environment that is not
+                        // Owned is the Constraint record, a receiver that is not Shared a Type mismatch with its Note. The call rests on it
+                        // and another candidate is never selected; every failing argument is reported (SPEC 23.3.6.4).
+                        this.RecordMismatch(call.ArgumentNodes[i], call.ArgumentNodes[i], closureType, erased);
+                        erasureFailed = true;
+                        continue;
+                    }
+
                     // SPEC 7.6.4: the selected parameter fixes the common Function Type the Closure value is converted to.
                     call.ArgumentNodes[i].ErasedFunctionType = erased;
                     selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
@@ -952,6 +964,11 @@ public sealed partial class Binding
                     this.Fail(selectedOperations[i].Source ?? call.ArgumentNodes[i], BindingFailure.Unsupported);
                     return Complete(call, null);
                 }
+            }
+
+            if (erasureFailed)
+            {
+                return Complete(call, null);
             }
 
             // SPEC 15.6.1: the selected candidate's Origin relations, never part of its applicability, are judged at their sources.
@@ -1575,16 +1592,17 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (argument.BoundType is { } closureType && this.ErasesToFunction(argument, closureType, type))
+                if (argument.BoundType is { } closureType && this.ErasureSignatureFits(closureType, type, argument))
                 {
                     // SPEC 7.6.4: a concrete Closure value converts to the parameter's common Function Type, as at an
-                    // initialization; the argument is bound with that expectation once the call is selected.
+                    // initialization; the argument is bound with that expectation once the call is selected. Its receiver and
+                    // Owned conditions are judged then (SPEC 10.5).
                     operations[i] = new(call.ArgumentNodes[i], closureType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
                     continue;
                 }
 
                 if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } instantiatedValue && type.Kind == BoundTypeKind.Function &&
-                    this.PerCallStandIn(type, call.ArgumentNodes[i], type, true) is { } instantiatedType && this.ErasesToFunction(argument, instantiatedValue, instantiatedType))
+                    this.PerCallStandIn(type, call.ArgumentNodes[i], type, true) is { } instantiatedType && this.ErasureSignatureFits(instantiatedValue, instantiatedType, argument))
                 {
                     // SPEC 10.7, 10.8: the value's per-call input is instantiated to a required input over a fixed Origin.
                     this.InstantiateOpenOrigins(arguments.AsSpan(0, function.GenericArguments.Count), call.ArgumentNodes[i], type);
@@ -1593,7 +1611,7 @@ public sealed partial class Binding
                 }
 
                 if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } perCallValue && type.Kind == BoundTypeKind.Function &&
-                    this.PerCallStandIn(type, call.ArgumentNodes[i], type) is { } valueStandIn && this.ErasesToFunction(argument, perCallValue, valueStandIn))
+                    this.PerCallStandIn(type, call.ArgumentNodes[i], type) is { } valueStandIn && this.ErasureSignatureFits(perCallValue, valueStandIn, argument))
                 {
                     // SPEC 15.3.6: only the value's own per-call Origin would satisfy the slot; reported after selection.
                     operations[i] = new(call.ArgumentNodes[i], perCallValue, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i], MissingOrigin: true);
@@ -1799,10 +1817,10 @@ public sealed partial class Binding
                 actual = itemSignature;
             }
             else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
-                actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure })
+                actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
             {
-                // SPEC 7.6.4: a concrete Closure meets a common Function Type through its signature; the conversion itself is
-                // judged once the parameter Type is complete.
+                // SPEC 7.6.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
+                // its receiver and Owned conditions included, is judged once the call is selected.
                 actual = closure.Signature;
             }
 
