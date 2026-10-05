@@ -21,6 +21,11 @@ public sealed partial class OwnershipBody
     private bool[] borrowRootLoss = [];
     private int[] borrowDefinitions = [];
 
+    // SPEC 15.6.3: each store through an exclusive reference: the Place it reaches (StoredReferent), the store and the stored
+    // Place. The referent takes the stored value's Loans (RetainBorrowAuthority), and a reference read from it afterwards
+    // descends from the stored value (DescendsFrom).
+    private readonly List<(int Referent, int Store, int Stored)> storedReferents = new();
+
     // Per operation, the carrying definition whose value reaches its input, or -1 (LoanCarryingDefinition).
     private int[] carryingFrom = [];
     private int[] slicePaths = [];
@@ -305,6 +310,17 @@ public sealed partial class OwnershipBody
             {
                 ref var definition = ref this.borrowDefinitions[defined];
                 definition = definition == -1 ? id : -2;
+            }
+        }
+
+        this.storedReferents.Clear();
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            if (this.Operations[id] is { Kind: OwnershipOperationKind.StorePointer, Place: >= 0 } store && this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } node &&
+                this.ValueOperands[node.Start] is >= 0 and var pointer && ValuePlaceForBorrow(this.Operations[pointer]) is >= 0 and var holder &&
+                this.Places[holder].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 })
+            {
+                this.storedReferents.Add((this.StoredReferent(pointer, holder), id, store.Place));
             }
         }
 
@@ -1483,7 +1499,7 @@ public sealed partial class OwnershipBody
                             this.ValueOperands[store.Start] is >= 0 and var pointer && ValuePlaceForBorrow(this.Operations[pointer]) is >= 0 and var holder &&
                             this.Places[holder].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var stored] })
                         {
-                            Merge(this.StoredReferent(pointer, holder), operation.Place, id, stored);
+                            Merge(this.StoredReferentOf(id), operation.Place, id, stored);
                         }
 
                         break;
@@ -1635,7 +1651,65 @@ public sealed partial class OwnershipBody
             break;
         }
 
+        // A loaded or received reference addresses the Place its Origin names when that is a slot of this body storing the
+        // referent Type: `slot` for the `uniq/T during slot` loaded from `Box<uniq/T during slot>.init(item: slot@uniq)`.
+        if (this.Places[holder].Type.Origin is { } origin && this.ProjectionPlace(origin) is >= 0 and var named &&
+            ReferenceEquals(this.Places[named].Type, this.Places[holder].Type.Components[0]))
+        {
+            return named;
+        }
+
         return holder;
+    }
+
+    private int StoredReferentOf(int store)
+    {
+        for (var i = 0; i < this.storedReferents.Count; i++)
+        {
+            if (this.storedReferents[i].Store == store)
+            {
+                return this.storedReferents[i].Referent;
+            }
+        }
+
+        return -1;
+    }
+
+    // SPEC 15.6.3: whether a value stored into `referent` through an exclusive reference before `before` descends from `place`;
+    // a reference read from the referent afterwards descends from it as from the referent's own definition.
+    private bool StoredValueDescends(int referent, int before, int place, int original)
+    {
+        for (var i = 0; i < this.storedReferents.Count; i++)
+        {
+            var (target, store, stored) = this.storedReferents[i];
+            if (target == referent && store < before)
+            {
+                var definition = this.borrowDefinitions[stored] is >= 0 and var only && only < store ? only : this.ProducingValue(stored, store);
+                if (definition >= 0 && this.DescendsFrom(definition, place, original))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // The body's own Place that a Projection Origin names, a local, parameter or capture slot (SymbolPlaces), or -1.
+    private int ProjectionPlace(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Projection)
+        {
+            foreach (var entry in this.SymbolPlaces)
+            {
+                if (ReferenceEquals(entry.Key.Declaration, origin.Binder) && Binding.SymbolOriginSlot(entry.Key) == origin.Slot)
+                {
+                    return entry.Value;
+                }
+            }
+        }
+
+        return -1;
     }
 
     private void PrepareCheckingBorrowEdges()
@@ -2223,6 +2297,12 @@ public sealed partial class OwnershipBody
                 return true;
             }
 
+            if (operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && operation.Place >= 0 && ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) &&
+                this.StoredValueDescends(operation.Place, value, place, original))
+            {
+                return true; // SPEC 15.6.3: a reference stored through an exclusive reference into this Place.
+            }
+
             var node = this.Values[value];
             if (operation.Kind == OwnershipOperationKind.Borrow && operation.Place >= 0 && node.Kind == OwnershipValueKind.Address && node.Count == 0 &&
                 this.Places[operation.Place].Type.Semantics == SemanticsKind.Owner &&
@@ -2305,6 +2385,9 @@ public sealed partial class OwnershipBody
                     OwnershipOperationKind.InitializeSubject => operation.Input,
                     OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Copy && operation.Place >= 0 &&
                         this.Places[operation.Place].Type.Semantics == SemanticsKind.Ref => operation.Place,
+                    // SPEC 15.6.3: a Moved reference keeps its ancestry; the Move changes its slot, not the capability's identity.
+                    OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Move && operation.Place >= 0 &&
+                        ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) => operation.Place,
                     OwnershipOperationKind.CallEntry => operation.Place,
                     OwnershipOperationKind.Produce when operation.Place >= 0 => operation.Place,
                     // SPEC 15.6.2: an in-place slot borrow of an owned root, such as the slot of a stored reference
