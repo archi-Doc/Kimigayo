@@ -74,8 +74,9 @@ public sealed partial class Binding
     }
 
     // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
-    // syntax binds its inputs.
-    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool renameInput = false, Koto? actualInputs = null, Koto? expectedInputs = null, Koto? own = null)
+    // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
+    // Callable comparison whose per-call Origins the parts are compared under.
+    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
         {
@@ -92,8 +93,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!(renameInput && actual.Origin?.Kind == OriginKind.Input && expected.Origin?.Kind == OriginKind.Input) &&
-            !ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
+        if (!skipOrigin && !ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
             !OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))
         {
             return false;
@@ -116,6 +116,11 @@ public sealed partial class Binding
             }
         }
 
+        if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
+        {
+            return FunctionFits(actual, expected, binding, use, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)));
+        }
+
         for (var i = 0; i < actual.Components.Count; i++)
         {
             var a = actual.Components[i];
@@ -124,7 +129,7 @@ public sealed partial class Binding
             {
                 var variance = schema.GenericSlots[i].OriginVariance;
                 if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
-                    !FitsTypeCore(a, b, binding, use, true, actualInputs: actualInputs, expectedInputs: expectedInputs) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use, actualInputs: actualInputs, expectedInputs: expectedInputs) : !FitsTypeCore(b, a, binding, use, actualInputs: expectedInputs, expectedInputs: actualInputs))
+                    !FitsTypeCore(a, b, binding, use, true, instance: instance) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use, instance: instance) : !FitsTypeCore(b, a, binding, use, instance: instance))
                 {
                     return false;
                 }
@@ -132,47 +137,14 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (actual.Kind == BoundTypeKind.Function && i == 0 && PerCallShape(actual, own) && PerCallShape(expected, null, any: true))
+            if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
             {
-                // Fresh input binders are local quantifiers of the Function Type, not fixed external Origins.
-                // Rename only the outer input layer; referent Types and their own Origins remain rigid.
-                if (a.Components.Count != b.Components.Count)
-                {
-                    return false;
-                }
-
-                for (var input = 0; input < a.Components.Count; input++)
-                {
-                    if (!FitsTypeCore(b.Components[input], a.Components[input], binding, use, invariant, renameInput: true))
-                    {
-                        return false;
-                    }
-                }
-            }
-            else if (actual.Kind == BoundTypeKind.Function && i == 1 && InputDependentBinder(actual, own) is { } actualBinder && InputDependentBinder(expected, null, any: true) is { } expectedBinder)
-            {
-                // SPEC 10.7, 15.6.4: a result over the per-call inputs names them through its own Function Type's binders;
-                // the two results are compared with each input of one standing for the same input of the other.
-                if (!FitsTypeCore(a, b, binding, use, invariant, actualInputs: actualBinder, expectedInputs: expectedBinder))
+                if (!FitsTypeCore(a, b, binding, use, true, instance: instance))
                 {
                     return false;
                 }
             }
-            else if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
-            {
-                if (!FitsTypeCore(a, b, binding, use, true, actualInputs: actualInputs, expectedInputs: expectedInputs))
-                {
-                    return false;
-                }
-            }
-            else if (actual.Kind == BoundTypeKind.Function && i == 0)
-            {
-                if (!FitsTypeCore(b, a, binding, use))
-                {
-                    return false;
-                }
-            }
-            else if (!FitsTypeCore(a, b, binding, use, actualInputs: actualInputs, expectedInputs: expectedInputs))
+            else if (!FitsTypeCore(a, b, binding, use, instance: instance))
             {
                 return false;
             }
@@ -180,7 +152,7 @@ public sealed partial class Binding
 
         return true;
 
-        bool OriginFits(BoundOrigin a, BoundOrigin b) => actualInputs is not null && RenamedInputsOutlive(a, b, actualInputs, expectedInputs!) is { } renamed ? renamed :
+        bool OriginFits(BoundOrigin a, BoundOrigin b) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
             binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
     }
 
@@ -188,54 +160,84 @@ public sealed partial class Binding
     private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
         => PerCallSignature(signature, own, any) || InputDependentBinder(signature, own, any) is not null;
 
-    // Within two results over per-call inputs, input slot i of one stands for input slot i of the other. An Origin over a set of
-    // inputs outlives one over a superset, the static Origin outlives every such Origin; null when no renamed input occurs.
-    private static bool? RenamedInputsOutlive(BoundOrigin actual, BoundOrigin expected, Koto actualBinder, Koto expectedBinder)
+    // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
+    // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
+    // per call or fixed, so only its referent is compared; every other input is compared as written, contravariantly.
+    private static bool FunctionFits(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant, CallableInstance instance)
     {
-        var actualKnown = InputSlots(actual, actualBinder, out var actualSlots, out var actualRenamed);
-        var expectedKnown = InputSlots(expected, expectedBinder, out var expectedSlots, out var expectedRenamed);
-        if (!actualRenamed && !expectedRenamed)
+        var actualInputs = actual.Components[0];
+        var expectedInputs = expected.Components[0];
+        if (!ReferenceEquals(actualInputs, expectedInputs))
         {
-            return null;
-        }
-
-        return actualKnown && expectedKnown && (actualSlots & ~expectedSlots) == 0;
-
-        static bool InputSlots(BoundOrigin origin, Koto binder, out ulong slots, out bool renamed)
-        {
-            slots = 0;
-            renamed = false;
-            if (origin.Kind == OriginKind.Static)
-            {
-                return true;
-            }
-
-            if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && origin.Slot is >= 0 and < 64)
-            {
-                slots = 1UL << origin.Slot;
-                renamed = true;
-                return true;
-            }
-
-            if (origin.Kind != OriginKind.Intersection)
+            if (actualInputs.Kind != expectedInputs.Kind || actualInputs.Components.Count != expectedInputs.Components.Count)
             {
                 return false;
             }
 
-            for (var i = 0; i < origin.Operands.Count; i++)
+            for (var i = 0; i < actualInputs.Components.Count; i++)
             {
-                if (!InputSlots(origin.Operands[i], binder, out var part, out var partRenamed))
+                var input = actualInputs.Components[i];
+                var required = expectedInputs.Components[i];
+                if (!FitsTypeCore(required, input, binding, use, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance))
                 {
-                    renamed |= partRenamed;
                     return false;
                 }
+            }
+        }
 
-                slots |= part;
-                renamed |= partRenamed;
+        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance);
+    }
+
+    // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
+    // required per-call Origins are rigid: one outlives another only at the same position, and a fixed Origin outlives one only when
+    // it is static, since the call that binds it may come after every point of the enclosing body. A meet outlives an Origin when
+    // each operand does, and an Origin outlives a meet when it outlives one operand.
+    private static bool InstanceOutlives(BoundOrigin a, BoundOrigin b, in CallableInstance instance, Binding? binding, Koto? use, int depth)
+    {
+        if (depth > 8)
+        {
+            return false;
+        }
+
+        a = instance.Instantiate(a);
+        b = instance.Instantiate(b);
+        if (ReferenceEquals(a, b) || a.Kind == OriginKind.Static)
+        {
+            return true;
+        }
+
+        if (a.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < a.Operands.Count; i++)
+            {
+                if (!InstanceOutlives(a.Operands[i], b, instance, binding, use, depth + 1))
+                {
+                    return false;
+                }
             }
 
             return true;
         }
+
+        if (b.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < b.Operands.Count; i++)
+            {
+                if (InstanceOutlives(a, b.Operands[i], instance, binding, use, depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (instance.IsRequiredSlot(a) || instance.IsRequiredSlot(b))
+        {
+            return false;
+        }
+
+        return binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
     }
 
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)

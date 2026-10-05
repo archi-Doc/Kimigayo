@@ -102,21 +102,7 @@ public sealed partial class Binding
     // Function Type of the signature, whose own inputs are the only Input atoms it binds at an outer layer.
     private static Koto? CalleeBinder(BoundType? callee, BoundType signature)
     {
-        if (callee is not null && SignatureOwner(callee) is { } declaration)
-        {
-            return declaration;
-        }
-
-        var inputs = signature.Components[0];
-        for (var i = 0; i < inputs.Components.Count; i++)
-        {
-            if (inputs.Components[i].Origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto binder } origin && origin.Slot == i)
-            {
-                return binder;
-            }
-        }
-
-        return null;
+        return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
     }
 
     // Every input Origin the callee binds is the outer Origin of a direct borrowed input at its own position (SPEC 15.6.4); other

@@ -9,6 +9,21 @@ public sealed partial class Binding
     // SPEC 10.7, 15.3.7: `own` is the declaration whose own per-call inputs the implementation's signature names, if any.
     internal static bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own) => FitsTypeCore(actual, expected, null, null, own: own);
 
+    // The binder of a Function Type's own per-call inputs: its syntax, which quantifies an outer input Origin at that input's slot.
+    internal static Koto? FunctionTypeBinder(BoundType signature)
+    {
+        var inputs = signature.Components[0];
+        for (var i = 0; i < inputs.Components.Count; i++)
+        {
+            if (inputs.Components[i].Origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto binder } origin && origin.Slot == i)
+            {
+                return binder;
+            }
+        }
+
+        return null;
+    }
+
     // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.6).
     internal static Koto? SignatureOwner(BoundType callee)
     {

@@ -103,6 +103,22 @@ public class CallableOriginForwardingTest
         Assert.Contains("{\"name\":\"shorter\",\"kind\":\"Origin\",\"value\":\"ref/i32\",\"elided\":false,\"origin\":\"omitted\"}", json, StringComparison.Ordinal);
     }
 
+    private const string Add = "func add(a: ref/i32, b: ref/i32) -> i32 => a@follow + b@follow\n";
+
+    // SPEC 10.7, 15.3.7: each input that the implementation binds per call is instantiated at the required input in the same position,
+    // per call or fixed, and every other input is compared as written; a result is compared under that instantiation. Signatures that
+    // mix fixed and per-call inputs therefore fit position by position (a 9f8022d8 regression, found by review).
+    [Theory]
+    [InlineData("FunctionValue", Add + "func use(x: ref/i32) -> i32\n    let f: (ref/i32 during x, ref/i32) -> i32 = add\n    let g: (ref/i32 during x, ref/i32) -> i32 = f@move\n    let local: i32 = 5\n    return g(x, local@ref)\nlet p: i32 = 1\nrequire use(p@ref) == 6 else => $abort(\"value\")")]
+    [InlineData("Forwarded", Add + "func invoke(x: ref/i32, f: (ref/i32 during x, ref/i32) -> i32) -> i32\n    let local: i32 = 5\n    return f(x, local@ref)\nfunc use(x: ref/i32) -> i32\n    let f: (ref/i32 during x, ref/i32) -> i32 = add\n    return invoke(x, f@move)\nlet p: i32 = 1\nrequire use(p@ref) == 6 else => $abort(\"forward\")")]
+    [InlineData("CallableSlot", "func callIt<T, F>(v: T, f: ref/F) -> i32\n    F is Callable<(T, ref/i32) -> i32>\n    let local: i32 = 5\n    return f(v@move, local@ref)\nfunc use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x, m: ref/i32) => n@follow + m@follow\n    return callIt(x, c@ref)\nlet p: i32 = 1\nrequire use(p@ref) == 6 else => $abort(\"callable\")")]
+    [InlineData("WrittenHeader", "func use(x: ref/i32, y: ref/i32) -> i32\n    let g: (ref/i32, ref/i32 during y) -> i32 = func (a: ref/i32, b: ref/i32 during y) => a@follow + b@follow\n    let local: i32 = 5\n    return g(local@ref, y)\nlet p: i32 = 1\nlet q: i32 = 2\nrequire use(p@ref, q@ref) == 7 else => $abort(\"written\")")]
+    [InlineData("ContextualHeader", "func use(x: ref/i32, y: ref/i32) -> i32\n    let g: (ref/i32, ref/i32 during y) -> i32 = func (a, b) => a@follow + b@follow\n    let local: i32 = 5\n    return g(local@ref, y)\nlet p: i32 = 1\nlet q: i32 = 2\nrequire use(p@ref, q@ref) == 7 else => $abort(\"contextual\")")]
+    [InlineData("FixedHeader", "func use(x: ref/i32) -> i32\n    let g: (ref/i32 during x) -> i32 = func (n: ref/i32 during x) => n@follow\n    return g(x)\nlet a: i32 = 4\nrequire use(a@ref) == 4 else => $abort(\"fixed\")")]
+    [InlineData("FixedResult", "func use(x: ref/i32, y: ref/i32) -> i32\n    origin x outlives y\n    let g: (ref/i32 during x, i32) -> ref/i32 during y = func (n, k) => n\n    return g(x, 5)@follow\nlet a: i32 = 4\nrequire use(a@ref, a@ref) == 4 else => $abort(\"result\")")]
+    public void MixedFixedAndPerCallInputsFit(string name, string source)
+        => ScalarEmissionTest.EmitFixture("CallableInstance" + name, source, string.Empty);
+
     // SPEC 10.7: a per-call implementation fits a required input written over a fixed Origin by instantiating its call-time Origin.
     [Fact]
     public void APerCallImplementationFitsAFixedInput()

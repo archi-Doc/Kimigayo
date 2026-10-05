@@ -55,21 +55,6 @@ public sealed partial class Binding
             _ => false,
         };
 
-    // The binder of the fresh per-call inputs of an expected Function Type.
-    private static Koto? ExpectedInputBinder(BoundType expected)
-    {
-        var inputs = expected.Components[0];
-        for (var i = 0; i < inputs.Components.Count; i++)
-        {
-            if (inputs.Components[i].Origin is { Kind: OriginKind.Input } origin)
-            {
-                return origin.Binder;
-            }
-        }
-
-        return null;
-    }
-
     private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
     {
         // A Callable expectation supplies a body context, not an erasure target: F keeps the concrete Closure Type.
@@ -80,10 +65,11 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5, 15.6.4: a fixed expected signature names its fresh per-call inputs through its own Function Type's binder; an
-    // anonymous function takes them as its own inputs, so the expectation is restated over the anonymous function's binder.
+    // anonymous function takes them as its own inputs, so the expectation is restated over the anonymous function's binder. Inputs
+    // and results written over a fixed Origin of the enclosing body stay as written.
     private BoundType ClosureExpectation(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesOrigin || !PerCallShape(expected, null, any: true) || ExpectedInputBinder(expected) is not { } binder ||
+        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesOrigin || FunctionTypeBinder(expected) is not { } binder ||
             ReferenceEquals(binder, function))
         {
             return expected;
@@ -155,7 +141,7 @@ public sealed partial class Binding
 
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || (expected.CarriesOrigin && !PerCallShape(expected, null, any: true)))
+        if (expected.Kind != BoundTypeKind.Function)
         {
             return false;
         }
