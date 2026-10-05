@@ -1665,14 +1665,14 @@ public sealed partial class Binding
                 var written = literal.Parameters[i].Type;
                 if (written is not SyntaxFormKoto { Akind: KotoKind.InferredType } &&
                     (this.BindType(written, headerScope) is not { } actual ||
-                    !this.Infer(parameterTypes.Components[i], actual, function, arguments, lengths: lengths, structural: true)))
+                    !this.Infer(parameterTypes.Components[i], actual, function, arguments, lengths: lengths, structural: true, perCallInputs: literal)))
                 {
                     return false;
                 }
             }
 
             return literal.ReturnType is null || (this.BindType(literal.ReturnType, headerScope) is { } result &&
-                this.Infer(signature.Components[1], result, function, arguments, lengths: lengths, structural: true));
+                this.Infer(signature.Components[1], result, function, arguments, lengths: lengths, structural: true, perCallInputs: literal));
         }
 
         bool InferCallableSignatures(Span<BoundArgumentOperation> signatureOperations)
@@ -1761,7 +1761,10 @@ public sealed partial class Binding
         return pattern;
     }
 
-    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false)
+    // With `perCallInputs`, the actual is a written anonymous header (SPEC 10.5). Only its structure is evidence: applicability
+    // judges no Origin part (SPEC 15.6.1), and the bound closure fits its expectation after selection. A Type over the header's
+    // own per-call inputs never solves a slot, since a per-call Origin lies beyond the call (SPEC 10.8).
+    private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, Koto? perCallInputs = null)
     {
         // A Never-valued expression supplies no input value; a Never Type inside a known signature is exact evidence.
         if (!structural && ReferenceEquals(actual, BoundType.Never))
@@ -1786,18 +1789,18 @@ public sealed partial class Binding
 
             if (whole.Semantics == SemanticsKind.Owner)
             {
-                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural);
+                return this.Infer(pattern.Components[0], actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs);
             }
 
             return actual.Kind == BoundTypeKind.Semantics && actual.Semantics == whole.Semantics &&
-                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural);
+                this.Infer(pattern.Components[0], actual.Components[0], function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs);
         }
 
         // SPEC 3.1.1.1: the wrapping Scalar Wrapping<u8> is the instance of the pattern Wrapping<T>, so T is inferred from
         // the Scalar's integer argument; the substituted parameter then normalizes to the same Scalar.
         if (actual.IsWrappingInteger && pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 1 } && pattern.Symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping)
         {
-            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural);
+            return this.Infer(pattern.Components[0], actual.Underlying, function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs);
         }
 
         if (pattern.Kind == BoundTypeKind.Parameter && ContainerSlot(function, pattern.Symbol!) is var slot && slot >= 0)
@@ -1813,6 +1816,11 @@ public sealed partial class Binding
                 ComparisonReferent(actual) is var referent && !ReferenceEquals(referent, actual) && this.InfersReadReferent(pattern, function))
             {
                 actual = referent;
+            }
+
+            if (perCallInputs is not null && HasUnsubstitutedOrigin(actual, perCallInputs))
+            {
+                return false;
             }
 
             if (arguments[slot] is { } previous)
@@ -1842,14 +1850,14 @@ public sealed partial class Binding
 
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
             !(lengths is not null && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, lengths) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
-            (!inferOrigins && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.Components.Count == 0)
+            (!inferOrigins && perCallInputs is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.Components.Count == 0)
         {
             return false;
         }
 
         for (var i = 0; i < pattern.OriginArguments.Count; i++)
         {
-            if (!inferOrigins && !ReferenceEquals(pattern.OriginArguments[i], actual.OriginArguments[i]))
+            if (!inferOrigins && perCallInputs is null && !ReferenceEquals(pattern.OriginArguments[i], actual.OriginArguments[i]))
             {
                 return false;
             }
@@ -1857,7 +1865,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < pattern.Components.Count; i++)
         {
-            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural))
+            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural, perCallInputs))
             {
                 return false;
             }
