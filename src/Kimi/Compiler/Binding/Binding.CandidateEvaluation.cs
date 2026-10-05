@@ -177,8 +177,21 @@ public sealed partial class Binding
 
     private BoundType? FailWaitingSelection(InvocationKoto call, BindingFailure failure)
     {
-        // Omitted header Types need this selection's expectation. Keep that dependency explicit without checking
-        // the body or turning an independent written-Type error into a consequence of the selection.
+        this.MarkWaitingHeaders(call);
+        return this.Fail(call, failure, true);
+    }
+
+    // SPEC 8.7, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
+    private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
+    {
+        this.MarkWaitingHeaders(call);
+        return this.FailExplained(ref this.callableConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+    }
+
+    // Omitted header Types need this selection's expectation. Keep that dependency explicit without checking
+    // the body or turning an independent written-Type error into a consequence of the selection.
+    private void MarkWaitingHeaders(InvocationKoto call)
+    {
         foreach (var argument in call.ArgumentNodes)
         {
             if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
@@ -186,8 +199,6 @@ public sealed partial class Binding
                 this.MarkOmittedHeaders(closure, call);
             }
         }
-
-        return this.Fail(call, failure, true);
     }
 
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).

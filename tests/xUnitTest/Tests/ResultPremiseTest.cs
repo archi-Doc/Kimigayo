@@ -255,11 +255,17 @@ public class ResultPremiseTest
         Assert.Equal("Write the 1st parameter of the required Type over static, or convert an implementation whose result Type needs no such relation", result.Advice);
         Assert.True(DiagnosticCorpus.Check(premise.Replace("let g: (ref/i32) ->", "let g: (ref/i32 during static) ->", StringComparison.Ordinal)).Accepted);
 
-        // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove leaves the call inapplicable.
+        // A Callable argument proves the clause too: an Item whose clause the requirement cannot prove fails the Callable proof in its
+        // Origin part, which is Unknown (SPEC 8.7, 15.6.1), so the call is the Constraint record at the argument naming the clause (it was
+        // NoApplicableOverload_Kd at the call); an implementation without that clause is accepted.
         var callable = Pin + "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    return f(x)@follow\n\n" +
             "func run() -> i32\n    let local: i32 = 5\n    return apply(pin@ref, local@ref)\n" + Main;
         var argument = Assert.Single(DiagnosticCorpus.Check(callable).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "apply(pin@ref, local@ref)"), (argument.Code, Text(callable, argument.Span)));
+        Assert.Equal((nameof(DiagnosticCode.UnprovenConstraint_Kd), DiagnosticCategory.Proof, "pin@ref"), (argument.Code, argument.Category, Text(callable, argument.Span)));
+        Assert.Equal(["F is Callable<(ref/i32) -> ref/i32>", "the clause 'origin p outlives static'", "outlives", "ref/i32", "static"], argument.Reason!.Skip(1).Select(static x => x.Value));
+        Assert.Equal("Pass an implementation without that clause", argument.Advice); // SPEC 8.6: a Callable signature writes no `during`.
+        Assert.Equal([("constraint", "F is Callable<(ref/i32) -> ref/i32>"), ("origin", "ref/i32")], argument.Related!.Select(x => (x.Role, Text(callable, x.Span))));
+        Assert.True(DiagnosticCorpus.Check(callable.Replace(Pin, "func pin(p: ref/i32) -> ref/i32 during p => p\n\n", StringComparison.Ordinal)).Accepted);
     }
 
     // SPEC 15.3.7: a conformance solves the implementation's call Origins under its result premise, so a requirement whose result is

@@ -1894,6 +1894,7 @@ public sealed partial class Binding
         this.ownedConversions?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
+        this.callableConstraints?.Clear();
         this.operatorOperands?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();

@@ -632,6 +632,8 @@ public sealed partial class Binding
             var applicable = 0;
             var winnerIndex = -1;
             var pending = false;
+            var pendingCount = 0;
+            CallableConstraintFact? callableFailure = null;
             var error = false;
             Koto? incompleteSignature = null;
             FunctionKoto? pendingFunction = null;
@@ -668,6 +670,13 @@ public sealed partial class Binding
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver);
                 pending |= state == CandidateApplicability.Pending;
                 pendingFunction ??= state == CandidateApplicability.Pending ? function : null;
+                if (state == CandidateApplicability.Pending)
+                {
+                    // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
+                    pendingCount++;
+                    callableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, scratch, lengthArguments, mapping, scope, self, declaringType) : null;
+                }
+
                 error |= state == CandidateApplicability.Error;
                 invalidDeclaration ??= state == CandidateApplicability.Error ? InvalidDeclarationContextCause(function) : null;
                 if (state is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
@@ -699,7 +708,9 @@ public sealed partial class Binding
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
                 // pending at every call; the selection rests on that failure (SPEC 23.3.6.4). Omitted header Types rest on the call.
                 return applicable == 0 && pendingFunction is not null && (IncompleteSignature(pendingFunction) ?? FailedSignaturePart(pendingFunction)) is { } failedSignature
-                    ? this.CompleteDependent(call, failedSignature) : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
+                    ? this.CompleteDependent(call, failedSignature)
+                    : pendingCount == 1 && callableFailure is { } callable ? this.FailCallableSelection(call, callable)
+                    : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
             }
 
             if (applicable == 0 && incompleteSignature is not null)
@@ -1688,6 +1699,15 @@ public sealed partial class Binding
         if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && PerCallCallables(operations))
         {
             proof = ConstraintProof.Proven;
+        }
+
+        if (waitingCallables && proof == ConstraintProof.Unknown &&
+            this.ResolvedClauseUnknown(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths.AsSpan(0, function.GenericArguments.Count)))
+        {
+            // SPEC 10.5, 8.7: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
+            // argument binds, waits on nothing; Unknown proves neither applicability nor negation, so another candidate is never
+            // selected past it.
+            return CandidateApplicability.Pending;
         }
 
         if (waitingCallables && proof is ConstraintProof.Proven or ConstraintProof.Unknown)

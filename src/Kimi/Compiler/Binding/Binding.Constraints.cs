@@ -223,11 +223,19 @@ public sealed partial class Binding
                 return DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
             }
 
-            // SPEC 15.3.7: a Function Item's Origin conditions are proven from the required contract.
             var receiver = closure?.Receiver ?? SemanticsKind.Ref;
-            return CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject)) &&
-                (this.permitClosureReceivers || CallableReceiverFits(receiver, proposition.Mask)) && this.ItemConditionsHold(subject, proposition.RequiredType!, scope.Owner)
-                ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            if (!this.permitClosureReceivers && !CallableReceiverFits(receiver, proposition.Mask))
+            {
+                return ConstraintProof.Refuted;
+            }
+
+            // SPEC 15.6.1, 8.7: once the structural part of the whole-contract comparison holds, its Origin part is Proven or Unknown,
+            // never Refuted (CallableOriginFailure explains it). A required signature over an open region is decided by the per-call
+            // stand-in instead (SPEC 15.3.6, PerCallCallables). A Function Item's Origin conditions, its clauses and result premises, are
+            // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
+            return CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject)) && this.ItemConditionsHold(subject, proposition.RequiredType!, scope.Owner) ? ConstraintProof.Proven
+                : ReferenceTypes.StorageMatches(proposition.RequiredType, signature) && !HasOpenOrigin(proposition.RequiredType!) ? ConstraintProof.Unknown
+                : ConstraintProof.Refuted;
         }
 
         if (proposition.Kind == ConstraintKind.Semantics)
@@ -779,6 +787,32 @@ public sealed partial class Binding
         }
 
         return result;
+    }
+
+    // SPEC 10.5, 8.7: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
+    // neither applicability nor negation even while a waiting argument is still open.
+    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self, BoundType? declaringType, ReadOnlySpan<BoundLength?> lengths)
+    {
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            if (clauses[i] is not IsKoto { BoundConstraint: { HasUnresolved: false } bound })
+            {
+                continue;
+            }
+
+            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths, true);
+            if (declaringType?.Symbol?.Declaration is { } owner)
+            {
+                substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
+            }
+
+            if (!substituted.HasUnresolved && this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope) == ConstraintProof.Unknown)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool HasUnresolvedConstraintSyntax(Koto node, BindingScope scope)

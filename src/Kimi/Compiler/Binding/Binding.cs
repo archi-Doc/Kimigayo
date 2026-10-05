@@ -790,6 +790,11 @@ public sealed partial class Binding
         {
             this.ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);
         }
+        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints?.TryGetValue(issue.Node, out var callable) == true)
+        {
+            // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
+            ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
+        }
         else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
         {
             var subject = rangeFailure.Subject;

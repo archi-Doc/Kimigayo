@@ -71,11 +71,12 @@ public class CallableOriginForwardingTest
         "func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    return callIt(c@ref, x)\n";
 
     // F1 (PLAN G65): an implementation input written over a fixed Origin of the enclosing body is no per-call input, even at its own
-    // slot (SPEC 8.6, 10.7), so it never fits a required per-call input. A Callable proof, a closure erasure and a Function value
-    // conversion each reject it; the closure that stored its argument let a dead stack slot be read.
+    // slot (SPEC 8.6, 10.7), so it never fits a required per-call input. A Callable proof (whose Unknown Origin part is the Constraint
+    // record at the argument, SPEC 8.7, 15.6.1), a closure erasure and a Function value conversion each reject it; the closure that
+    // stored its argument let a dead stack slot be read.
     [Theory]
-    [InlineData(StoringCallable, nameof(DiagnosticCode.NoApplicableOverload_Kd), "callIt(c@uniq, x)")]
-    [InlineData(ReadingCallable, nameof(DiagnosticCode.NoApplicableOverload_Kd), "callIt(c@ref, x)")]
+    [InlineData(StoringCallable, nameof(DiagnosticCode.UnprovenConstraint_Kd), "c@uniq")]
+    [InlineData(ReadingCallable, nameof(DiagnosticCode.UnprovenConstraint_Kd), "c@ref")]
     [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let g: (ref/i32) -> i32 = c\n    let local: i32 = 5\n    return g(local@ref)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "c")]
     [InlineData(FixedFunctionValue, nameof(DiagnosticCode.UnprovenOriginContract_Kd), "f@move")]
     public void AFixedImplementationNeverFitsAPerCallRequirement(string body, string code, string text)
