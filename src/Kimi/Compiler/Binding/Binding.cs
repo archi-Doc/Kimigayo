@@ -683,6 +683,10 @@ public sealed partial class Binding
         {
             // SPEC 8.4.10.6: reported at the violating effect.
         }
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
+        {
+            ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);
+        }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
         {
             // SPEC 15.3.2: an undeclared storage name, at the name.

@@ -1849,7 +1849,10 @@ public sealed partial class Binding
 
             if (arguments[slot] is { } previous)
             {
-                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && FitsType(actual, previous)))
+                // SPEC 10.8: structural matching compares normalized Types, so two spellings of one Function Type, whose per-call
+                // inputs have distinct binders, are one binding.
+                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && FitsType(actual, previous)) ||
+                    (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && FitsType(actual, previous) && FitsType(previous, actual)))
                 {
                     return true;
                 }

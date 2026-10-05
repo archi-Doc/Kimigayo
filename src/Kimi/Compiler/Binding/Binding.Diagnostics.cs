@@ -56,6 +56,12 @@ public sealed partial class Binding
     // SPEC 15.2.3: the Owned failure of a common Function conversion, recorded only when it fails.
     private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
 
+    // SPEC 10.6, 15.3.6: the reference slot that only per-call Origins of its fixed expected call signature would satisfy.
+    private Dictionary<Koto, PerCallSlotFact>? perCallSlots;
+
+    // SPEC 10.5: why a single generic reference's slots did not bind from its fixed expected call signature, for its Type-mismatch Note.
+    private Dictionary<Koto, ReferenceSlotFact>? referenceSlotFacts;
+
     // SPEC 13.2, 13.3: the operand Type an operator rejected, or the count Type a shift rejected, recorded only when the check fails.
     private Dictionary<Koto, BoundType>? operatorOperands;
 
@@ -80,6 +86,14 @@ public sealed partial class Binding
     private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
 
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false);
+
+    // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
+    // slot would hold (as bits), that signature and the parameters that the advised wrapper passes with @move (as bits), or null when
+    // no wrapper applies, since its call could not infer every slot.
+    private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature, ulong? Moves);
+
+    // The referenced declaration, its Type parameter when one is known (else -1), the failure and whether Type arguments are written.
+    private readonly record struct ReferenceSlotFact(FunctionKoto Declaration, int Slot, ReferenceSlotFailure Failure, bool Explicit);
 
     // SPEC 15.6.1, 23.3.6.5: the Reason facts, Advice and related locations of an Origin relation record, shared by every phase that
     // reports one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
@@ -374,8 +388,7 @@ public sealed partial class Binding
 
         if (actual is BoundType { Kind: BoundTypeKind.Function } && node.BoundSymbol is { Kind: BindingSymbolKind.Function, Next: null, Declaration: FunctionKoto { GenericArguments.Count: > 0 } })
         {
-            return "The generic function's Type parameters are bound from the expected signature without adaptations; no binding fits it, " +
-                "or a bound argument fails its Constraints or would hold a per-call Origin of that signature";
+            return ReferenceSlotNote(this.referenceSlotFacts is { } facts && facts.TryGetValue(node, out var fact) ? fact : null);
         }
 
         // The closure plan, not BoundClosure: a closure that failed at a call argument or a default keeps its plan (SPEC 7.6.4).
@@ -392,6 +405,27 @@ public sealed partial class Binding
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };
+
+        // SPEC 10.5, 10.8: why the one generic candidate's slots did not bind from S, when the binding recorded it.
+        static string ReferenceSlotNote(ReferenceSlotFact? fact)
+        {
+            const string Prefix = "The generic function's Type parameters are bound from the expected signature without adaptations; ";
+            var slot = fact is { Slot: >= 0 } known && known.Slot < known.Declaration.GenericArguments.Count
+                ? $"Type parameter '{known.Declaration.GenericArguments[known.Slot].Identifier}'" : "a Type parameter";
+            return fact?.Failure switch
+            {
+                ReferenceSlotFailure.Structure when fact.Value.Slot >= 0 => Prefix + $"the signature does not bind {slot}",
+                ReferenceSlotFailure.Structure => Prefix + "no binding of them fits its structure",
+                ReferenceSlotFailure.Constraint => Prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
+                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit => Prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
+                    "and a bound Type argument holds one Origin for every call",
+                ReferenceSlotFailure.OriginConflict => Prefix + $"its parameters and result bind {slot} to Types that differ only in their Origins, " +
+                    "and a bound Type argument holds one Origin for every call",
+                ReferenceSlotFailure.InputOrigin => Prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
+                    "which never becomes part of a bound Type argument (SPEC 10.5)",
+                _ => Prefix + "no binding fits it, or a bound argument fails its Constraints",
+            };
+        }
     }
 
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
@@ -1429,6 +1463,8 @@ public sealed partial class Binding
         this.originRelations?.Clear();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
+        this.perCallSlots?.Clear();
+        this.referenceSlotFacts?.Clear();
         this.operatorOperands?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
