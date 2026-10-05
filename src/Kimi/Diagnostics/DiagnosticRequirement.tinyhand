@@ -684,5 +684,8 @@
   + Name="Ownership.StorageLimit"
     Description="ownership analysis storage stays within its resource limit"
 
+  + Name="Ownership.CaseLimit"
+    Description="the Semantics cases of the definition stay within the implementation bound"
+
   + Name="Emission"
     Description="generation succeeds"

@@ -579,10 +579,12 @@
   + Name="UninitializedPlace_Kd"
     Category="Language"
     Message="This use requires an initialized value on every incoming path"
+    Evidence="case:Text"
 
   + Name="MovedPlace_Kd"
     Category="Language"
     Message="This value may have been moved on an incoming path"
+    Evidence="case:Text"
 
   + Name="ReassignedLet_Kd"
     Category="Language"
@@ -591,6 +593,7 @@
   + Name="UnsupportedOwnership_Kd"
     Category="Unsupported"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
+    Evidence="case:Text"
 
   + Name="UnsupportedIntegerOperation_Kd"
     Category="Unsupported"
@@ -605,7 +608,7 @@
   + Name="TransferRequired_Kd"
     Category="Language"
     Message="A bare Place is never moved; @move is the only spelling that transfers it"
-    Evidence="target:Text"
+    Evidence="target:Text,case:Text|target:Text"
     Label="{0} cannot be read as a Copy value"
 
   + Name="StaticMovePathRequired_Kd"
@@ -700,18 +703,22 @@
   + Name="ComparisonLoanConflict_Kd"
     Category="Language"
     Message="This operation conflicts with an active loan"
+    Evidence="case:Text"
 
   + Name="CallReservationConflict_Kd"
     Category="Language"
     Message="This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation"
+    Evidence="case:Text"
 
   + Name="CallActivationConflict_Kd"
     Category="Language"
     Message="An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live"
+    Evidence="case:Text"
 
   + Name="PlacementActivationConflict_Kd"
     Category="Language"
     Message="An exclusive reference placed into this value is acquired exclusively, as a call argument is, and conflicts with a Loan on its referent that remains live, such as its own Reborrow child"
+    Evidence="case:Text"
     Advice="End the use of the Reborrow child before the parent reference is placed, or place only one of them"
 
   + Name="CallEffectConflict_Kd"
@@ -762,6 +769,12 @@
     Arguments="requiredBytes:Number,limitBytes:Number"
     Evidence="table:Text"
     Label="ownership storage limit reached for {2} in this function"
+
+  + Name="OwnershipCaseLimit_Kd"
+    Category="Resource"
+    Message="The Semantics cases of this definition exceed the implementation bound: {0} cases, where at most {1} are analyzed"
+    Arguments="cases:Number,limit:Number"
+    Advice="Declare fewer Semantics bindings in one scope, or admit fewer Semantics in each"
 
   + Name="ForBindingLimit_Kd"
     Category="Resource"

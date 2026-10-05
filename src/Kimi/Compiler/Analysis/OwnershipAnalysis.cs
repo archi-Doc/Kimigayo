@@ -197,6 +197,14 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            if (issue.Failure == OwnershipFailure.CaseLimit)
+            {
+                // SPEC 8.10, 23.3.6.1: the bound on the Semantics cases of one body is a resource limit, shown at the signature.
+                var span = SignatureSpan(issue.Source) ?? issue.Source.Span;
+                issue.Source.Report(requirement, issue.Code, this.CaseProduct((FunctionKoto)issue.Source), (long)CaseBound, note: Note(null), related: Locations(null), span: span, condition: Condition(issue));
+                continue;
+            }
+
             if (issue.Failure == OwnershipFailure.DefaultArgumentMove)
             {
                 ReportDefaultMove(issue);
@@ -255,13 +263,14 @@ public sealed partial class OwnershipAnalysis
             // Place that needs @move offers the transfer as a repair candidate where its path does not refute Take (SPEC 23.3.6.9).
             var transfer = issue.Failure == OwnershipFailure.TransferRequired;
             var judgment = transfer ? Binding.TakeJudgment(issue.Source) : AcquisitionJudgment.Refuted;
+            var found = this.CaseFact(issue, out var single);
             issue.Source.Report(
                 requirement,
                 issue.Code,
-                note: Note(AcquisitionNote(issue)),
-                evidence: transfer ? [issue.Source.ToString()] : null,
+                note: Note(CaseNote(AcquisitionNote(issue), found, single)),
+                evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
                 advice: transfer ? Binding.TransferAdvice(issue.Source, judgment) : null,
-                related: Locations(RelatedLocations(issue)),
+                related: Locations(this.WithCaseDeclarations(RelatedLocations(issue), found)),
                 condition: Condition(issue),
                 span: SignatureSpan(issue.Source),
                 repairs: transfer && judgment != AcquisitionJudgment.Refuted ? Binding.TransferRepair(issue.Source, issue.Source, judgment) : null);
@@ -357,14 +366,27 @@ public sealed partial class OwnershipAnalysis
                 : [("loan", loan, RetainedLoanLabel)];
             (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = entries is not null ? [("borrow", issue.Borrow!, entries[issue.BorrowCapture].Span, BorrowLabel)] : null;
             var advice = (issue.Destroyed.Length > 0 ? $"Declare {place} in a scope" : $"Keep {place} in a local") + " that outlives the value keeping its Loan, or keep an owned value instead of the borrow";
+            var found = this.CaseFact(issue, out var single);
             issue.Source.Report(
                 Requirement(issue),
                 issue.Code,
-                note: Note(char.ToUpperInvariant(place[0]) + place[1..] + kept + transfer),
+                note: Note(CaseNote(char.ToUpperInvariant(place[0]) + place[1..] + kept + transfer, found, single)),
+                evidence: CaseEvidence(issue.Code, null, found),
                 advice: advice,
-                related: Locations(related),
+                related: Locations(this.WithCaseDeclarations(related, found)),
                 relatedSpans: spans,
                 condition: Condition(issue));
+        }
+
+        // SPEC 8.10, 23.3.6.4: a problem found under some Semantics cases names them in its Note.
+        static string? CaseNote(string? note, string? found, bool single)
+            => found is null ? note : (note is null ? "Found" : note + "; found") + (single ? " under the Semantics case " : " under the Semantics cases ") + found + " (SPEC 8.10)";
+
+        // The `case` fact closes the evidence alternative of the codes that carry it; a code without the alternative keeps its Note.
+        static object?[]? CaseEvidence(DiagnosticCode code, string? target, string? found)
+        {
+            var withCase = found is not null && HasCaseEvidence(code);
+            return target is null ? (withCase ? [found] : null) : withCase ? [target, found] : [target];
         }
 
         static string CaptureText(CaptureKoto entry)
@@ -510,7 +532,7 @@ public sealed partial class OwnershipAnalysis
             this.bodies.Add(this.body);
         }
 
-        this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount));
+        this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount), this.caseBit);
         // Abstract Origin bindings affect field Types even when layout is fully
         // concrete. Prepare the same substituted metadata used by closed calls.
         for (var parameterIndex = 0; parameterIndex < function.Parameters.Count; parameterIndex++)

@@ -165,6 +165,9 @@ public enum OwnershipFailure : byte
     CallEffectConflict,
 
     StorageLimit,
+
+    // SPEC 8.10, 23.3.6.1: the Semantics cases of a definition exceed the implementation bound (OwnershipAnalysis.CaseBound).
+    CaseLimit,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
@@ -212,11 +215,12 @@ public readonly record struct OwnershipLending(Koto Input, Koto Call);
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
 // Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name, such
 // as DestroyedTemporary); Borrow is the Borrow that created the Loan, with BorrowCapture its capture entry when it is a closure's
-// (SPEC 15.6.2, 16.2.2).
+// (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found under, one bit per case of the function's
+// enumeration (SPEC 8.10, 23.3.6.4); empty outside a case run and once every case found the problem.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
     OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null,
-    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null)
+    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -236,6 +240,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
+        OwnershipFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
         OwnershipFailure.Unsupported when this.OperationType is not null => DiagnosticCode.UnsupportedIntegerOperation_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };
@@ -295,9 +300,10 @@ public sealed partial class OwnershipBody
     internal ulong[] BlockStates = [];
     internal ulong[] Scratch = [];
 #pragma warning restore SA1401
-    private readonly HashSet<(Koto Source, OwnershipFailure Failure)> reportedIssues = new();
+    private readonly Dictionary<(Koto Source, OwnershipFailure Failure), int> reportedIssues = new();
     private PairCase[] caseStorage = [];
     private int caseCount;
+    private ulong caseBit;
 
     public FunctionKoto Function { get; internal set; } = null!;
 
@@ -357,10 +363,11 @@ public sealed partial class OwnershipBody
 
     // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
     // Concrete, from building and solving to lowering, sees the substituted Type.
-    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default)
+    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.Function = function;
         this.Instance = instance;
+        this.caseBit = caseBit;
         if (this.caseStorage.Length < cases.Length)
         {
             this.caseStorage = new PairCase[Math.Max(cases.Length, 4)];
@@ -422,17 +429,40 @@ public sealed partial class OwnershipBody
         this.SymbolPlaces.Clear();
     }
 
+    // SPEC 8.10, 23.3.6.4: a problem of a Semantics case run carries its case; one problem found by several cases of this body's
+    // function is one record whose cases merge (MergeIssue).
     internal void ReportIssue(OwnershipIssue issue)
     {
-        if (this.reportedIssues.Add((issue.Source, issue.Failure)))
+        if (this.reportedIssues.TryAdd((issue.Source, issue.Failure), this.IssueStorage.Count))
         {
-            this.IssueStorage.Add(issue);
+            this.IssueStorage.Add(this.caseBit == 0 ? issue : issue with { Cases = this.caseBit });
         }
     }
 
-    // SPEC 8.10, 23.3.6.4: one problem found by several Semantics cases of this body's function is one record; a side body's
-    // issue is reported only when no earlier case reported the same problem.
-    internal bool TryReport(OwnershipIssue issue) => this.reportedIssues.Add((issue.Source, issue.Failure));
+    // A side case body's problem merges into this listed body: a problem already found gains the cases, a new one is added.
+    internal void MergeIssue(in OwnershipIssue issue)
+    {
+        if (this.reportedIssues.TryGetValue((issue.Source, issue.Failure), out var index))
+        {
+            this.IssueStorage[index] = this.IssueStorage[index] with { Cases = this.IssueStorage[index].Cases | issue.Cases };
+            return;
+        }
+
+        this.reportedIssues.Add((issue.Source, issue.Failure), this.IssueStorage.Count);
+        this.IssueStorage.Add(issue);
+    }
+
+    // SPEC 23.3.6.4: after the last case, a problem found under every case of `all` shows no case.
+    internal void DropUniversalCases(ulong all)
+    {
+        for (var i = 0; i < this.IssueStorage.Count; i++)
+        {
+            if (this.IssueStorage[i].Cases == all)
+            {
+                this.IssueStorage[i] = this.IssueStorage[i] with { Cases = 0 };
+            }
+        }
+    }
 
     // An implementation invariant that decides the analysis outcome is checked in every configuration
     // (SPEC 21.3.5): a violation is an internal issue that leaves the body unverified, never a silent
