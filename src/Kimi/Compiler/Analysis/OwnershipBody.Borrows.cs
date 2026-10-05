@@ -14,17 +14,19 @@ public sealed partial class OwnershipBody
     // SPEC 15.6.5: each destroyed root and holder already reported, and the work list of the carrying-definition walk.
     private readonly List<(int Root, int Holder)> destroyedLoans = new();
     private readonly List<int> carryingWork = new();
+
+    // SPEC 15.6.3: each retention through an exclusive reference, in operation order: a store's referent (StoredReferent) or a
+    // call's writable argument and the Place it borrows take the stored or passed Place's Loans at the operation, under the
+    // storage Type's contract (RetainBorrowAuthority); a reference read from the retaining Place afterwards descends from the
+    // retained value (DescendsFrom).
+    private readonly List<(int Referent, int Operation, int Stored, BoundType Storage)> retentions = new();
+
     private PackedAnalysisTable borrowLive = new(1);
     private int[] checkingBorrowHeads = [];
     private PackedAnalysisTable borrowDependencies = new(2);
     private PackedAnalysisTable retainedBorrowAuthority = new(2);
     private bool[] borrowRootLoss = [];
     private int[] borrowDefinitions = [];
-
-    // SPEC 15.6.3: each store through an exclusive reference: the Place it reaches (StoredReferent), the store and the stored
-    // Place. The referent takes the stored value's Loans (RetainBorrowAuthority), and a reference read from it afterwards
-    // descends from the stored value (DescendsFrom).
-    private readonly List<(int Referent, int Store, int Stored)> storedReferents = new();
 
     // Per operation, the carrying definition whose value reaches its input, or -1 (LoanCarryingDefinition).
     private int[] carryingFrom = [];
@@ -332,17 +334,7 @@ public sealed partial class OwnershipBody
             }
         }
 
-        this.storedReferents.Clear();
-        for (var id = 0; id < this.Operations.Count; id++)
-        {
-            if (this.Operations[id] is { Kind: OwnershipOperationKind.StorePointer, Place: >= 0 } store && this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } node &&
-                this.ValueOperands[node.Start] is >= 0 and var pointer && ValuePlaceForBorrow(this.Operations[pointer]) is >= 0 and var holder &&
-                this.Places[holder].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 })
-            {
-                this.storedReferents.Add((this.StoredReferent(pointer, holder), id, store.Place));
-            }
-        }
-
+        this.PrepareRetentions();
         this.RetainBorrowAuthority(count);
         (this.liveBorrowPlaces ??= new()).Clear();
         for (var p = 0; p < count; p++)
@@ -1456,10 +1448,12 @@ public sealed partial class OwnershipBody
     {
         this.retainedBorrowAuthority.CopyFrom(this.borrowDependencies, OwnershipStorage.Cells(count, count, 2, "retained borrow authority"));
         Koto? unclassified = null;
+        var retention = 0;
         bool changed;
         do
         {
             changed = false;
+            retention = 0;
             for (var id = 0; id < this.Operations.Count; id++)
             {
                 var operation = this.Operations[id];
@@ -1495,41 +1489,12 @@ public sealed partial class OwnershipBody
                         for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
                         {
                             Merge(operation.Place, input.Place, id);
-                            // A writable referent may retain another argument when its complete stored Type names that
-                            // argument's Origin. Carry actual input capabilities through that public contract, not its body.
-                            if (input.Place >= 0 && this.Places[input.Place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var storage] } && RetainsInput(storage))
-                            {
-                                for (var argument = id - 1; argument >= 0 && this.Operations[argument] is { Kind: OwnershipOperationKind.CallEntry } incoming && ReferenceEquals(incoming.Source, operation.Source); argument--)
-                                {
-                                    if (incoming.Place == input.Place)
-                                    {
-                                        continue;
-                                    }
-
-                                    Merge(input.Place, incoming.Place, id, storage);
-                                    for (var borrow = entry - 1; borrow >= 0; borrow--)
-                                    {
-                                        if (this.Operations[borrow] is { Kind: OwnershipOperationKind.Borrow } receiver && receiver.Input == input.Place)
-                                        {
-                                            Merge(receiver.Place, incoming.Place, id, storage);
-                                        }
-                                    }
-                                }
-                            }
                         }
 
+                        ApplyRetentions(id); // The writable referents of the call's arguments (PrepareRetentions).
                         break;
                     case OperationFlow.Store:
-                        // SPEC 13.5.5.1, 15.6.3: a store through a uniq/[storage] reference retains the stored value's Loans in
-                        // the referent, the Place the reference addresses when known, and otherwise in the reference's holder,
-                        // through the storage Type's contract as a call's writable referent does (RetainsInput).
-                        if (this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } store &&
-                            this.ValueOperands[store.Start] is >= 0 and var pointer && ValuePlaceForBorrow(this.Operations[pointer]) is >= 0 and var holder &&
-                            this.Places[holder].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var stored] })
-                        {
-                            Merge(this.StoredReferentOf(id), operation.Place, id, stored);
-                        }
-
+                        ApplyRetentions(id); // The referent of the store (PrepareRetentions).
                         break;
                     case OperationFlow.None:
                         break;
@@ -1569,18 +1534,19 @@ public sealed partial class OwnershipBody
         // SPEC 21.3.5: a kind without a flow row leaves the body unverified instead of silently carrying nothing.
         this.Invariant(unclassified is null, unclassified);
 
-        bool RetainsInput(BoundType storage)
+        // SPEC 15.6.3: the retentions of operation `id`, in the prepared order, each under its storage Type's contract.
+        void ApplyRetentions(int id)
         {
-            for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
+            while (retention < this.retentions.Count && this.retentions[retention].Operation < id)
             {
-                var root = this.borrowRoots[rootIndex];
-                if (this.IsExclusiveBorrowInput(root) && NamedOriginRequirement(storage, this.Places[root].Type.Origin!) != LoanRequirement.None)
-                {
-                    return true;
-                }
+                retention++;
             }
 
-            return false;
+            for (var r = retention; r < this.retentions.Count && this.retentions[r].Operation == id; r++)
+            {
+                var record = this.retentions[r];
+                Merge(record.Referent, record.Stored, id, record.Storage);
+            }
         }
 
         // Records when the destination's dependency on root exists: after the call at `at` that retains the referent through the
@@ -1690,33 +1656,91 @@ public sealed partial class OwnershipBody
         return holder;
     }
 
-    private int StoredReferentOf(int store)
+    // SPEC 13.5.5.1, 15.6.3: the retentions through exclusive references, once per body and in operation order. A store through
+    // a uniq/[storage] reference retains the stored value's Loans in the referent, the Place the reference addresses when known,
+    // and otherwise in the reference's holder. A call's writable argument of Type uniq/[storage] whose complete stored Type names
+    // another argument's Origin retains that argument, and so does the Place it borrows: actual input capabilities are carried
+    // through the public contract, not the body.
+    private void PrepareRetentions()
     {
-        for (var i = 0; i < this.storedReferents.Count; i++)
+        this.retentions.Clear();
+        for (var id = 0; id < this.Operations.Count; id++)
         {
-            if (this.storedReferents[i].Store == store)
+            var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.StorePointer)
             {
-                return this.storedReferents[i].Referent;
+                if (operation.Place >= 0 && this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } node &&
+                    this.ValueOperands[node.Start] is >= 0 and var pointer && ValuePlaceForBorrow(this.Operations[pointer]) is >= 0 and var holder &&
+                    this.Places[holder].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var stored] })
+                {
+                    this.retentions.Add((this.StoredReferent(pointer, holder), id, operation.Place, stored));
+                }
+
+                continue;
+            }
+
+            if (FlowOf(operation.Kind) != OperationFlow.Call)
+            {
+                continue;
+            }
+
+            for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
+            {
+                if (input.Place < 0 || this.Places[input.Place].Type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var storage] } || !this.RetainsInput(storage))
+                {
+                    continue;
+                }
+
+                for (var argument = id - 1; argument >= 0 && this.Operations[argument] is { Kind: OwnershipOperationKind.CallEntry } incoming && ReferenceEquals(incoming.Source, operation.Source); argument--)
+                {
+                    if (incoming.Place == input.Place)
+                    {
+                        continue;
+                    }
+
+                    this.retentions.Add((input.Place, id, incoming.Place, storage));
+                    for (var borrow = entry - 1; borrow >= 0; borrow--)
+                    {
+                        if (this.Operations[borrow] is { Kind: OwnershipOperationKind.Borrow } receiver && receiver.Input == input.Place)
+                        {
+                            this.retentions.Add((receiver.Place, id, incoming.Place, storage));
+                        }
+                    }
+                }
             }
         }
-
-        return -1;
     }
 
-    // SPEC 15.6.3: whether a value stored into `referent` through an exclusive reference before `before` descends from `place`;
+    // SPEC 15.6.3: whether a value retained in `referent` through an exclusive reference before `before` descends from `place`;
     // a reference read from the referent afterwards descends from it as from the referent's own definition.
     private bool StoredValueDescends(int referent, int before, int place, int original)
     {
-        for (var i = 0; i < this.storedReferents.Count; i++)
+        for (var i = 0; i < this.retentions.Count && this.retentions[i].Operation < before; i++)
         {
-            var (target, store, stored) = this.storedReferents[i];
-            if (target == referent && store < before)
+            var (target, at, stored, _) = this.retentions[i];
+            if (target == referent)
             {
-                var definition = this.borrowDefinitions[stored] is >= 0 and var only && only < store ? only : this.ProducingValue(stored, store);
+                var definition = this.borrowDefinitions[stored] is >= 0 and var only && only < at ? only : this.ProducingValue(stored, at);
                 if (definition >= 0 && this.DescendsFrom(definition, place, original))
                 {
                     return true;
                 }
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 15.6.3: whether a writable referent of Type `storage` may retain another argument: its complete stored Type names an
+    // exclusive input root's Origin.
+    private bool RetainsInput(BoundType storage)
+    {
+        for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
+        {
+            var root = this.borrowRoots[rootIndex];
+            if (this.IsExclusiveBorrowInput(root) && NamedOriginRequirement(storage, this.Places[root].Type.Origin!) != LoanRequirement.None)
+            {
+                return true;
             }
         }
 
