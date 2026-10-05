@@ -32,6 +32,36 @@ public sealed partial class Binding
         return (copyCases & SemanticsMask.Owner) == 0 || this.ProveCopy(target, node) == ConstraintProof.Proven;
     }
 
+    /// <summary>
+    /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.7):
+    /// names and categories contribute their members, and/or/not intersect, unite and complement,
+    /// separate clauses intersect, and no premise admits all nine Semantics.
+    /// </summary>
+    /// <param name="whole">The pair's whole Type.</param>
+    /// <param name="scope">The scope whose premises apply.</param>
+    /// <returns>The admitted Semantics.</returns>
+    internal SemanticsMask AdmittedSemantics(BoundType whole, BindingScope scope)
+    {
+        var admitted = SemanticsMask.All;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { Invalid: false } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
+                {
+                    admitted &= SemanticsSet(fact);
+                }
+            }
+        }
+
+        return admitted;
+    }
+
     /// <summary>Tests whether a constraint speaks only about the Semantics of <paramref name="whole"/>; other premises never restrict its admitted set (SPEC 8.7).</summary>
     private static bool SemanticsPremise(BoundConstraint constraint, BoundType whole)
         => constraint.Kind switch
@@ -497,32 +527,5 @@ public sealed partial class Binding
     {
         var admitted = this.AdmittedSemantics(whole, scope);
         return admitted != SemanticsMask.None && (admitted & ~allowed) == 0;
-    }
-
-    /// <summary>
-    /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.7):
-    /// names and categories contribute their members, and/or/not intersect, unite and complement,
-    /// separate clauses intersect, and no premise admits all nine Semantics.
-    /// </summary>
-    private SemanticsMask AdmittedSemantics(BoundType whole, BindingScope scope)
-    {
-        var admitted = SemanticsMask.All;
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
-                {
-                    admitted &= SemanticsSet(fact);
-                }
-            }
-        }
-
-        return admitted;
     }
 }

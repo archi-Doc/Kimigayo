@@ -683,16 +683,32 @@ public sealed partial class Binding
             // Reading through ref/uniq/T also reads through each inner reference.
             while (this.valid)
             {
+                if (TryPairLayer(layer, out var whole, out var target))
+                {
+                    // SPEC 8.1.1, 8.4.10: in the admitted borrow cases a pair layer is a borrow within its outer-Origin slot; an
+                    // application without a slot may be a borrow of any Loan.
+                    if ((binding.AdmittedSemantics(whole, binding.ConstraintScope(use)) & SemanticsMask.Borrow) != 0)
+                    {
+                        if (binding.OuterOrigin(layer) is { } slot)
+                        {
+                            this.AccessOrigin(slot, mode, use);
+                        }
+                        else
+                        {
+                            this.Violate(EffectViolation.UnclassifiedAccess, use);
+                        }
+                    }
+
+                    layer = target;
+                    continue;
+                }
+
                 if (layer.Origin is { } origin)
                 {
                     this.AccessOrigin(origin, mode, use);
                 }
-                else if (layer.Kind == BoundTypeKind.SemanticsApplication)
-                {
-                    this.Violate(EffectViolation.UnclassifiedAccess, use); // A pair layer without an Origin may be a borrow of any Loan.
-                }
 
-                if (layer is not { Kind: BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication, Components.Count: 1 })
+                if (layer is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
                 {
                     return;
                 }

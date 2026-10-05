@@ -329,6 +329,19 @@ public sealed partial class Binding
             }
         }
 
+        if (TryPairLayer(type, out var whole, out var target))
+        {
+            // SPEC 8.1.1, 15.6.1: in the admitted borrow cases a pair layer is a borrow of its target within its outer-Origin slot,
+            // whose well-formedness makes the target's Origins outlive that slot; in the value cases no Type denotes the slot.
+            if ((this.AdmittedSemantics(whole, this.ConstraintScope(use)) & SemanticsMask.Borrow) != 0 && this.OuterOrigin(type) is { } slot &&
+                this.ProvesOriginOutlives(slot, shorter, use) && this.ProvesStoredOriginPremise(target, longer, use))
+            {
+                return true;
+            }
+
+            return this.ProvesTypeOriginPremise(target, longer, shorter, use);
+        }
+
         for (var i = 0; i < type.Components.Count; i++)
         {
             var inner = type.Components[i];
