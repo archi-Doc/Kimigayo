@@ -82,6 +82,36 @@ public class OwnershipJoinTest
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 14.9.1, 15.6.1: a join of a body-local Borrow with a fixed source waits for every source and takes their meet, so
+    // neither is refitted to the other's Origin; before, the fixed source alone was the expected Type and the Borrow was refuted.
+    [Theory]
+    [InlineData("IfLocalFirst", "let r = if c => n@ref else => z", "5\n")]
+    [InlineData("IfLocalSecond", "let r = if c => z else => n@ref", "1\n")]
+    [InlineData("Annotated", "let r: ref/i32 = if c => n@ref else => z", "5\n")]
+    [InlineData("Match", "let r = match c\n        true => n@ref\n        false => z", "5\n")]
+    [InlineData("Label", "let r = label pick: do\n        if c\n            exit to pick n@ref\n        exit to pick z", "5\n")]
+    public void ALocalBorrowJoinsAFixedSourceThroughTheMeet(string name, string join, string stdout)
+    {
+        var source = "func pick(c: bool, z: ref/i32) -> i32\n    let n = 5\n    " + join + "\n    return r@follow\nlet z = 1\nConsole.writeLine(\"\\(pick(true, z@ref))\")";
+        ScalarEmissionTest.EmitFixture("OwnershipJoinLocalFixed" + name, source, stdout);
+        var invalid = MinimalEmissionTest.Analyze(source.Replace("    return r@follow", "    n = 6\n    return r@follow", StringComparison.Ordinal).Replace("    let n = 5", "    var n = 5", StringComparison.Ordinal));
+        Assert.True(invalid.Binding.Result.IsComplete, MinimalEmissionTest.Describe(invalid, null));
+        Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
+    }
+
+    // SPEC 15.4.4, 15.6.5, 23.3.6.1: reassigning a borrow local to another body-local Borrow is valid under local-region
+    // inference, which is not implemented; it is a located Unsupported, never an Origin relation that claims a missing proof.
+    [Fact]
+    public void ReassigningABorrowLocalToAnotherBorrowIsUnsupported()
+    {
+        var c = MinimalEmissionTest.Analyze("let z = 0\nvar r = z@ref\nlet n = 5\nr = n@ref\nrequire r@follow == 5 else => $abort(\"r\")");
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+        Assert.Equal("r = n@ref", error.Text);
+    }
+
     [Fact]
     public void CheckedValuesRejectLostOriginDependency()
     {

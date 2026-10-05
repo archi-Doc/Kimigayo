@@ -167,6 +167,7 @@ public sealed partial class Binding
 
         var context = this.resultPool[this.resultCursor++];
         context.HasLiteral = false;
+        context.PartialEvidence = false;
         context.Expected = expected;
         context.Invalid = context.Pending = false;
         context.Sources.Clear();
@@ -188,10 +189,18 @@ public sealed partial class Binding
             // Only literal fitting needs early read-conversion evidence. Ordinary borrow results must wait for
             // block-local declarations and all their Origins before selecting a common reference Type.
             context.Evidence.Clear();
+            context.PartialEvidence = false;
             this.FindResultEvidence(target, scope, context);
         }
 
         context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
+        if (context.PartialEvidence && context.Expected is { CarriesOrigin: true })
+        {
+            // SPEC 14.9.1, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
+            // of a later body-local Borrow.
+            context.Expected = null;
+        }
+
         if (context.Expected?.Kind == BoundTypeKind.Function)
         {
             // SPEC 10.2: a common-Type search compares each source's own Type; it cannot supply the fixed
@@ -356,6 +365,10 @@ public sealed partial class Binding
         {
             context.HasLiteral = true;
         }
+        else if (evidence is null)
+        {
+            context.PartialEvidence = true;
+        }
     }
 
     private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
@@ -514,5 +527,7 @@ public sealed partial class Binding
         internal bool Invalid { get; set; }
 
         internal bool HasLiteral { get; set; }
+
+        internal bool PartialEvidence { get; set; }
     }
 }

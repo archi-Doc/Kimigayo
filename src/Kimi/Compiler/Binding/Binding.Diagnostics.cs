@@ -613,11 +613,29 @@ public sealed partial class Binding
 
     // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
     // structural part holds failed only in its Origin part, which is an Origin relation, never a Type mismatch (SPEC 15.6.1).
+    // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
+    // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
+    // inference and is a located Unsupported (SPEC 23.3.6.1), never a relation record.
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
-        => actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
-            this.FailedOriginRelation(actualType, expectedType, node, false) is { } relation
-            ? this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, relation with { At = at, Destination = expectedType })
-            : this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+    {
+        if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType))
+        {
+            if (this.FailedOriginRelation(actualType, expectedType, node, false, judged: true) is { } relation)
+            {
+                return this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, relation with { At = at, Destination = expectedType });
+            }
+
+            if (this.FailedOriginRelation(actualType, expectedType, node, false) is { } unproven)
+            {
+                // An Unbound end follows from a failed Origin declaration (SPEC 15.3.2) and stays that failure's derived record.
+                return unproven.Longer.Kind == OriginKind.Unbound || unproven.Shorter.Kind == OriginKind.Unbound
+                    ? this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, unproven with { At = at, Destination = expectedType })
+                    : this.Fail(node, BindingFailure.Unsupported);
+            }
+        }
+
+        return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
+    }
 
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.
     private DiagnosticCode OriginRelationCode(Koto node)
@@ -626,7 +644,9 @@ public sealed partial class Binding
     // SPEC 15.6.1: the first Origin position of a fit, in the order of the outer borrow layer, the Semantics target, then slots and
     // Type arguments, whose relation is not proven; `==` at an invariant position. It is Refuted when the longer end is a body-local
     // finite Origin and the shorter end a fixed one, and Unknown otherwise.
-    private OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, Koto use, bool invariant, int depth = 0)
+    // With `judged`, only a position that the relation judge fails counts (SPEC 15.6.5), as a body fit judges it; without it, any
+    // unproven position does, as for a fit that judges Origins by proof alone.
+    private OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, Koto use, bool invariant, int depth = 0, bool judged = false)
     {
         if (depth > 64)
         {
@@ -634,7 +654,7 @@ public sealed partial class Binding
         }
 
         if (actual.Origin is { } longer && expected.Origin is { } shorter && !ReferenceEquals(longer, shorter) &&
-            (!this.ProvesOriginOutlives(longer, shorter, use) || (invariant && !this.ProvesOriginOutlives(shorter, longer, use))))
+            (this.OriginPartFails(longer, shorter, use, judged) || (invariant && this.OriginPartFails(shorter, longer, use, judged))))
         {
             return new(use, longer, shorter, invariant, expected, RefutesOriginRelation(longer, shorter));
         }
@@ -642,7 +662,7 @@ public sealed partial class Binding
         var exclusive = actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
         for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind == BoundTypeKind.Semantics; i++)
         {
-            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, invariant || exclusive, depth + 1) is { } target)
+            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, invariant || exclusive, depth + 1, judged) is { } target)
             {
                 return target;
             }
@@ -652,7 +672,7 @@ public sealed partial class Binding
         {
             var a = actual.OriginArguments[i];
             var b = expected.OriginArguments[i];
-            if (!ReferenceEquals(a, b) && (!this.ProvesOriginOutlives(a, b, use) || (invariant && !this.ProvesOriginOutlives(b, a, use))))
+            if (!ReferenceEquals(a, b) && (this.OriginPartFails(a, b, use, judged) || (invariant && this.OriginPartFails(b, a, use, judged))))
             {
                 return new(use, a, b, invariant, expected, RefutesOriginRelation(a, b));
             }
@@ -660,7 +680,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind != BoundTypeKind.Semantics; i++)
         {
-            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, invariant, depth + 1) is { } argument)
+            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, invariant, depth + 1, judged) is { } argument)
             {
                 return argument;
             }
@@ -668,6 +688,9 @@ public sealed partial class Binding
 
         return null;
     }
+
+    private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged)
+        => !this.ProvesOriginOutlives(longer, shorter, use) && (!judged || this.OriginRelationFails(longer, shorter, use));
 
     // Fails a node with the facts that explain the failure. A node keeps its first failure only, so the facts are recorded only
     // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.
