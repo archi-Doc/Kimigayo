@@ -170,7 +170,7 @@ public sealed partial class Binding
             return "A Function Type quantifies the Origin of an unnamed borrowed input per call, and no fixed Origin stands for it; write the fixed Origin in that input's Type, as in 'ref/T during x', or accept any borrow there";
         }
 
-        var omitted = longer.Kind == "omitted" ? longer.Text : shorter.Kind == "omitted" ? shorter.Text : null;
+        var omitted = longer.Kind == "omitted" && !IsPairOuterOrigin(relation.Longer) ? longer.Text : shorter.Kind == "omitted" && !IsPairOuterOrigin(relation.Shorter) ? shorter.Text : null;
         if (omitted is not null)
         {
             return $"Name the omitted Origin with a set on that Type, as in '{omitted}{{name}}', then relate it by that name";
@@ -266,6 +266,9 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 8.1.1: the outer Origin `o` of a pair binder, which no Origin expression or set can name.
+    private static bool IsPairOuterOrigin(BoundOrigin origin) => origin is { Kind: OriginKind.Parameter, Occurrence: GenericParameterKoto };
+
     // SPEC 23.3.6.5: the Type occurrence that an omitted Origin end is related at.
     private static Koto? OmittedAt(BoundOrigin origin)
         => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: TypeKoto occurrence } ? occurrence : null);
@@ -288,7 +291,7 @@ public sealed partial class Binding
     // the signature, its parameters and the Origins written on their Types and on the result, are shown.
     private static string? SimilarNames(BoundOrigin origin)
     {
-        if (origin is not { Kind: OriginKind.Parameter, Binder: FunctionKoto function } || origin.Name.Length < 3)
+        if (origin is not { Kind: OriginKind.Parameter, Binder: FunctionKoto function } || origin.Name.Length < 3 || IsPairOuterOrigin(origin))
         {
             return null;
         }
@@ -1043,6 +1046,8 @@ public sealed partial class Binding
                 return new("omitted", input.ToString());
             case OriginKind.Input when origin.Binder is { } binder && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder):
                 return new("expression", InputName(binder, origin.InputIndex));
+            case OriginKind.Parameter when origin.Occurrence is GenericParameterKoto declaration:
+                return new("omitted", declaration.ToString()); // SPEC 8.1.1, 23.3.6.5: the outer Origin `o` of a pair binder.
             case OriginKind.Parameter:
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
             case OriginKind.Inference when origin.Occurrence is null && origin.Binder is TypeKoto occurrence:

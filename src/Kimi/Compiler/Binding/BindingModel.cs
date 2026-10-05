@@ -85,6 +85,26 @@ internal enum CaptureAcquisition : byte
     ExclusiveSlotBorrow,
 }
 
+/// <summary>A pair binder in scope of a body with its admitted set (SPEC 8.7); it is resolved into Semantics cases (SPEC 8.10) when
+/// the admitted set lies within the Semantics for which the specification defines an operation per case.</summary>
+/// <param name="Target">The pair's SemanticsTarget symbol, whose <c>WholeType</c> is <c>W</c>.</param>
+/// <param name="Admitted">The admitted Semantics of the binder.</param>
+internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask Admitted)
+{
+    /// <summary>The Semantics with an operation per case: pair layers exist only for sets within <c>value or valueborrow</c>
+    /// (SPEC 13.5.5.1), and conditional plans only for Copy cases in owner, ref, objref or raw with exclusive cases in uniq or
+    /// objuniq (SPEC 8.9); a binder admitting obj, rc or arc admits no such operation and stays symbolic, as a Type parameter does.</summary>
+    internal const SemanticsMask Resolvable = SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.ObjectBorrow | SemanticsMask.Raw;
+
+    /// <summary>Gets a value indicating whether the binder is analyzed once per admitted Semantics.</summary>
+    internal bool Resolved => this.Admitted != SemanticsMask.None && (this.Admitted & ~Resolvable) == 0;
+}
+
+/// <summary>One Semantics case of a pair binder (SPEC 8.10): the Semantics its whole Type takes.</summary>
+/// <param name="Target">The pair's SemanticsTarget symbol.</param>
+/// <param name="Semantics">The admitted Semantics of this case.</param>
+internal readonly record struct PairCase(BindingSymbol Target, SemanticsKind Semantics);
+
 internal enum BindingFailure : byte
 {
     None,
@@ -288,6 +308,7 @@ public sealed record BoundType : ControlFlowType
     private readonly bool carriesOrigin;
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
+    private readonly bool containsPairLayer;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
@@ -307,16 +328,19 @@ public sealed record BoundType : ControlFlowType
         var found = origin is not null || originArguments is { Length: > 0 };
         var slot = found || kind == BoundTypeKind.Parameter;
         var parameter = kind == BoundTypeKind.Parameter;
+        var pair = (kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget) || kind == BoundTypeKind.SemanticsApplication;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
+            pair |= components[i].containsPairLayer;
         }
 
         this.carriesOrigin = found;
         this.carriesOriginOrSlot = slot;
         this.containsParameter = parameter;
+        this.containsPairLayer = pair;
     }
 
     // SPEC 3.1.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
@@ -424,6 +448,10 @@ public sealed record BoundType : ControlFlowType
     /// <summary>Gets a value indicating whether this subtree contains a Type parameter, which a Type-identity premise
     /// may substitute (SPEC 8.3).</summary>
     internal bool ContainsParameter => this.containsParameter;
+
+    /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, an
+    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.10).</summary>
+    internal bool ContainsPairLayer => this.containsPairLayer;
 
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;

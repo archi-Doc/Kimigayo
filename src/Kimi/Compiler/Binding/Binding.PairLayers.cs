@@ -12,16 +12,16 @@ public sealed partial class Binding
     // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.1, 7.3), with their admitted sets.
     private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Decomposes a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, stored as the pair's whole Type, or an
-    /// application <c>s/U</c> to another Type. The pair target <c>T</c> alone is not a pair layer.</summary>
+    /// <summary>Decomposes a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, stored as the pair's whole Type, an annotated
+    /// occurrence of it (<c>s/T during a</c>, SPEC 8.1.2), or an application <c>s/U</c> to another Type. The pair target <c>T</c>
+    /// alone is not a pair layer.</summary>
     /// <param name="type">The normalized Type.</param>
     /// <param name="whole">The pair's whole Type, which carries the Semantics premises.</param>
     /// <param name="target">The direct target.</param>
     /// <returns>Whether <paramref name="type"/> is a pair layer.</returns>
     internal static bool TryPairLayer(BoundType? type, out BoundType whole, out BoundType target)
     {
-        if (type is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } original, Type: { } projection } } &&
-            ReferenceEquals(type, original))
+        if (type is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } original, Type: { } projection } })
         {
             whole = original;
             target = projection;
@@ -166,7 +166,8 @@ public sealed partial class Binding
     }
 
     // SPEC 13.5.5.1: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow) and
-    // otherwise on the stored reference (Reborrow).
+    // otherwise on the layer's outer-Origin slot and the parent Loan (Reborrow): `o` for the original pair, the annotation or
+    // the application's own slot otherwise, and the Place only for an application without a slot.
     private BoundOrigin PairOrigin(Koto node, BoundType pair, SemanticsMask admitted)
-        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : pair.Origin ?? this.PlaceOrigin(node);
+        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : this.OuterOrigin(pair) ?? this.PlaceOrigin(node);
 }

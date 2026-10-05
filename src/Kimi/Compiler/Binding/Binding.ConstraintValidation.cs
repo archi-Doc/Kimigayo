@@ -7,29 +7,33 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     /// <summary>
-    /// Tests whether the bare acquisition of a pair-layer Place <c>s/T</c> has a finite conditional plan (SPEC 8.9): every admitted
-    /// case either Copies (shared references, raw pointers, and an owner of a proven-Copy Type) or Reborrows in its own Semantics
-    /// (an exclusive reference), and at least one case Reborrows.
+    /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.7):
+    /// names and categories contribute their members, and/or/not intersect, unite and complement,
+    /// separate clauses intersect, and no premise admits all nine Semantics.
     /// </summary>
-    /// <param name="type">The stored Type of the Place.</param>
-    /// <param name="node">The acquiring syntax, whose scope supplies the premises.</param>
-    /// <returns><see langword="true"/> when such a plan exists.</returns>
-    internal bool HasConditionalReborrowPlan(BoundType type, Koto node)
+    /// <param name="whole">The pair's whole Type.</param>
+    /// <param name="scope">The scope whose premises apply.</param>
+    /// <returns>The admitted Semantics.</returns>
+    internal SemanticsMask AdmittedSemantics(BoundType whole, BindingScope scope)
     {
-        const SemanticsMask Exclusive = SemanticsMask.Uniq | SemanticsMask.ObjUniq;
-        if (!TryPairLayer(type, out var whole, out var target))
+        var admitted = SemanticsMask.All;
+        for (var current = scope; current is not null; current = current.Parent)
         {
-            return false;
+            if (current.Constraints is not { Invalid: false } environment)
+            {
+                continue;
+            }
+
+            foreach (var fact in environment.Facts)
+            {
+                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
+                {
+                    admitted &= SemanticsSet(fact);
+                }
+            }
         }
 
-        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(node));
-        var copyCases = admitted & ~Exclusive;
-        if ((admitted & Exclusive) == 0 || (copyCases & ~(SemanticsMask.Owner | SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Raw)) != 0)
-        {
-            return false;
-        }
-
-        return (copyCases & SemanticsMask.Owner) == 0 || this.ProveCopy(target, node) == ConstraintProof.Proven;
+        return admitted;
     }
 
     /// <summary>Tests whether a constraint speaks only about the Semantics of <paramref name="whole"/>; other premises never restrict its admitted set (SPEC 8.7).</summary>
@@ -497,32 +501,5 @@ public sealed partial class Binding
     {
         var admitted = this.AdmittedSemantics(whole, scope);
         return admitted != SemanticsMask.None && (admitted & ~allowed) == 0;
-    }
-
-    /// <summary>
-    /// Computes the admitted set of a Semantics binding from every available premise on it (SPEC 8.7):
-    /// names and categories contribute their members, and/or/not intersect, unite and complement,
-    /// separate clauses intersect, and no premise admits all nine Semantics.
-    /// </summary>
-    private SemanticsMask AdmittedSemantics(BoundType whole, BindingScope scope)
-    {
-        var admitted = SemanticsMask.All;
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
-
-            foreach (var fact in environment.Facts)
-            {
-                if (SemanticsPremise(fact, whole) && this.AvailableConstraintFact(environment, fact))
-                {
-                    admitted &= SemanticsSet(fact);
-                }
-            }
-        }
-
-        return admitted;
     }
 }

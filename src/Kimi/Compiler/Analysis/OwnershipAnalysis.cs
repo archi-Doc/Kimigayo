@@ -444,7 +444,20 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    // SPEC 8.10: a definition whose scope has a resolved pair binder is verified once per Semantics case; any other body once.
     private void Build(FunctionKoto function, int declarationDefault = -1)
+    {
+        if (declarationDefault < 0 && this.instance is null && this.ResolveCases(function))
+        {
+            this.BuildCases(function);
+        }
+        else
+        {
+            this.BuildOnce(function, declarationDefault);
+        }
+    }
+
+    private void BuildOnce(FunctionKoto function, int declarationDefault)
     {
         try
         {
@@ -454,14 +467,14 @@ public sealed partial class OwnershipAnalysis
         {
             this.body.ReportReservedElementWrites(completed: false);
             this.body.ReportIssue(new(limit.SourceNode, OwnershipFailure.ExpansionLimit));
-            this.issues.AddRange(this.body.IssueStorage);
+            this.AppendIssues();
         }
         catch (OwnershipStorageLimitException limit)
         {
             this.body.IsVerified = false;
             this.body.ReportReservedElementWrites(completed: false);
             this.body.ReportIssue(new(function, OwnershipFailure.StorageLimit, StorageTable: limit.Table, RequiredBytes: limit.RequiredBytes, LimitBytes: limit.LimitBytes));
-            this.issues.AddRange(this.body.IssueStorage);
+            this.AppendIssues();
             if (this.instance is not null)
             {
                 this.InstanceStorageLimit = limit.Message;
@@ -481,6 +494,10 @@ public sealed partial class OwnershipAnalysis
         {
             this.body = instanceBody; // Never listed with the checked source bodies.
         }
+        else if (this.caseBody is { } caseBody)
+        {
+            this.body = caseBody; // A Semantics case other than the first (SPEC 8.10); never listed.
+        }
         else
         {
             if (this.bodies.Count == this.bodyPool.Count)
@@ -493,7 +510,7 @@ public sealed partial class OwnershipAnalysis
             this.bodies.Add(this.body);
         }
 
-        this.body.Reset(function, this.instance, this.compilation.Binding);
+        this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount));
         // Abstract Origin bindings affect field Types even when layout is fully
         // concrete. Prepare the same substituted metadata used by closed calls.
         for (var parameterIndex = 0; parameterIndex < function.Parameters.Count; parameterIndex++)
@@ -663,12 +680,7 @@ public sealed partial class OwnershipAnalysis
         this.body.VerifyBorrows();
         this.body.VerifyCallReservations();
         this.body.ReportReservedElementWrites(completed: true);
-
-        for (var i = 0; i < this.body.IssueStorage.Count; i++)
-        {
-            this.issues.Add(this.body.IssueStorage[i]);
-        }
-
+        this.AppendIssues();
         this.body.IsVerified = this.body.IssueStorage.Count == 0 && function.BindingState == BindingState.Resolved;
     }
 
@@ -681,8 +693,8 @@ public sealed partial class OwnershipAnalysis
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);
         var invalidCopy = false;
         var acquisition = plannedAcquisition.GetValueOrDefault();
-        // An instance resolves a committed CopyOrMove to the exact effect of its closed Type (SPEC 21.3.1).
-        if (plannedAcquisition is null || (acquisition == AcquisitionKind.CopyOrMove && this.instance is not null))
+        // A case or an instance resolves a committed CopyOrMove to the exact effect of its substituted Type (SPEC 8.10, 21.3.1).
+        if (plannedAcquisition is null || (acquisition == AcquisitionKind.CopyOrMove && this.Substituting))
         {
             // Primitive classification needs no Constraint environment (SPEC 3.5.1).
             var proof = type.Kind == BoundTypeKind.Primitive && (!ReferenceEquals(type, BoundType.Never) || neverResult)
@@ -696,7 +708,7 @@ public sealed partial class OwnershipAnalysis
         {
             DeferredExecution = kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result ? this.activeDeferred : -1,
         });
-        this.body.IsConcrete &= type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication);
+        this.body.IsConcrete &= !AbstractTypes.HasAbstractPart(type);
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
             this.Unsupported(source);
@@ -795,22 +807,11 @@ public sealed partial class OwnershipAnalysis
         var stored = this.body.PlaceStorage[place];
         if (acquisition is null)
         {
-            // SPEC 15.1.5: a bare exclusive reference is reborrowed in its own mode; @move transfers it.
+            // SPEC 15.1.5, 8.9: a bare exclusive reference is reborrowed in its own mode; @move transfers it. A pair Place
+            // stores its case Type (SPEC 8.10), so the exclusive cases Reborrow here and the Copy cases Copy below.
             if (stored.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
             {
                 return this.BorrowStruct(source, stored.Type);
-            }
-
-            // SPEC 8.9: a finite conditional plan Copies in the Copy cases and Reborrows in the exclusive ones. The definition
-            // checks every case through the Reborrow's Loan, which only restricts the Copy cases; each instance takes its own.
-            if (this.instance is null && stored.Acquisition == AcquisitionKind.CopyOrMove && this.compilation.Binding.HasConditionalReborrowPlan(stored.Type, source))
-            {
-                this.Emit(OwnershipOperationKind.Read, source, place);
-                var reborrowed = this.Place(source, stored.Type, OwnershipPlaceKind.Temporary, false);
-                var borrow = this.Emit(OwnershipOperationKind.Borrow, source, place, reborrowed, loanMode: LoanRequirement.Uniq);
-                this.SetValue(borrow, OwnershipValueKind.Address, [this.Value(place)], constant: place);
-                (this.body.ConditionalReborrows ??= new()).Add((reborrowed, place));
-                return this.RegisterTemporary(reborrowed);
             }
 
             // SPEC 3.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
@@ -965,11 +966,8 @@ public sealed partial class OwnershipAnalysis
     {
         if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair && !this.FollowsReference(pair))
         {
-            // SPEC 13.5.5.1: owner selects the operand itself. The universal verification reads a Copy of the direct target
-            // through a shared borrow of the operand, since the stored pair Type need not be Copy; a Scalar target is read as
-            // that Copy also where only its value is used (SPEC 3.5.3).
-            return this.instance is null && (use != PlaceUseKind.Read || ScalarTypes.Supports(pair.BoundType)) ? this.CopyPairTarget(pair)
-                : this.ExpressionCore(KotoHelper.UnwrapParentheses(pair.Left), use, acquisition);
+            // SPEC 13.5.5.1: the owner case selects the operand itself.
+            return this.ExpressionCore(KotoHelper.UnwrapParentheses(pair.Left), use, acquisition);
         }
 
         if (node is EvaluatedKoto evaluated)

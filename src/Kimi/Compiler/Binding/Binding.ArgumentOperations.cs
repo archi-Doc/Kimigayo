@@ -716,8 +716,9 @@ public sealed partial class Binding
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
         {
             // SPEC 13.5.5.1: an admitted owner selects the operand Place itself; with only borrows admitted, the selected
-            // referent keeps the dependencies of the stored reference, like a Reborrow.
-            return (this.PairAdmitted(pair) & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(pair.Left) : pair.Left.BoundType?.Origin ?? this.PlaceOrigin(pair.Left);
+            // referent keeps the dependencies of the stored reference, like a Reborrow: the layer's outer-Origin slot.
+            return (this.PairAdmitted(pair) & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(pair.Left)
+                : (pair.Left.BoundType is { } layer ? this.OuterOrigin(layer) : null) ?? this.PlaceOrigin(pair.Left);
         }
 
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)

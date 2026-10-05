@@ -129,7 +129,7 @@ public sealed partial class OwnershipAnalysis
             return this.BorrowStoredReference(unwrapped, unwrapped, type, reservation); // SPEC 7.3: a receiver through a pair layer.
         }
 
-        if (this.instance is not null && this.compilation.Binding.ImplicitPairAdmitted(unwrapped) != SemanticsMask.None &&
+        if (this.Substituting && this.compilation.Binding.ImplicitPairAdmitted(unwrapped) != SemanticsMask.None &&
             this.ReferenceLayers(unwrapped.BoundType, type.Components[0]) > 1)
         {
             // SPEC 3.4.1, 10.2, 13.5.5.1: several existing layers yield one reference in the receiver's mode (exclusive only
