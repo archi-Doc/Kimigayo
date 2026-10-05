@@ -36,6 +36,55 @@ public sealed partial class OwnershipBody
     // Each acquisition reported against a holder's Loan, with the Place that received the rejected Loan.
     private List<(int Holder, int Result)>? rejectedAcquisitions;
 
+    // SPEC 15.6.3: how RetainBorrowAuthority carries a root's retained authority across one operation. Every
+    // OwnershipOperationKind has a row (FlowOf); a kind without one is an internal invariant failure, never a silent omission.
+    internal enum OperationFlow : byte
+    {
+        Unclassified,
+
+        // No value reaches a Place at this operation; its row states why.
+        None,
+
+        // The Input takes the Place's authority: an acquisition.
+        InputFromPlace,
+
+        // The Place takes the Input's authority: a store.
+        PlaceFromInput,
+
+        // The Dictionary takes the key's and the value's authority.
+        DictionaryEntry,
+
+        // The constructed Place takes every payload's authority.
+        Construction,
+
+        // Every payload takes the decomposed Place's authority.
+        Decomposition,
+
+        // The result takes every entry's authority, and a writable referent retains the entries its storage Type names.
+        Call,
+
+        // The referent, or else the holder, of an exclusive reference takes the stored value's authority through the storage Type.
+        Store,
+    }
+
+    // SPEC 15.6.3: how RetainBorrowAuthority carries retained authority through a value into the Place its operation defines.
+    internal enum ValueFlow : byte
+    {
+        Unclassified,
+
+        // The value transfers no authority; its row states why.
+        None,
+
+        // The defined Place takes the authority of its one operand's Place.
+        Operand,
+
+        // The defined Place takes the sequence receiver's authority.
+        Receiver,
+
+        // The closure temporary takes every entry's authority.
+        Entries,
+    }
+
     // How one operation changes what a holder keeps of a root's Loan (LoanCarryingDefinition).
     private enum HolderChange : byte
     {
@@ -49,6 +98,107 @@ public sealed partial class OwnershipBody
     internal int BorrowDependencyCapacity => this.borrowDependencies.Capacity;
 
     internal long BorrowStorageBytes => (long)this.borrowDependencies.ByteCapacity + this.retainedBorrowAuthority.ByteCapacity + this.borrowLive.ByteCapacity;
+
+    // SPEC 15.6.3: the flow row of each operation kind (SharedEngineTotalityTest checks that none is Unclassified).
+    internal static OperationFlow FlowOf(OwnershipOperationKind kind) => kind switch
+    {
+        // Acquisitions: the Input holds what the acquired Place holds.
+        OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern => OperationFlow.InputFromPlace,
+
+        // Stores: the Place holds what the stored Input holds.
+        OwnershipOperationKind.Write or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.PayloadPlacement => OperationFlow.PlaceFromInput,
+        OwnershipOperationKind.StoreDictionaryEntry => OperationFlow.DictionaryEntry,
+        OwnershipOperationKind.CompleteConstruction => OperationFlow.Construction,
+        OwnershipOperationKind.DecomposeCase => OperationFlow.Decomposition,
+        OwnershipOperationKind.Call => OperationFlow.Call,
+        OwnershipOperationKind.StorePointer => OperationFlow.Store,
+
+        // Control flow and scope: no value reaches a Place. Declare brings an uninitialized Place into scope and Cleanup
+        // destroys one, which holds nothing after; an Unsupported body is rejected.
+        OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.Declare or
+            OwnershipOperationKind.Cleanup or OwnershipOperationKind.Unsupported => OperationFlow.None,
+
+        // Tests, checks and observations read values defined elsewhere and define no Place.
+        OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.CheckDictionaryKey or
+            OwnershipOperationKind.CheckReceiverField or OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestMessage or
+            OwnershipOperationKind.TestAbort => OperationFlow.None,
+
+        // Loans of Places defined elsewhere end (SPEC 15.6.7) or activate (SPEC 15.6.7, call reservations).
+        OwnershipOperationKind.EndComparisonLoans or OwnershipOperationKind.ActivateCallBorrows => OperationFlow.None,
+
+        // A receiver or element path is selected; the Produce that reads it carries its value (FlowOf(OwnershipValueKind)).
+        OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.ProjectElement => OperationFlow.None,
+
+        // SPEC 13.7: an intrinsic update borrows its target in place under a reservation; the target keeps its own authority.
+        OwnershipOperationKind.UpdateTarget => OperationFlow.None,
+
+        // A Place defined or read with a value: the value's row carries the flow.
+        OwnershipOperationKind.Produce or OwnershipOperationKind.Read => OperationFlow.None,
+
+        // The Consume or Borrow into the entry carried the authority, which the Call or the Closure value takes from the entry.
+        OwnershipOperationKind.CallEntry => OperationFlow.None,
+
+        // The Write securing the result carried the delivered value (OwnershipAnalysis.Results.cs).
+        OwnershipOperationKind.Deliver => OperationFlow.None,
+
+        // A method's receiver field is a Place without an Input; its Loans come from its Type (AddType).
+        OwnershipOperationKind.InitializeReceiverField => OperationFlow.None,
+
+        // A scalar element input flows through the operation's Alias value; an aggregate input has no edge to the root (limit).
+        OwnershipOperationKind.WriteElement => OperationFlow.None,
+
+        // SPEC 13.7: the Input of a borrowed field write is a ComputeUpdate scalar, and a borrowed update replaces Owned-proven
+        // content (except the Option take, whose result keeps the old content's Loans through its Type); no reference is stored.
+        OwnershipOperationKind.WriteBorrowedField or OwnershipOperationKind.UpdateBorrowed => OperationFlow.None,
+
+        _ => OperationFlow.Unclassified,
+    };
+
+    // SPEC 15.6.3: the flow row of each value kind (SharedEngineTotalityTest checks that none is Unclassified).
+    internal static ValueFlow FlowOf(OwnershipValueKind kind) => kind switch
+    {
+        // A copied value, a reference loaded through another reference (SPEC 3.4.1, 10.2) or a field read through a reference.
+        OwnershipValueKind.Alias or OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField => ValueFlow.Operand,
+
+        // SPEC 14.6.2, 4.6: an element borrowed or read through a sequence descends from its receiver.
+        OwnershipValueKind.Sequence => ValueFlow.Receiver,
+
+        // SPEC 7.6.2, 15.8.2: the closure environment holds the entries' Loans.
+        OwnershipValueKind.Closure => ValueFlow.Entries,
+
+        // No source Place: an exclusive input is its own root (VerifyBorrows) and a Capture's binding is a carrier
+        // (RecordCarriers) or its own root (IsExclusiveBorrowInput); nothing is transferred.
+        OwnershipValueKind.None or OwnershipValueKind.StaticRead or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or
+            OwnershipValueKind.Capture => ValueFlow.None,
+
+        // Carried by the operation's row: a call result (Call), an acquired address (Borrow), a store (StorePointer), the
+        // entries of a Dictionary literal (StoreDictionaryEntry) and a pattern binding or Subject (AcquirePattern, InitializeSubject).
+        OwnershipValueKind.Call or OwnershipValueKind.Borrow or OwnershipValueKind.Address or OwnershipValueKind.PointerStore or
+            OwnershipValueKind.DictionaryLiteral or OwnershipValueKind.PatternProjection => ValueFlow.None,
+
+        // Computed owned scalars and tests hold no reference.
+        OwnershipValueKind.Unary or OwnershipValueKind.Binary or OwnershipValueKind.StringComparison or OwnershipValueKind.ContractComparison or
+            OwnershipValueKind.RuntimeTypeTest or OwnershipValueKind.Formatting => ValueFlow.None,
+
+        // A join of one Place's scalar values keeps that Place's dependencies, which are per Place.
+        OwnershipValueKind.Phi => ValueFlow.None,
+
+        // An element read has no operand: a stored reference is loaded through the slot borrow (PointerLoad), and an element
+        // temporary's Loans come from its Type (AddType) and its ancestry from the projected root (ProjectedBorrowValue).
+        OwnershipValueKind.Element => ValueFlow.None,
+
+        // See the WriteBorrowedField and UpdateBorrowed rows: no reference is stored.
+        OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => ValueFlow.None,
+
+        // SPEC 7.6.4: an erased Function value holds no Loan.
+        OwnershipValueKind.ClosureErasure => ValueFlow.None,
+
+        // SPEC 5.2, 5.2.2, 5.4, 13.5.4: a conversion yields an owned scalar, a raw pointer without an Origin or a raw Place borrow
+        // rooted by its anchor (AddOrigin); a raw projection accesses nothing.
+        OwnershipValueKind.Convert or OwnershipValueKind.PointerProject => ValueFlow.None,
+
+        _ => ValueFlow.Unclassified,
+    };
 
     internal PlaceState GetBorrowInputState(int operation)
     {
@@ -1313,6 +1463,7 @@ public sealed partial class OwnershipBody
     private void RetainBorrowAuthority(int count)
     {
         this.retainedBorrowAuthority.CopyFrom(this.borrowDependencies, OwnershipStorage.Cells(count, count, 2, "retained borrow authority"));
+        Koto? unclassified = null;
         bool changed;
         do
         {
@@ -1320,19 +1471,19 @@ public sealed partial class OwnershipBody
             for (var id = 0; id < this.Operations.Count; id++)
             {
                 var operation = this.Operations[id];
-                switch (operation.Kind)
+                switch (FlowOf(operation.Kind))
                 {
-                    case OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern:
+                    case OperationFlow.InputFromPlace:
                         Merge(operation.Input, operation.Place, id);
                         break;
-                    case OwnershipOperationKind.Write or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.PayloadPlacement:
+                    case OperationFlow.PlaceFromInput:
                         Merge(operation.Place, operation.Input, id);
                         break;
-                    case OwnershipOperationKind.StoreDictionaryEntry:
+                    case OperationFlow.DictionaryEntry:
                         Merge(operation.Place, operation.Input, id);
                         Merge(operation.Place, this.OperationSteps[id], id);
                         break;
-                    case OwnershipOperationKind.CompleteConstruction:
+                    case OperationFlow.Construction:
                         var construction = this.Constructions[this.OperationSteps[id]];
                         for (var p = 0; p < construction.PayloadCount; p++)
                         {
@@ -1340,7 +1491,7 @@ public sealed partial class OwnershipBody
                         }
 
                         break;
-                    case OwnershipOperationKind.DecomposeCase:
+                    case OperationFlow.Decomposition:
                         var decomposition = this.Decompositions[this.OperationSteps[id]];
                         for (var p = 0; p < decomposition.PayloadCount; p++)
                         {
@@ -1348,7 +1499,7 @@ public sealed partial class OwnershipBody
                         }
 
                         break;
-                    case OwnershipOperationKind.Call:
+                    case OperationFlow.Call:
                         for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
                         {
                             Merge(operation.Place, input.Place, id);
@@ -1376,7 +1527,7 @@ public sealed partial class OwnershipBody
                         }
 
                         break;
-                    case OwnershipOperationKind.StorePointer:
+                    case OperationFlow.Store:
                         // SPEC 13.5.5.1, 15.6.3: a store through a uniq/[storage] reference retains the stored value's Loans in
                         // the referent, the Place the reference addresses when known, and otherwise in the reference's holder,
                         // through the storage Type's contract as a call's writable referent does (RetainsInput).
@@ -1388,32 +1539,43 @@ public sealed partial class OwnershipBody
                         }
 
                         break;
+                    case OperationFlow.None:
+                        break;
+                    default:
+                        unclassified ??= operation.Source;
+                        break;
                 }
 
-                if (this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } alias && this.ValueOperands[alias.Start] is >= 0 and var value)
+                var value = this.Values[id];
+                switch (FlowOf(value.Kind))
                 {
-                    Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[value]), id);
-                }
-                else if (this.Values[id] is { Kind: OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField, Count: 1 } loaded)
-                {
-                    Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[this.ValueOperands[loaded.Start]]), id);
-                }
-                else if (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence })
-                {
-                    Merge(ValuePlaceForBorrow(operation), this.Sequences[(int)sequence].Receiver, id);
-                }
-                else if (this.Values[id] is { Kind: OwnershipValueKind.Closure } closure && operation.Place >= 0 && this.Places[operation.Place].Type.Kind == BoundTypeKind.Closure)
-                {
-                    // SPEC 7.6.2, 15.8.2: the entries flow into the closure temporary, whose environment holds their Loans; a
-                    // common Function value without an environment holds none (SPEC 7.6.4).
-                    for (var i = 0; i < closure.Count; i++)
-                    {
-                        Merge(operation.Place, ValuePlaceForBorrow(this.Operations[this.ValueOperands[closure.Start + i]]), id);
-                    }
+                    case ValueFlow.Operand when value.Count == 1 && this.ValueOperands[value.Start] is >= 0 and var operand:
+                        Merge(ValuePlaceForBorrow(operation), ValuePlaceForBorrow(this.Operations[operand]), id);
+                        break;
+                    case ValueFlow.Receiver:
+                        Merge(ValuePlaceForBorrow(operation), this.Sequences[(int)value.Constant].Receiver, id);
+                        break;
+                    case ValueFlow.Entries when operation.Place >= 0 && this.Places[operation.Place].Type.Kind == BoundTypeKind.Closure:
+                        // SPEC 7.6.2, 15.8.2: the entries flow into the closure temporary, whose environment holds their Loans; a
+                        // common Function value without an environment holds none (SPEC 7.6.4).
+                        for (var i = 0; i < value.Count; i++)
+                        {
+                            Merge(operation.Place, ValuePlaceForBorrow(this.Operations[this.ValueOperands[value.Start + i]]), id);
+                        }
+
+                        break;
+                    case ValueFlow.None or ValueFlow.Operand or ValueFlow.Entries:
+                        break;
+                    default:
+                        unclassified ??= operation.Source;
+                        break;
                 }
             }
         }
         while (changed);
+
+        // SPEC 21.3.5: a kind without a flow row leaves the body unverified instead of silently carrying nothing.
+        this.Invariant(unclassified is null, unclassified);
 
         bool RetainsInput(BoundType storage)
         {

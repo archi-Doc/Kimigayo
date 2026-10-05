@@ -57,6 +57,15 @@ public class SharedEngineTotalityTest
     public void RunsTheOrdersThatWriteAfterTheLastUse(string name, string source)
         => ScalarEmissionTest.EmitFixture("SharedEngine" + name, source, string.Empty);
 
+    // E4: every operation and value kind has a flow row of RetainBorrowAuthority; a kind without one would leave its body
+    // unverified with an internal invariant failure instead of silently carrying nothing.
+    [Fact]
+    public void EveryKindHasAFlowRow()
+    {
+        Assert.All(Enum.GetValues<OwnershipOperationKind>(), static kind => Assert.NotEqual(OwnershipBody.OperationFlow.Unclassified, OwnershipBody.FlowOf(kind)));
+        Assert.All(Enum.GetValues<OwnershipValueKind>(), static kind => Assert.NotEqual(OwnershipBody.ValueFlow.Unclassified, OwnershipBody.FlowOf(kind)));
+    }
+
     private static string Text(string source, Kimi.Diagnostics.SourceSpan? span)
         => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;
 }
