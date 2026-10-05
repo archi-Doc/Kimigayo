@@ -1,6 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.Json;
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Verification;
 using Xunit;
 
@@ -47,7 +50,8 @@ public class ClosureResultOriginTest
     // SPEC 15.8.2, 15.6.4, 7.6.3: a Shared or Exclusive call's result over the closure's environment depends on the call receiver: a
     // borrow of an environment binding becomes a borrow of the closure Place the call lends, and a Reborrow through a captured
     // exclusive reference also stays within it, so the result keeps that Place lent while it lives. A Consuming call that moves a
-    // captured reference out returns it with its own Origin. These were UnsupportedBinding_Kd (G65).
+    // captured reference out returns it with its own Origin, and a returned closure that borrows the outer environment keeps that
+    // environment lent. These were UnsupportedBinding_Kd (G65).
     [Theory]
     [InlineData("SlotBorrow", "let n = 7\nlet f = func [n] () => n@ref\nlet r = f()\nrequire r == 7 else => $abort(\"r\")")]
     [InlineData("ThroughReference", "let n = 7\nlet f = func [n] () => n@ref\nlet g = f@ref\nlet r = g()\nrequire r == 7 else => $abort(\"r\")")]
@@ -56,17 +60,20 @@ public class ClosureResultOriginTest
     [InlineData("Temporary", "let n = 7\nrequire (func [n] () => n@ref)() == 7 else => $abort(\"r\")")]
     [InlineData("Exclusive", "var n = 7\nlet view = n@uniq\nvar f = func [view] () => view\nlet r = f()\nr@follow = 9\nlet s = f()\ns@follow = 10\nrequire n == 10 else => $abort(\"n\")")]
     [InlineData("MovedOut", "var n = 7\nlet view = n@uniq\nlet take = func [view@move] () => view@move\nlet r = take@move()\nr@follow = 9\nrequire n == 9 else => $abort(\"n\")")]
+    [InlineData("Nested", "let n = 7\nlet outer = func [n] () => func [n@ref] () => n\nlet inner = outer()\nlet v = inner()\nrequire v == 7 else => $abort(\"v\")")]
     public void ReceiverDependentResultsRun(string name, string source)
         => ScalarEmissionTest.EmitFixture("ClosureReceiverResult" + name, source, string.Empty);
 
     // The receiver stays lent while the result lives: a Move of the closure, a temporary closure's destruction, a write of the captured
-    // referent, and an Exclusive call while an earlier result lives are rejected.
+    // referent, an Exclusive call while an earlier result lives, and a Move of the outer closure while a returned closure that borrows
+    // its environment lives are rejected.
     [Theory]
     [InlineData("let n = 7\nlet f = func [n] () => n@ref\nlet g = f@ref\nlet r = g()\nlet h = f@move\nrequire r == 7 else => $abort(\"r\")")]
     [InlineData("let n = 7\nlet r = (func [n] () => n@ref)()\nrequire r == 7 else => $abort(\"r\")")]
     [InlineData("var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow@ref\nlet r = f()\nn = 9\nrequire r == 7 else => $abort(\"r\")")]
     [InlineData("var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow@ref\nlet r = f()\nview@follow = 1\nrequire r == 7 else => $abort(\"r\")")]
     [InlineData("var n = 7\nlet view = n@uniq\nvar f = func [view] () => view\nlet r = f()\nlet s = f()\nr@follow = 9")]
+    [InlineData("let n = 7\nlet outer = func [n] () => func [n@ref] () => n\nlet inner = outer()\nlet moved = outer@move\nlet v = inner()")]
     public void TheReceiverStaysLentWhileTheResultLives(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -82,6 +89,30 @@ public class ClosureResultOriginTest
         var c = MinimalEmissionTest.Analyze(Captured + "let erased: () -> ref/i32 = f\nerased()");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 7.6.4, 15.6.1, 23.3.6.5: a common Function value cannot return a borrow of its hidden environment receiver, so the erasure of
+    // a closure whose result borrows its environment is one UnprovenOriginContract_Kd at the converted value, whose longer end is the
+    // closure display "call receiver", related at the anonymous function's header. It was displayed as a borrow of the closure's text.
+    [Theory]
+    [InlineData("    let n = 7\n    let f = func [n] () => n@ref\n    let e: () -> ref/i32 = f\n", "f")]
+    [InlineData("    let text = \"abc\"\n    let f = func [text@move] () => text@ref\n    let e: () -> ref/string = f@move\n", "f@move")]
+    public void AnErasedResultCannotBorrowTheCallReceiver(string body, string text)
+    {
+        var source = "public func main() -> ()\n" + body;
+        var output = DiagnosticCorpus.Check(source);
+        var error = Assert.Single(output.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        var header = Assert.Single(error.Related!, static x => x.Role == "origin").Span!.Value;
+        Assert.StartsWith("func [", source.Substring(header.Start, header.Length), StringComparison.Ordinal);
+        Assert.EndsWith("] ()", source.Substring(header.Start, header.Length), StringComparison.Ordinal);
+        Assert.Equal("A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.6.4)", error.Note);
+        var result = new DiagnosticResult(output.Diagnostics, output.Sources);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("the result requires the closure's call receiver outlives static, which is not proven", console.Text, StringComparison.Ordinal);
+        var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
+        Assert.Contains("{\"name\":\"longer\",\"kind\":\"Origin\",\"value\":\"call receiver\",\"elided\":false,\"origin\":\"closure\"}", json, StringComparison.Ordinal);
     }
 
     [Fact]

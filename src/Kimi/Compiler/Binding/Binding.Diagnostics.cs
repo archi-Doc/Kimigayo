@@ -452,7 +452,9 @@ public sealed partial class Binding
     // displayed as the required contract writes them; an omitted end is related at its Type occurrence. Advice only describes a repair.
     private static void ReportOriginContract(Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var longer = OriginDisplay(contract.Longer, null);
+        // An erased closure's environment binding lies within its call receiver, which no Origin expression names (SPEC 15.8.2).
+        var longer = contract.Longer is { Kind: OriginKind.Projection, Binder: FunctionKoto { IsAnonymous: true } } environment && environment.Slot <= EnvironmentSlot(0)
+            ? new DiagnosticOrigin("closure", "call receiver") : OriginDisplay(contract.Longer, null);
         var shorter = OriginDisplay(contract.Shorter, null);
         var longerAt = longer.Kind == "omitted" ? OmittedAt(contract.Longer) : null;
         var shorterAt = shorter.Kind == "omitted" ? OmittedAt(contract.Shorter) : null;
@@ -460,6 +462,17 @@ public sealed partial class Binding
             : longerAt is not null ? [("origin", longerAt, null)]
             : shorterAt is not null ? [("origin", shorterAt, null)]
             : null;
+        if (longer.Kind == "closure" && contract.Longer.Binder is FunctionKoto closure)
+        {
+            // SPEC 7.6.4, 23.3.6.5: a common Function value cannot return a borrow of its hidden environment receiver; the closure end
+            // is related at the anonymous function's header.
+            var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
+            const string Note = "A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.6.4)";
+            const string Owned = "Return an owned or Copied value, or a captured reference, instead of a borrow of the closure's environment";
+            node.Report(requirement, code, note: Note, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, relatedSpans: [("origin", closure, header, null)], advice: Owned, at: contract.At);
+            return;
+        }
+
         var advice = contract.Member != "the result" ? $"Write {contract.Member} of the required Type over {shorter.Text}, or convert an implementation that accepts any borrow there"
             : longer.Kind == "omitted" ? $"Leave the required result's Origin omitted, which bounds it by the borrowed inputs, or convert an implementation whose result outlives {shorter.Text}"
             : $"Write the required result over {longer.Text}, or convert an implementation whose result outlives {shorter.Text}";
