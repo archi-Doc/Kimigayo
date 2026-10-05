@@ -112,6 +112,9 @@ public sealed partial class Binding
     // The Projection slot of a closure's call result, a display end only (SPEC 23.3.6.5).
     internal const int CallResultSlot = -1;
 
+    // The Projection slot that names a closure literal's own temporary value, the receiver of a call on that literal (SPEC 15.8.2).
+    internal const int ClosureValueSlot = int.MinValue;
+
     // The Projection slot that names a binding's own Place.
     internal static int SymbolOriginSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.Capture ? EnvironmentSlot(symbol.Slot) : symbol.Slot;
 

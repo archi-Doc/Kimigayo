@@ -91,6 +91,8 @@ public sealed partial class OwnershipAnalysis
         var receiver = explicitReceiver
             ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, plan.ReceiverType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
             : part ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, this.compilation.Binding.Reference(SemanticsKind.Ref, plan.ReceiverType), ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow), immediate: true)
+            : plan.ReceiverKind == SemanticsKind.Uniq && KotoHelper.UnwrapParentheses(plan.Receiver) is IdentifierNameKoto { BoundSymbol: { } binding } && this.body.SymbolPlaces.TryGetValue(binding, out var local)
+            ? local // SPEC 15.6.7: the reserved read below acquires an exclusive receiver binding, as a method receiver's entry does.
             : this.Expression(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
         if (receiver < 0)
         {

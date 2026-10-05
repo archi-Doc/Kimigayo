@@ -181,6 +181,96 @@ public sealed partial class Binding
         }
     }
 
+    // Whether a result still names a per-call input or a universal Origin of `binder`.
+    private static bool HasUnsubstitutedInput(BoundType type, Koto binder)
+    {
+        if (InputAtom(type.Origin, binder))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (InputAtom(type.OriginArguments[i], binder))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (HasUnsubstitutedInput(type.Components[i], binder))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool InputAtom(BoundOrigin? origin, Koto binder)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (InputAtom(origin.Operands[i], binder))
+                {
+                    return true;
+                }
+            }
+
+            return origin.Kind is OriginKind.Input or OriginKind.Parameter && ReferenceEquals(origin.Binder, binder);
+        }
+    }
+
+    // Whether a result names an environment binding of the closure `function` (SPEC 15.8.2).
+    private static bool HasEnvironmentOrigin(BoundType type, Koto function)
+    {
+        if (EnvironmentAtom(type.Origin, function))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (EnvironmentAtom(type.OriginArguments[i], function))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (HasEnvironmentOrigin(type.Components[i], function))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool EnvironmentAtom(BoundOrigin? origin, Koto function)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (EnvironmentAtom(origin.Operands[i], function))
+                {
+                    return true;
+                }
+            }
+
+            return origin.Kind == OriginKind.Projection && ReferenceEquals(origin.Binder, function) && origin.Slot <= EnvironmentSlot(0) && origin.Slot != ClosureValueSlot;
+        }
+    }
+
     // Whether every Origin of an argument is the parameter's own at that position or static, so the argument needs no relation.
     private static bool OriginsAsWritten(BoundType actual, BoundType expected)
     {
@@ -331,6 +421,7 @@ public sealed partial class Binding
         // bound by the callee's own binder; an input or result written over a fixed Origin of the calling body is fitted as written.
         var ownBinder = CalleeBinder(call.Method.BoundType, signature);
         var inputBinder = (Koto?)null;
+        var dependent = false;
         if (ownBinder is not null && !OwnInputsAreDirect(signature, ownBinder))
         {
             return this.Fail(call, BindingFailure.Unsupported);
@@ -342,7 +433,7 @@ public sealed partial class Binding
         }
         else if (!PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(signature.Components[1], call.Method, call))
         {
-            return this.Fail(call, BindingFailure.Unsupported);
+            dependent = true; // SPEC 15.8.2: a result over the closure's environment depends on the call receiver.
         }
 
         var operations = this.argumentOperationScratch.Rent(count);
@@ -403,13 +494,27 @@ public sealed partial class Binding
             }
 
             var result = signature.Components[1];
-            if (inputBinder is not null)
+            if (dependent || (inputBinder is not null && HasEnvironmentOrigin(result, inputBinder)))
             {
-                result = this.SubstituteStoredOrigins(result, inputBinder, default, argumentOrigins.AsSpan(0, count));
-                if (HasUnsubstitutedOrigin(result, inputBinder))
+                // The receiver binds the environment's Origins; the callee's own inputs are substituted below.
+                if (this.ReceiverDependentResult(result, call.Method, receiver, call) is not { } bound)
                 {
                     return this.Fail(call, BindingFailure.Unsupported);
                 }
+
+                result = bound;
+            }
+
+            if (inputBinder is not null)
+            {
+                result = this.SubstituteStoredOrigins(result, inputBinder, default, argumentOrigins.AsSpan(0, count));
+            }
+
+            // The receiver Origin of a temporary closure is bound to the closure literal itself, which is no per-call input; only an
+            // unsubstituted input or a remaining environment binding is unsupported.
+            if ((inputBinder is not null && HasUnsubstitutedInput(result, inputBinder)) || (ownBinder is not null && HasEnvironmentOrigin(result, ownBinder)))
+            {
+                return this.Fail(call, BindingFailure.Unsupported);
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));

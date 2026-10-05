@@ -498,6 +498,18 @@ public sealed partial class OwnershipBody
                     }
                 }
 
+                if (origin.Kind == OriginKind.Projection && origin.Slot == Binding.ClosureValueSlot)
+                {
+                    // SPEC 15.8.2: the receiver of a call on a closure literal is that literal's temporary closure value.
+                    for (var root = 0; root < count; root++)
+                    {
+                        if (this.Places[root] is { Kind: OwnershipPlaceKind.Temporary, Type.Kind: BoundTypeKind.Closure } candidate && ReferenceEquals(candidate.Source, origin.Binder))
+                        {
+                            Record(root);
+                        }
+                    }
+                }
+
                 // A parameter's Projection Origin is bound by its function and resolves through SymbolPlaces above;
                 // the function's Result place shares that Source and is never the borrowed storage.
                 var hasDeferredRoot = false;
@@ -2196,7 +2208,7 @@ public sealed partial class OwnershipBody
     {
         var candidate = this.Places[root];
         return origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
-            (ReferenceEquals(candidate.Type, BoundType.String) || StructStorage.IsStruct(candidate.Type) || EnumStorage.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary || ScalarTypes.Supports(candidate.Type)) &&
+            (ReferenceEquals(candidate.Type, BoundType.String) || StructStorage.IsStruct(candidate.Type) || EnumStorage.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Closure || ScalarTypes.Supports(candidate.Type)) &&
             ReferenceEquals(candidate.Source, origin.Binder) && (!ScalarTypes.Supports(candidate.Type) || this.IsBorrowedPlace(root));
     }
 
@@ -2271,12 +2283,34 @@ public sealed partial class OwnershipBody
         return false;
     }
 
+    // The read of a value call's receiver Place when the call's result depends on that Place.
+    private int ReceiverRead(int call, Koto receiver, int result)
+    {
+        var count = this.Places.Count;
+        for (var id = call - 1; id >= 0; id--)
+        {
+            if (this.Operations[id] is { Kind: OwnershipOperationKind.Read, Place: >= 0 } read && ReferenceEquals(read.Source, receiver))
+            {
+                return this.borrowDependencies[(result * count) + read.Place] != LoanRequirement.None ? id : -1;
+            }
+        }
+
+        return -1;
+    }
+
     private int ResultArgument(int call)
     {
-        if (this.Operations[call].Source is InvocationKoto { BoundValueCall: not null })
+        if (this.Operations[call].Source is InvocationKoto { BoundValueCall: { } valueCall })
         {
-            // SPEC 15.6.3: a value call's result descends from the one argument whose Origins it names, as an ordinary call's.
-            return this.Operations[call].Place >= 0 ? this.SoleResultInput(call, this.Places[this.Operations[call].Place].Type) : -1;
+            // SPEC 15.6.3: a value call's result descends from the one argument whose Origins it names, as an ordinary call's; a result
+            // bound to the call receiver (SPEC 15.8.2) descends from the receiver's read, as a method result from its receiver entry.
+            if (this.Operations[call].Place < 0)
+            {
+                return -1;
+            }
+
+            var result = this.Operations[call].Place;
+            return this.SoleResultInput(call, this.Places[result].Type) is >= 0 and var sole ? sole : this.ReceiverRead(call, valueCall.Receiver, result);
         }
 
         if (this.Operations[call].Source is not InvocationKoto { BoundValueCall: null, BoundCall: { Target: { CompilerFunction: CompilerFunctionKind.None, Declaration: FunctionKoto target } } plan })

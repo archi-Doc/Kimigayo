@@ -42,13 +42,13 @@ public class ClosureEnvironmentOriginTest
         => ScalarEmissionTest.EmitFixture("ClosureEnvironment" + name, source, name == "String" ? "env\n" : string.Empty);
 
     // S2: the result borrows the environment binding's own slot, so it depends on the closure's receiver and is not a fixed external
-    // result; it was accepted and outlived the Move of the closure. Receiver-dependent results remain a located limit (G65).
+    // result; it was accepted and outlived the Move of the closure, which is now a Loan conflict (SPEC 15.8.2).
     [Fact]
     public void ASlotBorrowOfAnEnvironmentBindingIsReceiverDependent()
     {
         var source = Main + "    let n = 7\n    let f = func [n@ref] () => n@ref\n    let r = f()\n    let g = f@move\n    require r@follow@follow == 7 else => $abort(\"r\")\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), "f()"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "f"), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
     }
 
     // SPEC 15.8.2, 15.6.1, 23.3.6.5: a result inferred from the body that borrows the call's own storage, a parameter, a body local or

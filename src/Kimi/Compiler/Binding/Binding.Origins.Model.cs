@@ -189,6 +189,10 @@ internal readonly struct CallableInstance
             (uint)origin.Slot < (uint)this.expected.Components[0].Components.Count && ReferenceEquals(this.expected.Components[0].Components[origin.Slot].Origin, origin);
 }
 
+// One closure call whose result is bound to its receiver (SPEC 15.8.2): the closure, its environment plan, the receiver's Place Origin
+// (none for a Consuming call), whether the result is Copy, and the call.
+internal readonly record struct ReceiverContext(FunctionKoto Function, BoundClosure Closure, BoundOrigin? Receiver, bool Copy, Koto Use);
+
 internal readonly record struct TypeBindingContext(TypePosition Position, Koto Owner, int Slot = 0, bool Direct = false, bool SuppressOuter = false)
 {
     internal TypeBindingContext Nested => this with { Direct = false, SuppressOuter = false };

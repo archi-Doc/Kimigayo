@@ -63,14 +63,10 @@ public class ClosureReceiverClassificationTest
         Assert.Equal(advice, error.Advice);
     }
 
-    // A shared borrow through the captured exclusive reference keeps the call Shared; its receiver-dependent result is the G65 limit.
+    // A shared borrow through the captured exclusive reference keeps the call Shared; its result depends on the receiver.
     [Fact]
     public void ASharedReborrowResultStaysShared()
-    {
-        var source = CapturedView + "    let f = func [view] () => view@follow@ref\n    f()\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
-    }
+        => Assert.Empty(DiagnosticCorpus.Check(CapturedView + "    let f = func [view] () => view@follow@ref\n    let r = f()\n    require r@follow == 7 else => $abort(\"r\")\n").Diagnostics);
 
     [Fact]
     public void AScalarReadThroughACapturedExclusiveReferenceIsShared()
