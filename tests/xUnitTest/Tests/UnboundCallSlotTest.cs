@@ -70,13 +70,56 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal(nameof(DiagnosticCode.UnboundTypeArgument_Kd), Assert.Single(DiagnosticCorpus.Check(open).Diagnostics).Code);
     }
 
-    // PLAN G10: ranking a candidate with an unsolved slot against others is not implemented yet; such a call stays the fact-less
-    // UnprovenConstraint_Kd it was.
-    [Fact]
-    public void SeveralCandidatesStillBlock()
+    // SPEC 10.4, 10.5, 10.8: a candidate with an unsolved slot, or one whose F has no Callable Constraint, is compared unchanged, with the
+    // waiting position equal in step 2; the selected candidate's signature types the body, and a candidate that is not selected never
+    // needs to supply one.
+    [Theory]
+    [InlineData("FewerDefaults", "func run<F>(action: ref/F, x: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\nfunc run<F>(action: ref/F, x: i32, y: i32 = 0) -> i32\n    return 0\nrequire run(func (n) => n + 1, 1) == 2 else => $abort(\"m2\")")]
+    [InlineData("WrittenHeader", "func run<F>(action: ref/F, x: i32, y: i32 = 0) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\nfunc run<F>(action: ref/F, x: i32) -> i32\n    return 0\nrequire run(func (n: i32) => n + 1, 1) == 0 else => $abort(\"m2d\")")]
+    [InlineData("UnsolvedLoses", "func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<T, F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(T) -> T>\n    return 0\nrequire run(func (n) => n + 1) == 2 else => $abort(\"m4\")")]
+    [InlineData("OpenResultLoses", "func run<R, F>(action: ref/F, extra: i32 = 0) -> R\n    F is Callable<(i32) -> R>\n    return action(1)\nfunc run<F>(action: ref/F) -> i64\n    F is Callable<(i64) -> i64>\n    return action(5)\nlet r = run(func (n) => n + 1)\nrequire r == 6 else => $abort(\"m13\")")]
+    [InlineData("NongenericWins", "func make<T>() -> i32 => 0\nfunc make(extra: i32 = 0) -> i32 => 1\nrequire make() == 1 else => $abort(\"o1\")")]
+    [InlineData("UnjudgedConstraint", "func make<T>() -> i32\n    T is Equatable\n    return 1\nfunc make(extra: i32 = 0) -> i32 => 2\nrequire make() == 2 else => $abort(\"u7\")")]
+    [InlineData("Reference", "func g(n: i32) -> i32 => n + 1\nfunc g(n: i64) -> i64 => n + 2\nfunc run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<T, F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(T) -> T>\n    return 0\nrequire run(g) == 2 else => $abort(\"m7\")")]
+    [InlineData("ContextlessReference", "func g(n: i32) -> i32 => n + 1\nfunc g(n: i64) -> i64 => n + 2\nfunc run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<F>(action: ref/F, extra: i32 = 0) -> i32\n    return 0\nrequire run(g) == 2 else => $abort(\"m8\")")]
+    public void CandidatesWithoutAContextRankBeforeTheBody(string name, string source)
+        => ScalarEmissionTest.EmitFixture("PartialContext" + name, source, string.Empty);
+
+    // SPEC 10.5, 10.6, 10.8: the selected candidate supplies only what it has: no signature (the omitted parameter needs an annotation, an
+    // overload set is no value), an unsolved slot (the inference-boundary record), or an unused default whose Type holds one.
+    [Theory]
+    [InlineData("func run<F>(action: ref/F, x: i32, y: i32 = 0) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\nfunc run<F>(action: ref/F, x: i32) -> i32\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1, 1)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "n")]
+    [InlineData(RunR + "func run<F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(i64) -> i64>\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "run(func (n) => n + 1)")]
+    [InlineData("func g(n: i32) -> i32 => n + 1\nfunc g(n: i64) -> i64 => n + 2\nfunc run<F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<F>(action: ref/F) -> i32\n    return 0\npublic func main() -> ()\n    let r = run(g)\n", nameof(DiagnosticCode.AmbiguousBinding_Kd), "g")]
+    [InlineData("func f<T>(x: i32, y: Option<T> = .None) -> i32 => 1\npublic func main() -> ()\n    let r = f(1)\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "f(1)")]
+    public void TheSelectedCandidateSuppliesOnlyWhatItHas(string source, string code, string at)
     {
-        var source = "func make<T>() -> i32 => 0\nfunc make(extra: i32 = 0) -> i32 => 1\npublic func main() -> ()\n    require make() == 1 else => $abort(\"o1\")\n";
-        Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), Assert.Single(DiagnosticCorpus.Check(source).Diagnostics).Code);
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
+    }
+
+    // SPEC 10.8: a parameter Type that holds an unsolved slot is neither identical to nor a subtype of another Type, so the candidates tie
+    // in step 2 even though one uses a default; omitted header Types rest on the ambiguity.
+    [Theory]
+    [InlineData("func size<T>(value: Option<T>) -> i32 => 1\nfunc size(value: Option<i32>, extra: i32 = 0) -> i32 => 2\npublic func main() -> ()\n    let r = size(.None)\n", "size(.None)")]
+    [InlineData("func run(action: (i32) -> i32) -> i32 => action(1)\nfunc run<T>(action: (T) -> T, extra: i32 = 0) -> i32 => 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)")]
+    public void OpenParameterTypesAreIncomparable(string source, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (error.Code, Text(source, error.Span)));
+        Assert.Equal(2, error.Related!.Count(static x => x.Role == "candidate"));
+    }
+
+    // SPEC 10.5, 23.3.6.4: the body of the selected candidate's argument keeps its own error without a fallback to another candidate, and
+    // a failed selection leaves the omitted header Types derived.
+    [Theory]
+    [InlineData("func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<T, F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(T) -> T>\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + missing)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
+    [InlineData("func run<F>(action: ref/F, x: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\npublic func main() -> ()\n    let r = run(func (n) => n + 1, true)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "run(func (n) => n + 1, true)")]
+    [InlineData("func run<F>(action: ref/F) -> i32\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "n")]
+    public void OneRecordPerIndependentProblem(string source, string code, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
     }
 
     // SPEC 23.3.6: the record and its related locations reach the CLI, the language server and JSON.
@@ -119,6 +162,8 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [Theory]
     [InlineData(RunR + "let r: i32 = run(func (n) => n + 1)\nrequire r == 2 else => $abort(\"q2\")")]
     [InlineData("func make<T>() -> Option<T> => .None\nlet x: Option<i32> = make()")]
+    [InlineData("func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<T, F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(T) -> T>\n    return 0\nrequire run(func (n) => n + 1) == 2 else => $abort(\"m4\")")]
+    [InlineData("func run<R, F>(action: ref/F, extra: i32 = 0) -> R\n    F is Callable<(i32) -> R>\n    return action(1)\nfunc run<F>(action: ref/F) -> i64\n    F is Callable<(i64) -> i64>\n    return action(5)\nlet r = run(func (n) => n + 1)\nrequire r == 6 else => $abort(\"m13\")")]
     public void WarmSlotBindingAllocatesNothing(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

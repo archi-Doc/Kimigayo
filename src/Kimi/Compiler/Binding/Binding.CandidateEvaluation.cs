@@ -78,9 +78,11 @@ public sealed partial class Binding
                         continue;
                     }
 
+                    // SPEC 10.8: a parameter Type that holds an unsolved slot (an open position, without a Type) is neither identical
+                    // to nor a subtype of another Type.
                     var x = operations[(a * stride) + i].ParameterType;
                     var y = operations[(b * stride) + i].ParameterType;
-                    if (ReferenceEquals(x, y))
+                    if (ReferenceEquals(x, y) && (x is not null || operations[(a * stride) + i].Source is null))
                     {
                         continue;
                     }
@@ -122,6 +124,8 @@ public sealed partial class Binding
         return -1;
     }
 
+    // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an
+    // unsolved slot or is absent (no Callable Constraint on F), compares equal there when the candidates acquire it in one mode.
     private static bool ComparableCallableSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
         for (var argument = 0; argument < call.ArgumentNodes.Count; argument++)

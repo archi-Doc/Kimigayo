@@ -93,19 +93,6 @@ public sealed partial class Binding
         return false;
     }
 
-    private static bool HasOmittedClosureParameter(FunctionKoto function)
-    {
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType })
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 7.6.2: the receiver `self` of a named function, accessor, constructor or destructor, and a setter's `value`.
     private static bool IsContextualBinding(BindingSymbol symbol)
         => symbol.Kind == BindingSymbolKind.Parameter && symbol.Declaration switch

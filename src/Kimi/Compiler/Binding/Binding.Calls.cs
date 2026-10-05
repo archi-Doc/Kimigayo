@@ -633,7 +633,6 @@ public sealed partial class Binding
             var winnerIndex = -1;
             var pending = false;
             var error = false;
-            var anyUnsolved = false;
             Koto? incompleteSignature = null;
             FunctionKoto? pendingFunction = null;
             Koto? invalidDeclaration = null;
@@ -667,7 +666,6 @@ public sealed partial class Binding
                 }
 
                 evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver);
-                anyUnsolved |= unsolved != 0;
                 pending |= state == CandidateApplicability.Pending;
                 pendingFunction ??= state == CandidateApplicability.Pending ? function : null;
                 error |= state == CandidateApplicability.Error;
@@ -696,15 +694,12 @@ public sealed partial class Binding
                 return invalidDeclaration is not null ? this.CompleteDependent(call, invalidDeclaration) : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
-            // Ranking a candidate with an unsolved slot against others is not yet implemented; such a selection stays pending, as it was
-            // before the slot was recorded (PLAN G10).
-            pending |= anyUnsolved && applicable > 1;
             if (pending)
             {
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
-                // pending at every call; the selection rests on that failure (SPEC 23.3.6.4).
+                // pending at every call; the selection rests on that failure (SPEC 23.3.6.4). Omitted header Types rest on the call.
                 return applicable == 0 && pendingFunction is not null && (IncompleteSignature(pendingFunction) ?? FailedSignaturePart(pendingFunction)) is { } failedSignature
-                    ? this.CompleteDependent(call, failedSignature) : this.Fail(call, BindingFailure.UnprovenConstraint, true);
+                    ? this.CompleteDependent(call, failedSignature) : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
             }
 
             if (applicable == 0 && incompleteSignature is not null)
@@ -766,7 +761,7 @@ public sealed partial class Binding
                     return this.FailAcquisition(call, failure, place, this.acquisitionObject, true);
                 }
 
-                return this.Fail(call, failure, true);
+                return this.FailWaitingSelection(call, failure);
             }
 
             if (applicable > 1)
@@ -838,10 +833,14 @@ public sealed partial class Binding
                         var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
                         var concrete = slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(selected, slotType.Symbol!) >= 0;
                         var argument = call.ArgumentNodes[i];
+                        // SPEC 10.5: a candidate without a fixed expected call signature for this argument supplies none; a reference
+                        // is then a value only when it needs no S (FailUnfixedReference otherwise).
                         var bound = concrete && KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true } closure
                             ? this.BindClosureArgument(argument, closure, scope, waitingOperations[i].ParameterType)
                             : concrete && IsWaitingFunctionReference(argument)
-                                ? this.BindFunctionReference(argument, KotoHelper.UnwrapParentheses(argument).BoundSymbol!, waitingOperations[i].ParameterType!, scope, erase: false)
+                                ? waitingOperations[i].ParameterType is { } signature
+                                    ? this.BindFunctionReference(argument, KotoHelper.UnwrapParentheses(argument).BoundSymbol!, signature, scope, erase: false)
+                                    : this.BindFunctionItem(argument, KotoHelper.UnwrapParentheses(argument).BoundSymbol!, scope)
                                 : this.BindNode(argument, scope, waitingOperations[i].ParameterType);
                         this.activeRequirementContract = contract;
                         if (bound is null)
@@ -1425,11 +1424,9 @@ public sealed partial class Binding
                                 return CandidateApplicability.Inapplicable;
                             }
                         }
-                        else if (argument is not FunctionKoto anonymous || HasOmittedClosureParameter(anonymous))
-                        {
-                            return CandidateApplicability.Pending;
-                        }
 
+                        // SPEC 10.5: without a Callable Constraint on F the candidate supplies no expectation; it is compared under
+                        // 10.4 without the body, and only if it is selected is the argument checked without S.
                         waitingCallables = true;
                         operations[i] = new(call.ArgumentNodes[i], null, signature, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
                         continue;
@@ -1633,7 +1630,8 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var completed = this.CallType(function.Parameters[i].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
-            if (completed is null ? !(waitingCallables || OpenParameter(i)) : !this.ProveTypeLengths(completed, scope.Function))
+            // SPEC 10.8: a parameter Type that holds an unsolved slot, an open position or an unused default, is no failure of its own.
+            if (completed is null ? !(waitingCallables || MentionsSlots(function.Parameters[i].Type.BoundType!, function, unsolvedSlots)) : !this.ProveTypeLengths(completed, scope.Function))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1728,19 +1726,6 @@ public sealed partial class Binding
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
         };
-        bool OpenParameter(int parameter)
-        {
-            for (var a = 0; a < call.ArgumentNodes.Count && a < 64; a++)
-            {
-                if ((open & (1UL << a)) != 0 && mapping[a] == parameter)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
         bool InferAggregateInputs(bool fitLiterals)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
