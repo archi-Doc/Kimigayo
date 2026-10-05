@@ -426,9 +426,17 @@ public sealed partial class Binding
         if (callee is InvocationKoto || group?.Kind != BindingSymbolKind.Function)
         {
             var callableType = callee is InvocationKoto || group is null ? callee.BoundType : this.BindReference(callee, group, scope);
-            if (callableType is not null && this.TryCallable(callableType, scope, out var signature, out var receiverKind))
+            var several = false;
+            if (callableType is not null && this.TryCallable(callableType, scope, out var signature, out var receiverKind, out several))
             {
                 return this.BindValueCall(call, scope, signature, receiverKind);
+            }
+
+            if (several)
+            {
+                // SPEC 8.6, 23.3.6.1: the distinct Callable signatures on F are the call's candidates; selecting among them is not
+                // yet implemented, which is a located limit and never a Language error.
+                return this.Fail(call, BindingFailure.Unsupported);
             }
         }
 

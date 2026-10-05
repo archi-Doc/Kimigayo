@@ -195,8 +195,13 @@ public sealed partial class Binding
         }
     }
 
-    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver)
+    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver) => this.TryCallable(type, scope, out signature, out receiver, out _);
+
+    // SPEC 8.6, 10.5: the one call signature of a callable value. Distinct Callable signatures on one F are call candidates
+    // (`several`); with them there is no single signature S.
+    private bool TryCallable(BoundType type, BindingScope scope, out BoundType signature, out SemanticsKind receiver, out bool several)
     {
+        several = false;
         var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
@@ -237,7 +242,8 @@ public sealed partial class Binding
 
                 if (signature is not null && !ReferenceEquals(signature, fact.RequiredType))
                 {
-                    return false; // Overloaded callable signatures need candidate selection.
+                    several = true;
+                    return false;
                 }
 
                 signature = fact.RequiredType!;

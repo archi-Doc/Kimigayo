@@ -95,4 +95,24 @@ public class ContextualClosureTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 64, warmupIterations: 32));
         Assert.True(valid);
     }
+
+    // SPEC 7.6.4, 23.3.6.5: a closure that fails its conversion at a call argument or a default is shown by its signature, with
+    // the conversion Note, exactly as the same closure at a let annotation (N29a; it was "found closure " without a Note).
+    [Theory]
+    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let y: i32 = 2\n    require call(func [y@ref] (n) => n + y@follow, 1) == 3 else => $abort(\"k1\")\n", "expected (i32) -> i32, found closure (i32) -> i32", OwnedNote)]
+    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "expected (i32) -> i32, found closure (i32) -> i32", "This closure requires an Exclusive call; a common Function value permits Shared calls only")]
+    [InlineData("func runH(text: string, action: () -> () = func [text@ref] () => ()) -> () => action()\n\npublic func main() -> ()\n    runH(\"a\")\n", "expected () -> (), found closure () -> ()", OwnedNote)]
+    [InlineData("public func main() -> ()\n    let text = \"a\"\n    let f: () -> () = func [text@ref] () => ()\n    f()\n", "expected () -> (), found closure () -> ()", OwnedNote)]
+    public void AFailedClosureConversionShowsTheClosure(string source, string label, string note)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
+        Assert.Equal(note, error.Note);
+        var result = new Kimi.Diagnostics.DiagnosticResult([error], DiagnosticCorpus.Check(source).Sources);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains(label, console.Text, StringComparison.Ordinal);
+    }
+
+    private const string OwnedNote = "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased";
 }

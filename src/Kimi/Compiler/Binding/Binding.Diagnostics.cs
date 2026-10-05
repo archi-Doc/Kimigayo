@@ -270,7 +270,8 @@ public sealed partial class Binding
                 "or a bound argument fails its Constraints or would hold a per-call Origin of that signature";
         }
 
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { } closure } declaration })
+        // The closure plan, not BoundClosure: a closure that failed at a call argument or a default keeps its plan (SPEC 7.6.4).
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Signature: not null } closure } declaration })
         {
             return null;
         }

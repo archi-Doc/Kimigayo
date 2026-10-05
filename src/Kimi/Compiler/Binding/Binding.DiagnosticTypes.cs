@@ -79,9 +79,9 @@ public sealed partial class Binding
             if (current.Kind == BoundTypeKind.Closure)
             {
                 // SPEC 7.6: a closure Type has no written name; its components are the captured environment, so it is shown by
-                // the signature of its anonymous function.
+                // the signature of its anonymous function, also when the closure node itself failed, as at a call argument.
                 text.Append("closure ");
-                if ((current.Symbol?.Declaration as FunctionKoto)?.BoundClosure?.Signature is { } signature)
+                if ((current.Symbol?.Declaration as FunctionKoto)?.ClosureStorage?.Signature is { } signature)
                 {
                     Append(signature);
                 }
