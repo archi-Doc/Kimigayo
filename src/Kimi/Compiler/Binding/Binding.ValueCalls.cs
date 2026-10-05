@@ -98,6 +98,9 @@ public sealed partial class Binding
     private static bool CallableReceiverFits(SemanticsKind actual, SemanticsMask required)
         => actual == SemanticsKind.Ref || required == SemanticsMask.Owner || (actual == SemanticsKind.Uniq && required == SemanticsMask.Uniq);
 
+    private static SemanticsMask CallableReceiverMask(SemanticsKind receiver)
+        => receiver switch { SemanticsKind.Ref => SemanticsMask.Ref, SemanticsKind.Uniq => SemanticsMask.Uniq, _ => SemanticsMask.Owner };
+
     // SPEC 15.6.4, 8.6: the binder of a callee's own per-call input Origins: its Item or closure declaration, otherwise the
     // Function Type of the signature, whose own inputs are the only Input atoms it binds at an outer layer.
     private static Koto? CalleeBinder(BoundType? callee, BoundType signature)

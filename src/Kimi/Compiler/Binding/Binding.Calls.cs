@@ -642,6 +642,7 @@ public sealed partial class Binding
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
                 var defaultsUsed = 0;
+                ClosureReceiverRefutation? closureReceiver = null;
                 // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
                 if (callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType))
                 {
@@ -652,11 +653,11 @@ public sealed partial class Binding
                     }
 
                     this.activeRequirementContract = requirementGroup?.Contracts[index];
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out closureReceiver);
                     this.activeRequirementContract = null;
                 }
 
-                evaluated[index] = new(candidate, state, declaringType, defaultsUsed);
+                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, closureReceiver);
                 pending |= state == CandidateApplicability.Pending;
                 pendingFunction ??= state == CandidateApplicability.Pending ? function : null;
                 error |= state == CandidateApplicability.Error;
@@ -720,6 +721,11 @@ public sealed partial class Binding
                             cloneInput.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [{ Semantics: SemanticsKind.Obj }] })
                         {
                             rejected[i] = rejected[i] with { ObjectClone = true };
+                        }
+
+                        if (evaluated[i].ClosureReceiver is { } receivers)
+                        {
+                            rejected[i] = rejected[i] with { ActualReceiver = receivers.Actual, RequiredReceiver = receivers.Required, ReceiverParameter = receivers.Parameter };
                         }
 
                         for (var a = 0; a < argumentCount; a++)
@@ -826,7 +832,7 @@ public sealed partial class Binding
                     }
                 }
 
-                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, selectedType, waitingOperations, out _);
+                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _);
                 if (state != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
@@ -834,7 +840,7 @@ public sealed partial class Binding
                     {
                         if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { BoundClosure: { } closure } &&
                             this.TryCallable(selected.Parameters[mapping[i]].Type.BoundType!, this.ConstraintScope(selected), out _, out var required) &&
-                            !CallableReceiverFits(closure.Receiver, required switch { SemanticsKind.Ref => SemanticsMask.Ref, SemanticsKind.Uniq => SemanticsMask.Uniq, _ => SemanticsMask.Owner }))
+                            !CallableReceiverFits(closure.Receiver, CallableReceiverMask(required)))
                         {
                             rejected = rejected with { ActualReceiver = closure.Receiver, RequiredReceiver = required };
                             break;
@@ -1075,9 +1081,10 @@ public sealed partial class Binding
         return proof;
     }
 
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed)
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ClosureReceiverRefutation? closureReceiver)
     {
         defaultsUsed = 0;
+        closureReceiver = null;
         if (function.IsConstructor && declaringType is null)
         {
             return CandidateApplicability.Inapplicable;
@@ -1551,24 +1558,7 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths, incomplete: waitingCallables);
-        if (declaringType is not null)
-        {
-            proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
-        }
-
-        proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
-        // A substitution must be a valid complete Type independently of whether
-        // the function constrains or uses that slot (SPEC 8.1.3).
-        for (var i = 0; i < function.GenericArguments.Count; i++)
-        {
-            var argumentProof = function.GenericArguments[i] is LengthParameterKoto
-                ? lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown
-                : arguments[i] is { } argument ? this.CheckTypeConstraints(argument, scope) : ConstraintProof.Unknown;
-            proof = CombineProof(proof, argumentProof, true);
-        }
-
-        proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
+        var proof = ProveCandidate();
         if (waitingCallables && proof is ConstraintProof.Proven or ConstraintProof.Unknown)
         {
             // Only the concrete Types of waiting anonymous arguments may remain open. A body cannot solve
@@ -1598,6 +1588,21 @@ public sealed partial class Binding
             return CandidateApplicability.Waiting;
         }
 
+        if (proof == ConstraintProof.Refuted && this.ClosureReceiverMismatch(call, function, mapping) is { } mismatch)
+        {
+            // SPEC 7.6.3, 8.6: a closure's minimum call receiver is the candidate's failure only when the candidate applies once that
+            // receiver is permitted; a rejected candidate then names both receivers (NoApplicableOverload_Kd).
+            this.permitClosureReceivers = true;
+            try
+            {
+                closureReceiver = ProveCandidate() == ConstraintProof.Proven ? mismatch : null;
+            }
+            finally
+            {
+                this.permitClosureReceivers = false;
+            }
+        }
+
         return proof switch
         {
             ConstraintProof.Proven => CandidateApplicability.Applicable,
@@ -1605,6 +1610,28 @@ public sealed partial class Binding
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
         };
+        ConstraintProof ProveCandidate()
+        {
+            var result = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths, incomplete: waitingCallables);
+            if (declaringType is not null)
+            {
+                result = CombineProof(result, this.CheckTypeConstraints(declaringType, scope), true);
+            }
+
+            result = CombineProof(result, this.CheckSignatureTypeConstraints(function), true);
+            // A substitution must be a valid complete Type independently of whether
+            // the function constrains or uses that slot (SPEC 8.1.3).
+            for (var i = 0; i < function.GenericArguments.Count; i++)
+            {
+                var argumentProof = function.GenericArguments[i] is LengthParameterKoto
+                    ? lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown
+                    : arguments[i] is { } argument ? this.CheckTypeConstraints(argument, scope) : ConstraintProof.Unknown;
+                result = CombineProof(result, argumentProof, true);
+            }
+
+            return CombineProof(result, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
+        }
+
         bool InferAggregateInputs(bool fitLiterals)
         {
             for (var i = 0; i < call.ArgumentNodes.Count; i++)

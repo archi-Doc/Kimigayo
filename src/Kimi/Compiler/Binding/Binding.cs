@@ -260,6 +260,16 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 7.6.3: the call a closure's minimum receiver needs, and the calls a Callable receiver permits.
+    private static string CallReceiverText(SemanticsKind receiver)
+        => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "an Exclusive call", _ => "a Consuming call" };
+
+    private static string PermittedCallsText(SemanticsKind receiver)
+        => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
+
+    private static string SufficientCallText(SemanticsKind receiver)
+        => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "a Shared or Exclusive call", _ => "any call" };
+
     private static bool SignatureSlotEquals(BindingSymbol? a, BindingSymbol? b, Koto aBinder, Koto bBinder)
         => ReferenceEquals(a, b) || (a is not null && b is not null && ReferenceEquals(a.Scope.Owner, aBinder) && ReferenceEquals(b.Scope.Owner, bBinder) && a.Slot == b.Slot);
 
@@ -625,6 +635,20 @@ public sealed partial class Binding
                         shapeNote = $"{label}. {shapeNote}";
                     }
                 }
+                else if (candidate.ActualReceiver is { } closureReceiver && candidate.RequiredReceiver is { } callableReceiver &&
+                    (uint)candidate.ReceiverParameter < (uint)candidate.Function.Parameters.Count)
+                {
+                    // SPEC 7.6.3, 8.6: the closure argument's minimum call receiver is the candidate's only refuted condition
+                    // (TryCandidate), so the Advice names the parameter form and Callable receiver that admit it.
+                    var parameter = candidate.Function.Parameters[candidate.ReceiverParameter];
+                    var pattern = parameter.Type.BoundType;
+                    var slot = (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Symbol?.Name ?? "F";
+                    var needed = closureReceiver.ToString().ToLowerInvariant();
+                    label = $"{candidate.Function.Name}: closure requires {needed}; Callable requires {callableReceiver.ToString().ToLowerInvariant()}";
+                    shapeNote ??= $"{label}. The closure argument of {parameter.InternalName} needs {CallReceiverText(closureReceiver)}, and the Callable Constraint of {slot} permits {PermittedCallsText(callableReceiver)} (SPEC 7.6.3, 8.6)";
+                    var form = closureReceiver == SemanticsKind.Uniq ? $"uniq/{slot}, with {slot} is Callable<uniq, ...>, and pass the closure with @uniq" : $"{slot} by value, with {slot} is Callable<owner, ...>, and pass the closure with @move";
+                    advice ??= $"Declare {parameter.InternalName} as {form}, or change the closure so that {SufficientCallText(callableReceiver)} suffices";
+                }
 
                 if (candidate.Actual is { } actual && candidate.Expected is { } expected)
                 {
@@ -722,6 +746,10 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
             this.ReportDuplicateBindingSet(bindingSet, reusedSet, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && this.captureRepeats?.TryGetValue(issue.Node, out var repeats) == true)
+        {
+            this.ReportCaptureRepeats(issue.Node, repeats, requirement, issue.Code);
         }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {

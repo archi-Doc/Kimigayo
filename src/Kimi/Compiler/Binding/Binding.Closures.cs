@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -29,9 +30,68 @@ public sealed class BoundClosure
     internal List<BindingSymbol> SymbolPool { get; } = new();
 }
 
+// A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.6.2).
+internal readonly record struct CaptureRepeat(SourceSpan Later, SourceSpan Earlier, string Name, bool Parameter);
+
+// The repeats of one capture list, and the first other entry that failed independently of them (SPEC 23.3.6.4): its failure, none
+// when every other entry is valid, and the Type its facts name, null for an entry without facts, such as an unresolved name.
+internal readonly record struct CaptureListFailure(CaptureRepeat[] Repeats, CaptureKoto Entry, BindingFailure Failure, BoundType? Type, BindingSymbol? Source);
+
 public sealed partial class Binding
 {
     private ClosureEffects? closureEffects;
+
+    // Set only while TryCandidate asks whether a rejected candidate applies once its closure argument's minimum receiver is permitted.
+    private bool permitClosureReceivers;
+
+    // Only closures with a repeated capture name need this storage: each later entry or parameter, the entry it repeats, and an
+    // independent failure of another entry.
+    private Dictionary<Koto, CaptureListFailure>? captureRepeats;
+
+    // SPEC 7.6.2: each capture name that an earlier entry repeats, then each that a parameter repeats; null for a valid list, which
+    // allocates nothing.
+    private static CaptureRepeat[]? RepeatedCaptures(FunctionKoto function, CaptureKoto[] captures)
+    {
+        List<CaptureRepeat>? repeats = null;
+        for (var i = 0; i < captures.Length; i++)
+        {
+            var name = captures[i].Name;
+            var repeated = false;
+            for (var j = 0; j < i && !repeated; j++)
+            {
+                if (captures[j].Name == name)
+                {
+                    (repeats ??= new()).Add(new(captures[i].Span, captures[j].Span, name, false));
+                    repeated = true;
+                }
+            }
+
+            for (var p = 0; p < function.Parameters.Count && !repeated; p++)
+            {
+                if (function.Parameters[p].InternalName == name)
+                {
+                    (repeats ??= new()).Add(new(function.Parameters[p].ExternalNameSpan, captures[i].Span, name, true));
+                    repeated = true;
+                }
+            }
+        }
+
+        return repeats?.ToArray();
+    }
+
+    // The later entry of a repeated name declares nothing, so the list binds only the entry it repeats.
+    private static bool RepeatsEarlierEntry(CaptureRepeat[] repeats, CaptureKoto capture)
+    {
+        for (var i = 0; i < repeats.Length; i++)
+        {
+            if (!repeats[i].Parameter && repeats[i].Later == capture.Span)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private static bool HasOmittedClosureParameter(FunctionKoto function)
     {
@@ -114,6 +174,83 @@ public sealed partial class Binding
         var finder = new LocalBorrowFinder(origin);
         finder.Visit(value);
         return finder.Found;
+    }
+
+    // SPEC 7.6.2, 23.3.6.4: a repeated capture name is one problem at the later entry or parameter, with the entry it repeats related.
+    // Another entry that failed on its own is reported beside the repeats, exactly as it is in a list that repeats no name.
+    private void ReportCaptureRepeats(Koto function, CaptureListFailure list, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var repeats = list.Repeats;
+        if (list.Failure != BindingFailure.None)
+        {
+            var entryRequirement = DiagnosticRequirement.Binding(list.Failure);
+            var entryCode = list.Failure switch
+            {
+                BindingFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
+                BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
+                _ => DiagnosticCode.InvalidCaptureBinding_Kd,
+            };
+            if (list.Type is { } type)
+            {
+                this.ReportCaptureEntry(function, list.Entry, type, list.Source, entryRequirement, entryCode);
+            }
+            else
+            {
+                function.Report(entryRequirement, entryCode);
+            }
+        }
+
+        for (var i = 0; i < repeats.Length; i++)
+        {
+            var repeat = repeats[i];
+            var name = repeat.Name;
+            var note = repeat.Parameter
+                ? $"The capture entry {name} and the parameter {name} would both declare {name} in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.6.2)"
+                : $"The capture list names {name} twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.6.2)";
+            function.Report(
+                requirement,
+                code,
+                note: note,
+                evidence: [name],
+                advice: repeat.Parameter ? $"Rename the parameter, or remove the capture entry {name} if the body needs only the argument" : $"Remove the repeated entry {name}",
+                span: repeat.Later,
+                relatedSpans: [("declaration", function, repeat.Earlier, "capture entry")],
+                condition: (ushort)i);
+        }
+    }
+
+    // A capture entry that failed (its facts name the Type, or none for an unresolved name), or, in a list that repeats a name, the
+    // repeats with that entry's failure beside them.
+    private BoundType? FailCaptureEntry(FunctionKoto function, CaptureRepeat[]? repeats, CaptureKoto capture, BindingFailure failure, BoundType? type, BindingSymbol? source)
+        => repeats is not null ? this.FailExplained(ref this.captureRepeats, function, BindingFailure.Duplicate, new CaptureListFailure(repeats, capture, failure, type, source))
+            : type is not null ? this.FailExplained(ref this.captureFailures, function, failure, (capture, type, source)) : this.Fail(function, failure);
+
+    // SPEC 7.6.3, 8.6: the one closure argument whose minimum call receiver the Callable Constraint of its parameter does not permit;
+    // none when no argument or several do. A common Function parameter has no Callable Constraint and is never named here.
+    private ClosureReceiverRefutation? ClosureReceiverMismatch(InvocationKoto call, FunctionKoto function, int[] mapping)
+    {
+        ClosureReceiverRefutation? found = null;
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        {
+            var actual = call.ArgumentNodes[i].BoundType;
+            var owner = actual is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? actual.Components[0] : actual;
+            var pattern = function.Parameters[mapping[i]].Type.BoundType;
+            if (owner is not { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { Receiver: not SemanticsKind.Ref } closure } } ||
+                (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Kind != BoundTypeKind.Parameter ||
+                !this.TryCallable(pattern!, this.ConstraintScope(function), out _, out var required) || CallableReceiverFits(closure.Receiver, CallableReceiverMask(required)))
+            {
+                continue;
+            }
+
+            if (found is not null)
+            {
+                return null;
+            }
+
+            found = new(mapping[i], closure.Receiver, required);
+        }
+
+        return found;
     }
 
     private BoundType? BindClosureArgument(Koto argument, FunctionKoto closure, BindingScope scope, BoundType? signature)
@@ -396,11 +533,15 @@ public sealed partial class Binding
 
         if (function.Captures is { } captures)
         {
+            // SPEC 7.6.2: a repeated capture name and a collision with a parameter are judged from the written list, so a closure bound
+            // again keeps the environment bindings of its earlier binding. The other entries are still bound, and the first that
+            // fails on its own is reported beside the repeats (SPEC 23.3.6.4).
+            var repeats = RepeatedCaptures(function, captures);
             foreach (var capture in captures)
             {
-                if (scope.Values.ContainsKey(capture.Name))
+                if (repeats is not null && RepeatsEarlierEntry(repeats, capture))
                 {
-                    return this.Fail(function, BindingFailure.Duplicate);
+                    continue;
                 }
 
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
@@ -408,19 +549,26 @@ public sealed partial class Binding
                 {
                     // SPEC 7.6.2, 6.2.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                     // which self is reached only through its Fields.
-                    return this.FailExplained(ref this.captureFailures, function, BindingFailure.Capture, (capture, source.Type ?? BoundType.Unit, source));
+                    return this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, source.Type ?? BoundType.Unit, source);
                 }
 
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
                 {
-                    return source is { Type: null } ? this.CompleteDependent(function, source.Declaration) : this.Fail(function, BindingFailure.Capture);
+                    // An entry whose binding failed derives from that failure and adds nothing to the repeats.
+                    return source is { Type: null } ? repeats is null ? this.CompleteDependent(function, source.Declaration) : this.FailCaptureEntry(function, repeats, capture, BindingFailure.None, null, null)
+                        : this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, null, null);
                 }
 
                 environment.MutableCapture = capture.IsMutable;
                 if (this.CaptureEntry(function, capture, source, environment) is { } failure)
                 {
-                    return this.FailExplained(ref this.captureFailures, function, failure, (capture, source.Type!, source));
+                    return this.FailCaptureEntry(function, repeats, capture, failure, source.Type!, source);
                 }
+            }
+
+            if (repeats is not null)
+            {
+                return this.FailCaptureEntry(function, repeats, default, BindingFailure.None, null, null);
             }
         }
 

@@ -47,7 +47,10 @@ public sealed partial class OwnershipAnalysis
                     }
                     else
                     {
+                        // A rejected capture is read as the Copy it asks for, so the binding stays initialized and later uses report only
+                        // their own problems (SPEC 23.3.6.4).
                         this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired, Capture: i));
+                        acquisition = AcquisitionKind.Copy;
                     }
                 }
 
