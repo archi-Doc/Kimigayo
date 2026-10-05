@@ -223,9 +223,10 @@ public sealed partial class Binding
                 return DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
             }
 
+            // SPEC 15.3.7: a Function Item's Origin conditions are proven from the required contract.
             var receiver = closure?.Receiver ?? SemanticsKind.Ref;
             return CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject)) &&
-                CallableReceiverFits(receiver, proposition.Mask)
+                CallableReceiverFits(receiver, proposition.Mask) && this.ItemConditionsHold(subject, proposition.RequiredType!, scope.Owner)
                 ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }
 

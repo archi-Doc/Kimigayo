@@ -67,6 +67,10 @@ public sealed partial class Binding
             return null;
         }
 
+        // The entry's result keeps the Item's per-call Origins, so no body binds that Type itself: its storage, such as the cases of an
+        // Option or the fields of a struct over a borrow, is completed here, as an instantiated parameter's is. A Type whose storage
+        // cannot be completed keeps no representation, and the entry reports that.
+        this.PrepareInstantiatedStorage(boundResult, 0);
         var created = new BoundCall();
         var own = ((BoundType[])type.Components).AsSpan(0, function.GenericArguments.Count);
         created.Set(type.Symbol, boundResult, null, [], own, declaringType: ItemDeclaringType(type, function));

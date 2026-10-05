@@ -9,10 +9,11 @@ public sealed partial class Binding
     private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter)> originProofPath = new();
 
     // SPEC 15.6.1, 23.3.6.5: whether an Origin obligation is a fit, reported at the value with the source `fit`, rather than the
-    // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or a
-    // Type's clause substituted at its occurrence (AddTypeClauseObligations), a declared relation.
+    // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or of a
+    // callee's result at its call (RequireResultPremises), or a Type's clause substituted at its occurrence (AddTypeClauseObligations),
+    // a declared relation.
     internal static bool IsFitObligation(in BindingObligation obligation)
-        => obligation.Clause is null && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
+        => obligation.Clause is null && !obligation.WellFormed && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
 
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
@@ -240,6 +241,13 @@ public sealed partial class Binding
                         {
                             return true;
                         }
+                    }
+
+                    // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
+                    if (!ReferenceEquals(node, this.resultPremiseExcluded) && node is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result } &&
+                        this.ProvesWellFormedPremise(result, longer, shorter, use))
+                    {
+                        return true;
                     }
                 }
 

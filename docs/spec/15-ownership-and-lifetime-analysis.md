@@ -862,7 +862,7 @@ For a call, the compiler:
 
 1. creates fresh regions for the callee's abstract Origins;
 2. instantiates the parameter Types and checks argument subtyping;
-3. proves the substituted declared outlives bounds against the caller's facts (§15.3), rather than assuming them;
+3. proves the substituted declared outlives bounds and the intrinsic well-formedness of the result Type, a premise of the callee's definition (§15.3.7), against the caller's facts (§15.3), rather than assuming them;
 4. instantiates the return Type;
 5. recursively collects its Origin dependencies and Loan requirements; a result that names a borrowed input's Origin, such as a receiver's, including a Closure's call receiver (§7.6.3), also depends on every Origin observable in that input's referent Type, which outlives it by well-formedness (§15.6.1), so the Loans held inside the referent stay active while the result lives;
 6. creates the required caller-side Loans and keeps them active for the corresponding result regions.

@@ -25,14 +25,16 @@ public class AssociatedNominalFormationTest
         Assert.False(c.Ownership.Result.IsVerified);
     }
 
+    // SPEC 15.3.7: the published stored-Origin condition of the result S.Item(a, b) is a premise of f and an obligation of its calls
+    // (AssociatedFormationTest.ACallProvesThePublishedFormationCondition), so f is valid with or without a clause.
     [Theory]
-    [InlineData("origin a outlives b", true)]
-    [InlineData("", false)]
-    [InlineData("origin b outlives a", false)]
-    public void BorrowOfNominalTypePublishesStoredOriginConditions(string relation, bool valid)
+    [InlineData("origin a outlives b")]
+    [InlineData("")]
+    [InlineData("origin b outlives a")]
+    public void BorrowOfNominalTypePublishesStoredOriginConditions(string relation)
     {
         var c = MinimalEmissionTest.Analyze(View + "contract C\n    associate Item(a, b) is ref/(View during a) during b\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    $abort(\"unused\")");
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

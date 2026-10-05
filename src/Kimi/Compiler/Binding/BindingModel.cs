@@ -563,8 +563,9 @@ internal enum ReferenceSlotFailure : byte
 }
 
 // SPEC 15.6.1, 23.3.6.5: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
-// comparison, never a call-time Origin of the implementation.
-internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality);
+// comparison, never a call-time Origin of the implementation. For an implementation condition (a clause or a result premise), `Input`
+// names the required input that a repair can write over the shorter end.
+internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, string? Input = null);
 
 // SPEC 15.2.3, 23.3.6.5: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
 // which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
@@ -572,5 +573,7 @@ internal readonly record struct OriginContractFact(Koto At, string Member, Bound
 // body-local Origin) rather than Unknown.
 internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, string Member, BoundType MemberType, BoundOrigin? Origin, CaptureKoto? Entry, FunctionKoto? Closure, Koto? Borrow, bool Refuted);
 
-// `Clause` is the relation clause of a declared relation (source `declared`, related with the role `relation`); null for a fit.
-internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null);
+// SPEC 15.6.1: one failed chain of an Origin relation at the value that supplies its longer end. `Clause` is the relation clause of a
+// declared relation (source `declared`, related with the role `relation`); null for a fit. When that value's Origin is a meet, `Longer`
+// is its failing operand and `Meet` the whole meet, which a result bound must name.
+internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, BoundOrigin? Meet = null);

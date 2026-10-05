@@ -937,6 +937,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.RequireResultPremises(selected, result, call); // SPEC 15.3.7: the callee's result premises.
             callee.BoundSymbol = winner;
             callee.BindingState = BindingState.Resolved;
             if (callee is MemberAccessKoto selectedMember)
@@ -1285,7 +1286,7 @@ public sealed partial class Binding
             originInference = this.BeginOriginInference(call, function);
         }
 
-        if (originInference is not null && !this.SolveOriginInference(originInference, origins, inputs, call, declaringType))
+        if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -1482,7 +1483,7 @@ public sealed partial class Binding
 
         // Fitted literals can add Origin evidence after the first contextual pass.
         // Publish only the final substituted parameter Types, never preliminary binders.
-        if (originInference is not null && !this.SolveOriginInference(originInference, origins, inputs, call, declaringType))
+        if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType))
         {
             return CandidateApplicability.Inapplicable;
         }

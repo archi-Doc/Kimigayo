@@ -578,6 +578,33 @@ public sealed partial class Binding
                 instantiated[i] = parameter;
             }
 
+            // SPEC 15.6.4 step 3, 15.3.7: a named callee's declared relations and result premises are proven for this call, as for a
+            // direct call; its per-call inputs are then the solution, which each argument outlives.
+            var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
+            if (conditioned is not null)
+            {
+                if (!this.SolveItemCallOrigins(conditioned, parameters, argumentOrigins.AsSpan(0, count), call))
+                {
+                    if (conditioned.Origins.Count != 0)
+                    {
+                        return this.Fail(call, BindingFailure.Unsupported); // A signature Origin no value call binds (see below).
+                    }
+
+                    // As at a direct call, an unsatisfiable declared relation leaves its one candidate inapplicable (PLAN G56 U3).
+                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(conditioned, null, null)];
+                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
+                }
+
+                for (var i = 0; i < count; i++)
+                {
+                    if (argumentOrigins[i] is { } solved && !ReferenceEquals(instantiated[i].Origin, solved))
+                    {
+                        instantiated[i] = this.WithOrigins(instantiated[i], solved, (BoundOrigin[])instantiated[i].OriginArguments);
+                        operations[i] = operations[i] with { ParameterType = instantiated[i] };
+                    }
+                }
+            }
+
             var result = signature.Components[1];
             if (dependent || (inputBinder is not null && HasEnvironmentOrigin(result, inputBinder)))
             {
@@ -600,6 +627,11 @@ public sealed partial class Binding
             if ((inputBinder is not null && HasUnsubstitutedInput(result, inputBinder)) || (ownBinder is not null && HasEnvironmentOrigin(result, ownBinder)))
             {
                 return this.Fail(call, BindingFailure.Unsupported);
+            }
+
+            if (conditioned is not null)
+            {
+                this.RequireResultPremises(conditioned, result, call); // SPEC 15.3.7: the callee's result premises.
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));

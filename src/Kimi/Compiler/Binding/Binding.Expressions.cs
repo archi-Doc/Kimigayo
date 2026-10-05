@@ -370,9 +370,11 @@ public sealed partial class Binding
 
     // SPEC 7.6.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
     // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
+    // A Function Item's Origin conditions are proven from the required contract (SPEC 15.3.7).
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
         => expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected, SignatureOwner(actual))) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected, SignatureOwner(actual)) &&
+            this.ItemConditionsHold(actual, expected, node)) ||
             (actual.Kind == BoundTypeKind.Closure &&
             actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref } &&
             this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual)))) && this.ProveOwned(actual, node) == ConstraintProof.Proven;

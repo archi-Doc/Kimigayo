@@ -17,28 +17,60 @@ public sealed partial class OwnershipAnalysis
         var stop = false;
         for (var i = 0; i < obligations.Count; i++)
         {
-            if (!this.UncheckedOriginObligation(obligations[i]))
+            if (this.UncheckedOriginObligation(obligations[i]))
             {
-                continue;
+                stop |= this.ReportUnprovenOriginObligation(obligations[i], false);
             }
-
-            var reversed = false;
-            if (obligations[i] is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null, Use: var use } &&
-                this.compilation.Binding.JudgeOriginObligation(obligations[i], out reversed) == OriginJudgment.Unrepresentable)
-            {
-                // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
-                var at = use is VariableKoto { InitializerKoto: { } initializer } && Binding.IsFitObligation(obligations[i]) ? initializer : use;
-                this.issues.Add(new(at, OwnershipFailure.Unsupported));
-                continue;
-            }
-
-            // An `==` that only its reverse direction fails is shown in that direction, which also decides whether it is Refuted.
-            var obligation = reversed ? obligations[i] with { Longer = obligations[i].Shorter, Shorter = obligations[i].Longer } : obligations[i];
-            this.issues.Add(new(obligation.Use, OwnershipFailure.UnprovenOrigin, Obligation: obligation));
-            stop |= obligations[i] is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
         }
 
         return stop;
+    }
+
+    // SPEC 15.3.6, 15.6.1 Identity: a meet at the longer end of an `outlives` relation outlives an Origin exactly when each operand
+    // does, so each failing operand of a judged relation is its own chain and record, and a proven operand adds none; an `==` stays
+    // whole. True when the analysis must stop.
+    private bool ReportUnprovenOriginObligation(in BindingObligation obligation, bool operand)
+    {
+        if (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: not null, Use: var use })
+        {
+            var judgment = this.compilation.Binding.JudgeOriginObligation(obligation, out var reversed);
+            if (operand && judgment == OriginJudgment.Proven)
+            {
+                return false;
+            }
+
+            if (judgment == OriginJudgment.Unrepresentable)
+            {
+                // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
+                var at = use is VariableKoto { InitializerKoto: { } initializer } && Binding.IsFitObligation(obligation) ? initializer : use;
+                this.issues.Add(new(at, OwnershipFailure.Unsupported));
+                return false;
+            }
+
+            if (!obligation.Equality && longer.Kind == OriginKind.Intersection)
+            {
+                var count = this.issues.Count;
+                for (var i = 0; i < longer.Operands.Count; i++)
+                {
+                    this.ReportUnprovenOriginObligation(obligation with { Longer = longer.Operands[i] }, true);
+                }
+
+                if (this.issues.Count != count)
+                {
+                    return false;
+                }
+            }
+
+            // An `==` that only its reverse direction fails is shown in that direction, which also decides whether it is Refuted.
+            if (reversed)
+            {
+                this.issues.Add(new(use, OwnershipFailure.UnprovenOrigin, Obligation: obligation with { Longer = obligation.Shorter, Shorter = longer }));
+                return false;
+            }
+        }
+
+        this.issues.Add(new(obligation.Use, OwnershipFailure.UnprovenOrigin, Obligation: obligation));
+        return obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
     }
 
     // The use of the first Origin obligation that Binding left unproven and this analysis cannot check, or null.

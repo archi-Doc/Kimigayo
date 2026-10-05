@@ -179,6 +179,7 @@ public sealed partial class OwnershipAnalysis
             diagnostics.Invalidate(DiagnosticPartition.Ownership);
         }
 
+        List<(Koto At, DiagnosticCode Code, object[] Evidence)>? chains = null;
         for (var i = 0; i < reportedIssues.Count; i++)
         {
             var issue = reportedIssues[i];
@@ -228,7 +229,11 @@ public sealed partial class OwnershipAnalysis
                 var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
                 var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter), obligation.Clause);
                 var (evidence, advice, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
-                at.Report(requirement, issue.Code, note: Note(null), evidence: evidence, advice: advice, related: Locations(related), condition: Condition(issue));
+                if (ChainOrdinal(at, issue.Code, evidence) is { } chain)
+                {
+                    at.Report(requirement, issue.Code, note: Note(null), evidence: evidence, advice: advice, related: Locations(related), condition: (ushort)(Condition(issue) | (chain << 8)));
+                }
+
                 continue;
             }
 
@@ -368,6 +373,36 @@ public sealed partial class OwnershipAnalysis
         DiagnosticRequirement Requirement(in OwnershipIssue issue) => requirementOverride ?? DiagnosticRequirement.Ownership(issue.Failure);
 
         ushort Condition(in OwnershipIssue issue) => requirementOverride is null ? (ushort)0 : (ushort)issue.Failure;
+
+        // SPEC 15.6.1 Identity: an Origin relation problem is its location, its relation's source and its longer end, and every failed
+        // chain is reported, so the chains at one location, such as the failing operands of a meet or the failing relations of one call,
+        // are several problems of one node (docs/dev/DIAGNOSTICS.md §4.3), numbered in report order; a chain reported again with the same
+        // facts keeps its number and merges. Null past the condition's range, which no source reaches.
+        int? ChainOrdinal(Koto at, DiagnosticCode code, object[] evidence)
+        {
+            chains ??= [];
+            var ordinal = 0;
+            for (var c = 0; c < chains.Count; c++)
+            {
+                if (ReferenceEquals(chains[c].At, at))
+                {
+                    if (chains[c].Code == code && chains[c].Evidence.AsSpan().SequenceEqual(evidence))
+                    {
+                        return ordinal;
+                    }
+
+                    ordinal++;
+                }
+            }
+
+            if (ordinal > byte.MaxValue)
+            {
+                return null;
+            }
+
+            chains.Add((at, code, evidence));
+            return ordinal;
+        }
 
         string? Note(string? note) => instanceContext is null ? note : note is null ? instanceContext : note + "; " + instanceContext;
 

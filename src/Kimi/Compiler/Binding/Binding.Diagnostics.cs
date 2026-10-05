@@ -159,8 +159,11 @@ public sealed partial class Binding
             return $"Name the omitted Origin with a set on that Type, as in '{omitted}{{name}}', then relate it by that name";
         }
 
+        // A result bound names the whole meet that the value holds, and only when a signature can name each of its operands: a body-local
+        // Origin, such as a Borrow inside the body, never stands in a result Type.
         var inner = relation.Destination is { } type && !ReferenceEquals(type.Origin, relation.Shorter);
-        var bound = source == "fit" && IsResultValue(relation.At) ? $", or bound the {(inner ? "inner result" : "result")} by {longer.Text}" : string.Empty;
+        var bound = source == "fit" && IsResultValue(relation.At) && FixedOrigin(relation.Meet ?? relation.Longer)
+            ? $", or bound the {(inner ? "inner result" : "result")} by {(relation.Meet is { } meet ? OriginDisplay(meet, null).Text : longer.Text)}" : string.Empty;
         var input = OuterInput(relation.Longer);
         var anonymous = relation.Longer is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } };
         var advice = relation.Clause is { } clause && relation.Shorter.Kind != OriginKind.Static ? DeclaredRelationAdvice(relation, clause, longer, shorter, anonymous ? input : null)
@@ -820,7 +823,12 @@ public sealed partial class Binding
             return;
         }
 
-        var advice = contract.Member != "the result" ? $"Write {contract.Member} of the required Type over {shorter.Text}, or convert an implementation that accepts any borrow there"
+        // SPEC 15.3.7: an implementation condition is proven from the required contract; writing the input that supplies its longer end
+        // over the shorter one proves it, and a per-call Origin of the required Type is never named.
+        var condition = contract.Member == "the result's well-formedness" || contract.Member.StartsWith("the clause '", StringComparison.Ordinal);
+        var without = contract.Member == "the result's well-formedness" ? "whose result Type needs no such relation" : "without that clause";
+        var advice = condition ? contract.Input is { } input ? $"Write {input} of the required Type over {shorter.Text}, or convert an implementation {without}" : $"Convert an implementation {without}"
+            : contract.Member != "the result" ? $"Write {contract.Member} of the required Type over {shorter.Text}, or convert an implementation that accepts any borrow there"
             : longer.Kind == "omitted" ? $"Leave the required result's Origin omitted, which bounds it by the borrowed inputs, or convert an implementation whose result outlives {shorter.Text}"
             : $"Write the required result over {longer.Text}, or convert an implementation whose result outlives {shorter.Text}";
         node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, advice: advice, at: contract.At);
@@ -1366,7 +1374,8 @@ public sealed partial class Binding
         // one UnprovenOriginContract_Kd at the converted value, never a Type mismatch or a relation per position.
         if (expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
             this.ConversionSignature(implementation, node, out var signature, out var own) && ReferenceTypes.StorageMatches(required, signature) &&
-            this.ConversionContractFailure(signature, required, own, at, node) is { } contract)
+            (this.ConversionContractFailure(signature, required, own, at, node) ??
+            (implementation.Kind == BoundTypeKind.FunctionItem && own is FunctionKoto item ? this.ConditionContractFailure(item, signature, required, at, node) : null)) is { } contract)
         {
             return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
         }
@@ -1458,16 +1467,48 @@ public sealed partial class Binding
 
         if (variance == OriginVariance.Contravariant)
         {
-            return this.OriginPartFails(expected, actual, use, judged) ? new(use, expected, actual, false, type, RefutesOriginRelation(expected, actual)) : null;
+            return this.OriginPartFails(expected, actual, use, judged) ? this.FailedChain(use, expected, actual, type, judged) : null;
         }
 
-        var invariant = variance != OriginVariance.Covariant;
-        return this.OriginPartFails(actual, expected, use, judged) || (invariant && this.OriginPartFails(expected, actual, use, judged))
-            ? new(use, actual, expected, invariant, type, RefutesOriginRelation(actual, expected)) : null;
+        if (variance == OriginVariance.Covariant)
+        {
+            return this.OriginPartFails(actual, expected, use, judged) ? this.FailedChain(use, actual, expected, type, judged) : null;
+        }
+
+        return this.OriginPartFails(actual, expected, use, judged) || this.OriginPartFails(expected, actual, use, judged)
+            ? new(use, actual, expected, true, type, RefutesOriginRelation(actual, expected)) : null;
+    }
+
+    // SPEC 15.3.6, 15.6.1: a meet at the longer end outlives an Origin exactly when each operand does, so an `outlives` relation names
+    // the chain of one failing operand, never the meet itself, and keeps the whole meet for a result bound.
+    private OriginRelationFact FailedChain(Koto use, BoundOrigin longer, BoundOrigin shorter, BoundType type, bool judged)
+    {
+        var operand = this.FailingOperand(longer, shorter, use, judged, true) ?? this.FailingOperand(longer, shorter, use, judged, false) ?? longer;
+        return new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter), Meet: ReferenceEquals(operand, longer) ? null : longer);
     }
 
     private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged)
         => !this.ProvesOriginOutlives(longer, shorter, use) && (!judged || this.OriginRelationFails(longer, shorter, use));
+
+    // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code and
+    // Advice, before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
+    private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted)
+    {
+        if (longer.Kind != OriginKind.Intersection)
+        {
+            return (!refuted || RefutesOriginRelation(longer, shorter)) && this.OriginPartFails(longer, shorter, use, judged) ? longer : null;
+        }
+
+        for (var i = 0; i < longer.Operands.Count; i++)
+        {
+            if (this.FailingOperand(longer.Operands[i], shorter, use, judged, refuted) is { } operand)
+            {
+                return operand;
+            }
+        }
+
+        return null;
+    }
 
     // Fails a node with the facts that explain the failure. A node keeps its first failure only, so the facts are recorded only
     // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.

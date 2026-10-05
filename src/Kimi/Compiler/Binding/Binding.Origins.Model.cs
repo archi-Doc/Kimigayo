@@ -134,8 +134,9 @@ public sealed class BoundOrigin
 
 /// <summary>A retained semantic requirement, independent of successful name resolution. An <see cref="BindingObligationKind.OriginOutlives"/>
 /// obligation with <c>Equality</c> requires <c>Longer == Shorter</c>, the relation at an invariant position (SPEC 15.6.1); one with a
-/// <c>Clause</c> is that clause of a Type substituted at the Type occurrence <c>Use</c>, a declared relation (SPEC 15.3.3).</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null);
+/// <c>Clause</c> is that clause of a Type substituted at the Type occurrence <c>Use</c>, a declared relation (SPEC 15.3.3); one with
+/// <c>WellFormed</c> is a callee's result premise substituted at the call <c>Use</c>, the well-formedness of its result (SPEC 15.3.7).</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false);
 
 internal enum TypePosition : byte
 {
