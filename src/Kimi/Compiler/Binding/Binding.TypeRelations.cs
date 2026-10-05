@@ -512,7 +512,17 @@ public sealed partial class Binding
                 return this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, scratch.AsSpan(0, 1), origin: IsBorrow(whole.Semantics) ? type.Origin : null);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, type.Origin, (BoundOrigin[])type.OriginArguments, expression, type.ClosureContext) : type;
+            var origin = type.Origin;
+            if (origin is { Kind: OriginKind.Parameter, Occurrence: GenericParameterKoto declaration } && ReferenceEquals(origin.Binder, binder) &&
+                declaration.BoundSymbol is { } target && ContainerSlot(binder, target) is >= 0 and var pair && pair < arguments.Length && arguments[pair] is { } bound)
+            {
+                // SPEC 8.1.1, 8.1.2: the pair's outer Origin `o` is bound through its Type argument: the outer Origin of a borrow
+                // binding, nothing for a value binding (static, which no exclusive slot accepts); an abstract binding keeps its own `o`.
+                origin = IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static;
+                changed |= !ReferenceEquals(origin, type.Origin);
+            }
+
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, (BoundOrigin[])type.OriginArguments, expression, type.ClosureContext) : type;
         }
         finally
         {

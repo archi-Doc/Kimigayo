@@ -20,12 +20,13 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < body.Constructions.Count; i++)
         {
             var construction = body.Constructions[i];
-            if (body.Places[construction.Place] is not { Type.Kind: BoundTypeKind.Dictionary, Source: DictionaryLiteralKoto { Entries.Count: > 0 } } place)
+            // The declared Type, not the Place Type: a generic template's first Semantics case substitutes its pair layers (SPEC 8.10).
+            if (body.Places[construction.Place] is not { Source: DictionaryLiteralKoto { Entries.Count: > 0, BoundType: { Kind: BoundTypeKind.Dictionary } declared } })
             {
                 continue;
             }
 
-            var dictionary = context is null ? place.Type : compilation.Binding.InstantiateStorageType(place.Type, context);
+            var dictionary = context is null ? declared : compilation.Binding.InstantiateStorageType(declared, context);
             if (dictionary is null || compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
                 !this.PrepareComparisonHelper(compilation, module, layouts, comparison, out _, out failure, depth))
             {

@@ -173,8 +173,9 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < body.Operations.Count; i++)
         {
             var operation = body.Operations[i];
+            // The declared Type, not the Place Type: a generic template's first Semantics case substitutes its pair layers (SPEC 8.10).
             if (operation.Kind != OwnershipOperationKind.Produce || operation.Place < 0 ||
-                body.Places[operation.Place].Type is not { Kind: BoundTypeKind.FunctionItem, Components.Count: > 0 } produced ||
+                operation.Source.BoundType is not { Kind: BoundTypeKind.FunctionItem, Components.Count: > 0 } produced ||
                 produced.Symbol?.Declaration is not FunctionKoto target)
             {
                 continue;

@@ -352,7 +352,10 @@ internal sealed partial class BodyLowering
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
             owner = SignatureType(this, owner);
-            element = SignatureType(this, element);
+            // The field Type of the lowered owner comes from its own prepared storage: an instance prepares its substituted
+            // owner, while the template's declared Type is one no analysis run visits once its Semantics cases are substituted
+            // (SPEC 8.10), so its storage cache is not relied on.
+            element = owner is not null && StructStorage.IsStruct(owner) && owner.StoredFields is { } fields && (uint)position < (uint)fields.Length ? fields[position] : SignatureType(this, element);
             var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
             if (layout is null || (uint)position >= (uint)layout.Count || !ReferenceEquals(element, SignatureType(this, level.BoundType)))
             {

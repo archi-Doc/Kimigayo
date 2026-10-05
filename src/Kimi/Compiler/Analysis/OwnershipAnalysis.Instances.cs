@@ -95,8 +95,29 @@ public sealed partial class OwnershipAnalysis
     // SPEC 13.5.5.1: a @follow that selects the referent of a reference. A followed pair layer does so in a Semantics case or an
     // instance whose binding is ref or uniq; for owner it selects the operand Place itself.
     private bool FollowsReference(ConversionKoto conversion)
-        => conversion.ConversionBinding == ConversionBinding.Follow ||
-            (conversion.ConversionBinding == ConversionBinding.PairFollow && this.PairLayerExists(conversion.Left.BoundType, conversion.BoundType));
+    {
+        if (conversion.ConversionBinding == ConversionBinding.Follow)
+        {
+            return true;
+        }
+
+        if (conversion.ConversionBinding != ConversionBinding.PairFollow)
+        {
+            return false;
+        }
+
+        var operand = this.Concrete(conversion.Left.BoundType);
+        if (Binding.TryPairLayer(operand, out _, out _))
+        {
+            // SPEC 8.10: a followed layer belongs to a resolved binder, which every case run and instance substitutes; a layer
+            // that survives the substitution is an internal invariant failure, never a silent owner view.
+            this.body.ReportIssue(new(conversion, this.Substituting ? OwnershipFailure.Internal : OwnershipFailure.Unsupported));
+            return false;
+        }
+
+        return operand is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
+            ReferenceEquals(referent, this.Concrete(conversion.BoundType));
+    }
 
     // A pair layer exists in an instance exactly when its operand is a reference to the selected target: an owner binding of
     // s/(t/U), or of s/T with a reference T, is no layer although its concrete operand is a reference (SPEC 13.5.5.1).
@@ -124,30 +145,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         return -1;
-    }
-
-    // SPEC 13.5.5.1: universal verification of a value use through a pair layer. Every admitted case reads the direct target
-    // from the selected Place, so the operand is shared-borrowed for the read and a Copy of the target is produced; the stored
-    // pair Type itself need not be Copy. A Copy-unproven target keeps the operand's own acquisition.
-    private int CopyPairTarget(ConversionKoto pair) => this.CopyThroughPair(pair, KotoHelper.UnwrapParentheses(pair.Left), pair.BoundType!);
-
-    private int CopyThroughPair(Koto source, Koto left, BoundType target)
-    {
-        if (this.compilation.Binding.ProveCopy(target, source) != ConstraintProof.Proven || left.BoundType is not { } stored)
-        {
-            return this.ExpressionCore(left, PlaceUseKind.Consume, null);
-        }
-
-        var reference = this.BorrowStruct(left, this.compilation.Binding.SharedReference(stored));
-        if (reference < 0)
-        {
-            return -1;
-        }
-
-        var loaded = this.Place(source, target, OwnershipPlaceKind.Temporary, true, AcquisitionKind.Copy);
-        this.Emit(OwnershipOperationKind.Produce, source, loaded);
-        this.SetValue(this.Value(loaded), OwnershipValueKind.PointerLoad, [this.Value(reference)]);
-        return this.RegisterTemporary(loaded);
     }
 
     // SPEC 13.5.5.1, 13.5.5.2: a followed reference stored in a field or element Place lends through the stored reference:
@@ -219,12 +216,14 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(loaded);
         }
 
-        if (left is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed &&
+        if (left is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } followed &&
+            (followed.ConversionBinding == ConversionBinding.Follow || this.FollowsReference(followed)) &&
             this.Concrete(left.BoundType) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } inner)
         {
-            // SPEC 3.4, 13.5.5.1: a selected referent that is itself a reference (r@follow with r: uniq/uniq/T) is read only
-            // for its address through the outer reference, as a stored slot is, not copied; an exclusive inner reference is
-            // not Copy, and a shared outer path yields its shared capability.
+            // SPEC 3.4, 13.5.5.1: a selected referent that is itself a reference (r@follow with r: uniq/uniq/T, or a pair layer
+            // followed in a case or instance where it exists) is read only for its address through the outer reference, as a
+            // stored slot is, not copied; an exclusive inner reference is not Copy, and a shared outer path yields its shared
+            // capability.
             var outer = this.StoredReference(KotoHelper.UnwrapParentheses(followed.Left), mode);
             if (outer < 0)
             {

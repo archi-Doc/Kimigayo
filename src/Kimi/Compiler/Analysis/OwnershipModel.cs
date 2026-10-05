@@ -296,6 +296,8 @@ public sealed partial class OwnershipBody
     internal ulong[] Scratch = [];
 #pragma warning restore SA1401
     private readonly HashSet<(Koto Source, OwnershipFailure Failure)> reportedIssues = new();
+    private PairCase[] caseStorage = [];
+    private int caseCount;
 
     public FunctionKoto Function { get; internal set; } = null!;
 
@@ -328,7 +330,6 @@ public sealed partial class OwnershipBody
     internal List<OwnershipIdentity>? Identities { get; set; }
 
     /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.9).</summary>
-    internal List<(int Place, int Root)>? ConditionalReborrows { get; set; }
 
     /// <summary>Gets or sets the derived effects of the definition's generic requirement calls on their abstract inputs (SPEC 8.4.10.4).</summary>
     internal List<OwnershipRequirementEffect>? RequirementEffects { get; set; }
@@ -344,8 +345,8 @@ public sealed partial class OwnershipBody
 
     internal Binding? InstanceBinding { get; set; }
 
-    /// <summary>Gets or sets the Semantics case this definition run analyzes (SPEC 8.10); empty outside a case run.</summary>
-    internal ReadOnlyMemory<PairCase> Cases { get; set; }
+    /// <summary>Gets the Semantics case this definition run analyzes (SPEC 8.10); empty outside a case run.</summary>
+    internal ReadOnlyMemory<PairCase> Cases => this.caseStorage.AsMemory(0, this.caseCount);
 
     public bool IsReachable(int operation) => this.Reachable[operation];
 
@@ -356,11 +357,17 @@ public sealed partial class OwnershipBody
 
     // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
     // Concrete, from building and solving to lowering, sees the substituted Type.
-    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlyMemory<PairCase> cases = default)
+    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default)
     {
         this.Function = function;
         this.Instance = instance;
-        this.Cases = cases;
+        if (this.caseStorage.Length < cases.Length)
+        {
+            this.caseStorage = new PairCase[Math.Max(cases.Length, 4)];
+        }
+
+        cases.CopyTo(this.caseStorage);
+        this.caseCount = cases.Length;
         this.InstanceBinding = instance is null && cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
@@ -373,7 +380,6 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.Sequences.Clear();
         this.Identities?.Clear();
-        this.ConditionalReborrows?.Clear();
         this.RequirementEffects?.Clear();
         this.RequirementResults?.Clear();
         this.Anchors?.Clear();
@@ -423,6 +429,10 @@ public sealed partial class OwnershipBody
             this.IssueStorage.Add(issue);
         }
     }
+
+    // SPEC 8.10, 23.3.6.4: one problem found by several Semantics cases of this body's function is one record; a side body's
+    // issue is reported only when no earlier case reported the same problem.
+    internal bool TryReport(OwnershipIssue issue) => this.reportedIssues.Add((issue.Source, issue.Failure));
 
     // An implementation invariant that decides the analysis outcome is checked in every configuration
     // (SPEC 21.3.5): a violation is an internal issue that leaves the body unverified, never a silent
