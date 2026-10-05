@@ -491,7 +491,8 @@ public sealed class DiagnosticOwner
     private static (DiagnosticValue[]? Reason, string Message, string? Label) Describe(DiagnosticEntry entry, in DiagnosticFact fact)
     {
         var arguments = entry.ArgumentSchema;
-        var evidence = fact.Evidence is null ? [] : entry.EvidenceSchema;
+        var alternative = fact.Evidence is null ? 0 : Math.Max(0, entry.EvidenceAlternative(fact.Evidence));
+        var evidence = fact.Evidence is null ? [] : entry.EvidenceAlternatives[alternative];
         var count = arguments.Length + evidence.Length;
         if (count == 0)
         {
@@ -537,7 +538,9 @@ public sealed class DiagnosticOwner
         }
 
         var message = entry.FormatMessage(arguments.Length > 0 ? shown[0] : null, arguments.Length > 1 ? shown[1] : null);
-        return (values, message, entry.FormatLabel(shown));
+
+        // A Label references the facts of the first evidence alternative only.
+        return (values, message, alternative == 0 ? entry.FormatLabel(shown) : entry.FormatLabel([]));
     }
 
     private static T[] Union<T>(T[]? left, T[] right)

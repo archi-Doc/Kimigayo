@@ -91,7 +91,7 @@ public class StructCaptureTest
             Assert.False(c.Binding.Result.IsComplete);
             c.Binding.ReportDiagnostics();
             var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
-            Assert.Equal("TypeMismatch_Kd", error.Code);
+            Assert.Equal("UnsatisfiedConstraint_Kd", error.Code); // SPEC 15.2.3: an Owned failure is a Constraint failure.
             Assert.Contains("Owned environment", error.Note, StringComparison.Ordinal);
             Assert.False(c.Emission.Validate(out _));
         }

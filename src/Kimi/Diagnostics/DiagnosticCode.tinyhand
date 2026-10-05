@@ -1,4 +1,4 @@
-// To define a diagnostic, follow the Template format below and add the same name to the DiagnosticCode enum. Every entry states its Category (SPEC 23.3.6.1); Severity defaults to Error. A message takes at most two arguments ({0}, {1}) and no free text; Arguments names each as name:Kind (Number, Enumeration, Boolean, Text or Type), and they become the Reason. Evidence names further facts a report may add to the Reason, all of them or none. A Label may reference the Reason's facts in order, arguments then evidence.
+// To define a diagnostic, follow the Template format below and add the same name to the DiagnosticCode enum. Every entry states its Category (SPEC 23.3.6.1); Severity defaults to Error. A message takes at most two arguments ({0}, {1}) and no free text; Arguments names each as name:Kind (Number, Enumeration, Boolean, Text or Type), and they become the Reason. Evidence names further facts a report may add to the Reason, all of them or none; alternatives are separated by |, and a report supplies all facts of one alternative. A Label may reference the Reason's facts in order, arguments then evidence.
 
   + Name="Template_Kd"
     Severity="Error"
@@ -197,11 +197,12 @@
   + Name="UnprovenConstraint_Kd"
     Category="Proof"
     Message="The required Constraint cannot be proven by its semantic deadline"
+    Evidence="subject:Type,member:Text,origin:Origin|subject:Type,member:Text"
 
   + Name="UnsatisfiedConstraint_Kd"
     Category="Language"
     Message="The supplied Types do not satisfy the required Constraints"
-    Evidence="subject:Type,entry:Text,start:Type,end:Type"
+    Evidence="subject:Type,entry:Text,start:Type,end:Type|subject:Type,member:Text,origin:Origin"
     Label="{0} does not satisfy {1}: boundaries are {2} and {3}"
 
   + Name="InvalidKimiLibrary_Kd"

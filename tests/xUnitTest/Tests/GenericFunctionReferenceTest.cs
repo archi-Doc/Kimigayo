@@ -51,7 +51,6 @@ public class GenericFunctionReferenceTest
     [Theory]
     [InlineData(Identity + "let g: (ref/i32) -> ref/i32 = identity")] // T would hold a per-call Origin.
     [InlineData("func pair<T>(value: T) -> (T, T)\n    T is Copy\n    return (value, value)\nlet f: (string) -> (string, string) = pair")] // T is Copy is refuted.
-    [InlineData(Identity + "func once<U>(value: U) -> U\n    let f: (U) -> U = identity\n    return f(value@move)")] // identity<U> is not proven Owned.
     [InlineData(Identity + "let f: (i32, i32) -> i32 = identity")] // Arity differs.
     public void InapplicableGenericReferencesAreTypeMismatches(string source)
     {
@@ -61,7 +60,7 @@ public class GenericFunctionReferenceTest
         var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.True(error.Text is "identity" or "pair", error.ToString() + " " + error.Text); // Located at the reference.
-        Assert.Contains(source.Contains("once", StringComparison.Ordinal) ? "Owned bound generic arguments" : "Type parameters are bound from the expected signature", error.Note, StringComparison.Ordinal);
+        Assert.Contains("Type parameters are bound from the expected signature", error.Note, StringComparison.Ordinal); // Owned failures: ErasureOwnedDiagnosticTest.
     }
 
     // SPEC 10.5: explicit Type arguments narrow the candidates to those that take them; one remaining candidate is a value.

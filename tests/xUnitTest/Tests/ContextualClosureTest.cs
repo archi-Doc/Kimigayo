@@ -34,11 +34,12 @@ public class ContextualClosureTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData("let n = 7\nlet f: () -> i32 = func [n@ref] () => n + 1", "Owned environment")]
+    // SPEC 15.2.3: an Owned failure is a Constraint record; the receiver conditions stay Type mismatches with their Notes.
+    [InlineData("let n = 7\nlet f: () -> i32 = func [n@ref] () => n + 1", "Owned environment", "UnsatisfiedConstraint_Kd")]
     [InlineData("let n = 7\nlet f: () -> i32 = func [var n] () => ++n", "Exclusive call")]
     [InlineData("let text = \"owned\"\nlet f: () -> string = func [text@move] () => text@move", "Consuming call")]
     [InlineData("let n = 7\nlet outer: () -> (() -> i32) = func [n] () => func [n@move] () => n", "Consuming call")]
-    public void ErasureFailuresExplainTheFailedContract(string source, string cause)
+    public void ErasureFailuresExplainTheFailedContract(string source, string cause, string code = "TypeMismatch_Kd")
     {
         var path = Path.GetFullPath("contextual-closure.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -46,7 +47,7 @@ public class ContextualClosureTest(ITestOutputHelper output)
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var error = Assert.Single(result.Diagnostics);
-        Assert.Equal("TypeMismatch_Kd", error.Code);
+        Assert.Equal(code, error.Code);
         Assert.StartsWith("func [", source.Substring(error.Span!.Value.Start, error.Span.Value.Length), StringComparison.Ordinal);
         Assert.Contains(cause, error.Note, StringComparison.Ordinal);
         Assert.Null(error.Repairs);
@@ -97,12 +98,10 @@ public class ContextualClosureTest(ITestOutputHelper output)
     }
 
     // SPEC 7.6.4, 23.3.6.5: a closure that fails its conversion at a call argument or a default is shown by its signature, with
-    // the conversion Note, exactly as the same closure at a let annotation (N29a; it was "found closure " without a Note).
+    // the conversion Note, exactly as the same closure at a let annotation (N29a; it was "found closure " without a Note). Owned
+    // failures are Constraint records (ErasureOwnedDiagnosticTest).
     [Theory]
-    [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let y: i32 = 2\n    require call(func [y@ref] (n) => n + y@follow, 1) == 3 else => $abort(\"k1\")\n", "expected (i32) -> i32, found closure (i32) -> i32", OwnedNote)]
     [InlineData("func call(action: (i32) -> i32, x: i32) -> i32\n    return action(x)\n\npublic func main() -> ()\n    let c: i32 = 0\n    require call(func [var c] (n) -> i32\n        c += 1\n        return n + c\n    , 1) == 2 else => $abort(\"k2\")\n", "expected (i32) -> i32, found closure (i32) -> i32", "This closure requires an Exclusive call; a common Function value permits Shared calls only")]
-    [InlineData("func runH(text: string, action: () -> () = func [text@ref] () => ()) -> () => action()\n\npublic func main() -> ()\n    runH(\"a\")\n", "expected () -> (), found closure () -> ()", OwnedNote)]
-    [InlineData("public func main() -> ()\n    let text = \"a\"\n    let f: () -> () = func [text@ref] () => ()\n    f()\n", "expected () -> (), found closure () -> ()", OwnedNote)]
     public void AFailedClosureConversionShowsTheClosure(string source, string label, string note)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -113,6 +112,4 @@ public class ContextualClosureTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(label, console.Text, StringComparison.Ordinal);
     }
-
-    private const string OwnedNote = "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased";
 }

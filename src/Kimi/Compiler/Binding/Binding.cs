@@ -731,6 +731,10 @@ public sealed partial class Binding
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
             issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected) ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
+        {
+            ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);
+        }
         else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
         {
             var subject = rangeFailure.Subject;

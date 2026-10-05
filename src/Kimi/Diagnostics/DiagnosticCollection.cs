@@ -234,17 +234,18 @@ public sealed class DiagnosticCollection
     {
         document ??= this.Document;
         var entry = Validate(range, code, first, second, document, derivedFrom);
-        if (evidence is not null && (evidence.Length != entry.EvidenceSchema.Length || Array.IndexOf(evidence, null) >= 0))
+        if (evidence is not null && (Array.IndexOf(evidence, null) >= 0 || entry.EvidenceAlternative(evidence) < 0))
         {
-            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} takes {entry.EvidenceSchema.Length} evidence facts, all of them or none.");
-        }
-
-        if (evidence is not null)
-        {
-            for (var i = 0; i < evidence.Length; i++)
+            // A single alternative of the right arity names the fact whose kind is wrong.
+            if (entry.EvidenceAlternatives.Length == 1 && evidence.Length == entry.EvidenceSchema.Length && Array.IndexOf(evidence, null) < 0)
             {
-                entry.ValidateValue(entry.EvidenceSchema[i], evidence[i]);
+                for (var i = 0; i < evidence.Length; i++)
+                {
+                    entry.ValidateValue(entry.EvidenceSchema[i], evidence[i]);
+                }
             }
+
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{entry.Name} takes all evidence facts of one alternative or none.");
         }
 
         var module = this.CurrentModule();

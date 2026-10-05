@@ -39,7 +39,8 @@ public class GenericClosureErasureTest
         Assert.False(c.Emission.Validate(out _));
         c.Binding.ReportDiagnostics();
         c.Ownership.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "TypeMismatch_Kd");
+        // SPEC 15.2.3: the capture value of Type T is not proven Owned, an Unknown Constraint proof (it was TypeMismatch_Kd).
+        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnprovenConstraint_Kd" && x.Text == "action@move");
     }
 
     [Trait("Purpose", "Allocation")]

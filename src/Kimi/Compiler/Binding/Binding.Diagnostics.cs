@@ -53,6 +53,9 @@ public sealed partial class Binding
 
     private Dictionary<Koto, OriginContractFact>? originContracts;
 
+    // SPEC 15.2.3: the Owned failure of a common Function conversion, recorded only when it fails.
+    private Dictionary<Koto, OwnedConversionFact>? ownedConversions;
+
     // SPEC 13.2, 13.3: the operand Type an operator rejected, or the count Type a shift rejected, recorded only when the check fails.
     private Dictionary<Koto, BoundType>? operatorOperands;
 
@@ -479,6 +482,91 @@ public sealed partial class Binding
         node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, advice: advice, at: contract.At);
     }
 
+    // SPEC 15.2.3, 23.3.6.5: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
+    // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
+    // entry and related there. Advice only describes a repair.
+    private static void ReportOwnedConversion(Koto node, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var subject = DiagnosticTypeName(owned.Subject);
+        var entry = owned.Entry is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
+        var origin = owned.Origin is not { } failing ? (DiagnosticOrigin?)null
+            : entry is { } written ? new DiagnosticOrigin("borrow", written.Name + "@" + written.Operation) : OriginDisplay(failing, owned.Borrow);
+
+        // SPEC 23.3.6.5: a borrow end is related at its syntax: a capture entry that borrows, or the Borrow a captured binding was
+        // initialized by; otherwise at the capture entry or the converted value. An omitted end is related at its Type occurrence.
+        (string Role, Koto Owner, SourceSpan Span, string? Label)[]? spans = null;
+        (string Role, Koto At, string? Label)[]? related = null;
+        if (origin is { Kind: "borrow" or "omitted" } relatedOrigin)
+        {
+            if (entry is { } at && owned.Closure is { } closure)
+            {
+                spans = [("origin", closure, at.Span, null)];
+            }
+            else if (relatedOrigin.Kind == "omitted" && OmittedAt(owned.Origin!) is { } occurrence)
+            {
+                related = [("origin", occurrence, null)];
+            }
+            else if (owned.Borrow is { } borrow)
+            {
+                related = [("origin", borrow, null)];
+            }
+            else if (owned.Entry is { } named && owned.Closure is { } owner)
+            {
+                spans = [("origin", owner, named.Span, null)];
+            }
+            else
+            {
+                related = [("origin", owned.At, null)];
+            }
+        }
+
+        string note, advice;
+        if (owned.Closure is not null)
+        {
+            note = origin is { } shown
+                ? $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
+                : $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} is not proven Owned";
+            advice = owned.Refuted && entry is not null ? $"Capture {owned.Member} by Copy or Move instead of borrowing its slot, or keep the concrete closure without converting it to a common Function Type"
+                : owned.Refuted ? $"Capture an owned value instead of {owned.Member}, which holds a borrow, or keep the concrete closure without converting it to a common Function Type"
+                : owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or keep the concrete closure without converting it"
+                : $"Prove the capture {owned.Member} Owned, or keep the concrete closure without converting it to a common Function Type";
+        }
+        else
+        {
+            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.6.4, 15.2.3); the {owned.Member} is not proven Owned";
+            advice = owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or bind an Owned Type argument"
+                : "Bind Owned Type arguments, or keep the concrete Item without converting it to a common Function Type";
+        }
+
+        object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
+        node.Report(requirement, code, note: note, advice: advice, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
+
+        static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
+        {
+            "borrow" => "the borrow " + origin.Text,
+            "omitted" => "the omitted Origin of " + origin.Text,
+            "closure" => "the closure's " + origin.Text,
+            _ => origin.Text,
+        };
+    }
+
+    // The capture entry that names an environment binding, when the closure has a capture list.
+    private static CaptureKoto? CaptureEntryOf(FunctionKoto closure, string name)
+    {
+        if (closure.Captures is { } captures)
+        {
+            for (var i = 0; i < captures.Length; i++)
+            {
+                if (captures[i].Name == name)
+                {
+                    return captures[i];
+                }
+            }
+        }
+
+        return null;
+    }
+
     private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note)
     {
         var (evidence, advice, related) = OriginRelationFacts(relation, "fit");
@@ -720,8 +808,107 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 15.2.3, 7.6.4: the first member of a conversion subject's OwnedOrigins through which a non-static Origin enters: a capture of a
+    // closure with a Shared receiver, or a bound Type argument of an Item, whose signature matches structurally. The first Refuted member
+    // (a body-local Origin) wins, else the first Unknown one; the Owned proof itself stays unchanged.
+    private OwnedConversionFact? OwnedConversionFailure(BoundType implementation, BoundType required, Koto at, Koto use)
+    {
+        BoundType? signature;
+        FunctionKoto? closure = null;
+        IReadOnlyList<BoundCapture>? captures = null;
+        if (implementation.Kind == BoundTypeKind.FunctionItem)
+        {
+            signature = this.FunctionItemSignature(implementation);
+        }
+        else if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Receiver: SemanticsKind.Ref, Signature: not null } plan } declaration })
+        {
+            signature = this.ClosureSignature(implementation);
+            closure = declaration;
+            captures = plan.Captures;
+        }
+        else
+        {
+            return null;
+        }
+
+        if (signature is null || !ReferenceTypes.StorageMatches(required, signature) || this.ProveOwned(implementation, use) == ConstraintProof.Proven)
+        {
+            return null;
+        }
+
+        OwnedConversionFact? unknown = null;
+        var count = captures?.Count ?? implementation.Components.Count;
+        for (var i = 0; i < count; i++)
+        {
+            var member = captures is null ? implementation.Components[i]
+                : implementation.Components.Count == captures.Count ? implementation.Components[i] : captures[i].Environment.Type;
+            if (member is null || this.ProveOwned(member, use) == ConstraintProof.Proven)
+            {
+                continue;
+            }
+
+            var origin = this.FirstUnownedOrigin(member, use, 0);
+            var name = captures is null ? $"{Ordinal(i + 1)} Type argument" : captures[i].Environment.Name;
+
+            // A captured binding initialized by a Borrow shows that Borrow (SPEC 15.6.5).
+            var borrow = captures is not null && origin is not null && captures[i].Source.Declaration is VariableKoto { InitializerKoto: { } initializer } &&
+                KotoHelper.UnwrapParentheses(initializer) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } source && ReferenceEquals(source.BoundType?.Origin, origin) ? source : null;
+            var fact = new OwnedConversionFact(at, implementation, name, member, origin, closure is null ? null : CaptureEntryOf(closure, name), closure, borrow, origin is not null && BodyLocalOrigin(origin));
+            if (fact.Refuted)
+            {
+                return fact;
+            }
+
+            unknown ??= fact;
+        }
+
+        return unknown;
+
+        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // The first Origin in a Type's OwnedOrigins, in the order of SPEC 15.2.3, that is not proven static; a common Function Type
+    // contributes no per-call Origin (SPEC 15.2.3).
+    private BoundOrigin? FirstUnownedOrigin(BoundType type, Koto use, int depth)
+    {
+        if (depth > 32)
+        {
+            return null;
+        }
+
+        if (type.Origin is { } origin && !this.ProvesOriginOutlives(origin, BoundOrigin.Static, use))
+        {
+            return origin;
+        }
+
+        for (var i = 0; i < type.Components.Count && type.Kind != BoundTypeKind.Function; i++)
+        {
+            if (this.FirstUnownedOrigin(type.Components[i], use, depth + 1) is { } inner)
+            {
+                return inner;
+            }
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (type.OriginArguments[i] is { } argument && !this.ProvesOriginOutlives(argument, BoundOrigin.Static, use))
+            {
+                return argument;
+            }
+        }
+
+        return null;
+    }
+
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
     {
+        // SPEC 15.2.3, 7.6.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
+        if (expected is BoundType { Kind: BoundTypeKind.Function } owner && actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
+            this.OwnedConversionFailure(value, owner, at, node) is { } owned)
+        {
+            return this.FailExplained(ref this.ownedConversions, node, owned.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, owned);
+        }
+
         // SPEC 10.7, 15.6.1: a common Function conversion compares whole contracts; with matching signatures, its Origin failure is
         // one UnprovenOriginContract_Kd at the converted value, never a Type mismatch or a relation per position.
         if (expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
@@ -1060,6 +1247,7 @@ public sealed partial class Binding
         this.mismatches?.Clear();
         this.originRelations?.Clear();
         this.originContracts?.Clear();
+        this.ownedConversions?.Clear();
         this.operatorOperands?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
