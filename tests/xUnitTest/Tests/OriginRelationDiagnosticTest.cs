@@ -89,6 +89,9 @@ public class OriginRelationDiagnosticTest
         Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), x.Code));
         Assert.Equal(("ref/(ref/i32 during b) during a", "wellFormed"), (Text(source, errors[0].Span), errors[0].Reason![3].Value));
         Assert.Equal(("slot", "fit"), (Text(source, errors[1].Span), errors[1].Reason![3].Value));
+        // SPEC 23.3.6.5: only the fit names its destination Type.
+        Assert.Equal(["relation", "longer", "shorter", "source"], errors[0].Reason!.Select(static x => x.Name));
+        Assert.Equal(["relation", "longer", "shorter", "source", "destination"], errors[1].Reason!.Select(static x => x.Name));
         Assert.All(errors, static x => Assert.Equal("requires b outlives a, which is not proven", x.Label));
         Assert.All(errors, static x => Assert.DoesNotContain("bound the", x.Advice, StringComparison.Ordinal));
     }

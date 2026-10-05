@@ -221,10 +221,23 @@ public sealed partial class Binding
 
                     shape.CaseCount++;
 
+                    // SPEC 15.3.3: the Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a
+                    // Field, a payload Type that failed leaves the clauses unbound, so they add no record derived from that failure.
+                    var originDeclaration = this.BeginOriginDeclaration(member, scope);
+                    var payloadsBound = true;
+                    for (var j = 0; j < payload.Operands.Length; j++)
+                    {
+                        payloadsBound &= this.BindType(payload.Operands[j], scope) is not null;
+                    }
+
+                    if (payloadsBound)
+                    {
+                        this.CompleteOriginDeclaration(originDeclaration);
+                    }
+
                     for (var j = 0; j < payload.Operands.Length; j++)
                     {
                         var syntax = payload.Operands[j];
-                        this.BindType(syntax, scope);
                         shape.Types.Add(syntax);
                         if (syntax.BoundType is { } type && !TypeAccessCovers(type, container.BoundSymbol!, container.BoundSymbol!))
                         {

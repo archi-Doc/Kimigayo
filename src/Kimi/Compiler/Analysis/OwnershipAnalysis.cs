@@ -223,11 +223,11 @@ public sealed partial class OwnershipAnalysis
             if (issue.Failure == OwnershipFailure.UnprovenOrigin && issue.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } obligation)
             {
                 // SPEC 15.6.1: a fit's relation is reported at the value that supplies the longer end; a well-formedness relation
-                // at its Type occurrence.
-                var fit = obligation.Type is null || ReferenceEquals(obligation.Type.Origin, shorter);
+                // and a Type's clause substituted at a Type occurrence, a declared relation, at that occurrence.
+                var fit = Binding.IsFitObligation(obligation);
                 var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
-                var relation = new OriginRelationFact(at, longer, shorter, false, obligation.Type, Binding.RefutesOriginRelation(longer, shorter));
-                var (evidence, advice, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : "wellFormed");
+                var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter), obligation.Clause);
+                var (evidence, advice, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
                 at.Report(requirement, issue.Code, note: Note(null), evidence: evidence, advice: advice, related: Locations(related), condition: Condition(issue));
                 continue;
             }

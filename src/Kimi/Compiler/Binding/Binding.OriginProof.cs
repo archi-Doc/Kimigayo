@@ -8,6 +8,12 @@ public sealed partial class Binding
 {
     private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter)> originProofPath = new();
 
+    // SPEC 15.6.1, 23.3.6.5: whether an Origin obligation is a fit, reported at the value with the source `fit`, rather than the
+    // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or a
+    // Type's clause substituted at its occurrence (AddTypeClauseObligations), a declared relation.
+    internal static bool IsFitObligation(in BindingObligation obligation)
+        => obligation.Clause is null && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
+
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
@@ -17,10 +23,35 @@ public sealed partial class Binding
 
         if (obligation.Kind == BindingObligationKind.OriginOutlives && obligation.Longer is { } longer && obligation.Shorter is { } shorter)
         {
-            return this.ProvesOriginOutlives(longer, shorter, obligation.Use);
+            return this.ProvesOriginOutlives(longer, shorter, obligation.Use) && (!obligation.Equality || this.ProvesOriginOutlives(shorter, longer, obligation.Use));
         }
 
         return false;
+    }
+
+    // SPEC 15.6.1, 15.6.5: the judgment of an Origin obligation's relation; `==` holds when both directions do, and otherwise takes
+    // the worse direction, Refuted before Unknown before Unrepresentable. `reversed` tells that the reverse direction decides it, so
+    // a record names that direction's longer end first.
+    internal OriginJudgment JudgeOriginObligation(in BindingObligation obligation, out bool reversed)
+    {
+        reversed = false;
+        var forward = this.JudgeOriginRelation(obligation.Longer!, obligation.Shorter!, obligation.Use);
+        if (!obligation.Equality || forward == OriginJudgment.Refuted)
+        {
+            return forward;
+        }
+
+        var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use);
+        reversed = Severity(backward) > Severity(forward);
+        return reversed ? backward : forward;
+
+        static int Severity(OriginJudgment judgment) => judgment switch
+        {
+            OriginJudgment.Refuted => 3,
+            OriginJudgment.Unknown => 2,
+            OriginJudgment.Unrepresentable => 1,
+            _ => 0,
+        };
     }
 
     // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
@@ -328,6 +359,42 @@ public sealed partial class Binding
         return ConstraintProof.Proven;
     }
 
+    // SPEC 15.3.3, 15.6.1: a Type's own clauses are premises of its definition and obligations of each use, so a local annotation
+    // proves them substituted with the Origins its Type binds, also for a Type nested in it. Each is an obligation at the Type
+    // occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is never a premise of
+    // the body. A Function Type's inputs are its callee's premises, proven by each call's argument fit, so they are not entered.
+    private void AddTypeClauseObligations(BoundType type, Koto occurrence, int depth = 0)
+    {
+        if (depth > 64)
+        {
+            return;
+        }
+
+        if (type.OriginArguments.Count != 0 && type.Symbol is { } symbol &&
+            this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
+        {
+            foreach (var relation in declaration.Relations)
+            {
+                var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
+                var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
+                if (!ReferenceEquals(a, b))
+                {
+                    this.AddObligation(new(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax));
+                }
+            }
+        }
+
+        if (type.Kind == BoundTypeKind.Function)
+        {
+            return;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            this.AddTypeClauseObligations(type.Components[i], occurrence, depth + 1);
+        }
+    }
+
     private bool CheckCallOriginRelations(Koto function, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType)
     {
         if (!this.originDeclarations.TryGetValue(function, out var declaration))
@@ -397,9 +464,69 @@ public sealed partial class Binding
                 if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
                     (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
                 {
-                    this.Fail(relation.Syntax, BindingFailure.InvalidOrigin);
+                    this.JudgeDeclaredRelation(declaration, relation);
                 }
             }
+        }
+    }
+
+    // SPEC 15.3.3, 15.6.1, 15.6.5: a local's, Field's, Case's or alias's clause is checked against established evidence and assumes no
+    // new facts. A Refuted or Unknown relation is an Origin relation record with the source `declared` and the clause related; it is
+    // located at the initializer when the initializer supplies one of its ends, an Origin the local's Type omits, as the value that
+    // does not fit, and otherwise at the clause. A chain the judge leaves to region inference is an obligation, which ownership
+    // reports as a located limit.
+    private void JudgeDeclaredRelation(OriginDeclaration declaration, OriginRelation relation)
+    {
+        var use = relation.Syntax;
+        var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality);
+        var judgment = this.JudgeOriginObligation(obligation, out var reversed);
+        if (judgment == OriginJudgment.Proven)
+        {
+            return;
+        }
+
+        if (judgment == OriginJudgment.Unrepresentable)
+        {
+            this.AddObligation(obligation);
+            return;
+        }
+
+        // SPEC 15.3.6: at a contravariant position the principal solution is a lower bound that outlives every other, which this
+        // inference does not choose, so a clause that bounds such an Origin from below is a located limit, not a relation record.
+        if (!relation.Equality && InferredEnd(relation.Longer) == OriginVariance.Contravariant)
+        {
+            this.Fail(use, BindingFailure.Unsupported);
+            return;
+        }
+
+        var longer = this.OriginAtUse(reversed ? relation.Shorter : relation.Longer, use);
+        var shorter = this.OriginAtUse(reversed ? relation.Longer : relation.Shorter, use);
+        var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
+        var at = supplied && declaration.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : use;
+        this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, new OriginRelationFact(at, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter), use));
+
+        // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
+        OriginVariance? InferredEnd(BoundOrigin end)
+        {
+            if (declaration.Inferred is not { } slots)
+            {
+                return null;
+            }
+
+            if (slots.TryGetValue(end, out var position))
+            {
+                return position;
+            }
+
+            for (var i = 0; i < end.Operands.Count; i++)
+            {
+                if (slots.TryGetValue(end.Operands[i], out position))
+                {
+                    return position;
+                }
+            }
+
+            return null;
         }
     }
 }

@@ -23,7 +23,9 @@ public sealed partial class Binding
             if (current is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto or IsKoto { IsAssociatedConstraint: true } ||
                 current is VariableKoto || current.Akind is KotoKind.EnumCase or KotoKind.AssociatedType)
             {
-                return current;
+                // SPEC 15.3.3, 15.3.4: a Case's payload list is an inner form of the same kind; the Case, which the clauses attach to,
+                // owns the sets of all its payloads.
+                return current is { Akind: KotoKind.EnumCase, Parent: { Akind: KotoKind.EnumCase } outer } ? outer : current;
             }
         }
 
@@ -56,6 +58,13 @@ public sealed partial class Binding
 
         return true;
     }
+
+    // SPEC 15.3.5: the variance of a position nested at `inner` within a position of variance `outer`; an unused position is compared
+    // as an invariant one (FitsTypeCore).
+    private static OriginVariance ComposeVariance(OriginVariance outer, OriginVariance inner)
+        => outer == OriginVariance.Invariant || inner is OriginVariance.Invariant or OriginVariance.Unused ? OriginVariance.Invariant
+            : inner == OriginVariance.Covariant ? outer
+            : outer == OriginVariance.Covariant ? OriginVariance.Contravariant : OriginVariance.Covariant;
 
     private OriginDeclaration OriginDeclarationFor(Koto owner)
     {
@@ -628,10 +637,15 @@ public sealed partial class Binding
         }
 
         OriginDeclaration? declaration = null;
-        Match(declared, actual);
+        Match(declared, actual, OriginVariance.Covariant);
         if (declaration is null)
         {
             return declared;
+        }
+
+        if (declaration.Inferred is { Count: > 0 } inferred)
+        {
+            this.MeetLocalUpperBounds(declaration, inferred);
         }
 
         declaration.Scope = scope;
@@ -652,7 +666,8 @@ public sealed partial class Binding
 
         return this.RewriteOrigins(declared, declaration);
 
-        void Match(BoundType pattern, BoundType value)
+        // `polarity` is the variance of the position within the local's Type, composed as FitsTypeCore compares it.
+        void Match(BoundType pattern, BoundType value, OriginVariance polarity)
         {
             if (pattern.Kind != value.Kind || pattern.Semantics != value.Semantics || !ReferenceEquals(pattern.Symbol, value.Symbol))
             {
@@ -661,26 +676,67 @@ public sealed partial class Binding
 
             if (pattern.Origin is { } p && value.Origin is { } a)
             {
-                Bind(p, a);
+                Bind(p, a, polarity);
             }
 
             for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, value.OriginArguments.Count); i++)
             {
-                Bind(pattern.OriginArguments[i], value.OriginArguments[i]);
+                Bind(pattern.OriginArguments[i], value.OriginArguments[i], ComposeVariance(polarity, pattern.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant));
             }
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)
             {
-                Match(pattern.Components[i], value.Components[i]);
+                var component = pattern.Kind == BoundTypeKind.Semantics ? (pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? OriginVariance.Invariant : OriginVariance.Covariant)
+                    : pattern.Kind == BoundTypeKind.Function && pattern.Components.Count == 2 ? (i == 0 ? OriginVariance.Contravariant : OriginVariance.Covariant)
+                    : pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
+                    : OriginVariance.Covariant;
+                Match(pattern.Components[i], value.Components[i], ComposeVariance(polarity, component));
             }
         }
 
-        void Bind(BoundOrigin pending, BoundOrigin value)
+        void Bind(BoundOrigin pending, BoundOrigin value, OriginVariance polarity)
         {
             if (pending.Kind == OriginKind.Inference)
             {
                 declaration ??= this.OriginDeclarationFor(owner);
                 declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value) : value;
+                if (declaration.Relations.Count != 0)
+                {
+                    // Only a local's own clauses read the variance (MeetLocalUpperBounds, JudgeDeclaredRelation).
+                    var inferred = declaration.Inferred ??= new(ReferenceEqualityComparer.Instance);
+                    inferred[pending] = inferred.TryGetValue(pending, out var seen) && seen != polarity ? OriginVariance.Invariant : polarity;
+                }
+            }
+        }
+    }
+
+    // SPEC 15.3.6, 15.4.4: an omitted Origin at a covariant position of a local's Type is the meet of all its upper bounds, so a clause
+    // `origin y outlives x.s` bounds the inferred x.s together with the initializer, instead of requiring y to outlive the initializer's
+    // Origin. The meet only shrinks, so the passes reach a fixed point independent of clause order.
+    private void MeetLocalUpperBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred)
+    {
+        for (var pass = 0; pass <= declaration.Relations.Count; pass++)
+        {
+            var changed = false;
+            foreach (var relation in declaration.Relations)
+            {
+                if (relation.Equality || !inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
+                    !declaration.Replacements.TryGetValue(relation.Shorter, out var current))
+                {
+                    continue;
+                }
+
+                var met = this.Meet(current, this.ResolveOrigin(relation.Longer, declaration));
+                if (!ReferenceEquals(met, current))
+                {
+                    declaration.Replacements[relation.Shorter] = met;
+                    changed = true;
+                }
+            }
+
+            if (!changed)
+            {
+                break;
             }
         }
     }
@@ -736,6 +792,10 @@ public sealed partial class Binding
 
         internal List<OriginRelation> Relations { get; } = new(2);
 
+        // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
+        // allocated only for a local that has such Origins and kept across binds.
+        internal Dictionary<BoundOrigin, OriginVariance>? Inferred { get; set; }
+
         internal void Reset()
         {
             this.State = 0;
@@ -744,6 +804,7 @@ public sealed partial class Binding
             this.Replacements.Clear();
             this.Pending.Clear();
             this.Relations.Clear();
+            this.Inferred?.Clear();
         }
     }
 

@@ -318,9 +318,13 @@ public sealed partial class Binding
         return null;
     }
 
-    private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
+    // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
+    // with facts at the value. `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as
+    // FitsTypeCore composes it: a contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for
+    // every position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
+    private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, OriginVariance polarity = OriginVariance.Covariant)
     {
-        if (this.FitsTypeAt(actual, expected, use))
+        if (polarity == OriginVariance.Contravariant ? this.FitsTypeAt(expected, actual, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant))
         {
             return true;
         }
@@ -342,17 +346,17 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, expected, actual.Origin, expected.Origin));
+            this.AddOriginFit(actual.Origin, expected.Origin, expected, use, polarity);
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
         {
-            if (ReferenceEquals(actual.OriginArguments[i], expected.OriginArguments[i]))
+            var a = actual.OriginArguments[i];
+            var b = expected.OriginArguments[i];
+            if (!ReferenceEquals(a, b))
             {
-                continue;
+                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant));
             }
-
-            this.AddObligation(new(BindingObligationKind.TypeFormation, use, BindingDeadline.BodyOrigins, expected, actual.OriginArguments[i], expected.OriginArguments[i]));
         }
 
         for (var i = 0; i < actual.Components.Count; i++)
@@ -363,8 +367,13 @@ public sealed partial class Binding
                 {
                     return false;
                 }
+
+                continue;
             }
-            else if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use))
+
+            var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
+                ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
+            if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position)))
             {
                 return false;
             }
@@ -372,6 +381,13 @@ public sealed partial class Binding
 
         return true;
     }
+
+    // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
+    // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination.
+    private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance)
+        => this.AddObligation(variance == OriginVariance.Contravariant
+            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual)
+            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant));
 
     private BoundType DirectTarget(BoundType whole)
     {

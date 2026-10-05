@@ -169,6 +169,34 @@ public partial record class DiagnosticEntry
     internal void ValidateValue(DiagnosticParameter parameter, object? value)
         => ValidateValue(this.Name, parameter, value);
 
+    /// <summary>Tells whether the label, written over the first alternative's facts, reads an alternative's facts: the first one, or one
+    /// whose facts are its leading facts with the same names and kinds, such as the first without a trailing fact.</summary>
+    /// <param name="alternative">The index of the alternative a report's facts satisfy.</param>
+    /// <returns>Whether the label's fact positions mean the same facts in that alternative.</returns>
+    internal bool LabelApplies(int alternative)
+    {
+        if (alternative == 0)
+        {
+            return true;
+        }
+
+        var facts = this.EvidenceAlternatives[alternative];
+        if (facts.Length > this.EvidenceSchema.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < facts.Length; i++)
+        {
+            if (facts[i].Name != this.EvidenceSchema[i].Name || facts[i].Kind != this.EvidenceSchema[i].Kind)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /// <summary>Selects the evidence alternative that a report's facts satisfy: the first whose arity and kinds they match.</summary>
     /// <param name="evidence">The reported facts.</param>
     /// <returns>The alternative's index, or -1 when none matches.</returns>

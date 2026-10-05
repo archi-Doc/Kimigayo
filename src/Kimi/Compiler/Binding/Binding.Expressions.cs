@@ -966,6 +966,11 @@ public sealed partial class Binding
             this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared);
         }
 
+        if (symbol.Kind == BindingSymbolKind.Local && declared is not null && variable.TypeKoto is { } occurrence)
+        {
+            this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
+        }
+
         symbol.Type = declared ?? inferred;
         variable.NameKoto.BoundSymbol = symbol;
         Complete(variable.NameKoto, symbol.Type);

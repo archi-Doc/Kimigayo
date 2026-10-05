@@ -22,16 +22,19 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
-            if (obligations[i] is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter, Use: var use } &&
-                this.compilation.Binding.JudgeOriginRelation(longer, shorter, use) == OriginJudgment.Unrepresentable)
+            var reversed = false;
+            if (obligations[i] is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null, Use: var use } &&
+                this.compilation.Binding.JudgeOriginObligation(obligations[i], out reversed) == OriginJudgment.Unrepresentable)
             {
                 // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
-                var at = use is VariableKoto { InitializerKoto: { } initializer } && (obligations[i].Type is null || ReferenceEquals(obligations[i].Type!.Origin, shorter)) ? initializer : use;
+                var at = use is VariableKoto { InitializerKoto: { } initializer } && Binding.IsFitObligation(obligations[i]) ? initializer : use;
                 this.issues.Add(new(at, OwnershipFailure.Unsupported));
                 continue;
             }
 
-            this.issues.Add(new(obligations[i].Use, OwnershipFailure.UnprovenOrigin, Obligation: obligations[i]));
+            // An `==` that only its reverse direction fails is shown in that direction, which also decides whether it is Refuted.
+            var obligation = reversed ? obligations[i] with { Longer = obligations[i].Shorter, Shorter = obligations[i].Longer } : obligations[i];
+            this.issues.Add(new(obligation.Use, OwnershipFailure.UnprovenOrigin, Obligation: obligation));
             stop |= obligations[i] is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
         }
 
@@ -61,8 +64,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (this.compilation.Binding.IsVerifiedOriginObligation(obligation) ||
-            (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter } &&
-            this.compilation.Binding.JudgeOriginRelation(longer, shorter, obligation.Use) == OriginJudgment.Proven))
+            (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null } &&
+            this.compilation.Binding.JudgeOriginObligation(obligation, out _) == OriginJudgment.Proven))
         {
             return false;
         }
@@ -70,7 +73,7 @@ public sealed partial class OwnershipAnalysis
         // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
         // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
         // nested dependencies, including drop uses, in VerifyBorrows.
-        return obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins ||
+        return obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins || obligation.Equality ||
             obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
             (uint)outer.Slot >= (uint)function.Parameters.Count ||
             function.Parameters[outer.Slot].Type.BoundType is not { } input || !(ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) ||

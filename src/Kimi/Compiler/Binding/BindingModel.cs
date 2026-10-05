@@ -560,4 +560,5 @@ internal readonly record struct OriginContractFact(Koto At, string Member, Bound
 // body-local Origin) rather than Unknown.
 internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, string Member, BoundType MemberType, BoundOrigin? Origin, CaptureKoto? Entry, FunctionKoto? Closure, Koto? Borrow, bool Refuted);
 
-internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted);
+// `Clause` is the relation clause of a declared relation (source `declared`, related with the role `relation`); null for a fit.
+internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null);

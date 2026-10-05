@@ -539,8 +539,9 @@ public sealed class DiagnosticOwner
 
         var message = entry.FormatMessage(arguments.Length > 0 ? shown[0] : null, arguments.Length > 1 ? shown[1] : null);
 
-        // A Label references the facts of the first evidence alternative only.
-        return (values, message, alternative == 0 ? entry.FormatLabel(shown) : entry.FormatLabel([]));
+        // A Label references the facts of the first evidence alternative, which a leading part of it keeps at the same positions; a
+        // label fact beyond that part leaves the label out.
+        return (values, message, entry.LabelApplies(alternative) ? entry.FormatLabel(shown) : entry.FormatLabel([]));
     }
 
     private static T[] Union<T>(T[]? left, T[] right)

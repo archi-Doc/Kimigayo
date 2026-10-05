@@ -970,13 +970,13 @@
   + Name="UnsatisfiedOriginRelation_Kd"
     Category="Language"
     Message="The Origin relation that this position requires does not hold"
-    Evidence="relation:Text,longer:Origin,shorter:Origin,source:Text,destination:Type"
+    Evidence="relation:Text,longer:Origin,shorter:Origin,source:Text,destination:Type|relation:Text,longer:Origin,shorter:Origin,source:Text"
     Label="requires {1} {0} {2}, which is false"
 
   + Name="UnprovenOriginRelation_Kd"
     Category="Proof"
     Message="The Origin relation that this position requires is not proven"
-    Evidence="relation:Text,longer:Origin,shorter:Origin,source:Text,destination:Type"
+    Evidence="relation:Text,longer:Origin,shorter:Origin,source:Text,destination:Type|relation:Text,longer:Origin,shorter:Origin,source:Text"
     Label="requires {1} {0} {2}, which is not proven"
 
   + Name="UnprovenOriginContract_Kd"
