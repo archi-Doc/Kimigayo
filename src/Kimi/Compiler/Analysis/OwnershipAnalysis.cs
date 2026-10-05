@@ -493,7 +493,7 @@ public sealed partial class OwnershipAnalysis
             this.bodies.Add(this.body);
         }
 
-        this.body.Reset(function, this.instance, this.compilation.Binding);
+        this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsMemory(0, this.caseCount));
         // Abstract Origin bindings affect field Types even when layout is fully
         // concrete. Prepare the same substituted metadata used by closed calls.
         for (var parameterIndex = 0; parameterIndex < function.Parameters.Count; parameterIndex++)
@@ -681,8 +681,8 @@ public sealed partial class OwnershipAnalysis
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);
         var invalidCopy = false;
         var acquisition = plannedAcquisition.GetValueOrDefault();
-        // An instance resolves a committed CopyOrMove to the exact effect of its closed Type (SPEC 21.3.1).
-        if (plannedAcquisition is null || (acquisition == AcquisitionKind.CopyOrMove && this.instance is not null))
+        // A case or an instance resolves a committed CopyOrMove to the exact effect of its substituted Type (SPEC 8.10, 21.3.1).
+        if (plannedAcquisition is null || (acquisition == AcquisitionKind.CopyOrMove && this.Substituting))
         {
             // Primitive classification needs no Constraint environment (SPEC 3.5.1).
             var proof = type.Kind == BoundTypeKind.Primitive && (!ReferenceEquals(type, BoundType.Never) || neverResult)
@@ -803,7 +803,7 @@ public sealed partial class OwnershipAnalysis
 
             // SPEC 8.9: a finite conditional plan Copies in the Copy cases and Reborrows in the exclusive ones. The definition
             // checks every case through the Reborrow's Loan, which only restricts the Copy cases; each instance takes its own.
-            if (this.instance is null && stored.Acquisition == AcquisitionKind.CopyOrMove && this.compilation.Binding.HasConditionalReborrowPlan(stored.Type, source))
+            if (!this.Substituting && stored.Acquisition == AcquisitionKind.CopyOrMove && this.compilation.Binding.HasConditionalReborrowPlan(stored.Type, source))
             {
                 this.Emit(OwnershipOperationKind.Read, source, place);
                 var reborrowed = this.Place(source, stored.Type, OwnershipPlaceKind.Temporary, false);
@@ -968,7 +968,7 @@ public sealed partial class OwnershipAnalysis
             // SPEC 13.5.5.1: owner selects the operand itself. The universal verification reads a Copy of the direct target
             // through a shared borrow of the operand, since the stored pair Type need not be Copy; a Scalar target is read as
             // that Copy also where only its value is used (SPEC 3.5.3).
-            return this.instance is null && (use != PlaceUseKind.Read || ScalarTypes.Supports(pair.BoundType)) ? this.CopyPairTarget(pair)
+            return !this.Substituting && (use != PlaceUseKind.Read || ScalarTypes.Supports(pair.BoundType)) ? this.CopyPairTarget(pair)
                 : this.ExpressionCore(KotoHelper.UnwrapParentheses(pair.Left), use, acquisition);
         }
 

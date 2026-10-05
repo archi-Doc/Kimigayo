@@ -107,13 +107,7 @@ public sealed partial class OwnershipAnalysis
             var operand = KotoHelper.UnwrapParentheses(source);
             if (layers == 0)
             {
-                return this.instance is null ? this.CopyThroughPair(source, operand, read.Type) : this.ExpressionCore(operand, PlaceUseKind.Consume, null);
-            }
-
-            if (this.instance is not null && operand is not IdentifierNameKoto)
-            {
-                var stored = this.StoredReference(operand, SemanticsKind.Ref);
-                return stored < 0 ? -1 : this.LoadThrough(source, stored, layers);
+                return !this.Substituting ? this.CopyThroughPair(source, operand, read.Type) : this.ExpressionCore(operand, PlaceUseKind.Consume, null);
             }
         }
 
@@ -176,7 +170,7 @@ public sealed partial class OwnershipAnalysis
 
         result = this.Concrete(result)!;
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None &&
-            (this.instance is null || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
+            (!this.Substituting || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
         {
             // SPEC 13.5.5.1, 10.2: the inner reference below a pair layer is Copied from the Place itself in the universal
             // verification and an owner instance; a ref or uniq instance loads it through the stored reference below.

@@ -13,9 +13,17 @@ public sealed partial class OwnershipAnalysis
     private BoundCall? instance;
     private bool instanceFailed;
 
+    // SPEC 8.10: the Semantics case of the current definition run, one admitted Semantics per resolved pair binder in scope;
+    // empty outside a case run. A case run and an instance are the two substitutions of a declared Type (Concrete).
+    private PairCase[] cases = [];
+    private int caseCount;
+
     internal string? InstanceStorageLimit { get; private set; }
 
     internal OwnershipBody? FailedInstance { get; private set; }
+
+    // Whether declared Types are substituted in this run: by a closed call (an instance) or by a Semantics case (SPEC 8.10).
+    private bool Substituting => this.instance is not null || this.caseCount != 0;
 
     /// <summary>Releases the instance plans of the previous generation request.</summary>
     /// <param name="preserveFailure">Keeps the failed body's pooled facts available for immediate diagnostic publication.</param>
@@ -39,7 +47,7 @@ public sealed partial class OwnershipAnalysis
     /// <returns>The verified instance plan, valid until <see cref="ClearInstances"/>.</returns>
     internal OwnershipBody? AnalyzeInstance(OwnershipBody generic, BoundCall call)
     {
-        if (!generic.IsVerified || this.flow is null || this.instance is not null)
+        if (!generic.IsVerified || this.flow is null || this.Substituting)
         {
             return null;
         }
@@ -84,9 +92,8 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    // SPEC 13.5.5.1: a @follow that selects the referent of a reference. A followed pair layer does so in an instance whose
-    // binding is ref or uniq; for owner, and in the universal verification of the generic body, it selects the operand
-    // Place itself, whose Loans cover every admitted case.
+    // SPEC 13.5.5.1: a @follow that selects the referent of a reference. A followed pair layer does so in a Semantics case or an
+    // instance whose binding is ref or uniq; for owner it selects the operand Place itself.
     private bool FollowsReference(ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.Follow ||
             (conversion.ConversionBinding == ConversionBinding.PairFollow && this.PairLayerExists(conversion.Left.BoundType, conversion.BoundType));
@@ -151,14 +158,14 @@ public sealed partial class OwnershipAnalysis
         var left = KotoHelper.UnwrapParentheses(conversion.Left);
         // Published Places acquire their complete stored reference through the ordinary Place call.
         return left is not IdentifierNameKoto && this.FollowsReference(conversion) &&
-            ((conversion.ConversionBinding == ConversionBinding.PairFollow && this.instance is not null) ||
+            ((conversion.ConversionBinding == ConversionBinding.PairFollow && this.Substituting) ||
                 (conversion.ConversionBinding == ConversionBinding.Follow && (left is not IndexKoto || ElementAccess.IsUserIndex(left))));
     }
 
     // SPEC 3.4.1, 7.3: a receiver selected through a pair layer lends through the reference stored in it in a ref or uniq
-    // instance; the universal verification and an owner instance borrow the receiver Place itself.
+    // case or instance; an owner case or instance borrows the receiver Place itself.
     private bool ImplicitlyFollowsReference(Koto node, BoundType type)
-        => this.instance is not null && this.compilation.Binding.ImplicitPairAdmitted(node) != SemanticsMask.None &&
+        => this.Substituting && this.compilation.Binding.ImplicitPairAdmitted(node) != SemanticsMask.None &&
             this.PairLayerExists(node.BoundType, type.Components[0]);
 
     private int StoredReference(ConversionKoto pair) => this.StoredReference(KotoHelper.UnwrapParentheses(pair.Left), SemanticsKind.Ref);
@@ -255,12 +262,12 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(result);
     }
 
-    // SPEC 10.2, 13.5.5.1: two or more existing layers below a pair Subject in an instance are loaded into one reference to
-    // their terminal target in the Subject's mode; each uniq layer meets its Origin into it and a ref layer restarts it.
-    // Returns -2 when the instance has fewer layers, which the single-layer paths handle.
+    // SPEC 10.2, 13.5.5.1: two or more existing layers below a pair Subject in a case or instance are loaded into one reference
+    // to their terminal target in the Subject's mode; each uniq layer meets its Origin into it and a ref layer restarts it.
+    // Returns -2 when the case or instance has fewer layers, which the single-layer paths handle.
     private int ThroughPairLayers(Koto node, SemanticsKind mode)
     {
-        if (this.instance is null || this.compilation.Binding.PairTerminalOf(node) is not { } target || this.ReferenceLayers(node.BoundType, target) < 2 ||
+        if (!this.Substituting || this.compilation.Binding.PairTerminalOf(node) is not { } target || this.ReferenceLayers(node.BoundType, target) < 2 ||
             this.Concrete(node.BoundType) is not { } concrete ||
             this.compilation.Binding.SharedReferenceThroughLayers(concrete, this.Concrete(target)!, out _) is not { } shared)
         {
@@ -281,12 +288,18 @@ public sealed partial class OwnershipAnalysis
         return node;
     }
 
-    // Declared Types of the analyzed body; an instance sees its closed substitution.
+    // Declared Types of the analyzed body: a Semantics case sees its case Types (SPEC 8.10) and an instance its closed
+    // substitution; a case substitution cannot fail.
     private BoundType? Concrete(BoundType? type)
     {
-        if (type is null || this.instance is not { } call)
+        if (type is null)
         {
             return type;
+        }
+
+        if (this.instance is not { } call)
+        {
+            return this.caseCount == 0 ? type : this.compilation.Binding.CaseType(type, this.cases.AsSpan(0, this.caseCount));
         }
 
         if (this.compilation.Binding.InstantiateStorageType(type, call) is { } concrete)

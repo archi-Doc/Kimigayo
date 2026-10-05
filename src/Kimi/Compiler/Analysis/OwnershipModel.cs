@@ -344,18 +344,24 @@ public sealed partial class OwnershipBody
 
     internal Binding? InstanceBinding { get; set; }
 
+    /// <summary>Gets or sets the Semantics case this definition run analyzes (SPEC 8.10); empty outside a case run.</summary>
+    internal ReadOnlyMemory<PairCase> Cases { get; set; }
+
     public bool IsReachable(int operation) => this.Reachable[operation];
 
-    // A declared Type as this body's plan sees it; an instance plan sees its closed substitution.
-    internal BoundType? Concrete(BoundType? type) => type is null || this.Instance is null ? type : this.InstanceBinding!.InstantiateStorageType(type, this.Instance);
+    // A declared Type as this body's plan sees it: a case run sees its case Types and an instance plan its closed substitution.
+    internal BoundType? Concrete(BoundType? type)
+        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
+        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
 
-    // An instance plan carries its substitution from the start, so every phase that reads a declared Type through Concrete,
-    // from building and solving to lowering, sees the closed Type.
-    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding)
+    // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
+    // Concrete, from building and solving to lowering, sees the substituted Type.
+    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlyMemory<PairCase> cases = default)
     {
         this.Function = function;
         this.Instance = instance;
-        this.InstanceBinding = instance is null ? null : instanceBinding;
+        this.Cases = cases;
+        this.InstanceBinding = instance is null && cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
