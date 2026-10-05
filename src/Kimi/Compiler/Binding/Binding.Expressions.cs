@@ -370,10 +370,10 @@ public sealed partial class Binding
     // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
     private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
         => expected.Kind == BoundTypeKind.Function &&
-            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected)) ||
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && CallableSignatureFits(signature, expected, SignatureOwner(actual))) ||
             (actual.Kind == BoundTypeKind.Closure &&
             actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref } &&
-            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected))) && this.ProveOwned(actual, node) == ConstraintProof.Proven;
+            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual)))) && this.ProveOwned(actual, node) == ConstraintProof.Proven;
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {

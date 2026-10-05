@@ -102,8 +102,7 @@ public sealed partial class Binding
     // Function Type of the signature, whose own inputs are the only Input atoms it binds at an outer layer.
     private static Koto? CalleeBinder(BoundType? callee, BoundType signature)
     {
-        var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
-        if (owner is { Kind: BoundTypeKind.FunctionItem or BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration })
+        if (callee is not null && SignatureOwner(callee) is { } declaration)
         {
             return declaration;
         }
@@ -316,7 +315,7 @@ public sealed partial class Binding
         {
             inputBinder = ownBinder;
         }
-        else if (!PerCallSignature(signature) && !this.FixedCaptureSignature(signature, call.Method) &&
+        else if (!PerCallSignature(signature, ownBinder) && !this.FixedCaptureSignature(signature, call.Method) &&
             !(FixedInBody(signature.Components[1], call) && this.EnvironmentLeavesResultFixed(signature.Components[1], call.Method)))
         {
             return this.Fail(call, BindingFailure.Unsupported);

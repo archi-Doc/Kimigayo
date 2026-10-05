@@ -78,7 +78,7 @@ public sealed partial class Binding
     // anonymous function takes them as its own inputs, so the expectation is restated over the anonymous function's binder.
     private BoundType ClosureExpectation(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesOrigin || !PerCallShape(expected) || ExpectedInputBinder(expected) is not { } binder ||
+        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesOrigin || !PerCallShape(expected, null, any: true) || ExpectedInputBinder(expected) is not { } binder ||
             ReferenceEquals(binder, function))
         {
             return expected;
@@ -150,7 +150,7 @@ public sealed partial class Binding
 
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || (expected.CarriesOrigin && !PerCallShape(expected)))
+        if (expected.Kind != BoundTypeKind.Function || (expected.CarriesOrigin && !PerCallShape(expected, null, any: true)))
         {
             return false;
         }

@@ -99,7 +99,7 @@ internal sealed partial class BodyLowering
             if (operation.Kind != OwnershipOperationKind.Produce || source.Symbol?.Declaration is not FunctionKoto itemDefinition ||
                 !ReferenceEquals(SignatureType(this, operation.Source.ErasedFunctionType), body.Places[operation.Place].Type) ||
                 operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
-                !Binding.CallableSignatureFits(itemSignature, body.Places[operation.Place].Type) ||
+                !Binding.CallableSignatureFits(itemSignature, body.Places[operation.Place].Type, itemDefinition) ||
                 this.ClosureEntry(source, itemDefinition) is not { CallerLocation: false } itemEntry ||
                 (body.IsReachable(id) && !this.Dominates(input, id)))
             {
@@ -114,7 +114,7 @@ internal sealed partial class BodyLowering
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
             !ReferenceEquals(SignatureType(this, operation.Source.ErasedFunctionType), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
-            !Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type) ||
+            !Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
             this.aggregateLayouts.Get(source) is not { } layout ||
             this.ClosureEntry(source, definition) is not { } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))

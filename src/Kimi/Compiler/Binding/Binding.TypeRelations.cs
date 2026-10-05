@@ -73,7 +73,9 @@ public sealed partial class Binding
         }
     }
 
-    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool renameInput = false, Koto? actualInputs = null, Koto? expectedInputs = null)
+    // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
+    // syntax binds its inputs.
+    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool renameInput = false, Koto? actualInputs = null, Koto? expectedInputs = null, Koto? own = null)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
         {
@@ -130,7 +132,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (actual.Kind == BoundTypeKind.Function && i == 0 && PerCallShape(actual) && PerCallShape(expected))
+            if (actual.Kind == BoundTypeKind.Function && i == 0 && PerCallShape(actual, own) && PerCallShape(expected, null, any: true))
             {
                 // Fresh input binders are local quantifiers of the Function Type, not fixed external Origins.
                 // Rename only the outer input layer; referent Types and their own Origins remain rigid.
@@ -147,7 +149,7 @@ public sealed partial class Binding
                     }
                 }
             }
-            else if (actual.Kind == BoundTypeKind.Function && i == 1 && InputDependentBinder(actual) is { } actualBinder && InputDependentBinder(expected) is { } expectedBinder)
+            else if (actual.Kind == BoundTypeKind.Function && i == 1 && InputDependentBinder(actual, own) is { } actualBinder && InputDependentBinder(expected, null, any: true) is { } expectedBinder)
             {
                 // SPEC 10.7, 15.6.4: a result over the per-call inputs names them through its own Function Type's binders;
                 // the two results are compared with each input of one standing for the same input of the other.
@@ -183,7 +185,8 @@ public sealed partial class Binding
     }
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
-    private static bool PerCallShape(BoundType signature) => PerCallSignature(signature) || InputDependentBinder(signature) is not null;
+    private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
+        => PerCallSignature(signature, own, any) || InputDependentBinder(signature, own, any) is not null;
 
     // Within two results over per-call inputs, input slot i of one stands for input slot i of the other. An Origin over a set of
     // inputs outlives one over a superset, the static Origin outlives every such Origin; null when no renamed input occurs.

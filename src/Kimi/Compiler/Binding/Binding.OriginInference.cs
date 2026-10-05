@@ -27,7 +27,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && PerCallShape(pattern) && PerCallShape(actual))
+        if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && PerCallShape(pattern, null, any: true) && PerCallShape(actual, null, any: true))
         {
             // These Origins are quantified by the nested Function Types, not by this call's binder.
             // Their positional correspondence is checked by the ordinary Type relation.

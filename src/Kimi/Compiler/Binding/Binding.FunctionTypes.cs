@@ -6,11 +6,19 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    internal static bool CallableSignatureFits(BoundType actual, BoundType expected) => FitsType(actual, expected);
+    // SPEC 10.7, 15.3.7: `own` is the declaration whose own per-call inputs the implementation's signature names, if any.
+    internal static bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own) => FitsTypeCore(actual, expected, null, null, own: own);
+
+    // The declaration whose own per-call inputs the signature of a Function Item or closure names (SPEC 8.6).
+    internal static Koto? SignatureOwner(BoundType callee)
+    {
+        var owner = callee is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrowed ? borrowed.Components[0] : callee;
+        return owner is { Kind: BoundTypeKind.FunctionItem or BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto declaration } ? declaration : null;
+    }
 
     // SPEC 15.6.4: fresh per-call inputs and a result whose Origins, if any, are all static, so a call substitutes nothing.
-    private static bool PerCallSignature(BoundType signature)
-        => (!signature.Components[1].CarriesOrigin || StaticOnly(signature.Components[1])) && PerCallInputs(signature);
+    private static bool PerCallSignature(BoundType signature, Koto? own, bool any = false)
+        => (!signature.Components[1].CarriesOrigin || StaticOnly(signature.Components[1])) && PerCallInputs(signature, own, any);
 
     private static bool StaticOnly(BoundType type)
     {
@@ -63,9 +71,9 @@ public sealed partial class Binding
 
     // SPEC 15.6.4: the binder of a signature whose inputs are fresh per-call borrows and whose result depends on those inputs
     // or on static storage alone; a call substitutes the arguments' Origins into that result.
-    private static Koto? InputDependentBinder(BoundType signature)
+    private static Koto? InputDependentBinder(BoundType signature, Koto? own, bool any = false)
     {
-        if (!PerCallInputs(signature))
+        if (!PerCallInputs(signature, own, any))
         {
             return null;
         }
@@ -137,14 +145,18 @@ public sealed partial class Binding
         }
     }
 
-    private static bool PerCallInputs(BoundType signature)
+    // SPEC 8.6, 15.6.4: every Origin-bearing input is a direct borrow over its own per-call input, an Origin that the signature's
+    // own binder quantifies: a Function Type's own syntax or the declaration `own`. Any other Origin is fixed, even at its own slot.
+    // An expected signature (`any`) may take a fixed Origin for a per-call one, which only asks more of the implementation.
+    private static bool PerCallInputs(BoundType signature, Koto? own, bool any = false)
     {
         var inputs = signature.Components[0];
         for (var i = 0; i < inputs.Components.Count; i++)
         {
             var input = inputs.Components[i];
             if (input.CarriesOrigin && !(input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
-                input.Origin.Slot == i && !input.Components[0].CarriesOrigin))
+                input.Origin.Slot == i && (any || input.Origin.Binder is FunctionTypeKoto || (own is not null && ReferenceEquals(input.Origin.Binder, own))) &&
+                !input.Components[0].CarriesOrigin))
             {
                 return false;
             }
@@ -182,16 +194,11 @@ public sealed partial class Binding
 
     private bool FixedCaptureSignature(BoundType signature, Koto receiver)
     {
-        if (!PerCallInputs(signature))
-        {
-            return false;
-        }
-
         var result = signature.Components[1];
         var type = receiver.BoundType!;
         type = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
-        return type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure } &&
-            this.ProveCopy(result, receiver) == ConstraintProof.Proven && FixedType(result);
+        return type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure } declaration &&
+            PerCallInputs(signature, declaration) && this.ProveCopy(result, receiver) == ConstraintProof.Proven && FixedType(result);
 
         // A concrete Copy result may retain shared external Origins already carried by Copy captures. No per-call
         // substitution or receiver-storage Loan is needed; erased, exclusive and receiver-dependent results stay closed.

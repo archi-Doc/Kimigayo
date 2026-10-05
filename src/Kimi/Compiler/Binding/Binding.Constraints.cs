@@ -224,7 +224,7 @@ public sealed partial class Binding
             }
 
             var receiver = closure?.Receiver ?? SemanticsKind.Ref;
-            return CallableSignatureFits(signature, proposition.RequiredType!) &&
+            return CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject)) &&
                 CallableReceiverFits(receiver, proposition.Mask)
                 ? ConstraintProof.Proven : ConstraintProof.Refuted;
         }

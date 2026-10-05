@@ -87,8 +87,8 @@ public sealed partial class Binding
             : ReferenceEquals(type.Origin, relation.Shorter) ? $"{DiagnosticTypeName(type)} during {shorter.Text}" : DiagnosticTypeName(type);
         var advice = OriginRelationAdvice(relation, longer, shorter, source);
         // SPEC 23.3.6.5: a borrow or omitted end is also related at its syntax.
-        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? relation.Longer.Occurrence : null;
-        var shorterAt = shorter.Kind == "omitted" ? relation.Shorter.Occurrence : null;
+        var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? relation.Longer.Occurrence ?? OmittedInput(relation.Longer) : null;
+        var shorterAt = shorter.Kind == "omitted" ? relation.Shorter.Occurrence ?? OmittedInput(relation.Shorter) : null;
         (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
             : longerAt is not null ? [("origin", longerAt, null)]
             : shorterAt is not null ? [("origin", shorterAt, null)]
@@ -111,6 +111,11 @@ public sealed partial class Binding
             return "Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body";
         }
 
+        if (OmittedInput(relation.Shorter) is not null || OmittedInput(relation.Longer) is not null)
+        {
+            return "A Function Type quantifies the Origin of an unnamed borrowed input per call, and no fixed Origin stands for it; write the fixed Origin in that input's Type, as in 'ref/T during x', or accept any borrow there";
+        }
+
         var omitted = longer.Kind == "omitted" ? longer.Text : shorter.Kind == "omitted" ? shorter.Text : null;
         if (omitted is not null)
         {
@@ -126,6 +131,11 @@ public sealed partial class Binding
             : $"Bind {longer.Text} to static where it is introduced, as in '{(input is not null ? $"{input.InternalName}: {input.Type} during static" : "during static")}'{bound}";
         return (SimilarNames(relation.Shorter) ?? SimilarNames(relation.Longer)) is { } similar ? advice + similar : advice;
     }
+
+    // SPEC 23.3.6.5: the input Type occurrence of a Function Type whose outer Origin is this per-call Origin; it has no name.
+    private static Koto? OmittedInput(BoundOrigin origin)
+        => origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto binder } && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder)
+            ? InputType(binder, origin.InputIndex) is ParenthesizedTypeKoto { Type: { } inner } ? inner : InputType(binder, origin.InputIndex) : null;
 
     // The parameter whose outer borrow an Input Origin is.
     private static FunctionParameterKoto? OuterInput(BoundOrigin origin)
@@ -249,7 +259,7 @@ public sealed partial class Binding
         // when its bound arguments are Owned.
         if (actual is BoundType { Kind: BoundTypeKind.FunctionItem, Components.Count: > 0 } item)
         {
-            return this.FunctionItemSignature(item) is { } itemSignature && CallableSignatureFits(itemSignature, signature)
+            return this.FunctionItemSignature(item) is { } itemSignature && CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
                 : null;
         }
@@ -260,7 +270,7 @@ public sealed partial class Binding
                 "or a bound argument fails its Constraints or would hold a per-call Origin of that signature";
         }
 
-        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { } closure } })
+        if (actual is not BoundType { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { BoundClosure: { } closure } declaration })
         {
             return null;
         }
@@ -269,7 +279,7 @@ public sealed partial class Binding
         {
             SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
             SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !CallableSignatureFits(closure.Signature, signature)
+            _ => !CallableSignatureFits(closure.Signature, signature, declaration)
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };
@@ -497,6 +507,8 @@ public sealed partial class Binding
                 return new("expression", "(" + string.Join(" and ", parts) + ")");
             case OriginKind.Input when origin.Occurrence is { } occurrence:
                 return SlotProjection(origin, occurrence) is { } projection ? new("expression", projection) : new("omitted", occurrence.ToString());
+            case OriginKind.Input when OmittedInput(origin) is { } input:
+                return new("omitted", input.ToString());
             case OriginKind.Input when origin.Binder is { } binder && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder):
                 return new("expression", InputName(binder, origin.InputIndex));
             case OriginKind.Parameter:
