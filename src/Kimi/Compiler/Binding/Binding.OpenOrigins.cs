@@ -16,6 +16,9 @@ public sealed partial class Binding
     // One open region per argument and per Origin the argument's known call signature quantifies (Input slot, or -1 - Parameter slot).
     private readonly Dictionary<(Koto Source, int Key), BoundOrigin> openOrigins = new();
 
+    // SPEC 15.3.6: a selected call whose slot only an argument's own per-call Origin would satisfy, with that argument and the Reason.
+    private Dictionary<Koto, (Koto Argument, string Reason)>? perCallOrigins;
+
     // SPEC 10.8: an Origin that the evidence's own binder quantifies, such as a per-call input, never becomes the solution of an Origin
     // inside a slot. The slot keeps the structure and Semantics, and each such Origin is replaced by an open region of the call (SPEC
     // 15.3.6): a local region that holds no Loans, is never displayed, and that other evidence for the slot fills.
@@ -141,6 +144,56 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // Whether `type` holds an open region that the known call signature of `source` supplied.
+    private static bool HasOpenOriginFrom(BoundType type, Koto source)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return false;
+        }
+
+        if (From(type.Origin, source))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (From(type.OriginArguments[i], source))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (HasOpenOriginFrom(type.Components[i], source))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool From(BoundOrigin? origin, Koto source)
+        {
+            if (origin is null)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (From(origin.Operands[i], source))
+                {
+                    return true;
+                }
+            }
+
+            return origin.Open && ReferenceEquals(origin.Binder, source);
+        }
     }
 
     // SPEC 15.3.6: a callee's own Origin that no parameter Type and no relation clause mentions, such as the result-only `s` of
@@ -286,6 +339,106 @@ public sealed partial class Binding
             for (var i = 1; i < origin.Operands.Count; i++)
             {
                 result = this.Meet(result, this.OpenKnownOrigin(origin.Operands[i], binder, source));
+            }
+
+            return result;
+        }
+
+        return origin;
+    }
+
+    // SPEC 15.3.6, 10.8: after selection, a slot that only the argument's own per-call Origin would satisfy is MissingOriginBinding_Kd
+    // at the call, whose Reason names the argument and the slot, with the argument related.
+    private BoundType? FailPerCallOrigin(InvocationKoto call, FunctionKoto selected, BoundType?[] slots, Koto argument)
+    {
+        var slot = "the Type argument";
+        for (var g = 0; g < selected.GenericArguments.Count; g++)
+        {
+            if (slots[g] is { } solution && HasOpenOriginFrom(solution, argument))
+            {
+                slot = selected.GenericArguments[g].Identifier;
+                break;
+            }
+        }
+
+        return this.FailExplained(ref this.perCallOrigins, call, BindingFailure.MissingOrigin, (argument, $"only a per-call Origin of {argument} would satisfy {slot}"));
+    }
+
+    // SPEC 15.3.6, 10.8: `type` with each open region that the known call signature of `source` put in place of its k-th per-call input
+    // replaced by the outer Origin of the k-th input of `signature`, the required call signature at that parameter: the per-call Origin
+    // that alone would satisfy the slot. Null when `type` holds no such open region. With `fixedOnly`, only a required input over a
+    // fixed Origin, such as the callee's `x` of `(ref/i32 during x) -> T`, replaces its open region: SPEC 10.7 instantiates the
+    // argument's per-call input to that Origin, which is then a solution of the slot, not a per-call Origin.
+    private BoundType? PerCallStandIn(BoundType type, Koto source, BoundType signature, bool fixedOnly = false)
+    {
+        var replaced = this.ReplaceOpenOrigins(type, source, signature, fixedOnly);
+        return ReferenceEquals(replaced, type) ? null : replaced;
+    }
+
+    // SPEC 10.7, 10.8: the slot solutions with each open region of `source` at a required input over a fixed Origin instantiated to that
+    // Origin, once the fit holds with it (PerCallStandIn with `fixedOnly`).
+    private void InstantiateOpenOrigins(Span<BoundType?> slots, Koto source, BoundType signature)
+    {
+        for (var g = 0; g < slots.Length; g++)
+        {
+            if (slots[g] is { } solution)
+            {
+                slots[g] = this.ReplaceOpenOrigins(solution, source, signature, true);
+            }
+        }
+    }
+
+    private BoundType ReplaceOpenOrigins(BoundType type, Koto source, BoundType signature, bool fixedOnly = false)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return type;
+        }
+
+        var origin = type.Origin is { } outer ? this.ReplaceOpenOrigin(outer, source, signature, fixedOnly) : null;
+        var components = this.RentTypes(type.Components.Count);
+        var origins = this.originScratch.Rent(type.OriginArguments.Count);
+        try
+        {
+            var changed = !ReferenceEquals(origin, type.Origin);
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                components[i] = this.ReplaceOpenOrigins(type.Components[i], source, signature, fixedOnly);
+                changed |= !ReferenceEquals(components[i], type.Components[i]);
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                origins[i] = this.ReplaceOpenOrigin(type.OriginArguments[i], source, signature, fixedOnly);
+                changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
+            }
+
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext) : type;
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
+        }
+    }
+
+    private BoundOrigin ReplaceOpenOrigin(BoundOrigin origin, Koto source, BoundType signature, bool fixedOnly)
+    {
+        if (origin.Open && ReferenceEquals(origin.Binder, source))
+        {
+            // A required input's own per-call Origin is the outer Origin of a direct borrow that the signature's Function Type binds at
+            // that position (SPEC 8.6); any other Origin there is fixed.
+            var inputs = signature.Components[0];
+            return origin.Slot >= 0 && origin.Slot < inputs.Components.Count && inputs.Components[origin.Slot].Origin is { Open: false } perCall &&
+                !(fixedOnly && perCall is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto } && perCall.Slot == origin.Slot) ? perCall : origin;
+        }
+
+        if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
+        {
+            var result = this.ReplaceOpenOrigin(origin.Operands[0], source, signature, fixedOnly);
+            for (var i = 1; i < origin.Operands.Count; i++)
+            {
+                result = this.Meet(result, this.ReplaceOpenOrigin(origin.Operands[i], source, signature, fixedOnly));
             }
 
             return result;

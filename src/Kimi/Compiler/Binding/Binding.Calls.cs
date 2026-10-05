@@ -886,6 +886,15 @@ public sealed partial class Binding
 
             for (var i = 0; i < argumentCount; i++)
             {
+                if (selectedOperations[i].MissingOrigin)
+                {
+                    // SPEC 15.3.6, 10.8: judged after selection; it never made the candidate inapplicable.
+                    return this.FailPerCallOrigin(call, selected, scratch, call.ArgumentNodes[i]);
+                }
+            }
+
+            for (var i = 0; i < argumentCount; i++)
+            {
                 if (call.ArgumentNodes[i].BoundType is null)
                 {
                     // The argument is an expression of the caller's context, not of the selected requirement.
@@ -1452,12 +1461,29 @@ public sealed partial class Binding
                 {
                     // SPEC 7.6.4: a function group argument fits when one of its functions converts to the parameter's common
                     // Function Type; the reference is bound to that function after selection.
+                    var perCallOnly = false;
                     if (type.Kind != BoundTypeKind.Function || !this.FunctionGroupFits(argument, group, type, scope))
                     {
-                        return CandidateApplicability.Inapplicable;
+                        if (type.Kind == BoundTypeKind.Function && this.PerCallStandIn(type, call.ArgumentNodes[i], type, true) is { } instantiated &&
+                            this.FunctionGroupFits(argument, group, instantiated, scope))
+                        {
+                            // SPEC 10.7, 10.8: the argument's per-call input is instantiated to a required input over a fixed Origin.
+                            this.InstantiateOpenOrigins(arguments.AsSpan(0, function.GenericArguments.Count), call.ArgumentNodes[i], type);
+                            type = instantiated;
+                        }
+                        else if (type.Kind != BoundTypeKind.Function || this.PerCallStandIn(type, call.ArgumentNodes[i], type) is not { } standIn ||
+                            !this.FunctionGroupFits(argument, group, standIn, scope))
+                        {
+                            return CandidateApplicability.Inapplicable;
+                        }
+                        else
+                        {
+                            // SPEC 15.3.6: a fit that only the argument's own per-call Origin would satisfy is reported after selection.
+                            perCallOnly = true;
+                        }
                     }
 
-                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
+                    operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i], MissingOrigin: perCallOnly);
                     continue;
                 }
 
@@ -1506,6 +1532,23 @@ public sealed partial class Binding
                     continue;
                 }
 
+                if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } instantiatedValue && type.Kind == BoundTypeKind.Function &&
+                    this.PerCallStandIn(type, call.ArgumentNodes[i], type, true) is { } instantiatedType && this.ErasesToFunction(argument, instantiatedValue, instantiatedType))
+                {
+                    // SPEC 10.7, 10.8: the value's per-call input is instantiated to a required input over a fixed Origin.
+                    this.InstantiateOpenOrigins(arguments.AsSpan(0, function.GenericArguments.Count), call.ArgumentNodes[i], type);
+                    operations[i] = new(call.ArgumentNodes[i], instantiatedValue, instantiatedType, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
+                    continue;
+                }
+
+                if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } perCallValue && type.Kind == BoundTypeKind.Function &&
+                    this.PerCallStandIn(type, call.ArgumentNodes[i], type) is { } valueStandIn && this.ErasesToFunction(argument, perCallValue, valueStandIn))
+                {
+                    // SPEC 15.3.6: only the value's own per-call Origin would satisfy the slot; reported after selection.
+                    operations[i] = new(call.ArgumentNodes[i], perCallValue, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i], MissingOrigin: true);
+                    continue;
+                }
+
                 var quality = ArgumentAdaptation.Literal;
                 var kind = ArgumentOperationKind.Value;
                 BoundType? adaptedType = null;
@@ -1539,17 +1582,7 @@ public sealed partial class Binding
             }
         }
 
-        for (var i = 0; i < operations.Length; i++)
-        {
-            if (operations[i] is { Source: not null, ParameterIndex: >= 0 } operation)
-            {
-                var completed = this.CallType(function.Parameters[operation.ParameterIndex].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths)!;
-                if (completed is not null)
-                {
-                    operations[i] = operation with { ParameterType = completed };
-                }
-            }
-        }
+        CompleteOperationTypes(operations);
 
         var resultPattern = function.BoundSymbol!.Type;
         var result = resultPattern is not null ? this.CallType(resultPattern, function, arguments, scope, self, origins, inputs, declaringType, lengths) : null;
@@ -1589,7 +1622,12 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        var proof = ProveCandidate();
+        var proof = ProveCandidate(arguments.AsSpan(0, function.GenericArguments.Count), waitingCallables);
+        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && PerCallCallables(operations))
+        {
+            proof = ConstraintProof.Proven;
+        }
+
         if (waitingCallables && proof is ConstraintProof.Proven or ConstraintProof.Unknown)
         {
             // Only the concrete Types of waiting anonymous arguments may remain open. A body cannot solve
@@ -1626,7 +1664,7 @@ public sealed partial class Binding
             this.permitClosureReceivers = true;
             try
             {
-                closureReceiver = ProveCandidate() == ConstraintProof.Proven ? mismatch : null;
+                closureReceiver = ProveCandidate(arguments.AsSpan(0, function.GenericArguments.Count), waitingCallables) == ConstraintProof.Proven ? mismatch : null;
             }
             finally
             {
@@ -1641,27 +1679,6 @@ public sealed partial class Binding
             ConstraintProof.Error => CandidateApplicability.Error,
             _ => CandidateApplicability.Pending,
         };
-        ConstraintProof ProveCandidate()
-        {
-            var result = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, function.GenericArguments.Count), scope, self, declaringType, lengths, incomplete: waitingCallables);
-            if (declaringType is not null)
-            {
-                result = CombineProof(result, this.CheckTypeConstraints(declaringType, scope), true);
-            }
-
-            result = CombineProof(result, this.CheckSignatureTypeConstraints(function), true);
-            // A substitution must be a valid complete Type independently of whether
-            // the function constrains or uses that slot (SPEC 8.1.3).
-            for (var i = 0; i < function.GenericArguments.Count; i++)
-            {
-                var argumentProof = function.GenericArguments[i] is LengthParameterKoto
-                    ? lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown
-                    : arguments[i] is { } argument ? this.CheckTypeConstraints(argument, scope) : ConstraintProof.Unknown;
-                result = CombineProof(result, argumentProof, true);
-            }
-
-            return CombineProof(result, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
-        }
 
         bool InferAggregateInputs(bool fitLiterals)
         {
@@ -1803,6 +1820,118 @@ public sealed partial class Binding
             }
 
             return true;
+        }
+
+        // SPEC 15.3.6, 10.8: a Callable proof that fails only because a slot holds the open region of an argument's own per-call Origin,
+        // and holds once that per-call Origin stands in for it, is no inapplicability: the argument is reported after selection.
+        bool PerCallCallables(Span<BoundArgumentOperation> marks)
+        {
+            var count = function.GenericArguments.Count;
+            var restored = this.typeScratch.Rent(count);
+            try
+            {
+                // SPEC 10.7, 10.8: first instantiate each argument's per-call input at a required input over a fixed Origin; when every
+                // Constraint then holds, that instantiation solves the slots and nothing is reported.
+                arguments.AsSpan(0, count).CopyTo(restored);
+                if (StandIns(restored.AsSpan(0, count), marks, true) && ProveCandidate(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
+                {
+                    restored.AsSpan(0, count).CopyTo(arguments);
+                    CompleteOperationTypes(marks);
+                    return true;
+                }
+
+                arguments.AsSpan(0, count).CopyTo(restored);
+                var marked = StandIns(restored.AsSpan(0, count), marks, false);
+                if (!marked || ProveCandidate(restored.AsSpan(0, count), false) != ConstraintProof.Proven)
+                {
+                    for (var i = 0; i < call.ArgumentNodes.Count && marked; i++)
+                    {
+                        marks[i] = marks[i] with { MissingOrigin = false };
+                    }
+
+                    return false;
+                }
+
+                return true;
+            }
+            finally
+            {
+                this.typeScratch.Return(restored, clearArray: true);
+            }
+
+            // Replaces the open regions of each argument whose Callable signature holds one, marking that argument unless `fixedOnly`.
+            bool StandIns(Span<BoundType?> slots, Span<BoundArgumentOperation> targets, bool fixedOnly)
+            {
+                var replaced = false;
+                for (var i = 0; i < call.ArgumentNodes.Count; i++)
+                {
+                    var source = call.ArgumentNodes[i];
+                    var pattern = function.Parameters[mapping[i]].Type.BoundType!;
+                    var callableSlot = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? pattern.Components[0] : pattern;
+                    if (callableSlot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, callableSlot.Symbol!) < 0 || source.BoundType is null ||
+                        !this.TryCallable(callableSlot, this.ConstraintScope(function), out var requiredSignature, out _) ||
+                        this.MemberType(requiredSignature, declaringType) is not { } memberSignature ||
+                        this.CallType(this.ContractType(memberSignature, scope, self), function, arguments, scope, self, origins, inputs, declaringType, lengths) is not { } required ||
+                        this.PerCallStandIn(required, source, required, fixedOnly) is null)
+                    {
+                        continue;
+                    }
+
+                    for (var g = 0; g < slots.Length; g++)
+                    {
+                        if (slots[g] is { } solution)
+                        {
+                            slots[g] = this.ReplaceOpenOrigins(solution, source, required, fixedOnly);
+                        }
+                    }
+
+                    if (!fixedOnly)
+                    {
+                        targets[i] = targets[i] with { MissingOrigin = true };
+                    }
+
+                    replaced = true;
+                }
+
+                return replaced;
+            }
+        }
+
+        void CompleteOperationTypes(Span<BoundArgumentOperation> targets)
+        {
+            for (var i = 0; i < targets.Length; i++)
+            {
+                if (targets[i] is { Source: not null, ParameterIndex: >= 0 } operation)
+                {
+                    var completed = this.CallType(function.Parameters[operation.ParameterIndex].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths)!;
+                    if (completed is not null)
+                    {
+                        targets[i] = operation with { ParameterType = completed };
+                    }
+                }
+            }
+        }
+
+        ConstraintProof ProveCandidate(ReadOnlySpan<BoundType?> slots, bool incomplete)
+        {
+            var proof = this.CheckConstraints(function.TypeConstraints, function, slots, scope, self, declaringType, lengths, incomplete: incomplete);
+            if (declaringType is not null)
+            {
+                proof = CombineProof(proof, this.CheckTypeConstraints(declaringType, scope), true);
+            }
+
+            proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
+            // A substitution must be a valid complete Type independently of whether
+            // the function constrains or uses that slot (SPEC 8.1.3).
+            for (var i = 0; i < slots.Length; i++)
+            {
+                var argumentProof = function.GenericArguments[i] is LengthParameterKoto
+                    ? lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown
+                    : slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope) : ConstraintProof.Unknown;
+                proof = CombineProof(proof, argumentProof, true);
+            }
+
+            return CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
         }
 
         bool CompleteArguments()

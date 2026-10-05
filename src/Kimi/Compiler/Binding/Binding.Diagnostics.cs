@@ -13,6 +13,9 @@ public sealed partial class Binding
     private const string AccessorGetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R) -> T, named by SPEC 4.7.1: into + noun when it consumes the receiver, verb + noun when it advances state";
     private const string AccessorSetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R, value: U) -> (), named by SPEC 4.7.1";
 
+    // SPEC 15.3.6, 10.8: a per-call Origin lies beyond the call, so no annotation of the slot can name it; conditional prose only.
+    private const string PerCallOriginAdvice = "If the argument's result is meant to borrow its own input, use it where that input is known, such as in an anonymous function written at the call; otherwise pass a function whose result does not borrow its input, such as one that returns a Copy of the borrowed value";
+
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
     private const string StrongCloneAdvice = "Strong clone accepts only rc or arc handles; obj ownership cannot be duplicated";
 

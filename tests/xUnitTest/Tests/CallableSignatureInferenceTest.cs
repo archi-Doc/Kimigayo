@@ -323,18 +323,100 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal((code, text), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 10.8, 15.3.6: when only the argument's per-call Origin would satisfy the slot, the Function value or Callable proof fails
-    // under the call-time instantiation, since that Origin cannot outlive the call. Interim record until MissingOriginBinding_Kd.
+    // SPEC 15.3.6, 10.8: when only the argument's own per-call Origin would satisfy the slot (the Function value or Callable proof holds
+    // once that Origin stands in for the slot's open region, and fails otherwise), the candidate stays applicable and the selected call
+    // is MissingOriginBinding_Kd at the call, whose Reason names the argument and the slot, with the argument related. It was
+    // NoApplicableOverload_Kd. A Function Item value and a concrete Closure value give the same record.
     [Theory]
-    [InlineData("func make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(pick)", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
-    [InlineData("func make<T, F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> T>\n    return 7\nlet m = make(pick)", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
-    [InlineData("func make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(func (n: ref/i32) => n)", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
-    public void OnlyAPerCallOriginWouldSatisfyTheSlot(string body, string code)
+    [InlineData("func make<T>(action: (ref/i32) -> T) -> i32 => 7\n", "make(pick)", "pick")]
+    [InlineData("func make<T, F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> T>\n    return 7\n", "make(pick)", "pick")]
+    [InlineData("func make<T>(action: (ref/i32) -> T) -> i32 => 7\n", "make(f)", "f")]
+    [InlineData("func make<T>(action: (ref/i32) -> T) -> i32 => 7\n", "make(g)", "g")]
+    public void OnlyAPerCallOriginWouldSatisfyTheSlot(string declaration, string call, string argument)
     {
-        var c = MinimalEmissionTest.Analyze("func pick(n: ref/i32) -> ref/i32 => n\n" + body);
+        var source = "func pick(n: ref/i32) -> ref/i32 => n\n" + declaration + "public func main() -> ()\n    let f = pick\n    let g = func (n: ref/i32) => n\n    let m = " + call + "\n    Console.writeLine(\"\\(m)\")\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.MissingOriginBinding_Kd), call, $"only a per-call Origin of {argument} would satisfy T"), (error.Code, Text(source, error.Span), error.Label));
+        var related = Assert.Single(error.Related!);
+        Assert.Equal(("argument", argument), (related.Role, Text(source, related.Span)));
+        Assert.Contains("does not borrow its input", error.Advice, StringComparison.Ordinal);
+    }
+
+    // SPEC 10.8, 10.6: a header that omits its result supplies no evidence for T, which only the waiting body could fix; that is the
+    // inference-boundary record, not a per-call Origin. Interim: the fact-less UnprovenConstraint_Kd at the call.
+    [Fact]
+    public void AnOmittedHeaderResultLeavesTheSlotUnbound()
+    {
+        var c = MinimalEmissionTest.Analyze("func make<T>(action: (ref/i32) -> T) -> i32 => 7\nlet m = make(func (n: ref/i32) => n)");
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.Equal(code, Assert.Single(TestDiagnostics.Of(c)).Code);
+        Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
+    }
+
+    // SPEC 15.3.6: other Constraints still decide applicability, so a slot that the stand-in fails another Constraint for stays
+    // inapplicable; a signature whose input also holds the slot, or whose result needs no per-call Origin, satisfies it.
+    [Fact]
+    public void APerCallStandInDecidesNothingElse()
+    {
+        var source = "func pick(n: ref/i32) -> ref/i32 => n\nfunc owned<T, F>(action: ref/F) -> i32\n    F is Callable<(ref/i32) -> T>\n    T is Owned\n    return 7\npublic func main() -> ()\n    let c = owned(pick)\n";
+        var owned = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "owned(pick)"), (owned.Code, Text(source, owned.Span)));
+        ScalarEmissionTest.EmitFixture("OriginSignatureEvidencePerCallValid", Len + "func pick(n: ref/i32) -> ref/i32 => n\nfunc same<T>(action: (T) -> T) -> i32 => 7\nfunc make<T>(action: (ref/i32) -> T) -> i32 => 7\nrequire same(pick) + make(len) == 14 else => $abort(\"valid\")", string.Empty);
+    }
+
+    // SPEC 10.7, 10.8: a required input over a fixed Origin, such as the callee's `x` of `(ref/i32 during x) -> T`, instantiates the
+    // argument's per-call input to that Origin, which then solves the slot. It is no per-call Origin, so nothing is reported, in either
+    // argument order and for a Function Item, a Function Item value, a Closure value and a Callable proof alike (these were a Language
+    // MissingOriginBinding_Kd claiming that only a per-call Origin of pick would satisfy T).
+    [Theory]
+    [InlineData("Value", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nlet r = make(n@ref, pick)")]
+    [InlineData("Reversed", "func make<T>(action: (ref/i32 during x) -> T, v: ref/i32 during x) -> T => action(v)\nlet r = make(pick, n@ref)")]
+    [InlineData("Item", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nlet f = pick\nlet r = make(n@ref, f)")]
+    [InlineData("Closure", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nlet c = func (k: ref/i32) => k\nlet r = make(n@ref, c)")]
+    [InlineData("Callable", "func make<T, U, F>(v: T, f: ref/F) -> U\n    F is Callable<(T) -> U>\n    return f(v@move)\nlet r = make(n@ref, pick)")]
+    [InlineData("Returned", "func make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc g(p: ref/i32) -> ref/i32 during p => make(p, pick)\nlet r = g(n@ref)")]
+    public void AFixedRequiredInputInstantiatesThePerCallInput(string name, string body)
+        => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceFixedInput" + name, "func pick(n: ref/i32) -> ref/i32 => n\nlet n: i32 = 6\n" + body + "\nrequire r@follow == 6 else => $abort(\"fixed input\")", string.Empty);
+
+    // A per-call input beside the fixed one still needs a per-call Origin, and an instantiation never lets the result escape.
+    [Fact]
+    public void AFixedRequiredInputDecidesNothingElse()
+    {
+        var mixed = "func make<T>(v: ref/i32 during x, action: (ref/i32 during x, ref/i32) -> T) -> i32 => 1\nfunc both(a: ref/i32, b: ref/i32) -> ref/i32 => a\npublic func main() -> ()\n    let n: i32 = 6\n    let r = make(n@ref, both)\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(mixed).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.MissingOriginBinding_Kd), "make(n@ref, both)", "only a per-call Origin of both would satisfy T"), (error.Code, Text(mixed, error.Span), error.Label));
+
+        var escape = "func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc g() -> ref/i32 during static\n    let local: i32 = 6\n    return make(local@ref, pick)\n" +
+            "func h(p: ref/i32, q: ref/i32) -> ref/i32 during q => make(p, pick)\npublic func main() -> ()\n    Console.writeLine(\"\\(g()@follow)\")\n";
+        var rejected = DiagnosticCorpus.Check(escape);
+        Assert.False(rejected.Accepted);
+        Assert.Equal(["make(local@ref, pick)", "make(p, pick)"], rejected.Diagnostics.Select(x => Text(escape, x.Span)));
+    }
+
+    // SPEC 23.3.6: the record and its related argument reach the CLI, the language server and JSON.
+    [Fact]
+    public void EveryOutputCarriesThePerCallOriginRecord()
+    {
+        var source = "func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(action: (ref/i32) -> T) -> i32 => 7\npublic func main() -> ()\n    let m = make(pick)\n    Console.writeLine(\"\\(m)\")\n";
+        var check = DiagnosticCorpus.Check(source);
+        var record = Assert.Single(check.Diagnostics);
+        var result = new DiagnosticResult(check.Diagnostics, check.Sources);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        output.WriteLine(console.Text);
+        Assert.Contains("MissingOriginBinding_Kd", console.Text, StringComparison.Ordinal);
+        Assert.Contains("only a per-call Origin of pick would satisfy T", console.Text, StringComparison.Ordinal);
+        Assert.Contains(" = argument: ", console.Text, StringComparison.Ordinal);
+
+        var identity = SourceIdentity.FromPath(check.Sources[record.Source].Path);
+        var plain = Assert.Single(WorkspaceCheck.Place(check, [identity], identity, false)[identity]);
+        Assert.Equal((record.Code, record.Display!.Range), (plain.Code, plain.Range));
+        var withRelated = Assert.Single(WorkspaceCheck.Place(check, [identity], identity, true)[identity]);
+        Assert.Equal(record.Related![0].Range, Assert.Single(withRelated.RelatedInformation!).Location.Range);
+
+        var json = System.Text.Json.JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
+        Assert.Contains("only a per-call Origin of pick would satisfy T", json, StringComparison.Ordinal);
+        Assert.Equal(result, System.Text.Json.JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
     // SPEC 8.6, 7.6.4: a closure result over its hidden environment receiver satisfies no Callable signature and no erasure, so it
@@ -366,6 +448,22 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // The fixed-input instantiation and the per-call stand-in rechecks run only when a fit or a Callable proof fails as is; a warm rebind
+    // of programs that take them, including a losing overload whose Callable proof needs the stand-in, allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmFixedInputInstantiationAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze("func pick(n: ref/i32) -> ref/i32 => n\nfunc make<T>(v: ref/i32 during x, action: (ref/i32 during x) -> T) -> T => action(v)\nfunc make2<T, U, F>(v: T, f: ref/F) -> U\n    F is Callable<(T) -> U>\n    return f(v@move)\n" +
+            "func rank<F>(f: ref/F, k: i64) -> i32\n    F is Callable<(i32) -> i32>\n    return 1\nfunc rank<F>(f: ref/F, k: i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    return 2\nlet n: i32 = 6\n" +
+            "require make(n@ref, pick)@follow + make2(n@ref, pick)@follow + rank(pick, 1) == 14 else => $abort(\"warm\")");
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 

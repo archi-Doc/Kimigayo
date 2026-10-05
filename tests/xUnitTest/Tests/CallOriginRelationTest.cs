@@ -88,6 +88,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     [Theory]
     [InlineData("func needs(x: uniq/(ref/i32 during static)) -> () => ()\nfunc g() -> i32\n    let local: i32 = 1\n    var y = local@ref\n    needs(y@uniq)\n    return 1\n", "y@uniq", "requires the borrow local@ref == static, which is false", "uniq/(ref/i32 during static)")]
     [InlineData("func needs(x: ref/Option<ref/i32 during static>) -> i32 => 1\nfunc g() -> i32\n    let local: i32 = 1\n    let o: Option<ref/i32> = .Some(local@ref)\n    return needs(o@ref)\n", "o@ref", "requires the borrow local@ref outlives static, which is false", "ref/Option<ref/i32 during static>")]
+    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc g(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(x@uniq, y@uniq)\n    return x\n", "y@uniq", "requires the borrow local@ref == p, which is false", "uniq/(ref/i32 during p)")]
+    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc h(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(y@uniq, x@uniq)\n    return x\n", "x@uniq", "requires p == the borrow local@ref, which is false", "uniq/ref/i32")]
     public void AnInnerBorrowIsNamedAndRelated(string body, string text, string label, string destination)
     {
         var source = body + Main;
