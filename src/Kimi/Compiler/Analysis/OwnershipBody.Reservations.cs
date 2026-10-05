@@ -178,6 +178,16 @@ public sealed partial class OwnershipBody
             this.Operations[op + 1] is { Kind: OwnershipOperationKind.Borrow, Reservation: >= 0 } borrow && borrow.Place == read.Place &&
             ReferenceEquals(KotoHelper.UnwrapParentheses(read.Source), KotoHelper.UnwrapParentheses(borrow.Source)) ? borrow.Reservation : -1;
 
+    // SPEC 15.6.7 (PLAN G53): the reservation that still holds a Place at `point`, or -1. A call's reserved Places stay
+    // reserved through the call; a literal's reservation ends at its activation, after which the placed payload holds
+    // its Loan as an ordinary value, so a later placement that meets it meets that Loan, not a reservation.
+    private int HeldReservation(int place, int point)
+    {
+        var reservation = this.reservationPlaces[place];
+        return reservation >= 0 && this.CallReservations[reservation].Call is not InvocationKoto &&
+            this.CallReservations[reservation].Activation is >= 0 and var activation && activation < point ? -1 : reservation;
+    }
+
     // SPEC 15.6.7: a reservation protects its target, not the Loans an owned target retains on other roots. A reserved input's
     // Place that depends on such a root only through its referent's Type carries the target's retained Loan.
     private int RetainingTarget(int reservation, int root, int count)

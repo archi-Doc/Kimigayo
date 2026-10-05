@@ -133,6 +133,24 @@ public sealed partial class OwnershipBody
             return;
         }
 
+        // SPEC 15.6.3 (PLAN G53): a construction payload holds the value placed into it, so it holds that value's Loans and
+        // no more, while the payload slot's Type names the Origins of every element of the literal.
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            if (this.Operations[id] is { Kind: OwnershipOperationKind.PayloadPlacement, Place: >= 0, Input: >= 0 } placement)
+            {
+                for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
+                {
+                    var root = this.borrowRoots[rootIndex];
+                    var placed = this.borrowDependencies[(placement.Input * count) + root];
+                    if (placed < this.borrowDependencies[(placement.Place * count) + root])
+                    {
+                        this.borrowDependencies[(placement.Place * count) + root] = placed;
+                    }
+                }
+            }
+        }
+
         this.RetainBorrowAuthority(count);
         (this.liveBorrowPlaces ??= new()).Clear();
         for (var p = 0; p < count; p++)
@@ -180,6 +198,7 @@ public sealed partial class OwnershipBody
                 { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
                 { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
                 { Kind: OwnershipOperationKind.Produce, Place: >= 0 } item when this.Values[id].Kind == OwnershipValueKind.Sequence => item.Place,
+                { Kind: OwnershipOperationKind.PayloadPlacement, Place: >= 0 } placement => placement.Place,
                 _ => -1,
             };
 
@@ -385,12 +404,12 @@ public sealed partial class OwnershipBody
 
                             reported = true;
                             var holder = p;
-                            var reserved = this.reservationPlaces[p];
+                            var reserved = this.HeldReservation(p, op);
                             if (reserved >= 0 && this.RetainingTarget(reserved, root, count) is >= 0 and var target)
                             {
                                 // The reserved target's own Loan on another root, not an overlap with the reservation.
                                 holder = target;
-                                reserved = this.reservationPlaces[target];
+                                reserved = this.HeldReservation(target, op);
                             }
 
                             var own = activating ? -1 : operation.Reservation >= 0 ? operation.Reservation : this.LocatedReservation(accessId);
@@ -841,6 +860,15 @@ public sealed partial class OwnershipBody
                 return this.Values[id].Constant == place || operation.Input == place;
             }
 
+            if (operation.Kind == OwnershipOperationKind.CompleteConstruction)
+            {
+                // SPEC 15.6.3, 15.6.7 (PLAN G53): a literal takes its payloads when it completes, so a payload placed
+                // earlier holds its Loan while the later elements are evaluated, and a parent acquired exclusively by a
+                // later placement meets its Reborrow child placed in the same literal.
+                var construction = this.Constructions[this.OperationSteps[id]];
+                return place >= construction.PayloadStart && place < construction.PayloadStart + construction.PayloadCount;
+            }
+
             if (operation.Kind == OwnershipOperationKind.Call && operation.Input == place)
             {
                 return true; // SPEC 15.6.4: a value call's receiver and its environment's Loans stay protected through the call.
@@ -1092,7 +1120,7 @@ public sealed partial class OwnershipBody
     // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
     // ends there. Liveness stops at it, and so does a stored dependency.
     private static bool DefinesBorrowHolder(OwnershipOperation operation, int place)
-        => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer) ||
+        => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PayloadPlacement) ||
             (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern) ||
             (operation.Place == place && operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition == AcquisitionKind.Move);
 
@@ -1915,7 +1943,7 @@ public sealed partial class OwnershipBody
 
             for (var place = 0; place < this.Places.Count; place++)
             {
-                if (this.ReceivedBorrow(place, rejected[i].Result) && this.IsBorrowAncestor(access, place))
+                if (this.HoldsSameReference(place, rejected[i].Result) && this.IsBorrowAncestor(access, place))
                 {
                     return true;
                 }
@@ -1975,33 +2003,38 @@ public sealed partial class OwnershipBody
         return false;
     }
 
-    // Whether a reference Place holds the result of a borrow, directly or through the Writes and Moves that transferred it.
-    private bool ReceivedBorrow(int place, int result)
+    // SPEC 3.5, 15.6.3: moving a reference changes its slot, not the capability's identity. The slot a reference Place
+    // received its one definition from (a Write, a Move or a placement), or -1 at a Borrow, which creates a distinct child
+    // Loan, at a Place defined more than once, or at an owned Place.
+    private int TransferSource(int place)
     {
-        for (var remaining = this.Places.Count; remaining > 0; remaining--)
+        if (!ReferenceTypes.IsBorrow(this.Places[place].Type) || this.borrowDefinitions[place] is not (>= 0 and var definition))
         {
-            if (place == result)
+            return -1;
+        }
+
+        var transferred = this.Operations[definition] switch
+        {
+            { Kind: OwnershipOperationKind.Write, Input: >= 0 } write => write.Input,
+            { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Place: >= 0 } moved => moved.Place,
+            { Kind: OwnershipOperationKind.PayloadPlacement, Input: >= 0 } placement => placement.Input,
+            _ => -1,
+        };
+        return transferred == place ? -1 : transferred;
+    }
+
+    // Whether `holder` is `slot` or received its reference from `slot`, such as the result of a borrow, through the Writes,
+    // Moves and placements that transferred it (TransferSource).
+    private bool HoldsSameReference(int holder, int slot)
+    {
+        for (var remaining = this.Places.Count; remaining > 0 && holder >= 0; remaining--)
+        {
+            if (holder == slot)
             {
                 return true;
             }
 
-            if (!ReferenceTypes.IsBorrow(this.Places[place].Type) || this.borrowDefinitions[place] is not (>= 0 and var definition))
-            {
-                return false;
-            }
-
-            var transferred = this.Operations[definition] switch
-            {
-                { Kind: OwnershipOperationKind.Write, Input: >= 0 } write => write.Input,
-                { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Place: >= 0 } moved => moved.Place,
-                _ => -1,
-            };
-            if (transferred < 0 || transferred == place)
-            {
-                return false;
-            }
-
-            place = transferred;
+            holder = this.TransferSource(holder);
         }
 
         return false;
@@ -2011,21 +2044,10 @@ public sealed partial class OwnershipBody
     {
         var original = place;
         // Moving a reference changes its slot, not the capability's identity. A child formed before the Move
-        // still descends from that same parent; stop at a Borrow, which does create a distinct child Loan.
-        for (var remaining = this.Places.Count; remaining > 0 && ReferenceTypes.IsBorrow(this.Places[place].Type) &&
-            this.borrowDefinitions[place] is >= 0 and var definition; remaining--)
+        // still descends from that same parent, whichever slot of the transfer chain the child's value names; stop
+        // at a Borrow, which does create a distinct child Loan.
+        for (var remaining = this.Places.Count; remaining > 0 && this.TransferSource(place) is >= 0 and var transferred; remaining--)
         {
-            var transferred = this.Operations[definition] switch
-            {
-                { Kind: OwnershipOperationKind.Write, Input: >= 0 } write => write.Input,
-                { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Place: >= 0 } moved => moved.Place,
-                _ => -1,
-            };
-            if (transferred < 0 || transferred == place)
-            {
-                break;
-            }
-
             place = transferred;
         }
 
@@ -2034,8 +2056,8 @@ public sealed partial class OwnershipBody
         for (var remaining = this.Values.Count; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
         {
             var operation = this.Operations[value];
-            if (ValuePlaceForBorrow(operation) == place || ValuePlaceForBorrow(operation) == original ||
-                (operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && operation.Place == place))
+            if (this.HoldsSameReference(original, ValuePlaceForBorrow(operation)) ||
+                (operation.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Consume && this.HoldsSameReference(original, operation.Place)))
             {
                 return true;
             }
@@ -2110,11 +2132,14 @@ public sealed partial class OwnershipBody
                     OwnershipOperationKind.CallEntry => operation.Place,
                     OwnershipOperationKind.Produce when operation.Place >= 0 => operation.Place,
                     // SPEC 15.6.2: an in-place slot borrow of an owned root, such as the slot of a stored reference
-                    // followed through item.0, descends from wherever that root's value came from; so does a Move of it.
+                    // followed through item.0, descends from wherever that root's value came from.
                     OwnershipOperationKind.Borrow when node.Kind == OwnershipValueKind.Address && node.Count == 0 && operation.Place >= 0 &&
                         !ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) => operation.Place,
-                    OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Move && operation.Place >= 0 &&
-                        !ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) => operation.Place,
+                    // SPEC 3.5, 15.6.2, 15.6.3: a Move continues at the moved Place: of an owned root, like its slot borrow above;
+                    // of a reference, whose value it transfers as is, so a Reborrow child moved into a reserved argument or a
+                    // placed element descends from the reference's definition exactly as the holder walk above follows a
+                    // holder that received a Move, and the parent it was Reborrowed from is its ancestor, not a sibling Loan.
+                    OwnershipOperationKind.Consume when operation.Acquisition == AcquisitionKind.Move && operation.Place >= 0 => operation.Place,
                     _ => -1,
                 };
                 if (stored >= 0 && this.borrowDefinitions[stored] is >= 0 and var definition && definition < value)
@@ -2130,6 +2155,13 @@ public sealed partial class OwnershipBody
                 }
 
                 return false;
+            }
+
+            if (operation.Kind == OwnershipOperationKind.Write && operation.Input >= 0 && this.ValueOperands[node.Start] < 0)
+            {
+                // SPEC 15.6.3: a literal's value is its placements; the written aggregate, read back as a whole slot, descends
+                // from the sources its payloads were placed from, such as the Reborrow child moved into one of them.
+                return this.ConstructedFrom(operation.Input, original);
             }
 
             value = this.ValueOperands[node.Start];
