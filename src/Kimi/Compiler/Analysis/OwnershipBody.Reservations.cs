@@ -329,7 +329,7 @@ public sealed partial class OwnershipBody
             foreach (var pair in this.SymbolPlaces)
             {
                 if (pair.Value == root && ReferenceEquals(pair.Key.Declaration, origin.Binder) &&
-                    pair.Key.Slot == (origin.Kind == OriginKind.Input ? origin.InputIndex : origin.Slot) &&
+                    (origin.Kind == OriginKind.Input ? pair.Key.Slot == origin.InputIndex : Binding.SymbolOriginSlot(pair.Key) == origin.Slot) &&
                     (origin.Kind != OriginKind.Input || pair.Key.Kind == BindingSymbolKind.Parameter))
                 {
                     return true;

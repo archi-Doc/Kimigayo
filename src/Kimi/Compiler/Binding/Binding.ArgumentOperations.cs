@@ -103,13 +103,21 @@ public sealed partial class Binding
     internal static Koto PlaceOriginBinder(Koto source) => source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) is { } getter ? getter
         : source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
         ? CandidateOriginBinder(candidate)
-        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage } symbol ? symbol.Declaration : source;
+        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
+
+    // SPEC 7.6.2, 15.8.2: an environment binding is a Place of its closure, distinct from the closure's parameters, which share
+    // the closure as binder; the i-th binding's Projection slot is -2 - i.
+    internal static int EnvironmentSlot(int index) => -2 - index;
+
+    // The Projection slot that names a binding's own Place.
+    internal static int SymbolOriginSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.Capture ? EnvironmentSlot(symbol.Slot) : symbol.Slot;
 
     // A guard candidate and the selected body binding share their source declaration,
     // but never their storage lifetime. Reuse the name node as the candidate's identity.
     internal static Koto CandidateOriginBinder(BindingSymbol candidate) => ((SyntaxFormKoto)candidate.Declaration).Operands[0];
 
-    internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Slot : 0;
+    internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
+        ? SymbolOriginSlot(symbol) : 0;
 
     // SPEC 15.1.5, 23.3.6.9: whether a bare Place that needs @move offers Take and is a Movable Place, judged from its path alone
     // for a repair candidate: an owned path from a local, parameter or capture root is verified; a borrowed, published or shared
@@ -592,6 +600,7 @@ public sealed partial class Binding
         }
 
         var path = KotoHelper.UnwrapParentheses(place);
+        var shared = false;
         for (var depth = 0; depth < 64 && origin is not null; depth++)
         {
             var outer = path switch
@@ -616,6 +625,7 @@ public sealed partial class Binding
 
                 if (outer.BoundType.Semantics == SemanticsKind.Ref)
                 {
+                    shared = true;
                     break;
                 }
             }
@@ -623,7 +633,10 @@ public sealed partial class Binding
             path = outer;
         }
 
-        return origin;
+        // SPEC 15.8.2 row 3, 15.6.3: an environment binding is a Field of the closure's receiver, so a Reborrow through an exclusive
+        // reference it stores, with no shared layer between, also stays within that binding's Place.
+        return !shared && origin is not null && path is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Capture, Declaration: { } closure } capture }
+            ? this.Meet(origin, this.OriginAtom(closure, OriginKind.Projection, EnvironmentSlot(capture.Slot))) : origin;
     }
 
     // SPEC 8.4.10.3, 15.6.3: whether the named function enclosing a node implements a requirement whose Contract declares
@@ -682,10 +695,11 @@ public sealed partial class Binding
         => reference.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin: { } origin } ? this.PathReborrowOrigin(reference, origin) : reference.BoundType?.Origin;
 
     // SPEC 13.5.5.2, 15.6.5: a borrow of a slot that stores a reference depends on that slot. A slot reached through a reference
-    // keeps that reference's dependencies, whereas the own slot of a local, a parameter or a temporary ends with the body.
+    // keeps that reference's dependencies, whereas the own slot of a local, a parameter, an environment binding or a temporary is
+    // a Place of the body or of the closure's receiver (SPEC 15.8.2).
     private BoundOrigin SlotOrigin(Koto source)
         => KotoHelper.UnwrapParentheses(source) is var slot &&
-            (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } ||
+            (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
             (slot is InvocationKoto && ElementAccess.PlaceCallReference(slot) is null && ElementAccess.IndexerCall(slot, false) is null))
             ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source);
 

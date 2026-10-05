@@ -11,6 +11,9 @@ internal static class VerificationWorkloads
 
     internal const string GenericFunctionReference = "func identity<T>(value: T) -> T => value@move\nfunc apply<T, F>(value: T, action: ref/F) -> T\n    F is Callable<(T) -> T>\n    return action(value@move)\nlet erased: (i32) -> i32 = identity\nlet result = apply(41, identity) + erased(1)";
 
+    internal const string EnvironmentBorrows = "var n = 7\nlet view = n@uniq\nlet m = 4\nvar f = func [view, var m] () -> i32\n    let r = m@ref\n" +
+        "    let c = view@follow@uniq\n    c@follow = r@follow\n    m = 1\n    view@follow += m\n    return view@follow\nlet v = f()";
+
     internal const string FixedInputValueCall = "func use(x: ref/i32) -> i32\n    let c = func (pair: (ref/i32 during x, i32)) => pair.0@follow + pair.1\n" +
         "    let d = func (o: Option<ref/i32 during x>) -> i32\n        match o\n            .Some(let r) => return r@follow\n            .None => return 0\n" +
         "    let e = func (n: ref/i32 during x) => n@follow\n    return c((x, 1)) + d(.Some(x)) + e(x)\nlet n: i32 = 2\nlet v = use(n@ref)";
