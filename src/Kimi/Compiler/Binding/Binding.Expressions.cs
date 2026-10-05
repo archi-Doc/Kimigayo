@@ -123,7 +123,8 @@ public sealed partial class Binding
 
     // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
     // Arguments, assignment sources and results take their expected Type from the
-    // declaration and adapt there instead.
+    // declaration and adapt there instead; an anonymous function's expression body without a written or expected result
+    // Type is a result source (SPEC 14.9.1) whose Type the bare acquisition infers.
     private static bool IsBareAcquisitionPosition(Koto node)
     {
         var target = node;
@@ -137,6 +138,7 @@ public sealed partial class Binding
             VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
             DiscardKoto discard => ReferenceEquals(discard.Operand, target),
             TupleLiteralKoto or ArrayLiteralKoto => true,
+            FunctionKoto { IsAnonymous: true } function => ReferenceEquals(function.ExpressionBody, target),
             _ => false,
         };
     }

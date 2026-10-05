@@ -46,4 +46,33 @@ public class ClosureReceiverClassificationTest
         c.Binding.ReportDiagnostics();
         Assert.Equal(nameof(DiagnosticCode.InvalidAssignment_Kd), Assert.Single(TestDiagnostics.Of(c)).Code);
     }
+
+    private const string CapturedView = "public func main() -> ()\n    var n = 7\n    let view = n@uniq\n";
+
+    // SPEC 3.5, 7.6.3, 14.9.1: an expression body without a written or expected result Type is a result source acquired by bare
+    // acquisition, so a bare captured exclusive reference is Reborrowed exclusively and the call is Exclusive. The Note names that
+    // Reborrow; a ref/F value never supplies an Exclusive call, so its Advice is not to declare the binding with var.
+    [Theory]
+    [InlineData(CapturedView + "    let f = func [view] () => view\n    f()\n", "f", "Declare the binding with var to call it")]
+    [InlineData(CapturedView + "    let f = func [view] () => view\n    let g = f@ref\n    g()\n", "g", "A ref/F value cannot supply an Exclusive call; call the closure through its own var binding or a uniq/F borrow")]
+    public void ABareInferredResultReborrowIsAnExclusiveCall(string source, string callee, string advice)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), callee), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal("The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference view exclusively", error.Note);
+        Assert.Equal(advice, error.Advice);
+    }
+
+    // A shared borrow through the captured exclusive reference keeps the call Shared; its receiver-dependent result is the G65 limit.
+    [Fact]
+    public void ASharedReborrowResultStaysShared()
+    {
+        var source = CapturedView + "    let f = func [view] () => view@follow@ref\n    f()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+    }
+
+    [Fact]
+    public void AScalarReadThroughACapturedExclusiveReferenceIsShared()
+        => ScalarEmissionTest.EmitFixture("ClosureReceiverScalarRead", "var n = 7\nlet view = n@uniq\nlet f = func [view] () => view@follow + 1\nlet r = f()\nrequire r == 8 and f() == 8 else => $abort(\"r\")", string.Empty);
 }

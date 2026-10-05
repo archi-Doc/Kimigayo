@@ -897,13 +897,15 @@ public sealed partial class Binding
 
         var immutable = root is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Let } } };
         var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
-        node.Report(
-            requirement,
-            code,
-            note: call ? "The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent" : null,
-            at: target,
-            evidence: [target.ToString()],
-            advice: immutable ? call ? "Declare the binding with var to call it" : "Declare the binding with var to assign it again" : null);
+        var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
+        var plan = (callee?.Symbol?.Declaration as FunctionKoto)?.ClosureStorage;
+        var shared = target.BoundType?.Semantics == SemanticsKind.Ref;
+        var callNote = !call ? null : plan is { ExclusiveReborrow: true, ExclusiveUse: { } use }
+            ? $"The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference {use} exclusively"
+            : "The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent";
+        var callAdvice = call && shared ? "A ref/F value cannot supply an Exclusive call; call the closure through its own var binding or a uniq/F borrow"
+            : immutable ? call ? "Declare the binding with var to call it" : "Declare the binding with var to assign it again" : null;
+        node.Report(requirement, code, note: callNote, at: target, evidence: [target.ToString()], advice: callAdvice);
     }
 
     // SPEC 4.6.9, 8.4.8.2: a user index publishes its element exclusively only through indexUniq. When the receiver's Type

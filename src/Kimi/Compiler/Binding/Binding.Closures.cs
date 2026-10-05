@@ -19,6 +19,11 @@ public sealed class BoundClosure
 
     public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
 
+    // The first capture use that made the call Exclusive, and whether it Reborrows a captured exclusive reference (SPEC 7.6.3).
+    internal Koto? ExclusiveUse { get; set; }
+
+    internal bool ExclusiveReborrow { get; set; }
+
     internal List<BoundCapture> Storage { get; } = new();
 
     internal List<BindingSymbol> SymbolPool { get; } = new();
@@ -324,6 +329,8 @@ public sealed partial class Binding
         var plan = function.ClosureStorage ??= new();
         plan.Storage.Clear();
         plan.Receiver = SemanticsKind.Ref;
+        plan.ExclusiveUse = null;
+        plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
@@ -459,6 +466,7 @@ public sealed partial class Binding
                         else if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.ExclusiveSlotBorrow && this.plan.Receiver != SemanticsKind.Owner)
                         {
                             this.plan.Receiver = SemanticsKind.Uniq;
+                            this.plan.ExclusiveUse ??= nested;
                         }
                     }
                 }
@@ -513,6 +521,11 @@ public sealed partial class Binding
                     if (this.plan.Receiver != SemanticsKind.Owner)
                     {
                         this.plan.Receiver = SemanticsKind.Uniq;
+                        if (this.plan.ExclusiveUse is null)
+                        {
+                            this.plan.ExclusiveUse = node;
+                            this.plan.ExclusiveReborrow = binding.adaptations.TryGetValue(use, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.Reborrow;
+                        }
                     }
                 }
                 else if (use.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Transfer } ||
