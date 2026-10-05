@@ -76,8 +76,8 @@ public class CallableOriginForwardingTest
     [Theory]
     [InlineData(StoringCallable, nameof(DiagnosticCode.NoApplicableOverload_Kd), "callIt(c@uniq, x)")]
     [InlineData(ReadingCallable, nameof(DiagnosticCode.NoApplicableOverload_Kd), "callIt(c@ref, x)")]
-    [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let g: (ref/i32) -> i32 = c\n    let local: i32 = 5\n    return g(local@ref)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "c")]
-    [InlineData(FixedFunctionValue, nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "f@move")]
+    [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let g: (ref/i32) -> i32 = c\n    let local: i32 = 5\n    return g(local@ref)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd), "c")]
+    [InlineData(FixedFunctionValue, nameof(DiagnosticCode.UnprovenOriginContract_Kd), "f@move")]
     public void AFixedImplementationNeverFitsAPerCallRequirement(string body, string code, string text)
     {
         var source = body + Main;
@@ -95,13 +95,43 @@ public class CallableOriginForwardingTest
         var result = new DiagnosticResult(output.Diagnostics, output.Sources);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains("requires x outlives the omitted Origin of ref/i32, which is not proven", console.Text, StringComparison.Ordinal);
+        Assert.Contains("the 1st parameter requires the omitted Origin of ref/i32 outlives x, which is not proven", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("self", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("{name}", console.Text, StringComparison.Ordinal);
         Assert.Equal("ref/i32", (FixedFunctionValue + Main).Substring(record.Related![0].Span!.Value.Start, record.Related[0].Span!.Value.Length));
         var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
-        Assert.Contains("{\"name\":\"shorter\",\"kind\":\"Origin\",\"value\":\"ref/i32\",\"elided\":false,\"origin\":\"omitted\"}", json, StringComparison.Ordinal);
+        Assert.Contains("{\"name\":\"longer\",\"kind\":\"Origin\",\"value\":\"ref/i32\",\"elided\":false,\"origin\":\"omitted\"}", json, StringComparison.Ordinal);
     }
+
+    // SPEC 10.7, 15.6.1, 23.3.6.5: a common Function conversion whose signatures match structurally and whose Origin contract is not
+    // proven is one UnprovenOriginContract_Kd at the converted value. Its member is the failing parameter or the result, and its ends
+    // are rigid symbols of the comparison, displayed as the required contract writes them, never a call-time Origin of the implementation.
+    [Theory]
+    [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let g: (ref/i32) -> i32 = c\n    return g(x)\n", "c", "the 1st parameter requires the omitted Origin of ref/i32 outlives x, which is not proven")]
+    [InlineData("func use(x: ref/i32, f: (ref/i32 during x, ref/i32) -> i32) -> i32\n    let g: (ref/i32, ref/i32) -> i32 = f@move\n    let local: i32 = 5\n    return g(local@ref, local@ref)\n", "f@move", "the 1st parameter requires the omitted Origin of ref/i32 outlives x, which is not proven")]
+    [InlineData("func id(x: ref/i32) -> ref/i32 => x\nfunc use() -> ()\n    let f: (ref/i32) -> ref/i32 during static = id\n", "id", "the result requires the omitted Origin of ref/i32 outlives static, which is not proven")]
+    [InlineData("func id(n: ref/i32) -> ref/i32 => n\nfunc use(x: ref/i32) -> ref/i32 during x\n    let g: (ref/i32) -> ref/i32 during x = id\n    let local: i32 = 5\n    return g(local@ref)\n", "id", "the result requires the omitted Origin of ref/i32 outlives x, which is not proven")]
+    public void AConversionReportsItsOriginContract(string body, string text, string label)
+    {
+        var source = body + "public func main() => ()\n";
+        var output = DiagnosticCorpus.Check(source);
+        var error = Assert.Single(output.Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), DiagnosticCategory.Proof, text), (error.Code, error.Category, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        var result = new DiagnosticResult(output.Diagnostics, output.Sources);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains(label, console.Text, StringComparison.Ordinal);
+        Assert.Contains(" = origin: ", console.Text, StringComparison.Ordinal);
+        var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
+        Assert.Contains("{\"name\":\"comparison\",\"kind\":\"Text\",\"value\":\"conversion\",\"elided\":false}", json, StringComparison.Ordinal);
+    }
+
+    // The same conversions with a fitting contract are accepted: the required input written over the fixed Origin, or a static result.
+    [Theory]
+    [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let g: (ref/i32 during x) -> i32 = c\n    return g(x)\n")]
+    [InlineData("func id(n: ref/i32) -> ref/i32 => n\nfunc use(x: ref/i32) -> ref/i32 during x\n    let g: (ref/i32 during x) -> ref/i32 during x = id\n    return g(x)\n")]
+    public void AFittingContractConverts(string body)
+        => Assert.Empty(DiagnosticCorpus.Check(body + "public func main() => ()\n").Diagnostics);
 
     private const string Add = "func add(a: ref/i32, b: ref/i32) -> i32 => a@follow + b@follow\n";
 

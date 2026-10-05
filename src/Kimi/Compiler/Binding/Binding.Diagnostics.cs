@@ -51,6 +51,8 @@ public sealed partial class Binding
     // SPEC 15.6.1: the Origin relation that an Origin-only fit failure leaves, at the value that supplies its longer end.
     private Dictionary<Koto, OriginRelationFact>? originRelations;
 
+    private Dictionary<Koto, OriginContractFact>? originContracts;
+
     // SPEC 13.2, 13.3: the operand Type an operator rejected, or the count Type a shift rejected, recorded only when the check fails.
     private Dictionary<Koto, BoundType>? operatorOperands;
 
@@ -129,7 +131,7 @@ public sealed partial class Binding
         var input = OuterInput(relation.Longer);
         var anonymous = relation.Longer is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } };
         var advice = relation.Equality ? $"Use one Origin at both positions, or bind {shorter.Text} to {longer.Text} where it is introduced"
-            : anonymous && relation.Shorter.Kind != OriginKind.Static ? $"An anonymous function has no origin clauses; write the input as '{(input is not null ? $"{input.InternalName}: {input.Type} during {shorter.Text}" : $"during {shorter.Text}")}' so that it accepts only borrows that outlive {shorter.Text}{bound}"
+            : anonymous && relation.Shorter.Kind != OriginKind.Static ? $"An anonymous function has no origin clauses; write the input as '{(input is not null ? $"{input.InternalName}: {WrittenInputType(input)} during {shorter.Text}" : $"during {shorter.Text}")}' so that it accepts only borrows that outlive {shorter.Text}{bound}"
             : relation.Shorter.Kind != OriginKind.Static ? $"If {longer.Text} always outlives {shorter.Text}, add 'origin {longer.Text} outlives {shorter.Text}', which changes the public contract{bound}"
             : input?.Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq } ? $"{longer.Text} is an exclusive borrow, which cannot be bound to static; return an owned value instead"
             : $"Bind {longer.Text} to static where it is introduced, as in '{(input is not null ? $"{input.InternalName}: {input.Type} during static" : "during static")}'{bound}";
@@ -144,6 +146,10 @@ public sealed partial class Binding
     private static Koto? OmittedInput(BoundOrigin origin)
         => origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto binder } && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder)
             ? InputType(binder, origin.InputIndex) is ParenthesizedTypeKoto { Type: { } inner } ? inner : InputType(binder, origin.InputIndex) : null;
+
+    // A parameter's Type as written, or its bound Type when the anonymous function omitted it.
+    private static string WrittenInputType(FunctionParameterKoto input)
+        => input.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } && input.Type.BoundType is { } bound ? DiagnosticTypeName(bound) : input.Type.ToString();
 
     // The parameter whose outer borrow an Input Origin is.
     private static FunctionParameterKoto? OuterInput(BoundOrigin origin)
@@ -442,6 +448,24 @@ public sealed partial class Binding
     // SPEC 15.6.1, 23.3.6.5: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
+    // SPEC 15.6.1, 23.3.6.5: the Reason names the comparison, the member, the relation and its two ends, rigid symbols of the comparison
+    // displayed as the required contract writes them; an omitted end is related at its Type occurrence. Advice only describes a repair.
+    private static void ReportOriginContract(Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var longer = OriginDisplay(contract.Longer, null);
+        var shorter = OriginDisplay(contract.Shorter, null);
+        var longerAt = longer.Kind == "omitted" ? OmittedAt(contract.Longer) : null;
+        var shorterAt = shorter.Kind == "omitted" ? OmittedAt(contract.Shorter) : null;
+        (string Role, Koto At, string? Label)[]? related = longerAt is not null && shorterAt is not null ? [("origin", longerAt, null), ("origin", shorterAt, null)]
+            : longerAt is not null ? [("origin", longerAt, null)]
+            : shorterAt is not null ? [("origin", shorterAt, null)]
+            : null;
+        var advice = contract.Member != "the result" ? $"Write {contract.Member} of the required Type over {shorter.Text}, or convert an implementation that accepts any borrow there"
+            : longer.Kind == "omitted" ? $"Leave the required result's Origin omitted, which bounds it by the borrowed inputs, or convert an implementation whose result outlives {shorter.Text}"
+            : $"Write the required result over {longer.Text}, or convert an implementation whose result outlives {shorter.Text}";
+        node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, advice: advice, at: contract.At);
+    }
+
     private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note)
     {
         var (evidence, advice, related) = OriginRelationFacts(relation, "fit");
@@ -639,8 +663,44 @@ public sealed partial class Binding
     // An Origin part that only proof leaves unproven, between finite Origins or inferred regions, is a chain the relation judge
     // accepts (SPEC 15.6.5); a fit that still needs it, such as reassigning a borrow local to another Borrow, needs local-region
     // inference and is a located Unsupported (SPEC 23.3.6.1), never a relation record.
+    // The signature and own binder an implementation converts to a common Function Type with (SPEC 7.6.4): a Function value, a Function
+    // Item proven Owned, or a closure with a Shared receiver and a proven Owned environment. Other failures stay Type mismatches.
+    private bool ConversionSignature(BoundType implementation, Koto use, out BoundType signature, out Koto? own)
+    {
+        own = SignatureOwner(implementation);
+        signature = implementation;
+        if (implementation.Kind == BoundTypeKind.Function)
+        {
+            return implementation.Components.Count == 2;
+        }
+
+        if (implementation.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(implementation) is { } item && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
+        {
+            signature = item;
+            return true;
+        }
+
+        if (implementation is { Kind: BoundTypeKind.Closure, Symbol.Declaration: FunctionKoto { ClosureStorage: { Receiver: SemanticsKind.Ref, Signature: not null } } } &&
+            this.ClosureSignature(implementation) is { } closure && this.ProveOwned(implementation, use) == ConstraintProof.Proven)
+        {
+            signature = closure;
+            return true;
+        }
+
+        return false;
+    }
+
     private BoundType? RecordMismatch(Koto node, Koto at, object actual, object expected)
     {
+        // SPEC 10.7, 15.6.1: a common Function conversion compares whole contracts; with matching signatures, its Origin failure is
+        // one UnprovenOriginContract_Kd at the converted value, never a Type mismatch or a relation per position.
+        if (expected is BoundType { Kind: BoundTypeKind.Function } required && actual is BoundType implementation &&
+            this.ConversionSignature(implementation, node, out var signature, out var own) && ReferenceTypes.StorageMatches(required, signature) &&
+            this.ConversionContractFailure(signature, required, own, at, node) is { } contract)
+        {
+            return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
+        }
+
         if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType))
         {
             if (this.FailedOriginRelation(actualType, expectedType, node, false, judged: true) is { } relation)
@@ -969,6 +1029,7 @@ public sealed partial class Binding
     {
         this.mismatches?.Clear();
         this.originRelations?.Clear();
+        this.originContracts?.Clear();
         this.operatorOperands?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();

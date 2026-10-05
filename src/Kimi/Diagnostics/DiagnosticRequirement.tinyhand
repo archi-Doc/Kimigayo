@@ -588,6 +588,9 @@
   + Name="Binding.OriginRelation"
     Description="the Origin relation of a fit holds"
 
+  + Name="Binding.OriginContract"
+    Description="the implementation's Origin contract admits every call of the required one"
+
   + Name="Binding.BareOwningShorthand"
     Description="the owning shorthand names a Type"
 

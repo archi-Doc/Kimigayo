@@ -161,6 +161,9 @@ internal enum BindingFailure : byte
     // SPEC 15.6.1: a fit whose structural part holds and whose Origin part is Refuted or not proven.
     OriginRelation,
 
+    // SPEC 10.7, 15.6.1: a common Function conversion whose signatures match structurally and whose Origin contract is not proven.
+    OriginContract,
+
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,
@@ -546,5 +549,9 @@ internal enum OriginJudgment : byte
     Unknown,
     Unrepresentable,
 }
+
+// SPEC 15.6.1, 23.3.6.5: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
+// comparison, never a call-time Origin of the implementation.
+internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality);
 
 internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted);

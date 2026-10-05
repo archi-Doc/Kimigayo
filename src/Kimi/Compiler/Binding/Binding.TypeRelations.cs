@@ -240,6 +240,84 @@ public sealed partial class Binding
         return binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
     }
 
+    // SPEC 10.7, 15.6.1, 23.3.6.5: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
+    // parameter, whose required input must outlive the implementation's, or the result, which must outlive the required one. Both ends
+    // are instantiated, so neither is a call-time Origin of the implementation.
+    private OriginContractFact? ConversionContractFailure(BoundType actual, BoundType expected, Koto? own, Koto at, Koto use)
+    {
+        if (actual.Components.Count != 2 || expected.Components.Count != 2)
+        {
+            return null;
+        }
+
+        var instance = new CallableInstance(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected));
+        var inputs = actual.Components[0];
+        var required = expected.Components[0];
+        for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)
+        {
+            var input = inputs.Components[i];
+            var part = instance.IsQuantifiedInput(input, i)
+                ? this.FailedInstancePart(required.Components[i].Components[0], input.Components[0], input.Semantics == SemanticsKind.Uniq, instance, use)
+                : this.FailedInstancePart(required.Components[i], input, false, instance, use);
+            if (part is { } failed)
+            {
+                return new(at, $"the {Ordinal(i + 1)} parameter", failed.Longer, failed.Shorter, failed.Equality);
+            }
+        }
+
+        return this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result
+            ? new(at, "the result", result.Longer, result.Shorter, result.Equality) : null;
+
+        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // The first Origin position, in the order of FailedOriginRelation, at which `longer` does not fit `shorter` under the instantiation.
+    private (BoundOrigin Longer, BoundOrigin Shorter, bool Equality)? FailedInstancePart(BoundType longer, BoundType shorter, bool invariant, in CallableInstance instance, Koto use, int depth = 0)
+    {
+        if (depth > 64 || longer.Components.Count != shorter.Components.Count || longer.OriginArguments.Count != shorter.OriginArguments.Count)
+        {
+            return null;
+        }
+
+        if (longer.Origin is { } a && shorter.Origin is { } b && !ReferenceEquals(a, b) &&
+            (!InstanceOutlives(a, b, instance, this, use, 0) || (invariant && !InstanceOutlives(b, a, instance, this, use, 0))))
+        {
+            return (instance.Instantiate(a), instance.Instantiate(b), invariant);
+        }
+
+        var exclusive = longer.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
+        for (var i = 0; i < longer.Components.Count && longer.Kind == BoundTypeKind.Semantics; i++)
+        {
+            if (this.FailedInstancePart(longer.Components[i], shorter.Components[i], invariant || exclusive, instance, use, depth + 1) is { } target)
+            {
+                return target;
+            }
+        }
+
+        for (var i = 0; i < longer.OriginArguments.Count; i++)
+        {
+            var a2 = longer.OriginArguments[i];
+            var b2 = shorter.OriginArguments[i];
+            var variance = longer.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+            var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
+            if (!ReferenceEquals(a2, b2) && (both ? !InstanceOutlives(a2, b2, instance, this, use, 0) || !InstanceOutlives(b2, a2, instance, this, use, 0)
+                : variance == OriginVariance.Covariant ? !InstanceOutlives(a2, b2, instance, this, use, 0) : !InstanceOutlives(b2, a2, instance, this, use, 0)))
+            {
+                return (instance.Instantiate(a2), instance.Instantiate(b2), both);
+            }
+        }
+
+        for (var i = 0; i < longer.Components.Count && longer.Kind is not (BoundTypeKind.Semantics or BoundTypeKind.Function); i++)
+        {
+            if (this.FailedInstancePart(longer.Components[i], shorter.Components[i], invariant, instance, use, depth + 1) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        return null;
+    }
+
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
     {
         if (this.FitsTypeAt(actual, expected, use))
@@ -250,6 +328,11 @@ public sealed partial class Binding
         if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
         {
             return false;
+        }
+
+        if (actual.Kind == BoundTypeKind.Function)
+        {
+            return false; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
         }
 
         if (!ReferenceEquals(actual.Origin, expected.Origin))

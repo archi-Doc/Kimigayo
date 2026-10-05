@@ -337,7 +337,11 @@ public sealed partial class Binding
             {
                 if (count == 1 && this.FunctionItemSignature(this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, [])) is { } actual)
                 {
-                    return this.FailMismatch(use, use, actual, required);
+                    // SPEC 10.7, 15.6.1: when the one candidate's signature matches and only its Origin contract fails, the record names
+                    // that contract, with the candidate's own inputs instantiated.
+                    return ReferenceTypes.StorageMatches(required, actual) && this.ConversionContractFailure(actual, required, symbol.Declaration, use, use) is { } contract
+                        ? this.FailExplained(ref this.originContracts, use, BindingFailure.OriginContract, contract)
+                        : this.FailMismatch(use, use, actual, required);
                 }
 
                 var rejected = new RejectedCandidate[applicable == 0 ? count : applicable];
