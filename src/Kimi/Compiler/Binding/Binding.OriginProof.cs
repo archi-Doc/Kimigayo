@@ -28,10 +28,11 @@ public sealed partial class Binding
     internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use)
         => this.JudgeOriginRelation(longer, shorter, use) is OriginJudgment.Refuted or OriginJudgment.Unknown;
 
-    // SPEC 15.6.5: Proven by the solver's premises, or because a fixed Origin, which contains every point of the body, outlives a
-    // finite Origin or an inferred region; Refuted when a finite Origin must outlive a fixed one; Unknown between fixed Origins.
-    // A chain between two body Origins is Proven by the spec and constrains region inference, which ownership analysis does not
-    // perform: its Loans follow only the Origins written in a holder's Type. Such a chain is Unrepresentable, a located limit.
+    // SPEC 15.6.5: Proven by the solver's premises, or because static, which holds no Loan of the body, outlives a finite Origin or
+    // an inferred region; Refuted when a finite Origin must outlive a fixed one; Unknown between fixed Origins. Any other chain with a
+    // finite Origin or an inferred region at one end is Proven by the spec and constrains region inference, which ownership analysis
+    // does not perform: its Loans follow only the Origins written in a holder's Type, so the longer end's Loans, those of a Borrow
+    // or of the body's own inputs, would be lost. Such a chain is Unrepresentable, a located limit.
     internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         if (this.ProvesOriginOutlives(longer, shorter, use))
@@ -48,8 +49,8 @@ public sealed partial class Binding
 
         return !FixedOrigin(longer) ? OriginJudgment.Unrepresentable
             : FixedOrigin(shorter) ? OriginJudgment.Unknown
-            : shorter.Kind == OriginKind.Anchor ? OriginJudgment.Unrepresentable
-            : OriginJudgment.Proven;
+            : longer.Kind == OriginKind.Static && shorter.Kind != OriginKind.Anchor ? OriginJudgment.Proven
+            : OriginJudgment.Unrepresentable;
     }
 
     // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
