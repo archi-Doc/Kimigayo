@@ -125,6 +125,18 @@ public class ArrayMembersTest
     public void CallbackArgumentsExecuteThroughFunctionItems()
         => ScalarEmissionTest.EmitFixture("ArrayMembersCallables", Callables, "Callables ok.\n");
 
+    // SPEC 4.7.2, 7.6.1, 10.5: direct anonymous callbacks take their parameter Types from the Callable signature, also with captures and
+    // a Non-Copy element Type.
+    [Fact]
+    public void DirectAnonymousCallbacksExecute()
+    {
+        const string Source = "var values: Array<i32> = [3, 1, 2, 5, 4]\nvalues.sort(by: func (a, b) => a@follow - b@follow)\nvalues.removeAll(matching: func (v) => v@follow % 2 == 0)\n" +
+            "let limit = 3\nvalues.removeAll(matching: func [limit] (v) => v@follow > limit)\n" +
+            "var names: Array<string> = [\"b\", \"a\", \"c\"]\nnames.sort(by: func (a: ref/string, b: ref/string) -> i32 => if a == b => 0 else if a == \"a\" => -1 else => 1)\n" +
+            "require values.length == 2 and values[0] == 1 and values[1] == 3 and names[0] == \"a\" else => $abort(\"callbacks\")\nConsole.writeLine(\"Anonymous ok.\")";
+        ScalarEmissionTest.EmitFixture("ArrayMembersAnonymousCallables", Source, "Anonymous ok.\n");
+    }
+
     [Theory]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nvalues.swap(first: 0, second: 0)\nlet n = view.length")]
     [InlineData("let values: Array<i32> = [1]\nvalues.truncate(0)")]
