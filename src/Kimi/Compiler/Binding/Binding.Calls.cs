@@ -458,7 +458,8 @@ public sealed partial class Binding
             {
                 if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                 {
-                    if (this.TakesCallableContext(group) && !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)))
+                    if (this.TakesCallableContext(group) && !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)) &&
+                        !this.ExplicitReferenceValue(argument, item, scope))
                     {
                         continue; // SPEC 10.5: a waiting reference uses the selected fixed call signature once.
                     }

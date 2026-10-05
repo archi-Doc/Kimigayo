@@ -72,6 +72,10 @@ public class GenericFunctionReferenceTest
     [InlineData("String", Identity + "let f = identity<string>\nConsole.writeLine(f(\"text\"))", "text\n")]
     [InlineData("Qualified", "group Tools\n    public func echo<T>(value: T) -> T => value@move\nlet g = Tools.echo<i32>\nrequire g(6) == 6 else => $abort(\"qualified\")", "")]
     [InlineData("Parenthesized", Identity + "let h: (bool) -> bool = (identity<bool>)\nrequire h(true) else => $abort(\"parenthesized\")", "")]
+    // SPEC 10.5, 10.8: such a reference needs no fixed call signature, so its Item signature is evidence for the outer call.
+    [InlineData("OpenResult", Identity + "func run<R, F>(action: ref/F) -> R\n    F is Callable<(i32) -> R>\n    return action(1)\nlet r = run(identity<i32>)\nrequire r == 1 else => $abort(\"open\")", "")]
+    [InlineData("OuterFilter", Identity + "func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return 1\nfunc run<F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(i64) -> i64>\n    return 2\nrequire run(identity<i64>) == 2 else => $abort(\"filter\")", "")]
+    [InlineData("OriginInput", "func first<T>(value: ref/T) -> ref/T => value\nfunc apply<F>(action: ref/F, x: ref/i32) -> ref/i32 during x\n    F is Callable<(ref/i32) -> ref/i32>\n    return action(x)\nlet x: i32 = 7\nrequire apply(first<i32>, x@ref)@follow == 7 else => $abort(\"origin\")", "")]
     public void ExplicitTypeArgumentsSelectTheReference(string name, string source, string stdout)
     {
         var c = MinimalEmissionTest.Analyze(source);

@@ -218,6 +218,29 @@ public sealed partial class Binding
         return this.Fail(use, BindingFailure.Ambiguous);
     }
 
+    // SPEC 10.5: a reference whose explicit Type arguments select exactly one candidate does not need the call's signature; it
+    // is an independently typable argument whose Item signature is evidence (SPEC 10.8). Nothing is reported here.
+    private bool ExplicitReferenceValue(Koto argument, BindingSymbol symbol, BindingScope scope)
+    {
+        if (KotoHelper.UnwrapParentheses(argument) is not GenericsKoto explicitReference)
+        {
+            return false;
+        }
+
+        var count = explicitReference.TypeArguments.Count;
+        var candidates = 0;
+        for (var candidate = symbol; candidate is not null; candidate = candidate.Next)
+        {
+            this.BindHeader(candidate);
+            if (candidate.Declaration is FunctionKoto function && function.GenericArguments.Count == count && this.Accessible(candidate, scope))
+            {
+                candidates++;
+            }
+        }
+
+        return candidates == 1;
+    }
+
     // SPEC 10.5: without a fixed expected call signature, a reference with explicit Type arguments is a value when exactly one
     // candidate takes those arguments; its Constraints are proven for them.
     private BoundType? BindExplicitFunctionItem(Koto use, GenericsKoto explicitReference, BindingSymbol symbol, BindingScope scope)
