@@ -171,7 +171,7 @@ Lines, columns and excerpts are computed from the same immutable source when the
 
 #### 23.3.6.4. Problems, prerequisites and suppression
 
-A **problem** is one failed requirement of one subject in one context, with one code. A context, such as an instantiation, belongs to a problem only when the requirement's outcome or facts depend on it.
+A **problem** is one failed requirement of one subject in one context, with one code. A context, such as an instantiation, belongs to a problem only when the requirement's outcome or facts depend on it. A [Semantics case](08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations) under which a problem was found is a Reason fact of the problem, not a context: one problem found under several cases is one record whose `case` fact names them all, and a problem that holds in every case shows no case.
 
 - Each problem is reported at most once. Repeated reports merge; two problems at the same position are both reported. A problem spanning several subjects is normalized before it is reported: for a duplicate declaration, each later declaration is a subject with the first one as a related location.
 - A check that cannot decide its requirement because another requirement failed names that **prerequisite** explicitly. It is a **derived** problem, reported as `PrerequisiteUnavailable_Kd` (Error, `Proof`); its Reason names the requirement and the missing condition.
@@ -199,7 +199,7 @@ Limits never change a problem's identity, category, survival, location or the ac
 | --- | --- | --- |
 | `expression` | A fixed Origin that an Origin expression (§15.2.1) can write: `static`, a signature name, a parameter or receiver, a projection such as `p.a`, or a meet | The expression written in the signature; without a written name, the parameter or projection |
 | `borrow` | A finite Origin (§15.6.5), and in a Closure body the fixed Origin of a capture item's Borrow or Reborrow | The source text of the Borrow (`local@ref`, `State.count@ref`); for an implicit Borrow, that of its Place or temporary (`node`, `makeResource()`); for a capture item, the item (`bias@ref`, or `view` for a bare entry that Reborrows) |
-| `omitted` | A fixed Origin without a name or projection, such as the slot of `View` in `items: ref/Array<View<T>>` | The source text of that Type occurrence |
+| `omitted` | A fixed Origin without a name or projection, such as the slot of `View` in `items: ref/Array<View<T>>`, or the outer Origin `o` of a pair binder (§8.1.1) | The source text of that Type occurrence, or of the `<s/T>` declaration |
 | `closure` | A fixed Origin of a Closure's internal call contract (§7.6.3) that no Origin expression can write: its call receiver, or the Origin of a whole result inferred from the body (§15.8.2) | The fixed text `call receiver` or `call result` |
 
 - A `borrow`, `omitted` or `closure` string is never written as an Origin expression: a Reason names "the borrow `State.count@ref`", never `during State.count` (§15.9), and "the closure's call receiver", never `during self`.
