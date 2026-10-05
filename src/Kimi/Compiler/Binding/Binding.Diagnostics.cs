@@ -79,7 +79,7 @@ public sealed partial class Binding
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
 
     // SPEC 7.6.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
-    private Dictionary<Koto, (CaptureKoto Capture, BoundType Type)>? captureFailures;
+    private Dictionary<Koto, (CaptureKoto Capture, BoundType Type, BindingSymbol? Source)>? captureFailures;
 
     // SPEC 9.6.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
     // the generic container that declares it (Outer), with the declared and the written counts.
@@ -370,6 +370,225 @@ public sealed partial class Binding
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
     }
 
+    // SPEC 7.2.3, 8.10: a default is checked as a generic body is, for every binding that satisfies the Constraints, and binds no
+    // slot. The rule decides a mismatch of the whole default and of any part of it, such as an arm, a Tuple element or an operand;
+    // the body of a function inside the default is that function's own. When the whole default's parameter Type is a Type
+    // parameter with one Callable signature that the default fits (SPEC 10.7), that common Function Type accepts the default by
+    // erasure (SPEC 7.6.4); changing the parameter Type is an API choice, so it is Advice.
+    private string? GenericDefaultNote(Koto node, object actual, object expected, out string? advice)
+    {
+        advice = null;
+        var value = node;
+        while (value.Parent is ParenthesizedKoto parentheses)
+        {
+            value = parentheses;
+        }
+
+        var root = value;
+        while (root.Parent is { } parent and not FunctionKoto)
+        {
+            root = parent;
+        }
+
+        if (expected is not BoundType { ContainsParameter: true } required || root.Parent is not FunctionKoto function)
+        {
+            return null;
+        }
+
+        var index = function.Parameters.Count - 1;
+        while (index >= 0 && !ReferenceEquals(function.Parameters[index].DefaultValue, root))
+        {
+            index--;
+        }
+
+        if (index < 0 || !this.SomeBindingFits(function, KotoHelper.UnwrapParentheses(value), actual, required))
+        {
+            return null;
+        }
+
+        var name = DiagnosticTypeName(required);
+        if (ReferenceEquals(value, root) && required.Kind == BoundTypeKind.Parameter && actual is BoundType source &&
+            this.TryCallable(required, this.ConstraintScope(value), out var signature, out _, out var several) && !several && signature.Kind == BoundTypeKind.Function &&
+            this.ValueSignature(source) is { } own && CallableSignatureFits(own, signature, SignatureOwner(source)))
+        {
+            advice = $"Declare the parameter as {DiagnosticTypeName(signature)}, which accepts {value} by erasure as an owned Non-Copy value, or remove the default and pass {value} at the calls";
+        }
+
+        return required.Kind == BoundTypeKind.Parameter
+            ? $"A default is checked for every binding of {name} that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)"
+            : $"A default is checked for every binding of the Type parameters in {name} that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)";
+    }
+
+    // SPEC 7.2.3, 8.10: the every-binding rule decides a default's mismatch only when some binding that satisfies the Constraints
+    // makes the mismatched default or part fit. The Type parameters are those of the declaration and of every enclosing generic
+    // declaration, such as the struct of a method. Each takes the part's own Type (an integer or floating-point literal its default
+    // Type), never one that contains that parameter itself (T = x@ref of x: T); every other part of the expected Type must be
+    // that Type's own part, and no Constraint of those declarations may be refuted for the binding. An anonymous function is
+    // checked against its expectation, so it fits a Type parameter whose one Callable signature has its arity, or one with no
+    // Callable signature. A Type parameter that none of these declarations declares is presumed to fit.
+    private bool SomeBindingFits(FunctionKoto function, Koto value, object actual, BoundType required)
+    {
+        var scope = this.ConstraintScope(value);
+        BoundType? candidate = actual switch
+        {
+            BoundType type => type,
+            "integer literal" => BoundType.I32,
+            "floating-point literal" => BoundType.F64,
+            _ => null,
+        };
+
+        if (candidate is null)
+        {
+            if (required.Kind != BoundTypeKind.Parameter || value is not FunctionKoto { IsAnonymous: true } closure)
+            {
+                return false;
+            }
+
+            if (!this.TryCallable(required, scope, out var signature, out _, out var several))
+            {
+                return !several;
+            }
+
+            return signature.Kind == BoundTypeKind.Function &&
+                (ReferenceEquals(signature.Components[0], BoundType.Unit) ? 0 : signature.Components[0].Components.Count) == closure.Parameters.Count;
+        }
+
+        // The declarations whose Type parameters a binding chooses, innermost first, each with its Constraints.
+        var binders = new List<(Koto Binder, IReadOnlyList<Koto> Clauses, BoundType[] Parameters, BoundType?[] Arguments)>();
+        for (Koto? declaration = function; declaration is not null; declaration = declaration.Parent)
+        {
+            var added = declaration switch
+            {
+                FunctionKoto generic => AddBinder(generic, generic.TypeConstraints, generic.GenericArguments),
+                DeclarationContainerKoto container => AddBinder(container, container.ConstraintNodes, container.GenericArguments),
+                _ => true,
+            };
+
+            if (!added)
+            {
+                return true;
+            }
+        }
+
+        if (!Bind(candidate, required))
+        {
+            return false;
+        }
+
+        // A Callable signature is decided by its fit (SPEC 10.7); the other Constraints by their proof for the binding.
+        if (required.Kind == BoundTypeKind.Parameter && this.ValueSignature(candidate) is { } own &&
+            this.TryCallable(required, scope, out var callable, out _, out var distinct) && !distinct && callable.Kind == BoundTypeKind.Function &&
+            !CallableSignatureFits(own, callable, SignatureOwner(candidate)))
+        {
+            return false;
+        }
+
+        foreach (var (binder, clauses, _, arguments) in binders)
+        {
+            if (clauses.Count != 0 && this.CheckConstraints(clauses, binder, arguments, scope) == ConstraintProof.Refuted)
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        bool AddBinder(Koto binder, IReadOnlyList<Koto> clauses, IReadOnlyList<TypeKoto> declared)
+        {
+            if (declared.Count == 0)
+            {
+                return true;
+            }
+
+            var parameters = new BoundType[declared.Count];
+            for (var i = 0; i < declared.Count; i++)
+            {
+                if (declared[i] is not GenericParameterKoto { BoundType: { } parameter })
+                {
+                    return false;
+                }
+
+                parameters[i] = parameter;
+            }
+
+            binders.Add((binder, clauses, parameters, (BoundType?[])parameters.Clone()));
+            return true;
+        }
+
+        bool Bind(BoundType type, BoundType part)
+        {
+            if (part.Kind == BoundTypeKind.Parameter)
+            {
+                foreach (var (_, _, parameters, arguments) in binders)
+                {
+                    for (var i = 0; i < parameters.Length; i++)
+                    {
+                        if (ReferenceEquals(parameters[i], part))
+                        {
+                            if (ReferenceEquals(arguments[i], part))
+                            {
+                                // A binding of T to a Type that contains T is no binding at all.
+                                arguments[i] = type;
+                                return !Mentions(type, part);
+                            }
+
+                            return ReferenceEquals(arguments[i], type);
+                        }
+                    }
+                }
+
+                return true;
+            }
+
+            if (!part.ContainsParameter)
+            {
+                return ReferenceEquals(type, part);
+            }
+
+            if (type.Kind != part.Kind || !ReferenceEquals(type.Symbol, part.Symbol) || type.Semantics != part.Semantics || type.Components.Count != part.Components.Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < part.Components.Count; i++)
+            {
+                if (!Bind(type.Components[i], part.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        static bool Mentions(BoundType type, BoundType parameter)
+        {
+            if (ReferenceEquals(type, parameter))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (Mentions(type.Components[i], parameter))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    // The call signature of a Function Item, closure or Function value.
+    private BoundType? ValueSignature(BoundType value) => value.Kind switch
+    {
+        BoundTypeKind.FunctionItem => this.FunctionItemSignature(value),
+        BoundTypeKind.Closure => this.ClosureSignature(value),
+        BoundTypeKind.Function => value,
+        _ => null,
+    };
+
     private string? ClosureConversionNote(Koto node, object actual, object expected)
     {
         if (expected is not BoundType { Kind: BoundTypeKind.Function } signature)
@@ -607,74 +826,6 @@ public sealed partial class Binding
         node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, advice: advice, at: contract.At);
     }
 
-    // SPEC 15.2.3, 23.3.6.5: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
-    // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
-    // entry and related there. Advice only describes a repair.
-    private static void ReportOwnedConversion(Koto node, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var subject = DiagnosticTypeName(owned.Subject);
-        var entry = owned.Entry is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
-        var origin = owned.Origin is not { } failing ? (DiagnosticOrigin?)null
-            : entry is { } written ? new DiagnosticOrigin("borrow", written.Name + "@" + written.Operation) : OriginDisplay(failing, owned.Borrow);
-
-        // SPEC 23.3.6.5: a borrow end is related at its syntax: a capture entry that borrows, or the Borrow a captured binding was
-        // initialized by; otherwise at the capture entry or the converted value. An omitted end is related at its Type occurrence.
-        (string Role, Koto Owner, SourceSpan Span, string? Label)[]? spans = null;
-        (string Role, Koto At, string? Label)[]? related = null;
-        if (origin is { Kind: "borrow" or "omitted" } relatedOrigin)
-        {
-            if (entry is { } at && owned.Closure is { } closure)
-            {
-                spans = [("origin", closure, at.Span, null)];
-            }
-            else if (relatedOrigin.Kind == "omitted" && OmittedAt(owned.Origin!) is { } occurrence)
-            {
-                related = [("origin", occurrence, null)];
-            }
-            else if (owned.Borrow is { } borrow)
-            {
-                related = [("origin", borrow, null)];
-            }
-            else if (owned.Entry is { } named && owned.Closure is { } owner)
-            {
-                spans = [("origin", owner, named.Span, null)];
-            }
-            else
-            {
-                related = [("origin", owned.At, null)];
-            }
-        }
-
-        string note, advice;
-        if (owned.Closure is not null)
-        {
-            note = origin is { } shown
-                ? $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
-                : $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} is not proven Owned";
-            advice = owned.Refuted && entry is not null ? $"Capture {owned.Member} by Copy or Move instead of borrowing its slot, or keep the concrete closure without converting it to a common Function Type"
-                : owned.Refuted ? $"Capture an owned value instead of {owned.Member}, which holds a borrow, or keep the concrete closure without converting it to a common Function Type"
-                : owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or keep the concrete closure without converting it"
-                : $"Prove the capture {owned.Member} Owned, or keep the concrete closure without converting it to a common Function Type";
-        }
-        else
-        {
-            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.6.4, 15.2.3); the {owned.Member} is not proven Owned";
-            advice = owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or bind an Owned Type argument"
-                : "Bind Owned Type arguments, or keep the concrete Item without converting it to a common Function Type";
-        }
-
-        object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
-        node.Report(requirement, code, note: note, advice: advice, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
-
-        static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
-        {
-            "borrow" => "the borrow " + origin.Text,
-            "omitted" => "the omitted Origin of " + origin.Text,
-            "closure" => "the closure's " + origin.Text,
-            _ => origin.Text,
-        };
-    }
-
     // The capture entry that names an environment binding, when the closure has a capture list.
     private static CaptureKoto? CaptureEntryOf(FunctionKoto closure, string name)
     {
@@ -685,6 +836,25 @@ public sealed partial class Binding
                 if (captures[i].Name == name)
                 {
                     return captures[i];
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 7.2.3: the preceding argument of the function whose later default holds a closure that its environment binding takes,
+    // if any. The plan is read even when the closure's own conversion failed.
+    private static BindingSymbol? PreparedCapture(FunctionKoto closure, string name)
+    {
+        if (closure.ClosureStorage is { } bound)
+        {
+            for (var i = 0; i < bound.Captures.Count; i++)
+            {
+                var capture = bound.Captures[i];
+                if (capture.Environment.Name == name && capture.Source is { } source && ScalarDefaults.InLaterDefault(closure, source))
+                {
+                    return source;
                 }
             }
         }
@@ -894,17 +1064,113 @@ public sealed partial class Binding
         node.Report(requirement, code, note: note, advice: advice, related: [("declaration", arity.Declaration.Declaration, null)]);
     }
 
+    // SPEC 15.2.3, 23.3.6.5: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
+    // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
+    // entry and related there. Advice only describes a repair.
+    private void ReportOwnedConversion(Koto node, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var subject = DiagnosticTypeName(owned.Subject);
+        var entry = owned.Entry is { Operation: not null and not Constants.MoveOperation } borrowEntry ? borrowEntry : (CaptureKoto?)null;
+        var origin = owned.Origin is not { } failing ? (DiagnosticOrigin?)null
+            : entry is { } written ? new DiagnosticOrigin("borrow", written.Name + "@" + written.Operation) : OriginDisplay(failing, owned.Borrow);
+
+        // SPEC 23.3.6.5: a borrow end is related at its syntax: a capture entry that borrows, or the Borrow a captured binding was
+        // initialized by; otherwise at the capture entry or the converted value. An omitted end is related at its Type occurrence.
+        (string Role, Koto Owner, SourceSpan Span, string? Label)[]? spans = null;
+        (string Role, Koto At, string? Label)[]? related = null;
+        if (origin is { Kind: "borrow" or "omitted" } relatedOrigin)
+        {
+            if (entry is { } at && owned.Closure is { } closure)
+            {
+                spans = [("origin", closure, at.Span, null)];
+            }
+            else if (relatedOrigin.Kind == "omitted" && OmittedAt(owned.Origin!) is { } occurrence)
+            {
+                related = [("origin", occurrence, null)];
+            }
+            else if (owned.Borrow is { } borrow)
+            {
+                related = [("origin", borrow, null)];
+            }
+            else if (owned.Entry is { } named && owned.Closure is { } owner)
+            {
+                spans = [("origin", owner, named.Span, null)];
+            }
+            else
+            {
+                related = [("origin", owned.At, null)];
+            }
+        }
+
+        string note, advice;
+        if (owned.Closure is { } converted && PreparedCapture(converted, owned.Member) is { } preparedSource)
+        {
+            // SPEC 7.2.3: in a default, a capture of a preceding argument can neither move it nor keep a new borrow of it, and the
+            // closure always converts to the parameter's Function Type, so only a Copy that holds no borrow or a new parameter remain.
+            note = (origin is { } shown
+                ? $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
+                : $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} is not proven Owned") +
+                "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
+            // An exclusive reference is captured by a Reborrow, which no proof makes valid there.
+            var parameter = $"give the Function Type a parameter for {owned.Member} and pass {owned.Member} where the function value is called";
+            // A borrowing entry of a Copy Owned argument, such as [k@ref] of k: i32, is repaired by its bare Copy entry, [k].
+            advice = owned.Refuted && entry is not null && preparedSource.Type is { Kind: not BoundTypeKind.Semantics } copied &&
+                this.ProveCopy(copied, node) == ConstraintProof.Proven && this.ProveOwned(copied, node) == ConstraintProof.Proven
+                ? $"Capture a Copy of {owned.Member} instead, as in [{owned.Member}], or {parameter}"
+                : owned.Refuted || owned.MemberType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? PreparedCaptureAdvice(owned.Member)
+                : owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or {parameter}"
+                : $"Prove the capture {owned.Member} Owned, or {parameter}";
+        }
+        else if (owned.Closure is not null)
+        {
+            note = origin is { } shown
+                ? $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
+                : $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} is not proven Owned";
+            advice = owned.Refuted && entry is not null ? $"Capture {owned.Member} by Copy or Move instead of borrowing its slot, or keep the concrete closure without converting it to a common Function Type"
+                : owned.Refuted ? $"Capture an owned value instead of {owned.Member}, which holds a borrow, or keep the concrete closure without converting it to a common Function Type"
+                : owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or keep the concrete closure without converting it"
+                : $"Prove the capture {owned.Member} Owned, or keep the concrete closure without converting it to a common Function Type";
+        }
+        else
+        {
+            note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.6.4, 15.2.3); the {owned.Member} is not proven Owned";
+            advice = owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or bind an Owned Type argument"
+                : "Bind Owned Type arguments, or keep the concrete Item without converting it to a common Function Type";
+        }
+
+        object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
+        node.Report(requirement, code, note: note, advice: advice, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
+
+        static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
+        {
+            "borrow" => "the borrow " + origin.Text,
+            "omitted" => "the omitted Origin of " + origin.Text,
+            "closure" => "the closure's " + origin.Text,
+            _ => origin.Text,
+        };
+    }
+
     // SPEC 7.6.2: an anonymous function without a capture list never captures contextual self or a setter's value; its use is
-    // the location, and the declaration of the binding is related.
-    private static void ReportContextualCapture(Koto node, BindingSymbol contextual, DiagnosticRequirement requirement, DiagnosticCode code)
+    // the location, and the declaration of the binding is related. In a later default of the receiver's function, an entry can
+    // neither move self nor keep a new borrow of it (SPEC 7.2.3), so only a Copy that holds no borrow, [self], can be offered.
+    private void ReportContextualCapture(Koto node, BindingSymbol contextual, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var declaring = contextual.Declaration!;
         var self = contextual.Name == "self";
+        var prepared = self && ScalarDefaults.InLaterDefault(node, contextual);
         var note = self ? "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)"
             : "A setter's value is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)";
         var advice = !self ? "Name it in a capture list, as in [value]"
             : declaring is FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } ? "Capture the Fields the body needs instead, as in let id = self.id and [id]; in a constructor or destructor, self is reached only through its Fields"
-            : "Name it in a capture list, as in [self] or [self@ref]";
+            : !prepared ? "Name it in a capture list, as in [self] or [self@ref]"
+            : contextual.Type is { Kind: not BoundTypeKind.Semantics } type && this.ProveCopy(type, node) == ConstraintProof.Proven && this.ProveOwned(type, node) == ConstraintProof.Proven
+                ? "Name it in a capture list, as in [self], which Copies it"
+                : PreparedCaptureAdvice("self") + ", such as a preceding parameter whose default reads a Field of self";
+        if (prepared)
+        {
+            note += "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
+        }
+
         node.Report(requirement, code, note: note, advice: advice, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
     }
 
@@ -961,10 +1227,6 @@ public sealed partial class Binding
     /// <param name="expected">The expected Type.</param>
     /// <returns><see langword="null"/>.</returns>
     private BoundType? FailMismatch(Koto node, Koto at, BoundType actual, BoundType expected)
-        => this.RecordMismatch(node, at, actual, expected);
-
-    // An untyped literal is described by its category, such as "integer literal".
-    private BoundType? FailMismatch(Koto node, Koto at, string actual, string expected)
         => this.RecordMismatch(node, at, actual, expected);
 
     // Keep semantic identities even when their short names agree. Format only at publication, never during Binding. A fit whose
@@ -1316,6 +1578,14 @@ public sealed partial class Binding
             _ => "its destination",
         };
 
+    /// <summary>Gets the Advice for a default closure that needs a preceding argument which no capture entry can take there: a
+    /// transfer is a Move and a new borrow would stay in the result (SPEC 7.2.3), and the erased environment must be Owned
+    /// (SPEC 7.6.4), so only Copy values that hold no borrow can be captured.</summary>
+    /// <param name="name">The argument's Name.</param>
+    /// <returns>The Advice.</returns>
+    internal static string PreparedCaptureAdvice(string name)
+        => $"Give the Function Type a parameter for {name} and pass {name} where the function value is called, or capture only Copy values that hold no borrow";
+
     private static Koto? Destination(Koto place)
     {
         var parent = place.Parent;
@@ -1349,14 +1619,28 @@ public sealed partial class Binding
 
     // SPEC 7.6.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
     // located at the entry and names the initialization it stands for; a bare entry of a Non-Copy binding offers the transfer
-    // and the borrow as candidates (SPEC 23.3.6.9), so no Advice repeats them.
-    private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, DiagnosticRequirement requirement, DiagnosticCode code)
+    // and the borrow as candidates (SPEC 23.3.6.9), so no Advice repeats them. In a default, the binding of a preceding
+    // argument admits neither, nor an exclusive borrow (SPEC 7.2.3), so no candidate is offered and the Advice changes the
+    // signature instead.
+    private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, BindingSymbol? source, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var name = capture.Name;
         switch (code)
         {
+            case DiagnosticCode.InvalidAssignment_Kd when source is not null && ScalarDefaults.InLaterDefault(node, source):
+                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], advice: PreparedCaptureAdvice(name), span: capture.Span);
+                break;
             case DiagnosticCode.InvalidAssignment_Kd:
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], advice: "Declare the binding with var, or capture it with @ref when shared access suffices", span: capture.Span);
+                break;
+            case DiagnosticCode.TransferRequired_Kd when source is not null && ScalarDefaults.InLaterDefault(node, source):
+                node.Report(
+                    requirement,
+                    code,
+                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is not proven Copy, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)",
+                    evidence: [name],
+                    advice: PreparedCaptureAdvice(name),
+                    span: capture.Span);
                 break;
             case DiagnosticCode.TransferRequired_Kd:
                 node.Report(

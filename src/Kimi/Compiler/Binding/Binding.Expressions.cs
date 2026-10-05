@@ -613,7 +613,7 @@ public sealed partial class Binding
                 var numberType = DefaultLiteralType(number, expected);
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
-                    return this.FailMismatch(node, node, number.IsInteger ? "integer literal" : "floating-point literal", numberType.Name);
+                    return this.RecordMismatch(node, node, number.IsInteger ? "integer literal" : "floating-point literal", numberType); // The Type keeps a generic default's parameter (SPEC 7.2.3).
                 }
 
                 return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);

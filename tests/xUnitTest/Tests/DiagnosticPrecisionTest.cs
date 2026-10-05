@@ -68,6 +68,14 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    let wrong: i32 = true", "true", "expected i32, found bool")]
     [InlineData("public func main()\n    let sum = 1 + \"a\"", "1", "expected string, found integer literal")]
     [InlineData("public func main()\n    if 1 and true\n        ()", "1", "expected bool, found integer literal")]
+
+    // An untyped literal or an anonymous function at a Type it cannot have names that complete Type, Type arguments included.
+    [InlineData("struct Box<T>\n    public let v: T\n    public init(v: T) => self.v = v@move\npublic func main()\n    let b: Box<i32> = 5", "5", "expected Box<i32>, found integer literal")]
+    [InlineData("public func main()\n    let t: (i32, bool) = 4", "4", "expected (i32, bool), found integer literal")]
+    [InlineData("public func main()\n    let o: Option<i32> = 1", "1", "expected Option<i32>, found integer literal")]
+    [InlineData("public func main()\n    let f: (i32) -> i32 = 9", "9", "expected (i32) -> i32, found integer literal")]
+    [InlineData("public func main()\n    let t: (f64, f64) = 2.5", "2.5", "expected (f64, f64), found floating-point literal")]
+    [InlineData("public func main()\n    let x: i32 = func () => 1", "func () => 1", "expected i32, found an anonymous function")]
     [InlineData("public func main()\n    let counter = 1\n    counter += 1", "counter", "counter cannot be written")]
     public void TargetChecksShowTheirLocationAndFacts(string source, string text, string label)
     {

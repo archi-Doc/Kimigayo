@@ -48,26 +48,11 @@ internal sealed partial class BodyLowering
     // short-circuit join that supplied it. Any other entry reads its source binding.
     private bool CaptureSourcePlace(OwnershipBody body, FunctionKoto closure, BindingSymbol source, int input, out int place)
     {
-        if (source.Kind == BindingSymbolKind.Parameter && source.Scope.Owner is FunctionKoto declaration)
+        if (ScalarDefaults.InLaterDefault(closure, source))
         {
-            Koto child = closure;
-            for (var parent = closure.Parent; parent is not null; child = parent, parent = parent.Parent)
-            {
-                if (ReferenceEquals(parent, declaration))
-                {
-                    for (var i = source.Slot + 1; i < declaration.Parameters.Count; i++)
-                    {
-                        if (ReferenceEquals(declaration.Parameters[i].DefaultValue, child))
-                        {
-                            place = body.Operations[input].Place;
-                            return (uint)place < (uint)body.Places.Count && body.Places[place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
-                                this.IsPreparedArgument(body, input, source, place);
-                        }
-                    }
-
-                    break;
-                }
-            }
+            place = body.Operations[input].Place;
+            return (uint)place < (uint)body.Places.Count && body.Places[place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
+                this.IsPreparedArgument(body, input, source, place);
         }
 
         return body.SymbolPlaces.TryGetValue(source, out place);

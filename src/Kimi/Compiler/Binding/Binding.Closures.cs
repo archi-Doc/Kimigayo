@@ -159,7 +159,9 @@ public sealed partial class Binding
     {
         if (expected.Kind != BoundTypeKind.Function)
         {
-            return this.Fail(function, BindingFailure.TypeMismatch);
+            // An expectation that is no Function Type, such as a Type parameter F under Callable (SPEC 7.2.3), names the
+            // anonymous function as found.
+            return this.RecordMismatch(function, function, "an anonymous function", expected);
         }
 
         var restated = this.ClosureExpectation(function, expected);
@@ -296,7 +298,7 @@ public sealed partial class Binding
         {
             if (entry is { } written)
             {
-                this.FailExplained(ref this.captureFailures, function, BindingFailure.Unsupported, (written, type));
+                this.FailExplained(ref this.captureFailures, function, BindingFailure.Unsupported, (written, type, null));
             }
             else
             {
@@ -406,7 +408,7 @@ public sealed partial class Binding
                 {
                     // SPEC 7.6.2, 6.2.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
                     // which self is reached only through its Fields.
-                    return this.FailExplained(ref this.captureFailures, function, BindingFailure.Capture, (capture, source.Type ?? BoundType.Unit));
+                    return this.FailExplained(ref this.captureFailures, function, BindingFailure.Capture, (capture, source.Type ?? BoundType.Unit, source));
                 }
 
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
@@ -417,7 +419,7 @@ public sealed partial class Binding
                 environment.MutableCapture = capture.IsMutable;
                 if (this.CaptureEntry(function, capture, source, environment) is { } failure)
                 {
-                    return this.FailExplained(ref this.captureFailures, function, failure, (capture, source.Type!));
+                    return this.FailExplained(ref this.captureFailures, function, failure, (capture, source.Type!, source));
                 }
             }
         }

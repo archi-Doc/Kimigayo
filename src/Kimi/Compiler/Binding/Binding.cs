@@ -701,7 +701,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
         {
-            ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
+            this.ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
         {
@@ -717,7 +717,7 @@ public sealed partial class Binding
         }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
-            this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
+            this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, entry.Source, requirement, issue.Code);
         }
         else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
         {
@@ -733,11 +733,15 @@ public sealed partial class Binding
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected) ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            // A default at a generic parameter Type is checked for every binding (SPEC 7.2.3).
+            var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected);
+            string? defaultAdvice = null;
+            var defaultNote = wrappingConversion || conversion is not null ? null : this.GenericDefaultNote(issue.Node, mismatch.Actual, mismatch.Expected, out defaultAdvice);
+            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? defaultNote ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : defaultAdvice, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
-            ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);
+            this.ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
         {

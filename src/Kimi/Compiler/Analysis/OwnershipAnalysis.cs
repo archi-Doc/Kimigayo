@@ -301,20 +301,19 @@ public sealed partial class OwnershipAnalysis
             return null;
         }
 
-        // SPEC 7.6.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry.
+        // SPEC 7.6.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry. In a
+        // default, no entry can take a preceding argument other than by Copy (SPEC 7.2.3), so the Advice changes the signature.
         void ReportCapture(in OwnershipIssue issue, FunctionKoto function, BindingSymbol source)
         {
             var name = source.Name;
             var reference = source.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
             var omitted = function.Captures is null;
-            issue.Source.Report(
-                Requirement(issue),
-                issue.Code,
-                note: Note(omitted ? $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow" : null),
-                related: Locations(null),
-                condition: Condition(issue),
-                evidence: [name],
-                advice: !omitted ? null : reference ? $"List the capture as [{name}] to Reborrow the exclusive reference, or [{name}@move] to transfer it" : $"List the capture as [{name}@move] to transfer it, or [{name}@ref] to borrow it");
+            var prepared = omitted && ScalarDefaults.InLaterDefault(function, source);
+            var note = !omitted ? null : $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow" +
+                (prepared ? ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)" : string.Empty);
+            var advice = !omitted ? null : prepared ? Binding.PreparedCaptureAdvice(name)
+                : reference ? $"List the capture as [{name}] to Reborrow the exclusive reference, or [{name}@move] to transfer it" : $"List the capture as [{name}@move] to transfer it, or [{name}@ref] to borrow it";
+            issue.Source.Report(Requirement(issue), issue.Code, note: Note(note), related: Locations(null), condition: Condition(issue), evidence: [name], advice: advice);
         }
 
         // SPEC 8.4.10.6: the Reason names the access and the Loan; the Note states that no available bound excludes it, without
