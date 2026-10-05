@@ -504,6 +504,12 @@ public sealed partial class Binding
                         if (target.Intrinsic == IntrinsicKind.Callable)
                         {
                             result = this.BindCallableRequirement(node, subject, scope, target);
+                            if (result.Kind == ConstraintKind.Error && this.FailedSignaturePart(node) is { } part)
+                            {
+                                // SPEC 23.3.6.4: a Callable signature that failed for a part of its own syntax rests on that part.
+                                (this.constraintDiagnosticCauses ??= new(ReferenceEqualityComparer.Instance))[node] = part;
+                            }
+
                             break;
                         }
 

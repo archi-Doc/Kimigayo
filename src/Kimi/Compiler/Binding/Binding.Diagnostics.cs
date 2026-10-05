@@ -37,6 +37,8 @@ public sealed partial class Binding
     private Dictionary<Koto, Koto>? constraintDiagnosticCauses;
     private Dictionary<Koto, BindingSymbol>? objectPayloadCauses;
     private MissingConstraintNameVisitor? missingConstraintNameVisitor;
+
+    private FailedSignaturePartVisitor? failedSignaturePartVisitor;
     private int consultationStart = -1;
     private Koto? consultationNode;
 
@@ -1256,6 +1258,19 @@ public sealed partial class Binding
 
     private Koto? FindConformanceDiagnosticCause(Koto owner, BoundConstraint fact)
     {
+        if (fact.Kind == ConstraintKind.Error && owner is FunctionKoto function)
+        {
+            // A function's environment that is invalid only through its one Callable clause rests on that clause's failed part.
+            for (var i = 0; i < function.TypeConstraints.Count; i++)
+            {
+                if (function.TypeConstraints[i] is IsKoto { Right: { } requirement } clause && ReferenceEquals(clause.BoundConstraint, fact) &&
+                    this.constraintDiagnosticCauses?.TryGetValue(KotoHelper.UnwrapParentheses(requirement), out var part) == true)
+                {
+                    return part;
+                }
+            }
+        }
+
         if (fact.Kind == ConstraintKind.Error && owner is DeclarationContainerKoto container)
         {
             for (var i = 0; i < container.ConstraintNodes.Count; i++)
@@ -1264,6 +1279,51 @@ public sealed partial class Binding
                 if (ReferenceEquals(clause.BoundConstraint, fact) && this.FindMissingConformanceName(clause) is { } cause)
                 {
                     return cause;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 23.3.6.4: the first part of a Callable requirement's signature that failed on its own: an unsupported form or a missing
+    // name, whose record explains the requirement.
+    private Koto? FailedSignaturePart(Koto requirement)
+    {
+        if (KotoHelper.UnwrapParentheses(requirement) is not GenericsKoto { TypeArguments.Count: > 0 } generic)
+        {
+            return null;
+        }
+
+        var visitor = this.failedSignaturePartVisitor ??= new();
+        visitor.Visit(generic.TypeArguments[^1]);
+        var part = visitor.Part;
+        visitor.Part = null;
+        return part;
+    }
+
+    // SPEC 8.6, 23.3.6.4: a call through F whose only Callable clause failed for a part of its signature rests on that clause.
+    private Koto? FailedCallableClause(BoundType callee, BindingScope scope)
+    {
+        var owner = callee.Kind == BoundTypeKind.Semantics && callee.Components.Count == 1 ? callee.Components[0] : callee;
+        if (owner.Kind != BoundTypeKind.Parameter)
+        {
+            return null;
+        }
+
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Owner is not FunctionKoto function)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < function.TypeConstraints.Count; i++)
+            {
+                if (function.TypeConstraints[i] is IsKoto { Left: { } subject, Right: { } requirement } clause && clause.BoundConstraint?.Kind == ConstraintKind.Error &&
+                    ReferenceEquals(subject.BoundType, owner) && this.constraintDiagnosticCauses?.ContainsKey(KotoHelper.UnwrapParentheses(requirement)) == true)
+                {
+                    return KotoHelper.UnwrapParentheses(requirement);
                 }
             }
         }
@@ -1284,6 +1344,27 @@ public sealed partial class Binding
         var cause = visitor.Cause;
         visitor.Cause = null;
         return cause;
+    }
+
+    private sealed class FailedSignaturePartVisitor : KotoVisitor
+    {
+        internal Koto? Part { get; set; }
+
+        public override void Visit(Koto node)
+        {
+            if (this.Part is not null)
+            {
+                return;
+            }
+
+            if (node.BindingFailure is BindingFailure.Unsupported or BindingFailure.MissingName or BindingFailure.MissingType)
+            {
+                this.Part = node;
+                return;
+            }
+
+            node.VisitChildren(this);
+        }
     }
 
     private sealed class MissingConstraintNameVisitor : KotoVisitor

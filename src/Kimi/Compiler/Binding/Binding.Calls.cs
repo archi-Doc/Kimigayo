@@ -438,6 +438,11 @@ public sealed partial class Binding
                 // yet implemented, which is a located limit and never a Language error.
                 return this.Fail(call, BindingFailure.Unsupported);
             }
+
+            if (callableType is not null && this.FailedCallableClause(callableType, scope) is { } failedClause)
+            {
+                return this.CompleteDependent(call, failedClause);
+            }
         }
 
         var unknownArgument = false;
