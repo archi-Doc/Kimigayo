@@ -133,6 +133,31 @@ public sealed partial class OwnershipBody
             return;
         }
 
+        // The one operation defining each reference holder, or -2 for several; the authority transfer (StoredReferent) and the
+        // ancestry walks follow it to the actual stored value.
+        Grow(ref this.borrowDefinitions, count);
+        this.borrowDefinitions.AsSpan(0, count).Fill(-1);
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            var defined = this.Operations[id] switch
+            {
+                { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
+                { Kind: OwnershipOperationKind.Consume, Input: >= 0, Acquisition: AcquisitionKind.Move } moved when ReferenceTypes.IsBorrow(this.Places[moved.Input].Type) => moved.Input,
+                { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
+                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
+                { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
+                { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
+                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } item when this.Values[id].Kind == OwnershipValueKind.Sequence => item.Place,
+                _ => -1,
+            };
+
+            if (defined >= 0)
+            {
+                ref var definition = ref this.borrowDefinitions[defined];
+                definition = definition == -1 ? id : -2;
+            }
+        }
+
         this.RetainBorrowAuthority(count);
         (this.liveBorrowPlaces ??= new()).Clear();
         for (var p = 0; p < count; p++)
@@ -167,29 +192,6 @@ public sealed partial class OwnershipBody
         this.PrepareSlicePaths();
         this.PrepareCheckingBorrowEdges();
         this.PrepareStoredBorrowActivity();
-        Grow(ref this.borrowDefinitions, count);
-        this.borrowDefinitions.AsSpan(0, count).Fill(-1);
-        for (var id = 0; id < this.Operations.Count; id++)
-        {
-            var defined = this.Operations[id] switch
-            {
-                { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
-                { Kind: OwnershipOperationKind.Consume, Input: >= 0, Acquisition: AcquisitionKind.Move } moved when ReferenceTypes.IsBorrow(this.Places[moved.Input].Type) => moved.Input,
-                { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
-                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
-                { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
-                { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
-                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } item when this.Values[id].Kind == OwnershipValueKind.Sequence => item.Place,
-                _ => -1,
-            };
-
-            if (defined >= 0)
-            {
-                ref var definition = ref this.borrowDefinitions[defined];
-                definition = definition == -1 ? id : -2;
-            }
-        }
-
         this.borrowLive.Reset(OwnershipStorage.Cells(liveWidth, this.Operations.Count, 1, "borrow liveness"));
         bool changed;
         do
@@ -324,7 +326,11 @@ public sealed partial class OwnershipBody
 
                         var conflict = rootLost || (!external && accessConflict);
                         var value = this.Values[accessId];
-                        if (value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence or OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad && value.Count > 0)
+                        // SPEC 15.6.3: an access through a holder of an external root's Loan that is no descendant of the root, such
+                        // as a reference stored through a contract (RetainBorrowAuthority), meets the Loans of the root's other
+                        // children, which their own holders state; the root's own capability conflicts only with its own accesses.
+                        if (!(external && p == root) &&
+                            value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence or OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad && value.Count > 0)
                         {
                             var receiver = this.ValueOperands[value.Start];
                             var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
@@ -1288,15 +1294,19 @@ public sealed partial class OwnershipBody
     private bool IsPairInput(int place)
         => this.ConditionalReborrows is { Count: > 0 } && this.Places[place].Kind == OwnershipPlaceKind.Parameter && Binding.TryPairLayer(this.Places[place].Type, out _, out _);
 
-    // Declared lifetime parameters need a capability root independent of their shared Origin name.
+    // SPEC 7.6.2, 15.8.2: an environment binding is a Place of the closure body being analyzed, initialized by its entry.
+    private bool IsEnvironmentBinding(int place)
+        => this.Places[place].Kind == OwnershipPlaceKind.Local && this.Function.IsAnonymous && ReferenceEquals(this.Places[place].Source, this.Function);
+
     // SPEC 7.6.2, 15.8.2: an environment binding that stores a reference is, like a borrowed parameter, a root whose referent lies
     // outside the closure body; the body reaches that referent only through the binding.
-    private bool IsEnvironmentBorrow(int place)
-        => this.Places[place].Kind == OwnershipPlaceKind.Local && this.Function.IsAnonymous && ReferenceEquals(this.Places[place].Source, this.Function) &&
-            ReferenceTypes.IsBorrow(this.Places[place].Type);
+    private bool IsEnvironmentBorrow(int place) => this.IsEnvironmentBinding(place) && ReferenceTypes.IsBorrow(this.Places[place].Type);
 
+    // SPEC 15.6.3, 15.8.2: an exclusive reference held by a body input, a parameter or an environment binding of the closure being
+    // analyzed, with a declared Origin is its own external capability root, independent of the Origin's shared name. An elided
+    // Origin is an Input Origin that AddOrigin roots at the input's own Place; an object reference (objuniq) is not a root today.
     private bool IsExclusiveBorrowInput(int place)
-        => this.Places[place].Kind == OwnershipPlaceKind.Parameter &&
+        => (this.Places[place].Kind == OwnershipPlaceKind.Parameter || this.IsEnvironmentBinding(place)) &&
             this.Places[place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin.Kind: OriginKind.Parameter };
 
     // Retain stronger input authority separately from the shared access a child actually acquires.
@@ -1366,6 +1376,18 @@ public sealed partial class OwnershipBody
                         }
 
                         break;
+                    case OwnershipOperationKind.StorePointer:
+                        // SPEC 13.5.5.1, 15.6.3: a store through a uniq/[storage] reference retains the stored value's Loans in
+                        // the referent, the Place the reference addresses when known, and otherwise in the reference's holder,
+                        // through the storage Type's contract as a call's writable referent does (RetainsInput).
+                        if (this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } store &&
+                            this.ValueOperands[store.Start] is >= 0 and var pointer && ValuePlaceForBorrow(this.Operations[pointer]) is >= 0 and var holder &&
+                            this.Places[holder].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var stored] })
+                        {
+                            Merge(this.StoredReferent(pointer, holder), operation.Place, id, stored);
+                        }
+
+                        break;
                 }
 
                 if (this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } alias && this.ValueOperands[alias.Start] is >= 0 and var value)
@@ -1379,6 +1401,15 @@ public sealed partial class OwnershipBody
                 else if (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence })
                 {
                     Merge(ValuePlaceForBorrow(operation), this.Sequences[(int)sequence].Receiver, id);
+                }
+                else if (this.Values[id] is { Kind: OwnershipValueKind.Closure } closure && operation.Place >= 0 && this.Places[operation.Place].Type.Kind == BoundTypeKind.Closure)
+                {
+                    // SPEC 7.6.2, 15.8.2: the entries flow into the closure temporary, whose environment holds their Loans; a
+                    // common Function value without an environment holds none (SPEC 7.6.4).
+                    for (var i = 0; i < closure.Count; i++)
+                    {
+                        Merge(operation.Place, ValuePlaceForBorrow(this.Operations[this.ValueOperands[closure.Start + i]]), id);
+                    }
                 }
             }
         }
@@ -1449,6 +1480,52 @@ public sealed partial class OwnershipBody
                 }
             }
         }
+    }
+
+    // SPEC 13.5.5.1: the Place a reference's value addresses, through the value's one definition chain: a slot borrow (the borrowed
+    // Place stores the referent Type, as holder@uniq does) names it; a Reborrow continues at the reborrowed value and a reference
+    // local at its one definition. A reference loaded from a slot or received as an input addresses no Place of the body, so the
+    // holder of the reference keeps what is stored through it.
+    private int StoredReferent(int pointer, int holder)
+    {
+        for (var remaining = this.Values.Count; remaining > 0 && (uint)pointer < (uint)this.Values.Count; remaining--)
+        {
+            var operation = this.Operations[pointer];
+            var node = this.Values[pointer];
+            if (operation.Kind == OwnershipOperationKind.Borrow && node.Kind == OwnershipValueKind.Address)
+            {
+                if (operation.Place >= 0 && operation.Input >= 0 && this.Places[operation.Input].Type.Components is [var addressed] &&
+                    ReferenceEquals(addressed, this.Places[operation.Place].Type))
+                {
+                    return operation.Place;
+                }
+
+                if (node.Count != 1)
+                {
+                    break;
+                }
+
+                pointer = this.ValueOperands[node.Start];
+                continue;
+            }
+
+            if (node.Kind == OwnershipValueKind.Alias && node.Count == 1)
+            {
+                pointer = this.ValueOperands[node.Start];
+                continue;
+            }
+
+            if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 && ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) &&
+                this.borrowDefinitions[operation.Place] is >= 0 and var definition && definition < pointer)
+            {
+                pointer = definition;
+                continue;
+            }
+
+            break;
+        }
+
+        return holder;
     }
 
     private void PrepareCheckingBorrowEdges()
@@ -2029,8 +2106,13 @@ public sealed partial class OwnershipBody
             place = transferred;
         }
 
-        // Follow the actual value's reborrow chain; equal Origin names alone do
-        // not authorize use of a parent while a sibling/child Loan is required.
+        return this.DescendsFrom(value, place, original);
+    }
+
+    // Follow the actual value's reborrow chain; equal Origin names alone do
+    // not authorize use of a parent while a sibling/child Loan is required.
+    private bool DescendsFrom(int value, int place, int original)
+    {
         for (var remaining = this.Values.Count; remaining > 0 && (uint)value < (uint)this.Values.Count; remaining--)
         {
             var operation = this.Operations[value];
@@ -2090,6 +2172,21 @@ public sealed partial class OwnershipBody
                 // SPEC 3.4.1, 10.2: a reference loaded through another reference descends from that reference.
                 value = this.ValueOperands[node.Start];
                 continue;
+            }
+
+            if (node.Kind == OwnershipValueKind.Closure)
+            {
+                // SPEC 7.6.2, 15.8.2: a closure value descends from each entry whose Loan its environment holds; the entries
+                // precede the closure, so the walk ends.
+                for (var i = 0; i < node.Count; i++)
+                {
+                    if (this.DescendsFrom(this.ValueOperands[node.Start + i], place, original))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
 
             if (node.Kind is not (OwnershipValueKind.Alias or OwnershipValueKind.Address) || node.Count != 1)
