@@ -43,6 +43,36 @@ internal sealed partial class BodyLowering
         return offset;
     }
 
+    // SPEC 7.2.3: a closure inside a default of the function that declares the captured parameter reads the argument that
+    // the pending call prepared for that parameter: a temporary of the calling body, or the result of the selection, `do` or
+    // short-circuit join that supplied it. Any other entry reads its source binding.
+    private bool CaptureSourcePlace(OwnershipBody body, FunctionKoto closure, BindingSymbol source, int input, out int place)
+    {
+        if (source.Kind == BindingSymbolKind.Parameter && source.Scope.Owner is FunctionKoto declaration)
+        {
+            Koto child = closure;
+            for (var parent = closure.Parent; parent is not null; child = parent, parent = parent.Parent)
+            {
+                if (ReferenceEquals(parent, declaration))
+                {
+                    for (var i = source.Slot + 1; i < declaration.Parameters.Count; i++)
+                    {
+                        if (ReferenceEquals(declaration.Parameters[i].DefaultValue, child))
+                        {
+                            place = body.Operations[input].Place;
+                            return (uint)place < (uint)body.Places.Count && body.Places[place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
+                                this.IsPreparedArgument(body, input, source, place);
+                        }
+                    }
+
+                    break;
+                }
+            }
+        }
+
+        return body.SymbolPlaces.TryGetValue(source, out place);
+    }
+
     // A generic Item enters the instance of its bound arguments, or the explicit specialization selected for them.
     private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition)
     {
@@ -212,7 +242,7 @@ internal sealed partial class BodyLowering
             if (representation is null || offset < 0 || (environmentLayout is null && offset + representation.Layout.Size > 8) ||
                 (uint)input >= (uint)id || body.Operations[input].Kind != (environmentLayout is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Consume) ||
                 (borrowed ? environmentLayout is null || body.Places[place = body.Operations[input].Place].Kind != OwnershipPlaceKind.Temporary
-                    : !body.SymbolPlaces.TryGetValue(capture.Source, out place) || place != body.Operations[input].Place) ||
+                    : !this.CaptureSourcePlace(body, source, capture.Source, input, out place) || place != body.Operations[input].Place) ||
                 !ReferenceEquals(body.Places[place].Type, SignatureType(this, capture.Environment.Type)) ||
                 (body.IsReachable(id) && (!this.Dominates(input, id) || (body.GetInputState(input, place) & PlaceState.MustInit) == 0)))
             {

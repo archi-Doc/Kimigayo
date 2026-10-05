@@ -70,4 +70,18 @@ public sealed partial class OwnershipAnalysis
             this.defaultFunction = null;
         }
     }
+
+    // SPEC 7.2.3: inside a default evaluated at a call, a preceding parameter, read or captured, names the slot that call
+    // prepared, or -1 when that slot is not prepared.
+    private bool TryDefaultSlot(BindingSymbol? symbol, out int place)
+    {
+        if (this.defaultFunction is { } function && symbol is { Kind: BindingSymbolKind.Parameter } && ReferenceEquals(symbol.Scope.Owner, function))
+        {
+            place = (uint)symbol.Slot < (uint)this.defaultParameter ? this.defaultPlaces[symbol.Slot] : -1;
+            return true;
+        }
+
+        place = -1;
+        return false;
+    }
 }

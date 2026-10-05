@@ -8,9 +8,9 @@ internal sealed partial class BodyLowering
 {
     private bool[] materializedScalars = [];
 
-    // A Scalar or Unit temporary, by-value parameter or Subject receives its own slot only when it is borrowed (SPEC 3.6.2,
-    // 10.2, 14.8.3); Unit needs only the address.
-    // A temporary is stored at its borrow from its one prepared value; a parameter is stored once at its
+    // A Scalar or Unit temporary, join result, by-value parameter or Subject receives its own slot only when it is borrowed
+    // (SPEC 3.6.2, 10.2, 14.8.3); Unit needs only the address.
+    // A temporary or join result is stored at its borrow from its one prepared value; a parameter is stored once at its
     // entry Produce, which dominates every borrow, so repeated and branch-local borrows share that slot.
     private void PrepareMaterializedScalars(OwnershipBody body)
     {
@@ -19,7 +19,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < body.Operations.Count; i++)
         {
             if (body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Place: >= 0 } borrow && borrow.Place < body.Places.Count &&
-                body.Places[borrow.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Subject } place &&
+                body.Places[borrow.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result or OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Subject } place &&
                 (ScalarTypes.Supports(place.Type) || ReferenceEquals(place.Type, BoundType.Unit)))
             {
                 this.materializedScalars[borrow.Place] = true;
@@ -224,7 +224,7 @@ internal sealed partial class BodyLowering
 
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place), new(EmissionOperandKind.Integer, pathOffset)]);
             }
-            else if (body.Places[operation.Place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Subject && ScalarTypes.Supports(type))
+            else if (body.Places[operation.Place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Subject or OwnershipPlaceKind.Result && ScalarTypes.Supports(type))
             {
                 var input = value.Count == 1 ? Input(body, id, 0) : -1;
                 if (input < 0 || !ReferenceEquals(ValueType(body, input), type) || !ReferenceEquals(type, output.Components[0]) ||
@@ -233,7 +233,13 @@ internal sealed partial class BodyLowering
                     return Fail("Scalar temporary borrow requires its prepared value.", out failure);
                 }
 
-                // Materialize the prepared value in the temporary's or Subject's slot, then borrow that slot.
+                if (operation.Source is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } &&
+                    body.Places[operation.Place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && !this.IsPreparedArgument(body, id, symbol, operation.Place))
+                {
+                    return Fail("A prepared argument borrow must address its own acquired slot.", out failure);
+                }
+
+                // Materialize the prepared value in the temporary's, join result's or Subject's slot, then borrow that slot.
                 var slot = WindowsLowering.GetValue(type)!;
                 function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, input)], slot.ComputationType, place: operation.Place, representation: slot);
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);

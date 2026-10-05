@@ -116,7 +116,7 @@ internal sealed partial class BodyLowering
             var operation = body.Operations[id];
             if (operation.Kind == OwnershipOperationKind.Produce && (uint)operation.Place < (uint)body.Places.Count &&
                 body.Places[operation.Place].Kind == OwnershipPlaceKind.Temporary && this.aggregatePlaces[operation.Place] is not null &&
-                (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField ||
+                (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField or OwnershipValueKind.Element ||
                     (body.Values[id].Kind == OwnershipValueKind.Sequence && operation.Source is IndexKoto &&
                         body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Read) ||
                     (body.Values[id].Kind == OwnershipValueKind.Sequence && body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Indices) ||
@@ -130,6 +130,8 @@ internal sealed partial class BodyLowering
 
                 // Each producer is checked by its ordinary lowering path. Retain its
                 // initialization so subsequent field access uses the acquired snapshot.
+                // An element read (`s.pair`, `arr[i]`, `t.1`) copies or moves the whole
+                // element into its temporary, which a pending call may prepare (SPEC 7.2.3).
                 this.aggregateReadInitializations[operation.Place] = id;
             }
         }
@@ -644,9 +646,29 @@ internal sealed partial class BodyLowering
     {
         var operation = body.Operations[id];
         var place = body.Places[operation.Place];
-        return place.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && operation.Acquisition == AcquisitionKind.Copy &&
-            ScalarDefaults.SupportsPatternValue(place.Type) && ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
-            operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } &&
-            this.IsPreparedArgument(body, id, symbol, place.Id) && this.IsElementOwnerStorage(place) && this.ValidateElementOwner(body, id);
+        if (place.Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result) || operation.Acquisition != AcquisitionKind.Copy ||
+            !ScalarDefaults.SupportsPatternValue(place.Type) || !this.IsElementOwnerStorage(place) || !this.ValidateElementOwner(body, id))
+        {
+            return false;
+        }
+
+        if (operation.Source is FunctionKoto { BoundClosure: { } closure })
+        {
+            // SPEC 7.2.3, 7.6.2: a default closure's bare entry Copies the argument that its pending call prepared.
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                var capture = closure.Captures[i];
+                if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Copy && capture.Source is { } source &&
+                    ReferenceEquals(SignatureType(this, capture.Environment.Type), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
+            operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } && this.IsPreparedArgument(body, id, symbol, place.Id);
     }
 }

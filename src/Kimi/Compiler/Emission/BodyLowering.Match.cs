@@ -30,7 +30,10 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.CompositePattern or EmissionOpcode.PatternRead or EmissionOpcode.TransferAggregate or EmissionOpcode.FillArray or EmissionOpcode.DestroyAggregate)
+            // A closure's creation or erasure writes its value into Place's slot, and a value call addresses that slot when no
+            // reference operand holds the value; a closure that is created and discarded still keeps the slot it writes.
+            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.CompositePattern or EmissionOpcode.PatternRead or EmissionOpcode.TransferAggregate or EmissionOpcode.FillArray or EmissionOpcode.DestroyAggregate or EmissionOpcode.CreateClosure or EmissionOpcode.EraseClosure or EmissionOpcode.CallValue &&
+                instruction.Place < function.SlotAddresses.Count)
             {
                 this.UseMatchStorage(function, instruction.Place);
             }

@@ -292,9 +292,10 @@ public sealed partial class OwnershipAnalysis
 
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
-        // A scalar temporary is materialized at the borrow from its one prepared value (SPEC 3.6.2, 10.2).
+        // A scalar temporary is materialized at the borrow from its one prepared value (SPEC 3.6.2, 10.2), and so is the result
+        // of a selection, `do` or short-circuit join, such as the slot a pending call prepared from one (SPEC 7.2.3).
         var actual = this.body.Places[place];
-        var materialized = ScalarTypes.Supports(actual.Type) && actual.Kind == OwnershipPlaceKind.Temporary;
+        var materialized = ScalarTypes.Supports(actual.Type) && actual.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result;
         this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsBorrow(actual.Type) || materialized ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
     }

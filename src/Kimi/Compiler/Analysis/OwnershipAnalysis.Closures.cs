@@ -13,7 +13,8 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < closure.Captures.Count; i++)
         {
             var capture = closure.Captures[i];
-            if (!this.body.SymbolPlaces.TryGetValue(capture.Source, out var place))
+            var prepared = this.TryDefaultSlot(capture.Source, out var place);
+            if (prepared ? place < 0 : !this.body.SymbolPlaces.TryGetValue(capture.Source, out place))
             {
                 this.Unsupported(source);
                 return -1;
@@ -35,13 +36,23 @@ public sealed partial class OwnershipAnalysis
             {
                 // SPEC 7.6.2: a bare capture Copies and needs definition-side Copy proof; x@move transfers.
                 var transfer = capture.Environment.TransferCapture;
-                if (!transfer && this.body.Places[place].Acquisition != AcquisitionKind.Copy)
+                var acquisition = transfer ? AcquisitionKind.Move : this.body.Places[place].Acquisition;
+                if (!transfer && acquisition != AcquisitionKind.Copy)
                 {
-                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired, Capture: i));
+                    if (prepared)
+                    {
+                        // SPEC 7.2.3: the entry is the default's own error, which its declaration check reports once. A default
+                        // never moves a prepared argument, which the pending call still owns, so the call's entry is no moved Place.
+                        acquisition = AcquisitionKind.Copy;
+                    }
+                    else
+                    {
+                        this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired, Capture: i));
+                    }
                 }
 
                 var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
-                read = this.Emit(OwnershipOperationKind.Consume, source, place, acquired, transfer ? AcquisitionKind.Move : this.body.Places[place].Acquisition);
+                read = this.Emit(OwnershipOperationKind.Consume, source, place, acquired, acquisition);
                 this.Emit(OwnershipOperationKind.CallEntry, source, acquired);
             }
             else

@@ -84,6 +84,7 @@ public sealed class ControlFlowAnalysis
     private readonly Dictionary<IdentifierNameKoto, ControlFlowType?> names = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, DefaultCompletion> defaultCompletions = new(ReferenceEqualityComparer.Instance);
+    private readonly List<FunctionKoto> deferredClosures = new();
 
     // Direct children are collected into one shared stack-like buffer instead of iterator objects.
     // A traversal appends its children, visits them by index, and truncates the buffer afterwards.
@@ -101,6 +102,9 @@ public sealed class ControlFlowAnalysis
     private int boundaryCursor;
     private int transferCursor;
     private int registrationCursor;
+
+    // The depth of the defaults being visited; the closures they create are visited when it returns to zero.
+    private int defaultDepth;
 
     // Created only after a parser recovery: completion that assumes the bodies the parser supplied never complete normally, and
     // the syntax Errors of the supplied bodies it met.
@@ -161,6 +165,8 @@ public sealed class ControlFlowAnalysis
         this.names.Clear();
         this.cleanups.Clear();
         this.defaultCompletions.Clear();
+        this.deferredClosures.Clear();
+        this.defaultDepth = 0;
         this.childBuffer.Clear();
         this.arrivedTransfers.Clear();
         this.normalTransferArrivals.Clear();
@@ -760,17 +766,20 @@ public sealed class ControlFlowAnalysis
                     }
                 }
 
-                this.VisitFunction(
-                    function,
-                    function.Body ?? function.ExpressionBody,
-                    function.ReturnType,
-                    KotoHelper.DiscardsFunctionBody(function) ? ControlFlowType.Unit : this.types.GetExpectedResultType(function));
+                if (function.BoundClosure is not null && this.defaultDepth > 0)
+                {
+                    // SPEC 7.2.3: creating a closure inside a default completes without running its body, so the
+                    // default's completion never waits on it. The body is visited once the outermost default's completion
+                    // is recorded; a call there that omits the same default, such as a recursive call, then reads that
+                    // completion instead of an unfinished cycle.
+                    this.deferredClosures.Add(function);
+                    return this.CreatedClosure(function);
+                }
+
+                this.VisitFunctionBody(function);
                 if (function.BoundClosure is not null)
                 {
-                    var closureType = this.types.GetExpressionType(function);
-                    this.nodes[function].ExpressionType = closureType;
-                    this.nodes[function].CanCompleteNormally = true;
-                    return new(true, closureType); // Creation does not execute the body.
+                    return this.CreatedClosure(function);
                 }
 
                 return new(true, null); // A function value is not its body or its return type.
@@ -1092,6 +1101,7 @@ public sealed class ControlFlowAnalysis
         }
 
         var parameterType = this.types.GetDeclaredType(parameter.Type);
+        this.defaultDepth++;
         var flow = this.Visit(value, parameterType);
         if (parameterType is not null)
         {
@@ -1101,7 +1111,36 @@ public sealed class ControlFlowAnalysis
         // Transfers belong to the declaration's internal targets, never the caller.
         var completion = new DefaultCompletion(flow.Normal, flow.Pending);
         this.defaultCompletions[value] = completion;
+        if (--this.defaultDepth == 0)
+        {
+            // The bodies of the closures that the defaults create, after every enclosing default's completion is recorded.
+            while (this.deferredClosures.Count > 0)
+            {
+                var closure = this.deferredClosures[^1];
+                this.deferredClosures.RemoveAt(this.deferredClosures.Count - 1);
+                this.VisitFunctionBody(closure);
+                this.CreatedClosure(closure);
+            }
+        }
+
         return completion;
+    }
+
+    private void VisitFunctionBody(FunctionKoto function)
+        => this.VisitFunction(
+            function,
+            function.Body ?? function.ExpressionBody,
+            function.ReturnType,
+            KotoHelper.DiscardsFunctionBody(function) ? ControlFlowType.Unit : this.types.GetExpectedResultType(function));
+
+    // Creation does not execute the body.
+    private Flow CreatedClosure(FunctionKoto function)
+    {
+        var closureType = this.types.GetExpressionType(function);
+        var info = this.NodeInfo(function);
+        info.ExpressionType = closureType;
+        info.CanCompleteNormally = true;
+        return new(true, closureType);
     }
 
     private void CheckUnsafePermission(Koto node)

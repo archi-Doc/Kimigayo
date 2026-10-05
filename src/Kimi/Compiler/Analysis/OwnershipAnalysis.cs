@@ -528,9 +528,12 @@ public sealed partial class OwnershipAnalysis
 
         if (declarationDefault >= 0)
         {
-            this.Expression(function.Parameters[declarationDefault].DefaultValue!);
-            // Prepared arguments remain owned by the pending call. Declaration
+            // SPEC 7.2.3: the default is checked as a body that delivers its value to the parameter, so an owned result, such as
+            // an erased Function, is acquired once. Prepared arguments remain owned by the pending call. Declaration
             // checking neither destroys them nor applies the callee's return contract.
+            var defaultValue = function.Parameters[declarationDefault].DefaultValue!;
+            var reported = this.body.IssueStorage.Count;
+            this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
             this.Connect(this.current, this.normalExit);
             this.CompleteBody(function);
             return;
@@ -709,9 +712,9 @@ public sealed partial class OwnershipAnalysis
     private int Local(Koto source)
     {
         var symbol = source.BoundSymbol;
-        if (this.defaultFunction is { } function && symbol is { Kind: BindingSymbolKind.Parameter } && ReferenceEquals(symbol.Scope.Owner, function))
+        if (this.TryDefaultSlot(symbol, out var slot))
         {
-            return (uint)symbol.Slot < (uint)this.defaultParameter ? this.defaultPlaces[symbol.Slot] : -1;
+            return slot;
         }
 
         if (symbol is not null && this.body.SymbolPlaces.TryGetValue(symbol, out var id))
@@ -840,7 +843,8 @@ public sealed partial class OwnershipAnalysis
 
     private void Statement(Koto node)
     {
-        if (node is FunctionKoto or DeclarationContainerKoto or AliasKoto or UnitLiteralKoto)
+        // An anonymous function is an expression whose evaluation creates its closure, acquiring its capture entries.
+        if (node is FunctionKoto { IsAnonymous: false } or DeclarationContainerKoto or AliasKoto or UnitLiteralKoto)
         {
             return;
         }

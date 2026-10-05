@@ -29,6 +29,74 @@ internal sealed partial class BodyLowering
             (body.Values[value].Kind == OwnershipValueKind.Convert && body.Values[value].Constant == OwnershipValue.PositionConversion &&
                 ReferenceEquals(body.Operations[value].Source, source.Right));
 
+    private static bool IsPreparedEntry(OwnershipBody body, int read, int next, BindingSymbol symbol, int place)
+    {
+        if (body.Operations[next].Source is not InvocationKoto { BoundCall: { } plan } call ||
+            plan.Target.Declaration is not FunctionKoto target || !ReferenceEquals(symbol.Scope.Owner, target))
+        {
+            return false;
+        }
+
+        var omitted = false;
+        foreach (var argument in plan.DefaultArguments)
+        {
+            if (symbol.Slot >= argument.Parameter.Slot)
+            {
+                continue;
+            }
+
+            for (var source = body.Operations[read].Source; source is not null && source != target; source = source.Parent)
+            {
+                if (ReferenceEquals(source, argument.Expression))
+                {
+                    omitted = true;
+                    break;
+                }
+            }
+        }
+
+        if (!omitted)
+        {
+            return false;
+        }
+
+        // The call acquires its receiver, then its explicit arguments, then its omitted defaults in declaration order.
+        var position = plan.Receiver is not null && plan.ReceiverOperation.ParameterIndex == symbol.Slot ? 0 : -1;
+        var explicitCount = plan.ArgumentToParameter.Length + (plan.Receiver is null ? 0 : 1);
+        for (var i = 0; i < plan.ArgumentToParameter.Length; i++)
+        {
+            if (plan.ArgumentToParameter[i] == symbol.Slot)
+            {
+                position = i + (plan.Receiver is null ? 0 : 1);
+            }
+        }
+
+        var index = 0;
+        foreach (var argument in plan.DefaultArguments)
+        {
+            if (argument.Parameter.Slot == symbol.Slot)
+            {
+                position = explicitCount + index;
+            }
+
+            index++;
+        }
+
+        if (position < 0)
+        {
+            return false;
+        }
+
+        var first = next;
+        while (first > read && body.Operations[first - 1].Kind == OwnershipOperationKind.CallEntry)
+        {
+            first--;
+        }
+
+        var entry = first + position;
+        return entry > read && entry < next && ReferenceEquals(body.Operations[entry].Source, call) && body.Operations[entry].Place == place;
+    }
+
     private bool IsElementReceiverRead(OwnershipBody body, int id)
     {
         if ((uint)id >= (uint)body.LoanStates.Count || body.LoanStates[id] is not (>= 0 and var loanId) ||
@@ -61,59 +129,17 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        var next = this.elementNextCalls[read];
-        if (next < 0 ||
-            body.Operations[next].Source is not InvocationKoto { BoundCall: { } plan } call ||
-            plan.Target.Declaration is not FunctionKoto target || !ReferenceEquals(symbol.Scope.Owner, target))
+        // SPEC 7.2.3: the pending call follows the read, after any call that a later default makes, and acquires the slot as
+        // its argument for the parameter.
+        for (var next = this.elementNextCalls[read]; next >= 0; next = this.elementNextCalls[next])
         {
-            return false;
-        }
-
-        var omitted = false;
-        foreach (var argument in plan.DefaultArguments)
-        {
-            if (symbol.Slot >= argument.Parameter.Slot)
+            if (IsPreparedEntry(body, read, next, symbol, place))
             {
-                continue;
-            }
-
-            for (var source = body.Operations[read].Source; source is not null && source != target; source = source.Parent)
-            {
-                if (ReferenceEquals(source, argument.Expression))
-                {
-                    omitted = true;
-                    break;
-                }
+                return true;
             }
         }
 
-        if (!omitted)
-        {
-            return false;
-        }
-
-        var position = plan.Receiver is not null && plan.ReceiverOperation.ParameterIndex == symbol.Slot ? 0 : -1;
-        for (var i = 0; i < plan.ArgumentToParameter.Length; i++)
-        {
-            if (plan.ArgumentToParameter[i] == symbol.Slot)
-            {
-                position = i + (plan.Receiver is null ? 0 : 1);
-            }
-        }
-
-        if (position < 0)
-        {
-            return false;
-        }
-
-        var first = next;
-        while (first > read && body.Operations[first - 1].Kind == OwnershipOperationKind.CallEntry)
-        {
-            first--;
-        }
-
-        var entry = first + position;
-        return entry > read && entry < next && ReferenceEquals(body.Operations[entry].Source, call) && body.Operations[entry].Place == place;
+        return false;
     }
 
     private bool IsElementOwnerStorage(OwnershipPlace place) => place.Kind switch
@@ -146,7 +172,9 @@ internal sealed partial class BodyLowering
             for (var i = 0; i < body.Operations.Count; i++)
             {
                 var operation = body.Operations[i];
-                if (operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter &&
+                // A prepared argument is read by its name, or by the entry of a default closure (SPEC 7.2.3).
+                if (operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Read or OwnershipOperationKind.Borrow &&
+                    (operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter || operation.Source is FunctionKoto { BoundClosure: not null }) &&
                     (uint)operation.Place < (uint)body.Places.Count &&
                     body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result } prepared &&
                     (prepared.Type.Kind == BoundTypeKind.Tuple || ReferenceTypes.IsStorage(prepared.Type)))

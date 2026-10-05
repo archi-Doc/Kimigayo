@@ -4,15 +4,28 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>The executable default-expression subset with no ownership or escaping-Loan effects.</summary>
+/// <summary>The executable default-expression subset: scalar computations, and erased common Function values whose
+/// environments retain no Loan of a prepared argument.</summary>
 internal static class ScalarDefaults
 {
     internal static bool Supports(FunctionKoto function, int parameterIndex)
     {
         var parameter = function.Parameters[parameterIndex];
-        return parameter.DefaultValue is { } expression && SupportsResult(parameter.Type.BoundType) &&
-            SupportsExpression(expression, function, parameterIndex);
+        if (parameter.DefaultValue is not { } expression)
+        {
+            return false;
+        }
+
+        var type = parameter.Type.BoundType;
+        return SupportsResult(type) ? SupportsExpression(expression, function, parameterIndex) :
+            IsErasedResult(type) && SupportsErased(expression, function, parameterIndex);
     }
+
+    /// <summary>Gets whether a call delivers a default of this Type to its parameter: a supported result, or an owned closed
+    /// common Function that the default erases (SPEC 7.2.3, 7.6.4).</summary>
+    /// <param name="type">The parameter Type.</param>
+    /// <returns>Whether lowering delivers the default.</returns>
+    internal static bool SupportsDelivered(BoundType? type) => SupportsResult(type) || IsErasedResult(type);
 
     /// <summary>Gets whether a default supplies a value of this Type to its parameter: a Scalar or Unit, which no Loan can escape with.</summary>
     /// <param name="type">The parameter Type.</param>
@@ -54,6 +67,80 @@ internal static class ScalarDefaults
         return true;
     }
 
+    private static bool IsErasedResult(BoundType? type) => type is { Kind: BoundTypeKind.Function, ContainsParameter: false };
+
+    // SPEC 7.2.3, 7.6.4, 14.9.1: a default of a closed common Function Type whose every result source erases a closed Function
+    // Item, or an anonymous function whose call is Shared and whose entries Copy preceding parameters. Its environment then holds
+    // no Borrow of a prepared slot, so the erased value is independent of the pending call. Selections, `do` bodies and their
+    // transfers deliver such sources; conditions, guards and discarded items stay scalar.
+    private static bool SupportsErased(Koto expression, FunctionKoto function, int parameterIndex)
+    {
+        if (expression.AttributeChain is not null || expression.BindingState != BindingState.Resolved)
+        {
+            return false;
+        }
+
+        if (expression.ErasedFunctionType is not null)
+        {
+            return SupportsErasedSource(KotoHelper.UnwrapParentheses(expression), function, parameterIndex);
+        }
+
+        if (ReferenceEquals(expression.BoundType, BoundType.Never))
+        {
+            return SupportsExpression(expression, function, parameterIndex);
+        }
+
+        return IsErasedResult(expression.BoundType) && expression switch
+        {
+            ParenthesizedKoto parentheses => SupportsErased(parentheses.Operand, function, parameterIndex),
+            IfKoto conditional => SupportsConditional(conditional, function, parameterIndex, true),
+            MatchKoto match => SupportsMatch(match, function, parameterIndex, true),
+            DoKoto scoped => SupportsBody(scoped.Body, function, parameterIndex, true),
+            LoopKoto loop => SupportsBody(loop.Body, function, parameterIndex, false),
+            LabeledKoto labeled => SupportsErased(labeled.Target, function, parameterIndex),
+            _ => false,
+        };
+    }
+
+    private static bool SupportsErasedSource(Koto source, FunctionKoto function, int parameterIndex)
+    {
+        if (source.AttributeChain is not null || source.BindingState != BindingState.Resolved)
+        {
+            return false;
+        }
+
+        if (source is not FunctionKoto { IsAnonymous: true } literal)
+        {
+            // The erasure adapter calls the Item's own generated entry, so a compiler-implemented or bodyless declaration, or one
+            // that takes its caller's location, has none to erase.
+            return source.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsRequirement: false } item } &&
+                (item.Body ?? item.ExpressionBody) is not null && !KimiLibraryCatalog.RequiresCallerLocation(source.BoundSymbol) &&
+                source.BoundType is { Kind: BoundTypeKind.FunctionItem, ContainsParameter: false };
+        }
+
+        if (literal.RequiresInstantiation || literal.BoundClosure is not { Receiver: SemanticsKind.Ref } closure)
+        {
+            return false;
+        }
+
+        // An entry Copies a prepared scalar, a scalar-only Tuple or a reference to one, which lowering copies from the prepared
+        // slot; other Copy aggregates have no prepared-copy plan yet. An entry that cannot Copy is the declaration check's own
+        // TransferRequired_Kd (SPEC 7.6.2), so its default never executes.
+        for (var i = 0; i < closure.Captures.Count; i++)
+        {
+            var capture = closure.Captures[i];
+            if (capture.Environment.CaptureAcquisition != CaptureAcquisition.Copy || capture.Source is not { Kind: BindingSymbolKind.Parameter } parameter ||
+                !ReferenceEquals(parameter.Scope.Owner, function) || parameter.Slot >= parameterIndex ||
+                (!SupportsPatternValue(capture.Environment.Type) &&
+                    (capture.Environment.Type is not { } type || literal.CodeContext.Compilation.Binding.ProveCopy(type, literal) != ConstraintProof.Refuted)))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static bool SupportsExpression(Koto expression, FunctionKoto function, int parameterIndex)
     {
         if (expression.AttributeChain is not null || expression.BindingState != BindingState.Resolved ||
@@ -76,13 +163,13 @@ internal static class ScalarDefaults
             BinaryKoto element when ElementAccess.IsSyntax(element) => SupportsPreparedStorage(element, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsExpression(parentheses.Operand, function, parameterIndex),
             InvocationKoto { BoundCall: { } call } invocation => SupportsCall(invocation, call, function, parameterIndex),
-            IfKoto conditional => SupportsConditional(conditional, function, parameterIndex),
-            MatchKoto match => SupportsMatch(match, function, parameterIndex),
+            IfKoto conditional => SupportsConditional(conditional, function, parameterIndex, false),
+            MatchKoto match => SupportsMatch(match, function, parameterIndex, false),
             RequireKoto require => SupportsExpression(require.Condition, function, parameterIndex) &&
-                (require.ElseBody is CodeBlockKoto failure ? SupportsBody(failure, function, parameterIndex) : SupportsExpression(require.ElseBody, function, parameterIndex)),
-            DoKoto scoped => SupportsBody(scoped.Body, function, parameterIndex),
-            LoopKoto loop => SupportsBody(loop.Body, function, parameterIndex),
-            WhileKoto loop => SupportsExpression(loop.Condition, function, parameterIndex) && SupportsBody(loop.Body, function, parameterIndex),
+                (require.ElseBody is CodeBlockKoto failure ? SupportsBody(failure, function, parameterIndex, false) : SupportsExpression(require.ElseBody, function, parameterIndex)),
+            DoKoto scoped => SupportsBody(scoped.Body, function, parameterIndex, false),
+            LoopKoto loop => SupportsBody(loop.Body, function, parameterIndex, false),
+            WhileKoto loop => SupportsExpression(loop.Condition, function, parameterIndex) && SupportsBody(loop.Body, function, parameterIndex, false),
             LabeledKoto labeled => SupportsExpression(labeled.Target, function, parameterIndex),
             ExitKoto or YieldKoto or ContinueKoto => SupportsTransfer((JumpKoto)expression, function, parameterIndex),
             ConversionKoto conversion when conversion.ConversionBinding is ConversionBinding.Identity or ConversionBinding.Literal or
@@ -127,9 +214,10 @@ internal static class ScalarDefaults
         return true;
     }
 
-    private static bool SupportsConditional(IfKoto conditional, FunctionKoto function, int parameterIndex)
+    // `erased` selects the result kind of the arms: an erased common Function (SupportsErased) or a scalar.
+    private static bool SupportsConditional(IfKoto conditional, FunctionKoto function, int parameterIndex, bool erased)
     {
-        if (conditional.ElseBody is { } otherwise ? !SupportsBody(otherwise, function, parameterIndex) : !ReferenceEquals(conditional.BoundType, BoundType.Unit))
+        if (conditional.ElseBody is { } otherwise ? !SupportsBody(otherwise, function, parameterIndex, erased) : !ReferenceEquals(conditional.BoundType, BoundType.Unit))
         {
             return false;
         }
@@ -137,7 +225,7 @@ internal static class ScalarDefaults
         for (var i = 0; i < conditional.Branches.Count; i++)
         {
             var branch = conditional.Branches[i];
-            if (!SupportsExpression(branch.Condition, function, parameterIndex) || !SupportsBody(branch.Body, function, parameterIndex))
+            if (!SupportsExpression(branch.Condition, function, parameterIndex) || !SupportsBody(branch.Body, function, parameterIndex, erased))
             {
                 return false;
             }
@@ -146,7 +234,7 @@ internal static class ScalarDefaults
         return true;
     }
 
-    private static bool SupportsMatch(MatchKoto match, FunctionKoto function, int parameterIndex)
+    private static bool SupportsMatch(MatchKoto match, FunctionKoto function, int parameterIndex, bool erased)
     {
         if (!SupportsMatchSubject(match.Expression, function, parameterIndex))
         {
@@ -157,8 +245,8 @@ internal static class ScalarDefaults
         {
             var arm = match.Arms[i];
             if ((arm.Guard is { } guard && !SupportsExpression(guard, function, parameterIndex)) || !(arm.Body is CodeBlockKoto block
-                ? SupportsBody(block, function, parameterIndex)
-                : SupportsExpression(arm.Body, function, parameterIndex)))
+                ? SupportsBody(block, function, parameterIndex, erased)
+                : SupportsResultSource(arm.Body, function, parameterIndex, erased)))
             {
                 return false;
             }
@@ -208,11 +296,18 @@ internal static class ScalarDefaults
         return SupportsPreparedStorage(subject, function, parameterIndex);
     }
 
-    private static bool SupportsBody(CodeBlockKoto body, FunctionKoto function, int parameterIndex)
+    // An erased body delivers its single item (SPEC 14.2); the items of a longer body are discarded, and its transfers
+    // deliver to their own targets (SupportsTransfer).
+    private static bool SupportsBody(CodeBlockKoto body, FunctionKoto function, int parameterIndex, bool erased)
     {
         if (body.AttributeChain is not null)
         {
             return false;
+        }
+
+        if (erased && body.Items.Count == 1)
+        {
+            return body.Items[0] is not FieldKoto && SupportsErased(body.Items[0], function, parameterIndex);
         }
 
         for (var i = 0; i < body.Items.Count; i++)
@@ -238,9 +333,13 @@ internal static class ScalarDefaults
 
     private static bool SupportsTransfer(JumpKoto jump, FunctionKoto function, int parameterIndex)
     {
-        return IsInsideDefault(KotoHelper.ResolveTransferTarget(jump), function, parameterIndex) &&
-            (jump.Expression is null || SupportsExpression(jump.Expression, function, parameterIndex));
+        var target = KotoHelper.ResolveTransferTarget(jump);
+        return IsInsideDefault(target, function, parameterIndex) &&
+            (jump.Expression is null || SupportsResultSource(jump.Expression, function, parameterIndex, IsErasedResult(target!.BoundType)));
     }
+
+    private static bool SupportsResultSource(Koto source, FunctionKoto function, int parameterIndex, bool erased)
+        => erased ? SupportsErased(source, function, parameterIndex) : SupportsExpression(source, function, parameterIndex);
 
     private static bool SupportsWritableLocal(Koto target, FunctionKoto function, int parameterIndex)
     {

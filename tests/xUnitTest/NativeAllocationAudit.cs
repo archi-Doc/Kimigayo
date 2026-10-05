@@ -7,7 +7,7 @@ namespace XunitTest;
 
 internal static class NativeAllocationAudit
 {
-    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0, Func<string, string>? transformIr = null)
+    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0, Func<string, string>? transformIr = null, int exit = 0, string? stderr = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
@@ -91,6 +91,6 @@ internal static class NativeAllocationAudit
             }
 
             """;
-        ScalarEmissionTest.WriteFixture(name, ir, stdout);
+        ScalarEmissionTest.WriteFixture(name, ir, stdout, exit, stderr);
     }
 }
