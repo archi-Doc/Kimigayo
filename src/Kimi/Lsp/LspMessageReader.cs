@@ -16,6 +16,7 @@ internal static class LspMessageReader
     {
         LspMethods.DidChange, LspMethods.DidOpen, LspMethods.DidClose, LspMethods.DidChangeWatchedFiles,
         LspMethods.Initialize, LspMethods.Initialized, LspMethods.Shutdown, LspMethods.Exit,
+        LspMethods.CodeAction, LspMethods.Hover,
     }.Select(static x => (Encoding.UTF8.GetBytes(x), x))];
 
     /// <summary>Parses a body.</summary>
@@ -122,6 +123,7 @@ internal static class LspMessageReader
         LspMethods.DidChangeWatchedFiles => LspJsonContext.Default.DidChangeWatchedFilesParams,
         LspMethods.Initialize => LspJsonContext.Default.InitializeParams,
         LspMethods.CodeAction => LspJsonContext.Default.CodeActionParams,
+        LspMethods.Hover => LspJsonContext.Default.HoverParams,
         _ => null,
     };
 

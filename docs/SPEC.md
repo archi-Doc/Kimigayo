@@ -121,7 +121,7 @@ This table indexes the required declarations of [§22.1](spec/22-core-execution-
 | `Kimi.Raw` | `allocate`, `release`, `initialize`, `slice` | [§5.6 raw storage operations](spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations) |
 | `Kimi.Windows`, `Kimi.Time` | Windows counter imports; `Duration`, `Stopwatch` | [§22.7 Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time) |
 | `Kimi.Storage` (internal) | `RefRemainder<S>`, `UniqRemainder<S>`, `OwnedRemainder<S>`; `borrowStorage`, `borrowStorageUniq`, `ownStorage`, `splitFirst`, `takeFirst` | [§22.1.2.5 storage boundary](spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary) |
-| `Kimi.Async` | Types: `Cancelled`, `SendFailure`, `Raced<A, B>`, `Sender<T>`, `Receiver<T>`; `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe` | [§22.1.3 asynchronous tasks](spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks) |
+| `Kimi.Async` | Types: `Cancelled`, `SendFailure`, `Raced<A, B>`, `Sender<T>`, `Receiver<T>`; `run`, `sleep`, `checkpoint`, `shield`, `join`, `joinOk`, `race`, `each`, `eachReceived`, `pipe`, `offload`, `offloadEach` | [§22.1.3 asynchronous tasks](spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks) |
 | `Kimi.TaskBoundary` (internal) | `enter`, `current`, `park`, `resume` | [§22.1.3.1 task boundary](spec/22-core-execution-and-foreign-functions.md#22131-task-boundary) |
 | `Kimi` | `Utf8Format`, `BufferWriter`, `WriteWindow`, `Utf8Writer`, `BufferFull` | [Formatting declarations](spec/utf8-formatting.md#1-contracts-and-declarations) |
 | `Kimi.Text` | `FixedBuffer`, `HeapBuffer`, `Utf8Slice`, `InvalidUtf8`; `fixed`, `heap`, `writer`, `utf8`, `validateUtf8`, `toString`, `tryFormat` | [Text operations](spec/utf8-formatting.md#2-text-operations) |
@@ -141,3 +141,5 @@ The Composition Root Entry/Provider design was withdrawn; its declarations and f
 [Appendix D](spec/appendices/D-deferred-features.md) records deferred implementation work that awaits explicit instructions, including the release-comparison stage of the [ObjectCallCompatible plan](spec/appendices/D-deferred-features.md#objectcallcompatible).
 
 Toolchain verification and original-source O0/O2 integration checks follow [§20.8.5](impl/20-compilation-configuration.md#2085-explicit-toolchain-verification). Compilation success does not certify toolchain identity.
+
+Callable effect bounds are specified in §8.4.10.7; Transferable in §15.2.4 and structured worker offload in §22.1.3.7. Tasks and workers are specified but their implementation is deferred by explicit instruction (Appendix D.5.2).

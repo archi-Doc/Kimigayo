@@ -72,6 +72,8 @@ public sealed class InitializeResult
 
 public sealed class ServerCapabilities
 {
+    public bool HoverProvider { get; set; } = true;
+
     public string PositionEncoding { get; set; } = "utf-16";
 
     public TextDocumentSyncOptions TextDocumentSync { get; set; } = new();
@@ -194,6 +196,29 @@ public sealed class CodeActionParams
     public CodeActionContext Context { get; set; } = new();
 }
 
+/// <summary>The position at which the client requests the checked effect description.</summary>
+public sealed class HoverParams
+{
+    public TextDocumentIdentifier TextDocument { get; set; } = new();
+
+    public SourcePosition Position { get; set; }
+}
+
+/// <summary>A checked, plain-text effect description with its source range.</summary>
+public sealed class HoverResult
+{
+    public HoverContent Contents { get; set; } = new();
+
+    public SourceRange Range { get; set; }
+}
+
+public sealed class HoverContent
+{
+    public string Kind { get; set; } = "plaintext";
+
+    public string Value { get; set; } = string.Empty;
+}
+
 public sealed class CodeActionContext
 {
     public JsonElement? Diagnostics { get; set; }
@@ -300,6 +325,7 @@ internal static class LspMethods
     public const string DidClose = "textDocument/didClose";
     public const string DidChangeWatchedFiles = "workspace/didChangeWatchedFiles";
     public const string CodeAction = "textDocument/codeAction";
+    public const string Hover = "textDocument/hover";
     public const string PublishDiagnostics = "textDocument/publishDiagnostics";
     public const string LogMessage = "window/logMessage";
     public const string RegisterCapability = "client/registerCapability";

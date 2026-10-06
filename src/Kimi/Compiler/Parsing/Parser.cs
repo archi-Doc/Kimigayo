@@ -2187,6 +2187,7 @@ CloseParameters:
         if (finishLine)
         {
             reader.ExpectLineEnd();
+            ParseCallableEffects(ref reader, constraint);
         }
 
         return constraint;

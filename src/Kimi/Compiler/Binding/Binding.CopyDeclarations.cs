@@ -10,7 +10,7 @@ public sealed partial class Binding
     private readonly Dictionary<DeclarationContainerKoto, List<CopyDeclaration>> copyByType = new(ReferenceEqualityComparer.Instance);
 
     private static bool PositiveRequirement(BoundConstraint constraint)
-        => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract;
+        => constraint.Kind == ConstraintKind.And ? PositiveRequirement(constraint.Left!) && PositiveRequirement(constraint.Right!) : constraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Semantics or ConstraintKind.Contract or ConstraintKind.Callable;
 
     private bool DeclaresCopy(BoundConstraint constraint)
         => constraint.Kind == ConstraintKind.And ? this.DeclaresCopy(constraint.Left!) || this.DeclaresCopy(constraint.Right!) : constraint.Kind == ConstraintKind.Contract && IsRefinement(constraint.Contract!, this.Library.Copy);

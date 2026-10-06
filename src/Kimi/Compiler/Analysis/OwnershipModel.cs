@@ -158,6 +158,7 @@ public enum OwnershipFailure : byte
     // SPEC 8.4.5, 22.1.2.4: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
     // published effect bound of its Contract.
     EffectBound,
+    CallableEffectBound,
 
     // SPEC 4.6.1, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
     // owned fixed array.
@@ -243,6 +244,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
             : DiagnosticCode.UnprovenConstraint_Kd,
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
+        OwnershipFailure.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
@@ -632,15 +634,15 @@ internal readonly record struct OwnershipCallLoans(int Call, int Result, int End
 // The value an input of a requirement call designates: a root Place, possibly through its first Field; a negative root when
 // unknown. Two live exclusive values are disjoint, and shared aliases only read, so effects reach another value only through
 // the same root or a dependency between roots.
-internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field);
+internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field, Koto? CallablePath = null);
 
 // SPEC 8.4.10.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
 // (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on
 // the same receiver.
-internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, FunctionKoto Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves);
+internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves);
 
 // SPEC 8.4.10.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
-internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, FunctionKoto Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver);
+internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 

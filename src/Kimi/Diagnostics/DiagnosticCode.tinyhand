@@ -215,7 +215,13 @@
 
   + Name="InvalidEffectBound_Kd"
     Category="Language"
-    Message="The effect item declares no bound: a bound names one function requirement of its Contract or an ancestor, once, and appears only in a Contract"
+    Message="The effect item declares no bound: a bound appears once, either in a Contract for one function requirement of that Contract or an ancestor, or indented under a single Callable Constraint"
+    Evidence="cause:Text"
+    Label="{0}"
+
+  + Name="UnsatisfiedEffectBound_Kd"
+    Category="Language"
+    Message="The callable given here does not satisfy an effect bound of its Callable Constraint"
     Evidence="cause:Text"
     Label="{0}"
 
@@ -733,7 +739,7 @@
 
   + Name="CallEffectConflict_Kd"
     Category="Language"
-    Message="This requirement call may affect a Loan that an earlier result keeps, and no effect bound available here excludes it"
+    Message="This call through a requirement or a Callable Constraint may affect a Loan that an earlier result keeps, and no effect bound available here excludes it"
     Evidence="access:Text"
     Label="{0}"
 

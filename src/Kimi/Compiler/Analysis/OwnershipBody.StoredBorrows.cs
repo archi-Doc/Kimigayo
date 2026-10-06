@@ -6,9 +6,9 @@ namespace Kimi.Compiler;
 // its public contract, exists only after that store. A recorded (holder, root) dependency is active at each operation that one
 // of its stores reaches without passing a redefinition of the holder, which drops the stored value, and at each operation that a
 // transfer reaches once the transfer's source can hold the dependency there. A transferred dependency arrives with the
-// definition that carries it, such as a call's result or a borrow, so a transfer is ordered after its source but no definition
-// ends it. A loop's back edge reaches earlier operations, so source order never decides. A dependency without a record exists
-// everywhere.
+// definition that carries it, such as a call's result or a borrow. Its defining operations do not revoke it. A complete content
+// slot instead ends the dependency at the next definition/update; exchange/swap snapshots the source before updating it.
+// A loop's back edge reaches earlier operations, so source order never decides. A dependency without a record exists everywhere.
 public sealed partial class OwnershipBody
 {
     private const int StoredEverywhere = -2;
@@ -50,7 +50,7 @@ public sealed partial class OwnershipBody
     }
 
     // Records that the destination takes the source's stored dependency on root at the operation; returns whether it is new.
-    private bool AddStoredBorrowTransfer(int source, int destination, int root, int operation)
+    private bool AddStoredBorrowTransfer(int source, int destination, int root, int operation, bool before = false)
     {
         var table = this.storedBorrows ??= new();
         var from = table.Key(source, root);
@@ -62,13 +62,13 @@ public sealed partial class OwnershipBody
 
         for (var i = 0; i < table.Transfers.Count; i++)
         {
-            if (table.Transfers[i] is var transfer && transfer.Source == from && transfer.Operation == operation && transfer.Destination == to)
+            if (table.Transfers[i] is var transfer && transfer.Source == from && transfer.Operation == operation && transfer.Destination == to && transfer.Before == before)
             {
                 return false;
             }
         }
 
-        table.Transfers.Add((from, operation, to, false));
+        table.Transfers.Add((from, operation, to, false, before));
         return true;
     }
 
@@ -119,11 +119,12 @@ public sealed partial class OwnershipBody
             changed = false;
             for (var i = 0; i < table.Transfers.Count; i++)
             {
-                var (source, operation, destination, applied) = table.Transfers[i];
-                if (!applied && (table.Active(source, operation) || table.EstablishedAt(source, operation)))
+                var (source, operation, destination, applied, before) = table.Transfers[i];
+                if (!applied && (table.Active(source, operation) || (!before && table.EstablishedAt(source, operation))))
                 {
-                    table.Transfers[i] = (source, operation, destination, true);
-                    this.SpreadStoredBorrow(table, destination, operation, -1);
+                    table.Transfers[i] = (source, operation, destination, true, before);
+                    var holder = this.contentSlots.Contains((table.Places[destination], table.Roots[destination])) ? table.Places[destination] : -1;
+                    this.SpreadStoredBorrow(table, destination, operation, holder);
                     changed = true;
                 }
             }
@@ -144,7 +145,10 @@ public sealed partial class OwnershipBody
         while (queued > 0)
         {
             var operation = table.Queue[--queued];
-            if (holder < 0 || !DefinesBorrowHolder(this.Operations[operation], holder))
+            // Call transfers are established at Call; its following Produce secures that same result, rather than replacing it.
+            var completed = operation > 0 && this.Operations[operation] is { Kind: OwnershipOperationKind.Produce } produced && produced.Place == holder &&
+                this.Operations[operation - 1] is { Kind: OwnershipOperationKind.Call } call && call.Place == holder && ReferenceEquals(call.Source, produced.Source);
+            if (holder < 0 || ((!DefinesBorrowHolder(this.Operations[operation], holder) || completed) && !this.ReplacesContents(operation, holder)))
             {
                 queued = this.QueueStoredBorrowSuccessors(table, operation, active, queued);
             }
@@ -176,9 +180,10 @@ public sealed partial class OwnershipBody
 
         // Per record: its holder, and the first of its stores (or StoredEverywhere) linked through Links.
         internal readonly List<int> Places = new();
+        internal readonly List<int> Roots = new();
         internal readonly List<int> Heads = new();
         internal readonly List<(int Operation, int Next)> Links = new();
-        internal readonly List<(int Source, int Operation, int Destination, bool Applied)> Transfers = new();
+        internal readonly List<(int Source, int Operation, int Destination, bool Applied, bool Before)> Transfers = new();
 
         // Per record, one bit per operation where it is active.
         internal ulong[] Activity = [];
@@ -190,6 +195,7 @@ public sealed partial class OwnershipBody
         {
             this.Keys.Clear();
             this.Places.Clear();
+            this.Roots.Clear();
             this.Heads.Clear();
             this.Links.Clear();
             this.Transfers.Clear();
@@ -202,6 +208,7 @@ public sealed partial class OwnershipBody
                 key = this.Heads.Count;
                 this.Keys.Add((place, root), key);
                 this.Places.Add(place);
+                this.Roots.Add(root);
                 this.Heads.Add(-1);
             }
 

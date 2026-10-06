@@ -302,7 +302,7 @@ These keys only find candidates; actual Type and Symbol identities keep the defi
 | Record group | Preserved information |
 | --- | --- |
 | Declarations and contracts | Defining Symbol, access and enclosing domains, public paths, open/base relations, Field identity, complete Types/Semantics/Origins, generic slots and projections, Constraints, `unsafe` and length conditions |
-| Property and callable contracts | Stored Types, standard/custom permissions, accessor signatures and Origins, environment and capture identity, internal and public call signatures, receiver acquisition, per-call Origins, effects and returned Loan anchors |
+| Property and callable contracts | Callable effect bounds, parameter-relative callback calls and their composed effects (§8.4.10.7), Stored Types, standard/custom permissions, accessor signatures and Origins, environment and capture identity, internal and public call signatures, receiver acquisition, per-call Origins, effects and returned Loan anchors |
 | Conformance and public guarantees | Witness and associated-Type mappings, conditional premises, closed specialization sets, completed ObjectCallCompatible and root-operation summaries with causes, Supports relationships, Runtime Type Identity, and required adjustment/destruction/release contracts |
 | Semantic plans | Verified bodies, acquisition/ownership/cleanup, definition-site binding and private dependencies, legitimate representation obligations |
 | Verification records | Subject, property, premises, result, content dependencies, rule identity, source references and generation provenance |

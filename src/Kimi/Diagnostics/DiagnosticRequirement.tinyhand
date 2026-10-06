@@ -401,7 +401,7 @@
   + Name="Syntax.EffectBound"
     Description="an effect item names its bound"
     Phrase="'confined' or 'preserves results'"
-    Advice="An effect item is 'effect confined' or 'effect preserves results' in a requirement's Constraint region, or 'effect Contract.name' followed by a bound in a Contract (SPEC 8.4.10.1)."
+    Advice="An effect item is 'effect confined' or 'effect preserves results' in a requirement's Constraint region or indented under a single Callable Constraint, or 'effect Contract.name' followed by a bound in a Contract (SPEC 8.4.10.1)."
 
   + Name="Syntax.OriginSlotName"
     Description="an Origin header names each own slot"
@@ -680,6 +680,9 @@
 
   + Name="Ownership.EffectBound"
     Description="the implementation's destructions stay within its effect bound"
+
+  + Name="Ownership.CallableEffectBound"
+    Description="The selected callable binding satisfies every declared effect bound"
 
   + Name="Ownership.CallEffectConflict"
     Description="the requirement call's derived effects conflict with no Loan an earlier result keeps"

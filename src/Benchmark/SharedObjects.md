@@ -12,8 +12,8 @@ fence and controlled failed-comparison executions. The argument and proof bounda
 [SHARED_OBJECT_RUNTIME.md](../../docs/dev/SHARED_OBJECT_RUNTIME.md). Timing samples do not establish correctness,
 cross-thread payload safety or a speedup; source concurrency and Weak transitions are outside this implementation.
 
-U5 opens inline arc and original Program 34 execution. Program 34 remains IN_PROGRESS until content-sensitive updates
-with external Origins (U6/G70) and the remaining milestone completion checks are verified. These measurements do not
+U5 opens inline arc and original Program 34 execution. Content-sensitive updates with external Origins (U6/G70) were
+verified on 2026-10-06; Program 34 remains IN_PROGRESS pending its remaining milestone completion checks. These measurements do not
 remove that boundary.
 
 The 2026-10-04 U5 run retained all 56 compiler samples with zero measured managed bytes in

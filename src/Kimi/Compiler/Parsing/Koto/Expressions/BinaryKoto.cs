@@ -433,6 +433,17 @@ public sealed class AsKoto : BinaryKoto
 /// <summary>Represents an <c>is</c> expression.</summary>
 public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
 {
+    private List<EffectBoundKoto>? effectBounds;
+
+    /// <summary>Gets the effect clauses attached to this Callable Constraint (SPEC 8.4.10.7).</summary>
+    public IReadOnlyList<EffectBoundKoto> EffectBounds => (IReadOnlyList<EffectBoundKoto>?)this.effectBounds ?? [];
+
+    internal void AddEffectBound(EffectBoundKoto effect)
+    {
+        (this.effectBounds ??= []).Add(effect);
+        this.Adopt(effect);
+    }
+
     List<OriginRelationKoto>? IOriginClauseOwner.OriginClauses { get; set; }
 
     /// <inheritdoc/>
@@ -482,6 +493,17 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
         }
 
         OriginClauses.Write(this, ref builder);
+        if (this.EffectBounds.Count != 0)
+        {
+            builder.IncrementIndent();
+            for (var i = 0; i < this.EffectBounds.Count; i++)
+            {
+                builder.AppendLine();
+                this.EffectBounds[i].WriteTo(ref builder);
+            }
+
+            builder.DecrementIndent();
+        }
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
@@ -490,6 +512,11 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
         if (this.FormationType is { } formation)
         {
             visitor.Visit(formation);
+        }
+
+        for (var i = 0; i < this.EffectBounds.Count; i++)
+        {
+            visitor.Visit(this.EffectBounds[i]);
         }
     }
 
@@ -501,10 +528,27 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
         {
             yield return formation;
         }
+
+        foreach (var effect in this.EffectBounds)
+        {
+            yield return effect;
+        }
     }
 
     protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
     {
+        if (newKoto is EffectBoundKoto replacement && this.effectBounds is { } bounds)
+        {
+            for (var i = 0; i < bounds.Count; i++)
+            {
+                if (ReferenceEquals(bounds[i], oldKoto))
+                {
+                    bounds[i] = replacement;
+                    return true;
+                }
+            }
+        }
+
         if (ReferenceEquals(oldKoto, this.FormationType))
         {
             this.FormationType = newKoto;

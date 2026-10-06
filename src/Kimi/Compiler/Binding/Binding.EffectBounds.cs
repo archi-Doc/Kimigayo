@@ -105,8 +105,8 @@ public sealed partial class Binding
         // SPEC 8.4.10.5: the abstract parts of the result, the requirement calls producing values of them, the own-body calls
         // tentatively compared with no earlier result, and the replacements of values on self paths in the own body.
         private readonly List<BoundType> itemParts = new();
-        private readonly List<(FunctionKoto Requirement, Koto Call, Koto? Receiver)> producers = new();
-        private readonly List<(FunctionKoto Requirement, Koto Call, Koto Receiver, bool Confined)> candidates = new();
+        private readonly List<(object Requirement, Koto Call, Koto? Receiver)> producers = new();
+        private readonly List<(object Requirement, Koto Call, Koto Receiver, bool Confined)> candidates = new();
         private readonly List<(Koto Path, Koto Node)> replacements = new();
         private BodyScan? scan;
         private bool delegable;
@@ -208,6 +208,13 @@ public sealed partial class Binding
 
             if (node is InvocationKoto invocation && !binding.TryGetEnumConstruction(node, out _))
             {
+                if (invocation.BoundValueCall is { } valueCall)
+                {
+                    this.Callable(valueCall, invocation);
+                    node.VisitChildren(this);
+                    return;
+                }
+
                 if (invocation.BoundCall is not { } call)
                 {
                     this.Violate(EffectViolation.UnclassifiedCall, node); // An indirect or unbound call has no published effect bound.
@@ -233,7 +240,7 @@ public sealed partial class Binding
         // SPEC 8.4.8.2: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
         // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
-        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions)
+        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref)
         {
             this.confined = confined;
             this.preserves = preserves;
@@ -263,7 +270,9 @@ public sealed partial class Binding
             this.candidates.Clear();
             if (preserves)
             {
-                if (implementation.Type is not { } declared)
+                var declared = callable is { Kind: BoundTypeKind.Closure } ? binding.ClosureSignature(callable)?.Components[1]
+                    : callable is { Kind: BoundTypeKind.FunctionItem } ? binding.FunctionItemSignature(callable)?.Components[1] : implementation.Type;
+                if (declared is null)
                 {
                     return false;
                 }
@@ -281,14 +290,20 @@ public sealed partial class Binding
                 else
                 {
                     this.item = item;
-                    this.selfOrigins = SelfOrigins(implementation, out var receiver);
-                    this.receiverType = receiver;
-                    this.StoredValues(receiver);
+                    this.selfOrigins = SelfOrigins(implementation, out var inputReceiver);
+                    this.receiverType = inputReceiver;
+                    this.StoredValues(inputReceiver);
                     this.delegable = this.CollectItemParts(item);
                 }
             }
 
-            this.Function(implementation, null);
+            this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
+            if (callable is { Kind: BoundTypeKind.Closure } && receiver == SemanticsKind.Owner &&
+                callable.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
+            {
+                this.Destruction(callable, implementation.Declaration);
+            }
+
             for (var i = 0; this.valid && i < this.pending.Count; i++)
             {
                 this.context = this.pending[i].Context;
@@ -803,6 +818,76 @@ public sealed partial class Binding
             this.Target(call, use);
         }
 
+        private void Callable(BoundValueCall call, Koto use)
+        {
+            for (var i = 0; i < call.Arguments.Length; i++)
+            {
+                this.Argument(call.Arguments[i], use);
+            }
+
+            var type = CallableCore(this.Type(call.ReceiverType));
+            if (type is null)
+            {
+                this.Violate(EffectViolation.UnclassifiedCall, use);
+                return;
+            }
+
+            if (type.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure && type.Symbol is { } symbol)
+            {
+                this.stepUse = use;
+                this.Function(symbol, binding.FunctionItemContext(type));
+                this.stepUse = null;
+                if (type.Kind == BoundTypeKind.Closure && call.ReceiverKind == SemanticsKind.Owner &&
+                    type.Symbol.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
+                {
+                    this.Destruction(type, use);
+                }
+
+                return;
+            }
+
+            var signature = this.Type(call.DeclaredSignature);
+            var available = signature is null ? default : binding.AvailableCallableEffects(type, signature, call.ReceiverKind, use);
+            if (signature is not null)
+            {
+                // A forwarded abstract argument belongs to the caller's premises; an unsubstituted parameter belongs
+                // to the visited declaration. Neither substitutes a favorable concrete body for its universal proof.
+                var outer = binding.AvailableCallableEffects(type, signature, call.ReceiverKind, this.scope!);
+                available.Confined |= outer.Confined;
+                available.Preserves |= outer.Preserves;
+            }
+
+            if (this.preserves)
+            {
+                this.stepUse = use;
+                var own = this.OwnFieldPathReceiver();
+                this.stepUse = null;
+                if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
+                {
+                    this.producers.Add((type, use, own));
+                }
+
+                // The bound excludes earlier results of this value only. Apply the same producer/path proof used
+                // for requirement delegation, so two callbacks of one Type cannot borrow each other's guarantee.
+                if (available.Preserves && this.delegable && own is not null && (!this.confined || available.Confined))
+                {
+                    this.candidates.Add((type, use, own, available.Confined));
+                    return;
+                }
+            }
+
+            if (!available.Confined)
+            {
+                this.Violate(EffectViolation.UnclassifiedCall, use);
+            }
+            else if (this.preserves)
+            {
+                // The receiver may carry arbitrary input authority. A bound on it excludes no Loan whose producer
+                // cannot be identified as an earlier call of that same value.
+                this.Reachable(type, call.ReceiverKind == SemanticsKind.Ref ? LoanRequirement.Ref : LoanRequirement.Uniq, use);
+            }
+        }
+
         private void Target(BoundCall call, Koto use)
         {
             var kind = call.Target.CompilerFunction;
@@ -1051,7 +1136,7 @@ public sealed partial class Binding
             }
         }
 
-        private DelegationFailure DelegationFailureOf(FunctionKoto requirement, Koto receiver, out Koto? blocking)
+        private DelegationFailure DelegationFailureOf(object requirement, Koto receiver, out Koto? blocking)
         {
             for (var i = 0; i < this.replacements.Count; i++)
             {
@@ -1102,8 +1187,20 @@ public sealed partial class Binding
         // The receiver path of a requirement call made on a value reached from self through a Field path, in the implementation's
         // own body; null otherwise.
         private Koto? OwnFieldPathReceiver()
-            => this.context == 0 && this.stepUse is InvocationKoto { Method: MemberAccessKoto { Left: var receiver } } call && this.IsOwnBody(call) &&
-                this.SelfPathDepth(receiver) >= 1 ? receiver : null;
+        {
+            if (this.context != 0 || this.stepUse is not InvocationKoto call || !this.IsOwnBody(call))
+            {
+                return null;
+            }
+
+            var receiver = call.BoundValueCall?.Receiver ?? (call.Method as MemberAccessKoto)?.Left;
+            while (receiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow)
+            {
+                receiver = KotoHelper.UnwrapParentheses(borrow.Left);
+            }
+
+            return this.SelfPathDepth(receiver) >= 1 ? receiver : null;
+        }
 
         // Whether a node is in the implementation's own body rather than in a function literal inside it.
         private bool IsOwnBody(Koto node)
@@ -1776,7 +1873,11 @@ public sealed partial class Binding
                         this.Replace(transfer.Left, node);
                         break;
                     case ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } borrow:
-                        this.Replace(borrow.Left, node);
+                        if (borrow.Parent is not InvocationKoto { BoundValueCall: { } own } || !ReferenceEquals(own.Receiver, borrow))
+                        {
+                            this.Replace(borrow.Left, node);
+                        }
+
                         break;
                     case InvocationKoto { BoundCall: { } call }:
                         // A requirement call's receiver is the called value itself, whose own bound covers its effects.
@@ -1791,6 +1892,16 @@ public sealed partial class Binding
                             if (IsExclusive(call.ArgumentOperations[i].ParameterType) && !(requirement && call.ArgumentOperations[i].ParameterIndex == call.Target.ReceiverIndex))
                             {
                                 this.Replace(call.ArgumentOperations[i].Source, node);
+                            }
+                        }
+
+                        break;
+                    case InvocationKoto { BoundValueCall: { } callable }:
+                        for (var i = 0; i < callable.Arguments.Length; i++)
+                        {
+                            if (IsExclusive(callable.Arguments[i].ParameterType))
+                            {
+                                this.Replace(callable.Arguments[i].Source, node);
                             }
                         }
 

@@ -273,6 +273,11 @@ public sealed partial class OwnershipAnalysis
                 continue; // SPEC 8.4.10.6: a destruction the bound excludes, reported at the violating effect.
             }
 
+            if (issue.Failure == OwnershipFailure.CallableEffectBound && this.compilation.Binding.ReportCallableEffectViolation(issue.Source, requirement))
+            {
+                continue;
+            }
+
             // The delivery at the normal end is the only use at the function itself apart from a constructor's field checks, whose
             // discarded body never falls through; a return delivers at its jump.
             if (issue.Failure == OwnershipFailure.UninitializedUse && issue.Source is FunctionKoto { Body: { } body } &&
@@ -358,18 +363,20 @@ public sealed partial class OwnershipAnalysis
         void ReportCallEffect(in OwnershipIssue issue)
         {
             var call = issue.Source as InvocationKoto;
-            var name = call?.BoundCall?.Target.Name ?? "the requirement";
+            var name = call?.BoundCall?.Target.Name ?? call?.BoundValueCall?.Receiver.ToString() ?? "the callable";
             var holder = issue.LoanSource is VariableKoto { NameKoto.IdentifierName: { } named } ? named : issue.LoanSource?.ToString() ?? "a value";
-            var input = call?.BoundCall?.Receiver?.ToString();
             (string Role, Koto At, string? Label)[]? related = issue.LoanSource is not { } loan ? null
                 : issue.Related is { } earlier ? [("loan", loan, "value retaining the conflicting loan"), ("call", earlier, "the earlier call whose result keeps the loan")]
                 : [("loan", loan, "value retaining the conflicting loan")];
+            var advice = call?.BoundValueCall is not null
+                ? $"End the use of {holder} before this call, or declare effect preserves results on the Callable Constraint when every bound callable satisfies it"
+                : $"End the use of {holder} before this call, or require a Contract that declares preserves results for {name}, when every use Type conforms to it";
             issue.Source.Report(
                 Requirement(issue),
                 issue.Code,
-                note: Note($"{name} may affect every Loan that the Type of {input ?? "its input"} may denote, and {holder} keeps such a Loan from an earlier requirement call; under the premises here no bound excludes it (SPEC 8.4.10.4)"),
+                note: Note($"{name} may affect every Loan that the Type of its inputs may denote, and {holder} keeps such a Loan from an earlier call; under the premises here no bound excludes it (SPEC 8.4.10.4)"),
                 evidence: [$"{name} may affect a Loan that {holder} keeps"],
-                advice: $"End the use of {holder} before this call, or require a Contract that declares preserves results for {name}, when every use Type conforms to it",
+                advice: advice,
                 related: Locations(related),
                 condition: Condition(issue));
         }
@@ -1840,7 +1847,7 @@ public sealed partial class OwnershipAnalysis
         return node is IdentifierNameKoto { BoundSymbol: { } symbol } && this.body.SymbolPlaces.TryGetValue(symbol, out var root) ? new(root, field) : new(-1, null);
     }
 
-    private void RequirementEffect(InvocationKoto call, BoundType? parameter, FunctionKoto requirement, int invoke, OwnershipValueIdentity input, OwnershipValueIdentity receiver, BoundType? conforming, ref bool bounds, ref bool preserves)
+    private void RequirementEffect(InvocationKoto call, BoundType? parameter, object requirement, int invoke, OwnershipValueIdentity input, OwnershipValueIdentity receiver, BoundType? conforming, ref bool bounds, ref bool preserves)
     {
         var borrowed = parameter is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components.Count: 1 };
         var region = borrowed ? parameter!.Components[0] : parameter;
@@ -1861,7 +1868,7 @@ public sealed partial class OwnershipAnalysis
         if (!bounds)
         {
             bounds = true;
-            preserves = requirement.IsRequirement && this.compilation.Binding.AvailableEffectBounds(requirement, conforming, call).Preserves;
+            preserves = requirement is FunctionKoto { IsRequirement: true } function && this.compilation.Binding.AvailableEffectBounds(function, conforming, call).Preserves;
         }
 
         if (!this.effectRegions.TryGetValue(region, out var place))

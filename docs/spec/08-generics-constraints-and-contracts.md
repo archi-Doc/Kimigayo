@@ -603,7 +603,7 @@ A refinement path that revisits a Contract declaration, even with different argu
 
 ### 8.4.10. Requirement effect bounds
 
-A Contract may publish an **effect bound** for a function requirement: a guarantee about what a call may access, which every conforming implementation must satisfy and on which generic and erased callers may rely. The vocabulary is closed: `confined` (§8.4.10.2) and `preserves results` (§8.4.10.3). There is no other effect syntax, no user-defined bound and no runtime tag. A bound only obliges implementations, so who declares it does not affect soundness; capabilities that grant authority, such as the standard storage boundary (§22.1.2.5), remain bound to declaration identity. An unsafe context exempts an implementation from neither bound (§5): being inside an Unsafe Block is no evidence that a bound holds, and the classification of §8.4.10.2 is the same for safe and unsafe code.
+A Contract may publish an **effect bound** for a function requirement: a guarantee about what a call may access, which every conforming implementation must satisfy and on which generic and erased callers may rely. The vocabulary is closed: `confined` (§8.4.10.2) and `preserves results` (§8.4.10.3). There is no other effect syntax, no user-defined bound and no runtime tag. Callable Constraints also declare these bounds for constraint-based calls (§8.4.10.7). A bound obliges implementations and, for a Callable Constraint, its bound Types, so who declares it does not affect soundness; capabilities that grant authority, such as the standard storage boundary (§22.1.2.5), remain bound to declaration identity. An unsafe context exempts an implementation from neither bound (§5): being inside an Unsafe Block is no evidence that a bound holds, and the classification of §8.4.10.2 is the same for safe and unsafe code.
 
 #### 8.4.10.1. Declarations
 
@@ -620,7 +620,7 @@ EffectBound            := "confined" | "preserves" "results"
 - An `EffectSpecification` is a Contract item (Appendix F). It declares a bound of the enclosing Contract for the function requirement `Name` inherited from the ancestor `ContractSelector`. `Name` must identify exactly one function requirement of that ancestor. A requirement of the Contract itself takes an `EffectClause` instead.
 - Declaring the same bound twice for the same requirement in one Contract is an error.
 - Restating a bound that an ancestor already declares for the same requirement is permitted. Together with the ancestor's declaration it forms one guarantee, so it adds neither obligation nor guarantee; it remains if the ancestor's declaration is later removed. Each bound is still checked once per witness (§8.4.10.4).
-- Effect items appear only in Contracts. Implementations, ordinary functions, Property requirements, Function Types and Callable Constraints accept none, and an implementation can neither add nor remove a bound.
+- Effect specifications appear only in Contracts; effect clauses appear in requirement Constraint regions or under Callable Constraints (§8.4.10.7). Implementations, ordinary functions, Property requirements and Function Types declare no bounds of their own, and an implementation can neither add nor remove a requirement bound.
 - A bound is a guarantee of conformance to the Contract that declares it; it does not strengthen the requirement declaration. `T is C` guarantees the bounds that `C` and its ancestors declare, and no others.
 - Adding a bound kind requires a specification change. Bounds belong to the Contract's public contract and to its verified semantic record (§18.7.1).
 
@@ -671,11 +671,11 @@ An environment effect is an operation that obtains authority over mutable state 
 | Taking the address of a Place with `@raw` (§5.4) | An access to that Place, classified like the Place's other accesses: an environment effect exactly when the Place is a mutable static Field. |
 | Converting between raw pointer Types, or from a raw pointer to `usize` (§5.4) | Not an environment effect. |
 | A raw access, including a raw Place borrow and the pointer arguments of `Raw.release`, `Raw.initialize` and `Raw.slice` | Not an environment effect. It is compared with held Loans under the anchor rule of §5.2.2. |
-| Reading an immutable static whose value contains no raw pointer | Not an environment effect. The initializer enters the summary. |
+| Reading an immutable static whose value contains no raw pointer, `rc` handle or Weak of an `rc` | Not an environment effect. The initializer enters the summary. |
 | Accessing a mutable static Field: a read, borrow, write, replacement, destruction or first-access initialization | Environment effect. |
 | A standard operation that accesses state outside the program, such as Console output | Environment effect. |
 | A call of a foreign function (§22.3.1) | Environment effect, together with the accesses its signature permits through its arguments. |
-| Reading from an immutable static a value that contains a raw pointer, at any depth | Environment effect. Immutability does not protect the pointee, so the read obtains authority over mutable state from the environment. |
+| Reading from an immutable static a value that contains a raw pointer, `rc` handle or Weak of an `rc`, at any depth | Environment effect. A raw pointer grants mutable authority; an `rc` or its Weak reaches non-atomic runtime state. The rule also applies before any pointee access or handle operation. |
 | Converting an integer to a pointer | Environment effect, although it needs no unsafe context. The pointer has no provenance, and an access through it relies on a target-environment guarantee (§5.5). |
 | A call whose environment effects are unknown | An effect that cannot be classified, a conflict under either bound (§8.4.5). |
 
@@ -855,7 +855,7 @@ struct Topped<J>
 
 #### 8.4.10.6. Diagnostics and recovery
 
-- **Declarations.** An unidentified, ambiguous or non-ancestor target, a bound declared twice in the same Contract, an effect item outside a Contract, `preserves results` without a borrowed receiver, or a dependent result is the Language Error `InvalidEffectBound_Kd`. The primary location is the effect item and the related location the target requirement. For a dependent result, the Reason names the dependent part and its path, such as an associated-Type specification or an elided Origin; no automatic repair is offered, because the dependency is the meaning of the API.
+- **Declarations.** An unidentified, ambiguous or non-ancestor target, a bound declared twice in the same Contract, an effect item outside a Contract or Callable Constraint, `preserves results` without a borrowed receiver, or a dependent result is the Language Error `InvalidEffectBound_Kd`. The primary location is the effect item and the related location the target requirement. For a dependent result, the Reason names the dependent part and its path, such as an associated-Type specification or an elided Origin; no automatic repair is offered, because the dependency is the meaning of the API.
 - **Conformance.** A bound violation is `IncompatibleContractImplementation_Kd` (§23.3.6.1). Its Reason names the bound, the declaring Contract and the requirement, and distinguishes a definite violation (an environment effect or a conflicting Loan) from an unknown effect treated as a conflict. For an environment effect, the Reason names the kind of operation that obtained the authority (§8.4.10.2), and that operation is the primary location. For a conflict with a Loan of an earlier result, the Reason states why the Loan was not excluded (§8.4.10.5): it comes from an argument, from another requirement or from another value, or the body replaces a value on the path; the source or the replacement is a related location. Otherwise, the primary location is the first violating effect in the implementation's own body. Related locations also give the effect path, the `Self is C` declaration and the bound. Advice offers repairs that keep the guarantee: moving the state into a Field of `self` or a parameter, avoiding the conflicting access, or returning only results obtained from the same requirement on a value reached through a Field path of `self`. Only where the declarations are editable may it also mention, conditionally, weakening the public contract by conforming to a Contract without the bound or removing the bound, stating that callers relying on the guarantee are affected. An implementation alone cannot remove an inherited bound.
 - **Callers.** A derived requirement-call effect that may conflict with an active Loan is the Language Error `CallEffectConflict_Kd` at the later call. A task call's comparison with static Loans (rule 2 of §8.4.10.4, [§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)) is not reported with this code: its conflict is `ComparisonLoanConflict_Kd` with the Reason `suspension point (other tasks)` (§15.6.4, [§24.5](24-suspension-and-asynchronous-tasks.md#245-diagnostics)). Related locations give the conflicting Loan and the call that created it. The Reason names the access, the input it goes through and the Loan, and states that no available bound excludes the access under the premises; it does not assert that a conflict occurs. Advice suggests strengthening the Constraint to a Contract that declares the bound, when every use Type conforms to it, or ending the use of the held result before the call. A conflict with the receiver borrow itself keeps the existing diagnostics, such as `CallActivationConflict_Kd`.
 - **Recovery.** A conformance that violates a bound is invalid, as before. An invalid effect item gives no guarantee, and the caller conflicts it would have resolved are derived from the declaration error (§23.3.6.4).
@@ -867,6 +867,70 @@ Requirement: Source.take
 Available bound: preserves results
 Declared by: StableSource
 Premise: S is SafeSource
+```
+
+#### 8.4.10.7. Callable effect bounds
+
+A Callable Constraint may declare the closed bounds `confined` and `preserves results` for calls through that Constraint:
+
+```kimi
+func apply<F>(transform: ref/F, value: i32) -> i32
+    F is Callable<(i32) -> i32>
+        effect confined
+    return transform(value)
+```
+
+```text
+ConstraintClause := ConstraintSubject "is" IsRequirement CallableEffects?
+CallableEffects  := IndentedList<EffectClause>
+```
+
+**Declaration.** The whole `IsRequirement` must be one `CallableRequirement`, without `and`, `or`, `not` or parentheses. Other requirements on that subject use separate clauses. A list is permitted in function Constraint regions (conditional-member premises included), struct and enum Constraint regions, and function-requirement Constraint regions; it is not permitted in Contract-wide clauses, associated-Type declarations or specifications, or conditional-conformance conditions. The list belongs to its clause and does not end a body's leading Constraint prefix (§7.4). Each bound kind appears at most once in one Constraint. `preserves results` requires receiver `ref` or `uniq`; §8.6 already excludes results borrowing the hidden callable receiver. In a function requirement, an effect clause at the Constraint region's own level still bounds the requirement; a clause indented under a Callable Constraint bounds that Constraint:
+
+```kimi
+contract Mapper
+    func map<F>(self: uniq/Self, transform: ref/F) -> i32
+        F is Callable<(i32) -> i32>
+            effect confined
+        effect confined
+```
+
+**Meaning.** A Type bound to `F is Callable<r, S>` must satisfy the Callable requirement and every declared effect bound for a call acquired under `r`. `confined` excludes environment and unclassifiable effects (§8.4.10.2). Captures are reached through the callable receiver, an input; accessing them is not an environment effect. Acquisition is included, and an `owner` call includes destroying the remaining acquired storage after a Shared or Exclusive body returns (§8.6, §16.4). Destruction outside a call is not covered. `preserves results` excludes conflict with every Loan retained by a result of an earlier call of the same callable value, including ordinary transfer and Reborrow (§8.4.10.3). It promises neither purity nor stable returned values.
+
+**Selection and obligations.** Candidate applicability (§10.1 step 5), conditional-member premises (§7.4) and proposition proofs (§8.7) judge a Callable Constraint without its bounds. Bounds are obligations of the selected call, selected function reference (§10.5, for both explicit and inferred Type arguments), or Type formation (§8.1.3). They are checked after selection against completed summaries, after the recursive fixed point of §15.6.4. A failed bound never excludes a candidate or causes reselection. It is part of checking the declared contract (§8.10), not a new condition inferred at instantiation.
+
+| Type bound to the subject | Evidence for a bound |
+| --- | --- |
+| Function Item of a declaration | Its transitive summary, computed in this build or published and validated under §18.7.2. Missing summaries are unclassifiable and fail. |
+| Function Item of a requirement through a constrained Type (§8.4.6) | For `confined`, the bounds available for that requirement. It never establishes `preserves results`: the requirement guarantees preservation only on one receiver value, whereas the callable may receive different receiver arguments on successive calls. |
+| Concrete Closure | Its body summary, plus acquisition and, with `owner`, remaining-environment destruction. |
+| Abstract Type parameter or associated-Type projection | An exact Callable premise proves the proposition (§8.7). Each bound must be declared by a premise with the same normalized subject and signature and receiver equal to or stronger than the required receiver, ordered `ref`, `uniq`, `owner`. A weaker receiver cannot certify stronger acquisition or destruction. |
+| Common Function Type | No bound is established: erasure preserves none. |
+
+Generic bodies use summaries verified under their enclosing premises, never bodies rechecked under favorable instantiated Types (§8.10). When an implementation's Callable Constraints must follow from the requirement and conformance premises (§8.4.5), the proposition is proven normally and each bound must separately be declared by a qualifying premise. Implementations cannot add an unrequired Callable bound.
+
+**Use and composition.** A constraint-based call selected with receiver `r` and signature `S` uses every bound of a premise on the same subject and normalized signature whose receiver is `r` or stronger. §8.4.10.4 rules 1–3 apply: inputs include the acquired callable receiver; `confined` removes unknown environment effects; `preserves results` excludes Loans of earlier results of that callable value. Without a bound, environment effects remain unknown.
+
+A declaration's summary records calls through Callable-constrained inputs against those inputs, including their receiver mode, arguments and result dependencies. At a call of the declaration, compose those calls through the actual arguments: use a concrete Function Item or Closure's summary, or an abstract Type's available bounds. Preserve this information in published summaries (§18.7.2), rather than replacing the calls by unknown effects. This composition describes effects at the caller; it does not rebind or reverify the generic body. Recursive composition reaches a fixed point before acceptance. Bounds remain explicit requirements even if a particular caller's argument would have permitted a less restrictive body.
+
+A task call still performs the independent static-Loan comparison of §24.3, whatever its available bounds; bounds do not account for other tasks that can run while the caller is suspended.
+
+**Compatibility.** Callable bounds belong to public contracts and verified semantic records (§18.7). Adding a bound to a function restricts callers; removing it admits more callers and requires reverifying the body without it. Adding a Type bound invalidates formations with violating callable arguments. Adding a Callable bound to a function requirement restricts generic callers and relaxes implementations; removing it invalidates implementations that still require it. Ordinary functions and Function Types declare no bounds of their own.
+
+**Diagnostics and inspection.** Invalid form or position, a duplicate kind in one Constraint, or `preserves results` with `owner` is `InvalidEffectBound_Kd` at the effect item. Relate the carrying Constraint when present, otherwise the identified requirement. The Reason distinguishes the rejected form; the Note states that Contracts and Callable Constraints declare bounds and an implementation cannot add or remove a requirement's bound. An implementation requiring an unprovided bound is `IncompatibleContractImplementation_Kd`, naming the bound and the requirement premise lacking it.
+
+A failing binding is the Language Error `UnsatisfiedEffectBound_Kd` in Ownership, after selection, at the argument or Type argument. Message: "The callable given here does not satisfy an effect bound of its Callable Constraint". Relate the bounded Constraint and the first violating effect when visible. The Reason names the bound and distinguishes a definite environment-effect kind, an unknown effect, a premise lacking the bound, a requirement Function Item's per-receiver guarantee, or erasure to a common Function Type. Advice may suggest passing state as an argument or capture, declaring the bound on an enclosing abstract premise, or conditionally removing an editable bound while explaining that the body relies on it. These are Advice, not repairs whose semantic preconditions have been verified.
+
+Static call-effect conflicts retain `ComparisonLoanConflict_Kd` (§15.6.4); for non-task Callable calls, Advice may suggest `confined` when the declaration is editable and every caller's callable satisfies it. For task calls this Advice is not offered. Effects through inputs that conflict with earlier-result Loans retain `CallEffectConflict_Kd`; its message covers both requirement and Callable calls. Advice may suggest `preserves results` under the corresponding conditions, or ending the held result's use before the call. Invalid effect items supply no bound; dependent failures follow §23.3.6.4.
+
+Hover and semantic inspection list every contributing premise, using the typed block of §8.4.10.6:
+
+```text
+Call: transform(value)
+Callable: F is Callable<(i32) -> i32>
+Available bound: confined
+Declared by: apply
+Premise: F is Callable<(i32) -> i32> effect confined
 ```
 
 ## 8.5. Runtime contracts
@@ -966,9 +1030,11 @@ let result = applyTwice(10, transform@uniq) // 13; captured count is now 2.
 
 A Shared callable also qualifies, but a `uniq/F` argument still needs ordinary exclusive access. `transform` is passed at an argument position, not as a Receiver Expression, so the owned Closure Place is written `transform@uniq`; the calls `transform(value)` inside `applyTwice` acquire the `uniq/F` parameter implicitly. Shared environment access does not prevent use of the normal exclusive capability of a separate `uniq/T` argument. By-value `F` parameters use ordinary acquisition (a Copy or `@move`); the constraint neither borrows them silently nor guarantees repeated calls or non-escape. Generic conformance and result Origin and Loan obligations must resolve before finalization. A returned input borrow need not keep the callable receiver, and no result may borrow call-local storage, including an `owner` receiver temporary.
 
+Callable Constraints may declare effect bounds under §8.4.10.7; they change the call's guarantees and selected-use obligations, not its signature or candidate ranking.
+
 ## 8.7. Constraint proof system
 
-Constraint meaning and available proof are distinct. `and`, `or` and `not` keep their Boolean meanings, but generic checking uses only the rules below. Accepted programs must not depend on optional SAT solving, arbitrary theorem proving, enumeration of Types or optimizer-derived facts. Fully determined concrete conditions still use ordinary Boolean evaluation.
+Callable effect bounds are not part of the propositions proven here; selected uses and implementation compatibility discharge them separately (§8.4.10.7). Constraint meaning and available proof are distinct. `and`, `or` and `not` keep their Boolean meanings, but generic checking uses only the rules below. Accepted programs must not depend on optional SAT solving, arbitrary theorem proving, enumeration of Types or optimizer-derived facts. Fully determined concrete conditions still use ordinary Boolean evaluation.
 
 In this section `P` and `Q` denote validated, bound propositions. Requirement expressions are parsed under [requirement precedence](#83-requirement-expressions) before interpretation: `T is (A and B)` supplies the propositions `(T is A) and (T is B)`, and likewise for `or` and the scope of `not`; source precedence is unchanged. Proposition identity uses bound subject and requirement Symbols, substitutions and normalized complete Types, including Semantics and Origins where applicable; equal source spellings alone are insufficient. Parentheses are transparent, and `not not P` normalizes to `P`. There is no De Morgan, distributive or other logical-equivalence normalization.
 

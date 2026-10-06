@@ -420,6 +420,8 @@ let yes = a.same(Box<i32>.init(1))   // OK: i32 is Equatable.
 // Box<Point>.init(p).same(q) is an error when Point is not Equatable: same is inapplicable for Box<Point>.
 ```
 
+In the leading Constraint prefix (§7.4), an indented Callable effect list belongs to its clause and does not end the prefix (§8.4.10.7). Ordinary functions declare no effect bounds of their own.
+
 ## 7.5. Unsafe functions
 
 An **unsafe function**, declared with `unsafe func`, requires its caller to satisfy documented memory-safety conditions for their documented duration. A function is declared unsafe only when its caller has obligations that its Types cannot express; those obligations are its safety contract. Calling it requires an [Unsafe Block](14-control-flow.md#1433-unsafe-block), and violating its safety contract is undefined behavior. This runtime safety contract is distinct from Constraints. The conditions are described with the [`safety` documentation item](02-source-and-lexical-structure.md#235-writing-and-extracting-items), which adds no automatic proof or calling permission.

@@ -331,6 +331,9 @@ internal sealed class LspSession : IDisposable
                 case LspMethods.CodeAction:
                     this.OnCodeAction(message);
                     break;
+                case LspMethods.Hover:
+                    this.OnHover(message);
+                    break;
                 default:
                     if (isRequest)
                     {
@@ -535,6 +538,42 @@ internal sealed class LspSession : IDisposable
         }
 
         return true;
+    }
+
+    private void OnHover(LspMessage message)
+    {
+        var parameters = Read<HoverParams>(message);
+        EffectHover? agreed = null;
+        if (parameters is not null && this.FindOpen(parameters.TextDocument?.Uri) is { Desynchronized: false } document &&
+            this.ContributorsValid(document.Identity) && this.contributors.TryGetValue(document.Identity, out var contributors))
+        {
+            var first = true;
+            foreach (var key in contributors)
+            {
+                EffectHover? found = null;
+                foreach (var candidate in this.units[key].Result!.Output.EffectHovers)
+                {
+                    if (candidate.Source == document.Identity && candidate.Range.Start.CompareTo(parameters.Position) <= 0 &&
+                        candidate.Range.End.CompareTo(parameters.Position) > 0 &&
+                        (found is null || (candidate.Range.Start.CompareTo(found.Range.Start) >= 0 && candidate.Range.End.CompareTo(found.Range.End) <= 0)))
+                    {
+                        found = candidate;
+                    }
+                }
+
+                if (!first && agreed != found)
+                {
+                    agreed = null;
+                    break;
+                }
+
+                agreed = found;
+                first = false;
+            }
+        }
+
+        var result = agreed is null ? null : new HoverResult { Contents = new() { Value = agreed.Text }, Range = agreed.Range };
+        this.sender.Result(message.Id, result, LspJsonContext.Default.HoverResult);
     }
 
     private void OnWatchedFiles(DidChangeWatchedFilesParams? parameters, long now)
