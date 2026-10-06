@@ -159,6 +159,8 @@ public enum KimiDeclarationId : byte
     DictionaryStorageAppend,
     DictionaryStorageShrinkEntries,
     DictionaryStorageShrinkToFit,
+    DictionaryStorageClearEntries,
+    StorageDestroyDictionaryEntries,
 }
 
 public enum KimiDeclarationState : byte

@@ -243,6 +243,8 @@ internal sealed class EmissionModule
 
     internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
 
+    internal Dictionary<BoundCall, FunctionAbi> SourceCalls { get; } = new(ReferenceEqualityComparer.Instance);
+
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
     internal bool NeedsArrayRuntime { get; set; }
 
@@ -262,10 +264,6 @@ internal sealed class EmissionModule
     internal FunctionAbi? DictionaryInitialize { get; set; }
 
     internal FunctionAbi? DictionaryClearLinks { get; set; }
-
-    internal FunctionAbi? DictionaryFind { get; set; }
-
-    internal FunctionAbi? DictionaryClear { get; set; }
 
     internal FunctionAbi? DictionaryShrink { get; set; }
 
@@ -308,6 +306,7 @@ internal sealed class EmissionModule
         this.Aggregates.Clear();
         this.ArrayHelpers.Clear();
         this.DictionaryHelpers.Clear();
+        this.SourceCalls.Clear();
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
         this.NeedsStorageBytes = false;
@@ -317,8 +316,6 @@ internal sealed class EmissionModule
         this.DictionaryAppend = null;
         this.DictionaryInitialize = null;
         this.DictionaryClearLinks = null;
-        this.DictionaryFind = null;
-        this.DictionaryClear = null;
         this.DictionaryShrink = null;
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();
@@ -402,13 +399,11 @@ internal enum DictionaryHelperKind : byte
 {
     CheckKey,
     Place,
-    Find,
-    Clear,
     Drop,
 }
 
-/// <summary>Physical Dictionary entry helper; bound Types and Origins never escape lowering.</summary>
-internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, AggregateLayout? Result, FunctionAbi? Related);
+/// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI.</summary>
+internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, BoundCall? Related);
 
 // SPEC 4.6.4: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
 internal static class SliceShape

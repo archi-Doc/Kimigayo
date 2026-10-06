@@ -8,10 +8,12 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Result, string Related), DictionaryHelper> dictionaryHelpers = new();
-    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Result, string Related), DictionaryHelper> dictionaryHelperCache = new();
+    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, BoundCall? Related), DictionaryHelper> dictionaryHelpers = new();
+    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, BoundCall? Related), DictionaryHelper> dictionaryHelperCache = new();
     private bool dictionaryRuntimeUsed;
     private bool storageBytesUsed;
+
+    internal Func<bool, BoundType, BoundType, BoundCall>? RequireDictionaryOperation { get; set; }
 
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
@@ -24,12 +26,12 @@ internal sealed partial class BodyLowering
         return (keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
     }
 
-    private DictionaryHelper GetDictionaryHelper(DictionaryHelperKind kind, in ArrayElement key, in ArrayElement value, AggregateLayout? result = null, FunctionAbi? equality = null)
+    private DictionaryHelper GetDictionaryHelper(DictionaryHelperKind kind, in ArrayElement key, in ArrayElement value)
     {
-        FunctionAbi? related = kind == DictionaryHelperKind.Find ? equality :
-            kind == DictionaryHelperKind.Drop ? this.GetDictionaryHelper(DictionaryHelperKind.Clear, key, value).Abi :
-            equality is not null ? this.GetDictionaryHelper(DictionaryHelperKind.Find, key, value, equality: equality).Abi : null;
-        var cacheKey = (kind, key.Value, key.Layout?.Id ?? -1, value.Value, value.Layout?.Id ?? -1, result?.Id ?? -1, related?.Name ?? string.Empty);
+        var find = kind == DictionaryHelperKind.CheckKey;
+        var related = find || (kind == DictionaryHelperKind.Drop && (key.NeedsDestruction || value.NeedsDestruction))
+            ? this.RequireDictionaryOperation!(find, key.Type, value.Type) : null;
+        var cacheKey = (kind, key.Value, key.Layout?.Id ?? -1, value.Value, value.Layout?.Id ?? -1, related);
         if (this.dictionaryHelpers.TryGetValue(cacheKey, out var helper))
         {
             return helper;
@@ -41,16 +43,14 @@ internal sealed partial class BodyLowering
             var handle = new AbiParameter("ptr", "handle");
             var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
             var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
-            var output = new AbiParameter("ptr", "result", AbiParameterKind.ResultSlot);
             FunctionAbi abi = kind switch
             {
-                DictionaryHelperKind.Find => new(name, "i64", [handle, new("ptr", "key")]),
                 DictionaryHelperKind.CheckKey => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), location, length]),
                 DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
                 _ => new(name, "void", [handle, location, length]),
             };
             var layout = GetDictionaryEntryLayout(key, value);
-            helper = new(kind, abi, key.Value, key.Layout, key.IsString, value.Value, value.Layout, value.IsString, layout.KeyOffset, layout.ValueOffset, layout.Stride, result, related);
+            helper = new(kind, abi, key.Value, key.Layout, key.IsString, value.Value, value.Layout, value.IsString, layout.KeyOffset, layout.ValueOffset, layout.Stride, related);
             this.dictionaryHelperCache.Add(cacheKey, helper);
         }
 
@@ -81,14 +81,7 @@ internal sealed partial class BodyLowering
             return Fail("Dictionary literal cannot inspect or transfer an uninitialized entry.", out failure);
         }
 
-        FunctionAbi? equality = null;
-        if (!inserting && (operation.Source.CodeContext.Compilation.Binding.DictionaryComparison(dictionary) is not { } comparison ||
-            (equality = this.ComparisonHelpers?.GetValueOrDefault(comparison)) is null))
-        {
-            return Fail("Dictionary literal requires a finalized equality witness.", out failure);
-        }
-
-        var helper = this.GetDictionaryHelper(inserting ? DictionaryHelperKind.Place : DictionaryHelperKind.CheckKey, key, value, equality: equality);
+        var helper = this.GetDictionaryHelper(inserting ? DictionaryHelperKind.Place : DictionaryHelperKind.CheckKey, key, value);
         this.callOperands.Clear();
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
         this.callOperands.Add(Argument(operation.Input, key, 0));

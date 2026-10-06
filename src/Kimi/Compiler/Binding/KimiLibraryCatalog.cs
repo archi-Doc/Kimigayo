@@ -183,6 +183,8 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.ClosedRangeIntoIterator, "intoIterator", SourceFunction: true, CallerLocation: true, Owner: "ClosedRange"),
         new(KimiDeclarationId.RangeIteratorStarting, "starting", SourceFunction: true, CallerLocation: true, Owner: "RangeIterator"),
         new(KimiDeclarationId.ClosedRangeIteratorStarting, "starting", SourceFunction: true, CallerLocation: true, Owner: "ClosedRangeIterator"),
+        new(KimiDeclarationId.DictionaryStorageClearEntries, "clearEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
+        new(KimiDeclarationId.StorageDestroyDictionaryEntries, "destroyDictionaryEntries", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
     ];
 

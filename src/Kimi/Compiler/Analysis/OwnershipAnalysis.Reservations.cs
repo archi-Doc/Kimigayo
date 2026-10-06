@@ -107,9 +107,10 @@ public sealed partial class OwnershipAnalysis
             (argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection ||
                 (argument.Kind == ArgumentOperationKind.Value && IsDirectExclusiveBorrow(source))))
         {
-            // Lifetime fitting may shorten several arguments to the same Origin.
-            // Keep each prepared borrow's actual source dependency and Loan footprint.
-            var type = this.compilation.Binding.PreparedBorrowType(source, argument.ParameterType!);
+            // Binding's acquisition keeps the source dependency before parameter lifetime fitting. In particular,
+            // Reborrowing a reference stored in a published Place keeps the referent's Origin, not the slot's Origin.
+            // The common borrowing path still records the actual Loan footprint and call reservation.
+            var type = argument.AdaptedType ?? this.compilation.Binding.PreparedBorrowType(source, argument.ParameterType!);
             var direct = KotoHelper.UnwrapParentheses(source);
             // An explicit adaptation and its call-only reborrow are one preparation.
             // Never peel a call, selection, capture or storage boundary.

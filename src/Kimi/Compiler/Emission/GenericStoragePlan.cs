@@ -88,8 +88,9 @@ internal sealed partial class GenericStoragePlan
         this.functions = null;
         this.entryNames = 0;
         this.destructorNames.Clear();
-        this.destructorQueue.Clear();
-        this.preparedDestructors = 0;
+        this.requestedSourceCalls.Clear();
+        this.sourceCallQueue.Clear();
+        this.preparedSourceCalls = 0;
         this.ExpansionParent = null;
     }
 
@@ -121,8 +122,7 @@ internal sealed partial class GenericStoragePlan
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }
 
-            if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure) ||
-                !this.PrepareFunctionItems(compilation, module, layouts, body, null, 0, out failure) ||
+            if (!this.PrepareFunctionItems(compilation, module, layouts, body, null, 0, out failure) ||
                 !this.PrepareClosures(compilation, module, layouts, body, null, 0, out failure))
             {
                 return false;
@@ -409,8 +409,7 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, CallEntry entry, int depth, out string? failure)
     {
         var binding = compilation.Binding;
-        if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1) ||
-            !this.PrepareFunctionItems(compilation, module, layouts, template.Body, call, depth + 1, out failure) ||
+        if (!this.PrepareFunctionItems(compilation, module, layouts, template.Body, call, depth + 1, out failure) ||
             !this.PrepareClosures(compilation, module, layouts, template.Body, call, depth + 1, out failure))
         {
             return false;

@@ -8,6 +8,21 @@ namespace XunitTest;
 
 public class DictionaryLibraryTest
 {
+    [Fact]
+    public void LiteralChecksAndImplicitCleanupReuseTypedSourceCalls()
+    {
+        var c = MinimalEmissionTest.Analyze("var entries = [1: \"first\", 2: \"second\"]\nentries.clear()\n_ = entries.tryInsert(3, \"last\")\nConsole.writeLine(entries[3])");
+        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.Contains(module.SourceCalls, entry => ReferenceEquals(entry.Key.Target.Declaration, c.Library.DictionaryFind));
+        var clear = Assert.Single(module.SourceCalls, entry => ReferenceEquals(entry.Key.Target.Declaration, c.Library.DictionaryClear));
+        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, clear.Value)));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.DoesNotContain("__kimi_dictionary_find", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("__kimi_dictionary_clear", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("_destroy(i64 %environment", ir, StringComparison.Ordinal);
+        ScalarEmissionTest.WriteFixture("DictionaryLibraryTypedCleanup", ir, "last\n");
+    }
+
     [Theory]
     [InlineData("i32")]
     [InlineData("string")]

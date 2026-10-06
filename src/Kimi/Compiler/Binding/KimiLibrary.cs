@@ -39,9 +39,9 @@ public sealed partial class KimiLibrary
         this.DictionaryAppendSlot = (FunctionKoto)FindDeclaration(dictionaryStorage, "appendSlot", true)!;
         this.DictionaryInitialize = (FunctionKoto)FindDeclaration(dictionaryStorage, "initialize", true)!;
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
-        this.DictionaryFind = (FunctionKoto)FindDeclaration(dictionaryStorage, "find", true)!;
+        this.DictionaryFind = (FunctionKoto)FindDeclaration(dictionaryStorage, "findEntry", true)!;
         this.DictionaryRequireAbsent = (FunctionKoto)FindDeclaration(dictionaryStorage, "requireAbsent", true)!;
-        this.DictionaryClear = (FunctionKoto)FindDeclaration(dictionaryStorage, "clear", true)!;
+        this.DictionaryClear = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearEntries", true)!;
         this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.DictionaryShrink = (FunctionKoto)FindDeclaration(dictionaryStorage, "shrinkToFit", true)!;
         this.DictionaryReserveStorage = (FunctionKoto)FindDeclaration(dictionaryStorage, "reserve", true)!;
