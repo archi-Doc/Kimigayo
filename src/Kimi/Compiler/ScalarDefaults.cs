@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>The executable default-expression subset: scalar and string computations, and erased common Function values whose
+/// <summary>The executable default-expression subset: scalar computations, independent owned values and common Functions whose
 /// environments retain no Loan of a prepared argument.</summary>
 internal static class ScalarDefaults
 {
@@ -59,10 +59,10 @@ internal static class ScalarDefaults
     /// <returns>Whether lowering delivers the default.</returns>
     internal static bool SupportsDelivered(BoundType? type) => SupportsResult(type) || IsErasedResult(type);
 
-    /// <summary>Gets whether a default supplies a Scalar, Unit or owned string, none of which retains a Loan of a prepared argument.</summary>
+    /// <summary>Gets whether a default supplies a Scalar, Unit, string or independent aggregate retaining no Loan of a prepared argument.</summary>
     /// <param name="type">The parameter Type.</param>
     /// <returns>Whether the Type is a supported default result.</returns>
-    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String);
+    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || SupportsIndependentAggregate(type);
 
     /// <summary>Gets whether a default expression may compute or read a value of this Type: a supported result, or a safe
     /// reference to one, such as a binding of a shared Subject (SPEC 15.1.6).</summary>
@@ -99,7 +99,10 @@ internal static class ScalarDefaults
         return true;
     }
 
-    private static bool SupportsExpressionType(BoundType? type) => SupportsValue(type) || ReferenceEquals(type, BoundType.String) || ReferenceTypes.IsString(type);
+    private static bool SupportsIndependentAggregate(BoundType? type) => type is { ContainsParameter: false, CarriesOrigin: false } &&
+        (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
+
+    private static bool SupportsExpressionType(BoundType? type) => SupportsValue(type) || SupportsResult(type) || ReferenceTypes.IsString(type);
 
     private static bool IsErasedResult(BoundType? type) => type is { Kind: BoundTypeKind.Function, ContainsParameter: false };
 
@@ -126,6 +129,7 @@ internal static class ScalarDefaults
 
         return IsErasedResult(expression.BoundType) && expression switch
         {
+            InvocationKoto { BoundCall: { } call } invocation => SupportsCall(invocation, call, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsErased(parentheses.Operand, function, parameterIndex),
             IfKoto conditional => SupportsConditional(conditional, function, parameterIndex, true),
             MatchKoto match => SupportsMatch(match, function, parameterIndex, true),
@@ -157,15 +161,21 @@ internal static class ScalarDefaults
             return false;
         }
 
-        // An entry Copies a prepared scalar, a scalar-only Tuple or a reference to one, which lowering copies from the prepared
-        // slot; other Copy aggregates have no prepared-copy plan yet. An entry that cannot Copy is the declaration check's own
+        // An entry Copies a prepared value from its pending slot. A local created by the default is acquired by ordinary
+        // capture rules and may be moved into its environment. An entry that cannot Copy is the declaration check's own
         // TransferRequired_Kd (SPEC 7.6.2), so its default never executes.
         for (var i = 0; i < closure.Captures.Count; i++)
         {
             var capture = closure.Captures[i];
+            if (capture.Source is { Kind: BindingSymbolKind.Local } local && IsInsideDefault(local.Declaration, function, parameterIndex) &&
+                capture.Environment.CaptureAcquisition is CaptureAcquisition.Copy or CaptureAcquisition.Move)
+            {
+                continue;
+            }
+
             if (capture.Environment.CaptureAcquisition != CaptureAcquisition.Copy || capture.Source is not { Kind: BindingSymbolKind.Parameter } parameter ||
                 !ReferenceEquals(parameter.Scope.Owner, function) || parameter.Slot >= parameterIndex ||
-                (!SupportsPatternValue(capture.Environment.Type) &&
+                (!SupportsPatternValue(capture.Environment.Type) && !SupportsIndependentAggregate(capture.Environment.Type) &&
                     (capture.Environment.Type is not { } type || literal.CodeContext.Compilation.Binding.ProveCopy(type, literal) != ConstraintProof.Refuted)))
             {
                 return false;
@@ -177,16 +187,36 @@ internal static class ScalarDefaults
 
     private static bool SupportsExpression(Koto expression, FunctionKoto function, int parameterIndex)
     {
+        if (expression.ErasedFunctionType is not null || IsErasedResult(expression.BoundType))
+        {
+            return SupportsErased(expression, function, parameterIndex);
+        }
+
         if (expression.AttributeChain is not null || expression.BindingState != BindingState.Resolved ||
             (!SupportsExpressionType(expression.BoundType) && !ReferenceEquals(expression.BoundType, BoundType.Never)))
         {
             return false;
         }
 
+        if (expression.CodeContext.Compilation.Binding.TryGetEnumConstruction(expression, out var construction))
+        {
+            foreach (var operation in construction!.PayloadOperations)
+            {
+                if (operation.Source is not { } payload || !SupportsExpression(payload, function, parameterIndex))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         return expression switch
         {
             NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or StringLiteralKoto => true,
             UnitLiteralKoto or TupleLiteralKoto { Elements.Count: 0 } or TupleTypeKoto { ElementNodes.Count: 0 } => true,
+            TupleLiteralKoto tuple => SupportsElements(tuple.Elements, function, parameterIndex),
+            ArrayLiteralKoto array => SupportsElements(array.Elements, function, parameterIndex),
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } =>
                 ReferenceEquals(symbol.Scope.Owner, function) && symbol.Slot < parameterIndex,
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: FieldKoto local } } =>
@@ -207,7 +237,7 @@ internal static class ScalarDefaults
             LabeledKoto labeled => SupportsExpression(labeled.Target, function, parameterIndex),
             ExitKoto or YieldKoto or ContinueKoto => SupportsTransfer((JumpKoto)expression, function, parameterIndex),
             ConversionKoto conversion when conversion.ConversionBinding is ConversionBinding.Identity or ConversionBinding.Literal or
-                ConversionBinding.Integer or ConversionBinding.Floating or ConversionBinding.Numeric =>
+                ConversionBinding.Integer or ConversionBinding.Floating or ConversionBinding.Numeric or ConversionBinding.Transfer =>
                 SupportsExpression(conversion.Left, function, parameterIndex),
             ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Ref } conversion =>
                 SupportsExpression(conversion.Left, function, parameterIndex),
@@ -224,6 +254,19 @@ internal static class ScalarDefaults
                 SupportsExpression(binary.Left, function, parameterIndex) && SupportsExpression(binary.Right, function, parameterIndex),
             _ => false,
         };
+    }
+
+    private static bool SupportsElements(IReadOnlyList<Koto> elements, FunctionKoto function, int parameterIndex)
+    {
+        for (var i = 0; i < elements.Count; i++)
+        {
+            if (!SupportsExpression(elements[i], function, parameterIndex))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // SPEC 7.2.3: a default may call an ordinary function (effects included), or format text, with value arguments and temporary
@@ -294,7 +337,7 @@ internal static class ScalarDefaults
 
     private static bool SupportsMatchSubject(Koto subject, FunctionKoto function, int parameterIndex)
     {
-        if (SupportsValue(subject.BoundType) || ReferenceEquals(subject.BoundType, BoundType.Never))
+        if (SupportsExpressionType(subject.BoundType) || IsErasedResult(subject.BoundType) || ReferenceEquals(subject.BoundType, BoundType.Never))
         {
             return SupportsExpression(subject, function, parameterIndex);
         }
@@ -353,7 +396,7 @@ internal static class ScalarDefaults
             if (item is FieldKoto local)
             {
                 if (local.AttributeChain is not null ||
-                    !SupportsPatternValue(local.BoundType) ||
+                    !(SupportsPatternValue(local.BoundType) || SupportsResult(local.BoundType) || IsErasedResult(local.BoundType)) ||
                     (local.InitializerKoto is { } initializer && !SupportsMatchSubject(initializer, function, parameterIndex)))
                 {
                     return false;

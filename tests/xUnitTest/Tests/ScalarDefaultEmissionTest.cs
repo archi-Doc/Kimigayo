@@ -242,11 +242,11 @@ public class ScalarDefaultEmissionTest
 
     [Theory]
     [InlineData("func f(x: i32 = (label scope: do\n    let n = \"a\"\n    exit to scope 1\n)) => ()\nf(3)")]
-    public void SuppliedDefaultsStillRejectUnsupportedLocalEffects(string source)
+    public void SuppliedDefaultsCheckOwnedLocals(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Fact]

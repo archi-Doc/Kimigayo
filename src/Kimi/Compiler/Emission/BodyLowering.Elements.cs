@@ -185,7 +185,7 @@ internal sealed partial class BodyLowering
                     (operation.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter || operation.Source is FunctionKoto { BoundClosure: not null }) &&
                     (uint)operation.Place < (uint)body.Places.Count &&
                     body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result } prepared &&
-                    (prepared.Type.Kind == BoundTypeKind.Tuple || ReferenceTypes.IsStorage(prepared.Type)))
+                    (SlotTypes.IsResult(prepared.Type) || ReferenceTypes.IsStorage(prepared.Type)))
                 {
                     preparedCopies = true;
                     break;
@@ -208,7 +208,7 @@ internal sealed partial class BodyLowering
             if (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition is AcquisitionKind.Copy or AcquisitionKind.Move &&
                 (uint)operation.Input < (uint)body.Places.Count &&
                 body.Places[operation.Input] is { Kind: OwnershipPlaceKind.Temporary } acquired &&
-                (acquired.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(acquired.Type)))
+                (acquired.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(acquired.Type) || EnumStorage.IsEnum(acquired.Type)))
             {
                 if (this.slotFunctionInitializations[acquired.Id] >= 0 || this.constructionOwners[acquired.Id] >= 0 || this.slotFunctionPlaces[acquired.Id] != 0)
                 {

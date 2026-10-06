@@ -287,11 +287,8 @@ public class FunctionDefaultTest
 
     // Forms outside the executable subset stay one located unsupported record, with no internal or cascading failure.
     [Theory]
-    [InlineData(Steps + "func run(action: Option<(i32) -> i32> = .Some(inc)) -> i32\n    return match action@move\n        .Some(let f) => f(1)\n        .None => 0\n", ".Some(inc)")]
-    [InlineData("func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\nfunc run(value: i32, action: (i32) -> i32 = makeAdder(5)) -> i32 => action(value)\n", "makeAdder(5)")]
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc run<T>(value: T, action: (T) -> T = identity) -> T\n    T is Owned\n    return action(value@move)\n", "identity")]
     [InlineData("func run<T>(v: T, action: (i32) -> i32 = func (x) => x + 1) -> i32\n    T is Owned\n    return action(1)\n", "(x)")]
-    [InlineData("func run(action: (i32) -> i32 = label w: do\n    let k = 2\n    exit to w func [k] (x) => x + k\n) -> i32 => action(1)\n", "label w: do\n    let k = 2\n    exit to w func [k] (x) => x + k")]
     public void UnsupportedFunctionDefaultsStayLocated(string declaration, string text)
     {
         var source = declaration + "public func main() => ()\n";
@@ -301,12 +298,9 @@ public class FunctionDefaultTest
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Internal);
     }
 
-    // A Copy aggregate entry with no prepared-copy plan and a compiler-implemented Item have no executable default, so a
-    // program that calls them is one located record at check and never reaches generation. The anchor is unique in the source.
+    // A compiler-implemented Item has no executable erasure adapter yet; its default stays one located record at check.
+    // Owned aggregate results and Copy struct/enum/fixed-array entries execute in AggregateDefaultTest.
     [Theory]
-    [InlineData("struct Point\n    Self is Copy\n    public var x: i32\n    public var y: i32\n    public init(x: i32, y: i32)\n        self.x = x\n        self.y = y\nfunc run(p: Point, action: (i32) -> i32 = func [p] (v) => v + p.x + p.y) -> i32 => action(1)\npublic func main() -> ()\n    Console.writeLine(\"\\(run(Point.init(2, 3)))\")\n", "func [p] (v)", "(v)")]
-    [InlineData("enum Direction\n    Self is Copy\n    North\n    South\nfunc run(d: Direction, action: (i32) -> i32 = func [d] (v) => match d\n    .North => v + 1\n    .South => v - 1\n) -> i32 => action(1)\npublic func main() -> ()\n    Console.writeLine(\"\\(run(.North)) \\(run(.South))\")\n", "func [d] (v)", "(v)")]
-    [InlineData("func run(xs: [3 of i32], action: (i32) -> i32 = func [xs] (v) => v + xs[0] + xs[2]) -> i32 => action(1)\npublic func main() -> ()\n    Console.writeLine(\"\\(run([1, 2, 3]))\")\n", "func [xs] (v)", "(v)")]
     [InlineData("func both(text: string, show: (ref/string) -> () = Console.writeLine) -> () => show(text@ref)\npublic func main() -> ()\n    both(\"hi\")\n", "= Console.writeLine", "Console.writeLine")]
     public void CalledDefaultsOutsideTheSubsetStayLocated(string source, string anchor, string text)
     {

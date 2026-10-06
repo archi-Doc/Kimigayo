@@ -647,7 +647,7 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var place = body.Places[operation.Place];
         if (place.Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result) || operation.Acquisition != AcquisitionKind.Copy ||
-            !ScalarDefaults.SupportsPatternValue(place.Type) || !this.IsElementOwnerStorage(place) || !this.ValidateElementOwner(body, id))
+            !this.IsElementOwnerStorage(place) || !this.ValidateElementOwner(body, id))
         {
             return false;
         }
