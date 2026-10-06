@@ -34,7 +34,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         var error = Assert.Single(check.Diagnostics);
         output.WriteLine($"{name}: {error.Note}");
         Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), DiagnosticCategory.Language, call), (error.Code, error.Category, Text(source, error.Span)));
-        Assert.Equal($"Type parameter '{slot}' is not bound", error.Label);
+        Assert.Equal($"Generic parameter '{slot}' is not bound", error.Label);
         Assert.Equal(advice, error.Advice);
         Assert.Null(error.Repairs);
         var related = error.Related!;
@@ -134,7 +134,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         Assert.Contains("UnboundTypeArgument_Kd", console.Text, StringComparison.Ordinal);
-        Assert.Contains("Type parameter 'R' is not bound", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Generic parameter 'R' is not bound", console.Text, StringComparison.Ordinal);
         Assert.Contains(" = argument: ", console.Text, StringComparison.Ordinal);
         Assert.Contains(" = declaration: ", console.Text, StringComparison.Ordinal);
 

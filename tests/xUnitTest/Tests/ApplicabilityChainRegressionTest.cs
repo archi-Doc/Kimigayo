@@ -108,7 +108,7 @@ public class ApplicabilityChainRegressionTest
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
         if (code == nameof(DiagnosticCode.UnboundTypeArgument_Kd))
         {
-            Assert.Equal("Type parameter 'T' is not bound", error.Label);
+            Assert.Equal("Generic parameter 'T' is not bound", error.Label);
             Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
         }
     }

@@ -265,7 +265,12 @@ public sealed partial class Binding
         }
 
         var supplied = actual.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, actual.Length);
-        if (pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
+        return this.InferLength(pattern.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, pattern.Length), supplied, binder, arguments);
+    }
+
+    private bool InferLength(BoundLength pattern, BoundLength supplied, Koto binder, BoundLength?[] arguments)
+    {
+        if (pattern is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
         {
             var previous = arguments[parameter.Slot];
             if (previous is null)
@@ -277,7 +282,7 @@ public sealed partial class Binding
             return ReferenceEquals(previous, supplied);
         }
 
-        var required = pattern.LengthExpression is { } expression ? this.SubstituteLength(expression, binder, arguments) : this.InternLength(KotoKind.NumberLiteral, pattern.Length);
+        var required = this.SubstituteLength(pattern, binder, arguments);
         // A later input may establish slots used by a compound expression. The
         // completed signature is checked after all direct-slot evidence is known.
         return required is null || ReferenceEquals(required, supplied);
@@ -342,6 +347,14 @@ public sealed partial class Binding
         if (type.LengthExpression is { } expression && !this.ProveLength(expression, function))
         {
             return false;
+        }
+
+        foreach (var argument in type.LengthArguments)
+        {
+            if (argument is not null && !this.ProveLength(argument, function))
+            {
+                return false;
+            }
         }
 
         for (var i = 0; i < type.Components.Count; i++)

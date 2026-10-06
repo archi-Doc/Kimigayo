@@ -342,9 +342,19 @@ public sealed partial class Binding
         var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);
         var components = this.RentTypes(type.Components.Count);
         var origins = this.originScratch.Rent(type.OriginArguments.Count);
+        var lengths = correspondingBinder is null ? type.LengthArguments : this.lengthScratch.Rent(type.LengthArguments.Length);
         try
         {
             var changed = !ReferenceEquals(origin, type.Origin) || !ReferenceEquals(length, type.LengthExpression);
+            if (correspondingBinder is not null)
+            {
+                for (var i = 0; i < type.LengthArguments.Length; i++)
+                {
+                    lengths[i] = this.CorrespondingLength(type.LengthArguments[i], binder, correspondingBinder);
+                    changed |= !ReferenceEquals(lengths[i], type.LengthArguments[i]);
+                }
+            }
+
             for (var i = 0; i < type.Components.Count; i++)
             {
                 components[i] = this.SubstituteStoredOrigins(type.Components[i], binder, arguments, inputs, correspondingBinder);
@@ -357,12 +367,16 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.ClosureContext) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.ClosureContext, lengths.AsSpan(0, type.LengthArguments.Length)) : type;
         }
         finally
         {
             this.typeScratch.Return(components, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
+            if (correspondingBinder is not null)
+            {
+                this.lengthScratch.Return(lengths, clearArray: true);
+            }
         }
     }
 

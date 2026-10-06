@@ -68,7 +68,7 @@ internal sealed partial class BodyLowering
     // A generic Item enters the instance of its bound arguments, or the explicit specialization selected for them.
     private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition)
     {
-        if (type.Kind == BoundTypeKind.FunctionItem && type.Components.Count != 0)
+        if (type.Kind == BoundTypeKind.FunctionItem && (type.Components.Count != 0 || type.LengthArguments.Length != 0))
         {
             return definition.CodeContext.Compilation.Binding.FunctionItemContext(type) is { } item && this.GenericCalls?.GetValueOrDefault(item) is { } instance
                 ? instance.Selected ?? instance.Abi : null;

@@ -54,6 +54,14 @@ public sealed partial class Binding
             return true;
         }
 
+        foreach (var length in type.LengthArguments)
+        {
+            if (length is { IsConstant: false })
+            {
+                return true;
+            }
+        }
+
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
             if (type.OriginArguments[i].Kind != OriginKind.Static)
@@ -709,7 +717,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
         }
         finally
         {

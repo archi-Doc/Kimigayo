@@ -2254,9 +2254,19 @@ public sealed partial class Binding
 
         if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
             !(lengths is not null && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, lengths) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
-            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.Components.Count == 0)
+            (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0))
         {
             return false;
+        }
+
+        for (var i = 0; i < pattern.LengthArguments.Length; i++)
+        {
+            var required = pattern.LengthArguments[i];
+            var supplied = actual.LengthArguments[i];
+            if (!ReferenceEquals(required, supplied) && (required is null || supplied is null || lengths is null || !this.InferLength(required, supplied, function, lengths)))
+            {
+                return false;
+            }
         }
 
         for (var i = 0; i < pattern.OriginArguments.Count; i++)

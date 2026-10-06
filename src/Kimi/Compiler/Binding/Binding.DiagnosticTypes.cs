@@ -118,13 +118,28 @@ public sealed partial class Binding
             {
                 text.Append("function item ");
                 AppendDeclaration(current.Symbol!);
-                for (var i = 0; i < current.Components.Count; i++)
+                var slots = current.LengthArguments.Length == 0 ? current.Components.Count : current.LengthArguments.Length;
+                var component = 0;
+                for (var i = 0; i < slots; i++)
                 {
                     text.Append(i == 0 ? "<" : ", ");
-                    Append(current.Components[i]);
+                    if (i < current.LengthArguments.Length && current.LengthArguments[i] is { } length)
+                    {
+                        text.Append(DiagnosticLengthName(length, budget));
+                    }
+                    else
+                    {
+                        Append(current.Components[component++]);
+                    }
                 }
 
-                if (current.Components.Count != 0)
+                while (component < current.Components.Count)
+                {
+                    text.Append(slots++ == 0 ? "<" : ", ");
+                    Append(current.Components[component++]);
+                }
+
+                if (slots != 0)
                 {
                     text.Append('>');
                 }

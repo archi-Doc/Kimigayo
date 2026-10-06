@@ -81,7 +81,7 @@ public sealed partial class Binding
         }
 
         if (left is null || right is null || left.Kind != right.Kind || left.Semantics != right.Semantics || !ReferenceEquals(left.Symbol, right.Symbol) ||
-            left.Length != right.Length || !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) ||
+            left.Length != right.Length || !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) ||
             left.Components.Count != right.Components.Count || left.OriginArguments.Count != right.OriginArguments.Count ||
             !SameOrigin(left.Origin, right.Origin) || !(HasOpenOrigin(left) || HasOpenOrigin(right)))
         {
@@ -317,7 +317,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
         }
         finally
         {
@@ -413,7 +413,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
         }
         finally
         {
@@ -476,7 +476,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
         }
         finally
         {

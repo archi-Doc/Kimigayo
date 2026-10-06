@@ -280,9 +280,17 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression, aBinder, bBinder) || a.Components.Count != b.Components.Count)
+        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression, aBinder, bBinder) || a.Components.Count != b.Components.Count || a.LengthArguments.Length != b.LengthArguments.Length)
         {
             return false;
+        }
+
+        for (var i = 0; i < a.LengthArguments.Length; i++)
+        {
+            if (!SameLengthSignature(a.LengthArguments[i], b.LengthArguments[i], aBinder, bBinder))
+            {
+                return false;
+            }
         }
 
         if (a.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
@@ -729,8 +737,11 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && KotoHelper.UnwrapParentheses(issue.Node).BoundSymbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
         {
-            // SPEC 10.5: the Type parameter that no expected call signature or explicit Type argument binds.
-            issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: UnboundReferenceNote, advice: UnboundReferenceAdvice);
+            // SPEC 10.5: the generic parameter that no expected call signature or explicit argument binds.
+            var lengths = ItemTypeArgumentCount(generic) != generic.GenericArguments.Count;
+            var note = lengths ? "A function reference without a fixed expected call signature binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)" : UnboundReferenceNote;
+            var advice = lengths ? "Write every Type and length argument in declaration order, or annotate a Function Type whose signature binds every parameter" : UnboundReferenceAdvice;
+            issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: note, advice: advice);
         }
         else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
         {

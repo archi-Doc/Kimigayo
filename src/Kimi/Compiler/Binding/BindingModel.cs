@@ -319,7 +319,7 @@ public sealed record BoundType : ControlFlowType
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null)
         : base(name)
     {
         this.Kind = kind;
@@ -330,6 +330,7 @@ public sealed record BoundType : ControlFlowType
         this.Origin = origin;
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
+        this.LengthArguments = lengthArguments ?? [];
         this.numeric = kind == BoundTypeKind.Primitive ? Categorize(name) : NumericCategory.None;
         this.underlying = this;
 
@@ -348,6 +349,11 @@ public sealed record BoundType : ControlFlowType
 
         this.carriesOrigin = found;
         this.carriesOriginOrSlot = slot;
+        foreach (var argument in this.LengthArguments)
+        {
+            parameter |= argument is { IsConstant: false };
+        }
+
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
     }
@@ -436,6 +442,9 @@ public sealed record BoundType : ControlFlowType
 
     // A generic closure keeps the enclosing substitution even when none of its slots occupy capture storage.
     internal BoundCall? ClosureContext { get; init; }
+
+    // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
+    internal BoundLength?[] LengthArguments { get; } = [];
 
     // Refilled by ownership preparation after each final bind; excluded from Type identity.
     internal BoundType[]? StoredFields { get; set; }

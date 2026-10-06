@@ -36,16 +36,25 @@ public sealed partial class Binding
             var node = this.nodes[i];
             if (node is InvocationKoto { BoundCall: { Target.Declaration: FunctionKoto function } call })
             {
-                this.CheckCallableEffectUses(node, function.TypeConstraints, function, call.TypeArguments, call.DeclaringType, call);
+                this.CheckCallableEffectUses(node, function.TypeConstraints, function, call.TypeArguments, call.DeclaringType, call, call.LengthArguments);
             }
 
             if (node.BoundType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto referenced } item &&
                 node.Parent?.BoundType != item && node is not FunctionKoto)
             {
                 var slots = referenced.GenericArguments.Count;
-                if (item.Components.Count >= slots)
+                if (item.Components.Count >= ItemTypeArgumentCount(referenced))
                 {
-                    this.CheckCallableEffectUses(node, referenced.TypeConstraints, referenced, ((BoundType[])item.Components).AsSpan(0, slots), item.Components.Count > slots ? item.Components[slots] : null, null);
+                    var arguments = this.typeScratch.Rent(slots);
+                    try
+                    {
+                        CopyItemArguments(item, referenced, arguments);
+                        this.CheckCallableEffectUses(node, referenced.TypeConstraints, referenced, arguments.AsSpan(0, slots), ItemDeclaringType(item, referenced), null, item.LengthArguments);
+                    }
+                    finally
+                    {
+                        this.typeScratch.Return(arguments, clearArray: true);
+                    }
                 }
             }
 
@@ -218,7 +227,7 @@ public sealed partial class Binding
         return (confined, preserves);
     }
 
-    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, BoundCall? call)
+    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, BoundCall? call, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var scope = this.ConstraintScope(use);
         for (var i = 0; i < clauses.Count; i++)
@@ -228,7 +237,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(fact, binder, arguments);
+            var substituted = this.SubstituteConstraint(fact, binder, arguments, lengths);
             if (declaring?.Symbol?.Declaration is { } owner)
             {
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaring.Components);

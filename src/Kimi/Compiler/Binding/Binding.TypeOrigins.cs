@@ -52,7 +52,7 @@ public sealed partial class Binding
     }
 
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
-        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext);
+        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments);
 
     private BoundType SelfType(BindingSymbol symbol)
     {

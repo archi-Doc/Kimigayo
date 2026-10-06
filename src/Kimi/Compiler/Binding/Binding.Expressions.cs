@@ -802,7 +802,12 @@ public sealed partial class Binding
             var syntax = reference.TypeArguments[i];
             if (this.IsLengthArgument(syntax, scope))
             {
-                return this.Fail(reference, BindingFailure.Unsupported, true);
+                if (this.BindLength(syntax, scope) is null)
+                {
+                    return this.CompleteDependent(reference, syntax);
+                }
+
+                continue;
             }
 
             if (this.BindType(syntax, scope) is null)

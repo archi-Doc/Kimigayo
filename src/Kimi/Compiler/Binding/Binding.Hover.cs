@@ -557,8 +557,8 @@ public sealed partial class Binding
             var text = new StringBuilder("type;");
             text.Append((int)type.Kind).Append(',').Append((int)type.Semantics).Append(',').Append(type.Length).Append(';');
             AppendKey(text, type.Name);
-            text.Append(type.Components.Count).Append(',').Append(type.OriginArguments.Count).Append(';');
-            var parts = new HoverKey[4 + type.Components.Count + type.OriginArguments.Count];
+            text.Append(type.Components.Count).Append(',').Append(type.OriginArguments.Count).Append(',').Append(type.LengthArguments.Length).Append(';');
+            var parts = new HoverKey[4 + type.Components.Count + type.OriginArguments.Count + type.LengthArguments.Length];
             parts[0] = this.SymbolIdentity(type.Symbol);
             parts[1] = this.OriginIdentity(type.Origin);
             parts[2] = this.LengthIdentity(type.LengthExpression);
@@ -575,6 +575,11 @@ public sealed partial class Binding
             foreach (var argument in type.OriginArguments)
             {
                 parts[index++] = this.OriginIdentity(argument);
+            }
+
+            foreach (var argument in type.LengthArguments)
+            {
+                parts[index++] = this.LengthIdentity(argument);
             }
 
             result = new(text.ToString(), parts);

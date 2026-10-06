@@ -750,7 +750,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, BoundCall? closureContext = null)
+    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, BoundCall? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
         // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
@@ -790,6 +790,11 @@ public sealed partial class Binding
         hash.Add(semantics);
         hash.Add(length);
         hash.Add(lengthExpression is null ? 0 : RuntimeHelpers.GetHashCode(lengthExpression));
+        foreach (var argument in lengthArguments)
+        {
+            hash.Add(argument is null ? 0 : RuntimeHelpers.GetHashCode(argument));
+        }
+
         hash.Add(origin is null ? 0 : RuntimeHelpers.GetHashCode(origin));
         for (var i = 0; i < originArguments.Length; i++)
         {
@@ -807,7 +812,7 @@ public sealed partial class Binding
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -834,7 +839,7 @@ public sealed partial class Binding
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression) { ClosureContext = closureContext };
+        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray()) { ClosureContext = closureContext };
         bucket.Add(created);
         return created;
     }

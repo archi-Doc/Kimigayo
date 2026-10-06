@@ -269,11 +269,19 @@ public sealed partial class Binding
             return true; // Residual, non-free terms are not injective constructors.
         }
 
-        if (left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Components.Count != right.Components.Count ||
+        if (left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Components.Count != right.Components.Count || left.LengthArguments.Length != right.LengthArguments.Length ||
             (left.Kind == BoundTypeKind.Primitive && left.Name != right.Name) ||
             (left.Kind == BoundTypeKind.FixedArray && left.LengthExpression is null && right.LengthExpression is null && left.Length != right.Length))
         {
             return false;
+        }
+
+        for (var i = 0; i < left.LengthArguments.Length; i++)
+        {
+            if (left.LengthArguments[i] is { IsConstant: true } a && right.LengthArguments[i] is { IsConstant: true } b && !ReferenceEquals(a, b))
+            {
+                return false;
+            }
         }
 
         for (var i = 0; i < left.Components.Count; i++)

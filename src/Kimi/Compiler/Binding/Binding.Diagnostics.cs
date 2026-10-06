@@ -621,7 +621,7 @@ public sealed partial class Binding
 
         // SPEC 10.5, 7.6.4: a generic reference binds its slots from the expected signature, and its Item converts only
         // when its bound arguments are Owned.
-        if (actual is BoundType { Kind: BoundTypeKind.FunctionItem, Components.Count: > 0 } item)
+        if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
         {
             return this.FunctionItemSignature(item) is { } itemSignature && CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
@@ -651,21 +651,23 @@ public sealed partial class Binding
         // SPEC 10.5, 10.8: why the one generic candidate's slots did not bind from S, when the binding recorded it.
         static string ReferenceSlotNote(ReferenceSlotFact? fact)
         {
-            const string Prefix = "The generic function's Type parameters are bound from the expected signature without adaptations; ";
+            var prefix = fact is { } entry && ItemTypeArgumentCount(entry.Declaration) != entry.Declaration.GenericArguments.Count
+                ? "The generic function's Type and length parameters are bound from the expected signature without adaptations; "
+                : "The generic function's Type parameters are bound from the expected signature without adaptations; ";
             var slot = fact is { Slot: >= 0 } known && known.Slot < known.Declaration.GenericArguments.Count
-                ? $"Type parameter '{known.Declaration.GenericArguments[known.Slot].Identifier}'" : "a Type parameter";
+                ? $"{(known.Declaration.GenericArguments[known.Slot] is LengthParameterKoto ? "length" : "Type")} parameter '{known.Declaration.GenericArguments[known.Slot].Identifier}'" : "a generic parameter";
             return fact?.Failure switch
             {
-                ReferenceSlotFailure.Structure when fact.Value.Slot >= 0 => Prefix + $"the signature does not bind {slot}",
-                ReferenceSlotFailure.Structure => Prefix + "no binding of them fits its structure",
-                ReferenceSlotFailure.Constraint => Prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
-                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit => Prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
+                ReferenceSlotFailure.Structure when fact.Value.Slot >= 0 => prefix + $"the signature does not bind {slot}",
+                ReferenceSlotFailure.Structure => prefix + "no binding of them fits its structure",
+                ReferenceSlotFailure.Constraint => prefix + "the binding fits, but it is not proven to satisfy the declaration's Constraints or to form its signature Types",
+                ReferenceSlotFailure.OriginConflict when fact.Value.Explicit => prefix + $"the written Type arguments and the signature give {slot} Types that differ only in their Origins, " +
                     "and a bound Type argument holds one Origin for every call",
-                ReferenceSlotFailure.OriginConflict => Prefix + $"its parameters and result bind {slot} to Types that differ only in their Origins, " +
+                ReferenceSlotFailure.OriginConflict => prefix + $"its parameters and result bind {slot} to Types that differ only in their Origins, " +
                     "and a bound Type argument holds one Origin for every call",
-                ReferenceSlotFailure.InputOrigin => Prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
+                ReferenceSlotFailure.InputOrigin => prefix + $"{slot} would hold an input Origin that is bound at each call, such as a per-call Origin of the signature, " +
                     "which never becomes part of a bound Type argument (SPEC 10.5)",
-                _ => Prefix + "no binding fits it, or a bound argument fails its Constraints",
+                _ => prefix + "no binding fits it, or a bound argument fails its Constraints",
             };
         }
     }

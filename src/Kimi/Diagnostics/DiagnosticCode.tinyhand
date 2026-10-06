@@ -996,9 +996,9 @@
 
   + Name="UnboundTypeArgument_Kd"
     Category="Language"
-    Message="Neither explicit Type arguments nor inference evidence bind a Type parameter of the referenced or called function"
+    Message="Neither explicit generic arguments nor inference evidence bind a parameter of the referenced or called function"
     Evidence="parameter:Text"
-    Label="Type parameter '{0}' is not bound"
+    Label="Generic parameter '{0}' is not bound"
 
   + Name="BoundMethodValue_Kd"
     Category="Language"

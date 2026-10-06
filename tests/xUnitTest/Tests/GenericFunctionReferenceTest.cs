@@ -329,7 +329,7 @@ public class GenericFunctionReferenceTest
         Assert.Equal("declaration", Assert.Single(record.Related!).Role);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains("Type parameter 'T' is not bound", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Generic parameter 'T' is not bound", console.Text, StringComparison.Ordinal);
         var identity = Kimi.Checking.SourceIdentity.FromPath(path);
         foreach (var capability in new[] { false, true })
         {

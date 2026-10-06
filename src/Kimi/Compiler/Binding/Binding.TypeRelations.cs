@@ -40,7 +40,7 @@ public sealed partial class Binding
         }
 
         if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
-            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || left.Components.Count != right.Components.Count ||
+            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
             left.OriginArguments.Count != right.OriginArguments.Count || (left.Origin is null) != (right.Origin is null))
         {
             return null;
@@ -73,7 +73,7 @@ public sealed partial class Binding
                 origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
             }
 
-            var result = this.InternType(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext);
+            var result = this.InternType(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
             return FitsType(left, result) && FitsType(right, result) ? result : null;
         }
         finally
@@ -106,7 +106,7 @@ public sealed partial class Binding
         }
 
         var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || !ReferenceEquals(actual.ClosureContext, expected.ClosureContext) || (!inferredLength && (actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || !ReferenceEquals(actual.ClosureContext, expected.ClosureContext) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || (!inferredLength && (actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return false;
         }
@@ -352,7 +352,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
+        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || actual.Symbol != expected.Symbol || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || !actual.LengthArguments.AsSpan().SequenceEqual(expected.LengthArguments) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count || actual.Kind == BoundTypeKind.Primitive)
         {
             return false;
         }
@@ -454,12 +454,13 @@ public sealed partial class Binding
             return projected;
         }
 
-        if (type.Components.Count == 0)
+        if (type.Components.Count == 0 && type.LengthArguments.Length == 0)
         {
             return type;
         }
 
         var scratch = this.RentTypes(type.Components.Count);
+        var itemLengths = this.lengthScratch.Rent(type.LengthArguments.Length);
         try
         {
             var length = type.Length;
@@ -480,6 +481,18 @@ public sealed partial class Binding
             }
 
             var changed = length != type.Length || !ReferenceEquals(expression, type.LengthExpression);
+            for (var i = 0; i < type.LengthArguments.Length; i++)
+            {
+                var argument = type.LengthArguments[i];
+                itemLengths[i] = argument is null || lengths.IsEmpty ? argument : this.SubstituteLength(argument, binder, lengths);
+                if (argument is not null && (itemLengths[i] is null || (itemLengths[i]!.IsConstant && !this.ValidLength(itemLengths[i]!.Value))))
+                {
+                    return null;
+                }
+
+                changed |= !ReferenceEquals(argument, itemLengths[i]);
+            }
+
             for (var i = 0; i < type.Components.Count; i++)
             {
                 var substituted = this.SubstituteType(type.Components[i], binder, arguments, lengths);
@@ -529,11 +542,12 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origin, type.Origin);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, (BoundOrigin[])type.OriginArguments, expression, type.ClosureContext) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, (BoundOrigin[])type.OriginArguments, expression, type.ClosureContext, itemLengths.AsSpan(0, type.LengthArguments.Length)) : type;
         }
         finally
         {
             this.typeScratch.Return(scratch, clearArray: true);
+            this.lengthScratch.Return(itemLengths, clearArray: true);
         }
     }
 }
