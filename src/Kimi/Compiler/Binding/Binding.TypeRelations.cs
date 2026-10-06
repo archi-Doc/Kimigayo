@@ -28,6 +28,11 @@ public sealed partial class Binding
 
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
 
+    // Lowering rechecks the already verified contract without adding constraints or reopening inference.
+    internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
+        => this.FitsTypeAt(actual, expected, use) || ((HasLocalRegion(actual) || HasLocalRegion(expected)) &&
+            this.FitsStructurallyAt(actual, expected, use) && this.OriginRelationOf(actual, expected, use) is null);
+
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use, structural: true);
 
     // Only Origin restriction is inferred here. No Core conversion or common base search is
@@ -347,7 +352,8 @@ public sealed partial class Binding
     // every position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
     private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, OriginVariance polarity = OriginVariance.Covariant)
     {
-        if (polarity == OriginVariance.Contravariant ? this.FitsTypeAt(expected, actual, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant))
+        if (!HasLocalRegion(actual) && !HasLocalRegion(expected) &&
+            (polarity == OriginVariance.Contravariant ? this.FitsTypeAt(expected, actual, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant)))
         {
             return true;
         }

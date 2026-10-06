@@ -194,6 +194,7 @@ public sealed partial class Binding
         this.Result = default;
         this.ResetPass(BindingMode.Provisional);
         this.associatedOrigins.Clear();
+        this.localRegions.Clear();
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
@@ -357,6 +358,7 @@ public sealed partial class Binding
         this.aliases.Clear();
         this.ResetAliases();
         this.obligations.Clear();
+        this.ResetLocalRegions();
         this.obligationSet.Clear();
         this.inheritedOriginTypes.Clear();
         this.ResetCapabilities(mode);

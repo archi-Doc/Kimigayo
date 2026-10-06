@@ -59,16 +59,14 @@ public class TypeArgumentOriginEvidenceTest
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives x, which is false"), (error.Code, Text(source, error.Span), error.Label));
     }
 
-    // q20: a call that stores a borrow into a body Origin stays the located limit, now at the stored value rather than the exclusive
-    // target, in either argument order.
+    // q20: either argument order stores the new Borrow into the same local region.
     [Theory]
     [InlineData(Put, "put(slot@uniq, b@ref)")]
     [InlineData(PutReversed, "put(b@ref, slot@uniq)")]
-    public void AStoreIntoABodyOriginIsLocatedAtTheValue(string declaration, string call)
+    public void AStoreIntoABodyOriginExecutes(string declaration, string call)
     {
         var source = declaration + "public func main() -> ()\n    let a = 1\n    let b = 2\n    var slot = a@ref\n    " + call + "\n    Console.writeLine(\"\\(slot@follow)\")\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedOwnership_Kd), "b@ref"), (error.Code, Text(source, error.Span)));
+        ScalarEmissionTest.EmitFixture(declaration == Put ? "LocalRegionPut" : "LocalRegionPutReversed", source, "2\n");
     }
 
     // q33: an independently known expected result fills a still-unbound slot structurally; `make(1)` was the fact-less

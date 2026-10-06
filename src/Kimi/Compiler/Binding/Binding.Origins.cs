@@ -685,6 +685,7 @@ public sealed partial class Binding
         if (this.obligationSet.Add(obligation))
         {
             this.obligations.Add(obligation);
+            this.RecordLocalRegionBound(obligation);
         }
     }
 }

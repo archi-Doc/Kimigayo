@@ -390,235 +390,238 @@ public sealed partial class OwnershipBody
         // not restate it.
         this.destroyedLoans.Clear();
         var operationCount = this.Operations.Count;
-        for (var step = 0; step < 3 * operationCount; step++)
+        for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
         {
-            var pass = Math.DivRem(step, operationCount, out var op);
-            var destroyed = this.DestroyedRoot(op);
-            if (pass < 2 && destroyed < 0)
+            var root = this.borrowRoots[rootIndex];
+            if (this.Places[root].Kind == OwnershipPlaceKind.EffectRegion)
             {
                 continue;
             }
 
-            var reachable = this.IsReachable(op);
-            if ((!reachable && !this.HasCheckingState(op)) || (pass < 2 && reachable != (pass == 0)))
+            this.PrepareLoanFlow(root, count);
+            for (var step = 0; step < 3 * operationCount; step++)
             {
-                continue;
-            }
-
-            var activating = this.Operations[op].Kind == OwnershipOperationKind.ActivateCallBorrows;
-            var loaded = false;
-            for (var r = activating ? this.Operations[op].Reservation : -2; r != -1; r = r >= 0 ? this.CallReservations[r].Next : -1)
-            {
-                var accessId = activating ? this.CallReservations[r].Borrow : op;
-                var operation = this.Operations[accessId];
-                var accessMode = !activating && operation.Reservation >= 0 ? LoanRequirement.Ref : operation.LoanMode;
-                for (var slot = 0; slot < liveWidth; slot++)
+                var pass = Math.DivRem(step, operationCount, out var op);
+                var destroyed = this.DestroyedRoot(op);
+                if (pass < 2 && destroyed < 0)
                 {
-                    var p = this.liveBorrowPlaces[slot];
-                    if (!this.borrowLive.IsSet((op * liveWidth) + slot) || (activating && this.SameReservedArgument(r, p)) ||
-                        (pass < 2 && this.borrowDependencies[(p * count) + destroyed] == LoanRequirement.None))
-                    {
-                        continue;
-                    }
+                    continue;
+                }
 
-                    if (!loaded)
-                    {
-                        // All validity/footprint queries below are read-only. Replay
-                        // this block prefix once, only if some Loan needs its state.
-                        this.LoadInput(op, !this.IsReachable(op));
-                        loaded = true;
-                    }
+                var reachable = this.IsReachable(op);
+                if ((!reachable && !this.HasCheckingState(op)) || (pass < 2 && reachable != (pass == 0)))
+                {
+                    continue;
+                }
 
-                    if ((this.CompleteState(p) & PlaceState.MayInit) == 0)
+                var activating = this.Operations[op].Kind == OwnershipOperationKind.ActivateCallBorrows;
+                var loaded = false;
+                for (var r = activating ? this.Operations[op].Reservation : -2; r != -1; r = r >= 0 ? this.CallReservations[r].Next : -1)
+                {
+                    var accessId = activating ? this.CallReservations[r].Borrow : op;
+                    var operation = this.Operations[accessId];
+                    var accessMode = !activating && operation.Reservation >= 0 ? LoanRequirement.Ref : operation.LoanMode;
+                    for (var slot = 0; slot < liveWidth; slot++)
                     {
-                        continue;
-                    }
-
-                    for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
-                    {
-                        var root = this.borrowRoots[rootIndex];
-                        if (this.Places[root].Kind == OwnershipPlaceKind.EffectRegion)
-                        {
-                            continue; // Only the derived effects of requirement calls reach a region (VerifyRequirementEffects).
-                        }
-
-                        if (pass < 2 && root != destroyed)
+                        var p = this.liveBorrowPlaces[slot];
+                        if (!this.borrowLive.IsSet((op * liveWidth) + slot) || (activating && this.SameReservedArgument(r, p)) ||
+                            (pass < 2 && this.borrowDependencies[(p * count) + destroyed] == LoanRequirement.None))
                         {
                             continue;
                         }
 
-                        var mode = this.BorrowModeAt(p, root, op, this.borrowDependencies[(p * count) + root]);
-                        if (mode == LoanRequirement.None)
+                        if (!loaded)
+                        {
+                            // All validity/footprint queries below are read-only. Replay
+                            // this block prefix once, only if some Loan needs its state.
+                            this.LoadInput(op, !this.IsReachable(op));
+                            loaded = true;
+                        }
+
+                        if ((this.CompleteState(p) & PlaceState.MayInit) == 0)
                         {
                             continue;
                         }
 
-                        var external = this.Places[root].Kind == OwnershipPlaceKind.Anchor || (this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type))) ||
-                            this.IsEnvironmentBorrow(root);
-                        var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
-                        var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
-                            this.ElementAccessConflicts(operation, root, authority);
-                        if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce &&
-                            this.IsDisjointProjection(accessId, p, root))
                         {
-                            accessConflict = false; // SPEC 15.6.2: disjoint static paths below one owned root.
-                        }
-
-                        if (this.Places[p].Type.Kind == BoundTypeKind.Slice && operation.Projection >= 0 && this.Projections[operation.Projection].Root == root)
-                        {
-                            var modifies = operation.Kind == OwnershipOperationKind.WriteElement ||
-                                (operation.Kind == OwnershipOperationKind.Produce && operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove);
-                            if (modifies)
-                            {
-                                accessConflict = this.slicePaths[p] < 0 || this.ElementPathsOverlap(operation.Projection, this.slicePaths[p]);
-                            }
-                        }
-
-                        var rootLost = !external && (this.BorrowRootState(p, root) & PlaceState.MustInit) == 0;
-
-                        // SPEC 15.6.2: destroying the borrowed Place itself, checked only by the destruction passes.
-                        var destruction = root == destroyed && !rootLost;
-                        if (destruction != (pass < 2))
-                        {
-                            continue;
-                        }
-
-                        var conflict = rootLost || (!external && accessConflict) || (pass == 2 && this.InvalidatesContentChild(accessId, p));
-                        var value = this.Values[accessId];
-                        // SPEC 15.6.3: an access through a holder of an external root's Loan that is no descendant of the root, such
-                        // as a reference stored through a contract (RetainBorrowAuthority), meets the Loans of the root's other
-                        // children, which their own holders state; the root's own capability conflicts only with its own accesses.
-                        if (!(external && p == root) &&
-                            value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence or OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad && value.Count > 0)
-                        {
-                            var receiver = this.ValueOperands[value.Start];
-                            var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
-                            var exclusiveElement = value.Kind == OwnershipValueKind.Sequence &&
-                                this.Sequences[(int)value.Constant].Kind == SequenceOperation.Borrow &&
-                                operation.Place >= 0 && this.Places[operation.Place].Type.Semantics == SemanticsKind.Uniq;
-                            var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.PointerStore || exclusiveElement ? LoanRequirement.Uniq
-                                : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
-                            // Lending the slot that stores a reference does not access its external referent. The
-                            // subsequent reborrow/store checks that separate capability, including call activation.
-                            var addressed = ValuePlaceForBorrow(operation);
-                            var referenceSlot = value.Kind is OwnershipValueKind.Sequence or OwnershipValueKind.Address && addressed >= 0 &&
-                                ReferenceTypes.IsBorrow(this.Places[addressed].Type) &&
-                                ReferenceTypes.IsBorrow(this.Places[addressed].Type.Components[0]) &&
-                                !ReferenceEquals(this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type, this.Places[addressed].Type.Components[0]);
-                            if (!referenceSlot && sourcePlace >= 0 && this.BorrowModeAt(sourcePlace, root, op, this.borrowDependencies[(sourcePlace * count) + root]) != LoanRequirement.None &&
-                                (value.Kind is not (OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedUpdate) || sourcePlace == root ||
-                                    (ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
-                                        ReferenceEquals(
-                                            this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type,
-                                            this.Places[sourcePlace].Type.Components[0])) ||
-                                    this.IsBorrowAncestor(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), sourcePlace)) &&
-                                (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) &&
-                                !this.IsDisjointProjection(accessId, p) && !this.IsDisjointSplitChild(receiver, p) && !this.IndependentUpdatedCallResult(receiver, p, op) &&
-                                !this.IndependentUpdatedCallResult(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), this.ContentOwner(receiver, sourcePlace), op))
-                            {
-                                conflict = true;
-                            }
-                        }
-
-                        if (conflict)
-                        {
-                            // One diagnostic per invalidated root: the operation that invalidates it
-                            // (a Move or an access conflict) is reported, not every later use of a
-                            // Loan that depends on the dangling root (PLAN G13).
-                            ref var reported = ref this.borrowRootLoss[root];
-                            if (reported && rootLost)
+                            if (pass < 2 && root != destroyed)
                             {
                                 continue;
                             }
 
-                            var lending = -1;
-                            if (destruction)
+                            var mode = this.BorrowModeAt(p, root, op, this.borrowDependencies[(p * count) + root]);
+                            if (mode == LoanRequirement.None || (this.loanFlowRoot == root && this.LoanCarryingDefinition(p, root, op, count) == -1))
                             {
-                                // SPEC 15.6.5: one record per destroyed root and holder, at a destruction that a definition of the
-                                // holder carrying the root's Loan reaches; a reachable destruction is preferred by the pass order.
-                                // Where the walk cannot tell which definition reaches (-2), every destruction the Loan reaches keeps
-                                // its record, so the escaping one is never deduplicated away.
-                                lending = this.LoanCarryingDefinition(p, root, op, count);
-                                if (lending == -1 || (lending >= 0 && this.destroyedLoans.Contains((root, p))))
+                                continue;
+                            }
+
+                            var external = this.Places[root].Kind == OwnershipPlaceKind.Anchor || (this.Places[root].Kind == OwnershipPlaceKind.Parameter && (ReferenceTypes.IsBorrow(this.Places[root].Type) || ReferenceTypes.IsString(this.Places[root].Type))) ||
+                                this.IsEnvironmentBorrow(root);
+                            var authority = this.BorrowModeAt(p, root, op, this.retainedBorrowAuthority[(p * count) + root]);
+                            var accessConflict = ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, root, authority, accessMode) ||
+                                this.ElementAccessConflicts(operation, root, authority);
+                            if (accessConflict && operation.Kind is OwnershipOperationKind.Borrow or OwnershipOperationKind.ProjectElement or OwnershipOperationKind.WriteElement or OwnershipOperationKind.Produce &&
+                                this.IsDisjointProjection(accessId, p, root))
+                            {
+                                accessConflict = false; // SPEC 15.6.2: disjoint static paths below one owned root.
+                            }
+
+                            if (this.Places[p].Type.Kind == BoundTypeKind.Slice && operation.Projection >= 0 && this.Projections[operation.Projection].Root == root)
+                            {
+                                var modifies = operation.Kind == OwnershipOperationKind.WriteElement ||
+                                    (operation.Kind == OwnershipOperationKind.Produce && operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove);
+                                if (modifies)
+                                {
+                                    accessConflict = this.slicePaths[p] < 0 || this.ElementPathsOverlap(operation.Projection, this.slicePaths[p]);
+                                }
+                            }
+
+                            var rootLost = !external && (this.BorrowRootState(p, root) & PlaceState.MustInit) == 0;
+
+                            // SPEC 15.6.2: destroying the borrowed Place itself, checked only by the destruction passes.
+                            var destruction = root == destroyed && !rootLost;
+                            if (destruction != (pass < 2))
+                            {
+                                continue;
+                            }
+
+                            var conflict = rootLost || (!external && accessConflict) || (pass == 2 && this.InvalidatesContentChild(accessId, p));
+                            var value = this.Values[accessId];
+                            // SPEC 15.6.3: an access through a holder of an external root's Loan that is no descendant of the root, such
+                            // as a reference stored through a contract (RetainBorrowAuthority), meets the Loans of the root's other
+                            // children, which their own holders state; the root's own capability conflicts only with its own accesses.
+                            if (!(external && p == root) &&
+                                value.Kind is OwnershipValueKind.BorrowedField or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.Address or OwnershipValueKind.Sequence or OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad && value.Count > 0)
+                            {
+                                var receiver = this.ValueOperands[value.Start];
+                                var sourcePlace = ValuePlaceForBorrow(this.Operations[receiver]);
+                                var exclusiveElement = value.Kind == OwnershipValueKind.Sequence &&
+                                    this.Sequences[(int)value.Constant].Kind == SequenceOperation.Borrow &&
+                                    operation.Place >= 0 && this.Places[operation.Place].Type.Semantics == SemanticsKind.Uniq;
+                                var access = value.Kind is OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate or OwnershipValueKind.PointerStore || exclusiveElement ? LoanRequirement.Uniq
+                                    : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
+                                // Lending the slot that stores a reference does not access its external referent. The
+                                // subsequent reborrow/store checks that separate capability, including call activation.
+                                var addressed = ValuePlaceForBorrow(operation);
+                                var referenceSlot = value.Kind is OwnershipValueKind.Sequence or OwnershipValueKind.Address && addressed >= 0 &&
+                                    ReferenceTypes.IsBorrow(this.Places[addressed].Type) &&
+                                    ReferenceTypes.IsBorrow(this.Places[addressed].Type.Components[0]) &&
+                                    !ReferenceEquals(this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type, this.Places[addressed].Type.Components[0]);
+                                if (!referenceSlot && sourcePlace >= 0 && this.BorrowModeAt(sourcePlace, root, op, this.borrowDependencies[(sourcePlace * count) + root]) != LoanRequirement.None &&
+                                    (value.Kind is not (OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedUpdate) || sourcePlace == root ||
+                                        (ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
+                                            ReferenceEquals(
+                                                this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type,
+                                                this.Places[sourcePlace].Type.Components[0])) ||
+                                        this.IsBorrowAncestor(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), sourcePlace)) &&
+                                    (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) &&
+                                    !this.IsDisjointProjection(accessId, p) && !this.IsDisjointSplitChild(receiver, p) && !this.IndependentUpdatedCallResult(receiver, p, op) &&
+                                    !this.IndependentUpdatedCallResult(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), this.ContentOwner(receiver, sourcePlace), op))
+                                {
+                                    conflict = true;
+                                }
+                            }
+
+                            if (conflict)
+                            {
+                                // One diagnostic per invalidated root: the operation that invalidates it
+                                // (a Move or an access conflict) is reported, not every later use of a
+                                // Loan that depends on the dangling root (PLAN G13).
+                                ref var reported = ref this.borrowRootLoss[root];
+                                if (reported && rootLost)
                                 {
                                     continue;
                                 }
 
-                                if (lending >= 0)
+                                var lending = -1;
+                                if (destruction)
                                 {
-                                    this.destroyedLoans.Add((root, p));
-                                }
-                            }
-
-                            reported = true;
-                            var holder = p;
-                            var reserved = this.HeldReservation(p, op);
-                            if (reserved >= 0 && this.RetainingTarget(reserved, root, count) is >= 0 and var target)
-                            {
-                                // The reserved target's own Loan on another root, not an overlap with the reservation.
-                                holder = target;
-                                reserved = this.HeldReservation(target, op);
-                            }
-
-                            var own = activating ? -1 : operation.Reservation >= 0 ? operation.Reservation : this.LocatedReservation(accessId);
-                            var at = own >= 0 && operation.Reservation < 0 ? this.Operations[accessId + 1].Source : operation.Source;
-                            if (own >= 0 && reserved < 0)
-                            {
-                                // The reserved input itself meets a retained Loan; its activation decides the record.
-                                (this.preparedLoanConflicts ??= new()).Add((own, new(at, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source, Input: this.Lending(own))));
-                                continue;
-                            }
-
-                            if (activating)
-                            {
-                                var issue = new OwnershipIssue(this.Operations[op].Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: r, Activation: true, LoanSource: this.Places[holder].Source, Input: this.Lending(r));
-                                if (reserved >= 0)
-                                {
-                                    // Another reserved input of an enclosing or the same call; its preparation may already state the overlap.
-                                    this.HoldOverlapActivation(r, reserved, issue);
-                                }
-                                else
-                                {
-                                    (this.activatedLoans ??= new()).Add((issue.Source, issue.LoanSource));
-                                    if (this.CallReservations[r].Place >= 0)
+                                    // SPEC 15.6.5: one record per destroyed root and holder, at a destruction that a definition of the
+                                    // holder carrying the root's Loan reaches; a reachable destruction is preferred by the pass order.
+                                    // Where the walk cannot tell which definition reaches (-2), every destruction the Loan reaches keeps
+                                    // its record, so the escaping one is never deduplicated away.
+                                    lending = this.LoanCarryingDefinition(p, root, op, count);
+                                    if (lending == -1 || (lending >= 0 && this.destroyedLoans.Contains((root, p))))
                                     {
-                                        // The activated input's Loan was rejected against this holder, as an acquisition is.
-                                        (this.rejectedAcquisitions ??= new()).Add((holder, this.CallReservations[r].Place));
+                                        continue;
                                     }
 
-                                    this.ReportIssue(issue);
+                                    if (lending >= 0)
+                                    {
+                                        this.destroyedLoans.Add((root, p));
+                                    }
                                 }
 
-                                continue;
-                            }
+                                reported = true;
+                                var holder = p;
+                                var reserved = this.HeldReservation(p, op);
+                                if (reserved >= 0 && this.RetainingTarget(reserved, root, count) is >= 0 and var target)
+                                {
+                                    // The reserved target's own Loan on another root, not an overlap with the reservation.
+                                    holder = target;
+                                    reserved = this.HeldReservation(target, op);
+                                }
 
-                            if (reserved >= 0 && ReferenceEquals(operation.Source, this.CallReservations[reserved].Call) && this.ReservationMode(reserved, op) == LoanRequirement.Uniq)
-                            {
-                                // The call's own effect after activation, such as an intrinsic update through one target while
-                                // another target is lent, is part of activating that call.
-                                this.HoldOverlapActivation(reserved, -1, new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: reserved, Activation: true, LoanSource: this.Places[holder].Source));
-                                continue;
-                            }
+                                var own = activating ? -1 : operation.Reservation >= 0 ? operation.Reservation : this.LocatedReservation(accessId);
+                                var at = own >= 0 && operation.Reservation < 0 ? this.Operations[accessId + 1].Source : operation.Source;
+                                if (own >= 0 && reserved < 0)
+                                {
+                                    // The reserved input itself meets a retained Loan; its activation decides the record.
+                                    (this.preparedLoanConflicts ??= new()).Add((own, new(at, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source, Input: this.Lending(own))));
+                                    continue;
+                                }
 
-                            if (reserved >= 0)
-                            {
-                                // SPEC 15.6.7: the operation conflicts with a reservation, which is shown as its lending point.
-                                this.ReportReservationConflict(new(at, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: reserved), own, reserved);
-                                continue;
-                            }
+                                if (activating)
+                                {
+                                    var issue = new OwnershipIssue(this.Operations[op].Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: r, Activation: true, LoanSource: this.Places[holder].Source, Input: this.Lending(r));
+                                    if (reserved >= 0)
+                                    {
+                                        // Another reserved input of an enclosing or the same call; its preparation may already state the overlap.
+                                        this.HoldOverlapActivation(r, reserved, issue);
+                                    }
+                                    else
+                                    {
+                                        (this.activatedLoans ??= new()).Add((issue.Source, issue.LoanSource));
+                                        if (this.CallReservations[r].Place >= 0)
+                                        {
+                                            // The activated input's Loan was rejected against this holder, as an acquisition is.
+                                            (this.rejectedAcquisitions ??= new()).Add((holder, this.CallReservations[r].Place));
+                                        }
 
-                            if (this.RestatesRejectedAcquisition(holder, value.Count > 0 ? this.ValueOperands[value.Start] : accessId))
-                            {
-                                continue; // The rejected acquisition's record already states this overlap of the same two Loans.
-                            }
+                                        this.ReportIssue(issue);
+                                    }
 
-                            if (operation.Kind == OwnershipOperationKind.Borrow && operation.Input >= 0)
-                            {
-                                (this.rejectedAcquisitions ??= new()).Add((holder, operation.Input));
-                            }
+                                    continue;
+                                }
 
-                            this.ReportIssue(destruction ? this.DestructionIssue(operation.Source, holder, root, lending)
-                                : new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source));
+                                if (reserved >= 0 && ReferenceEquals(operation.Source, this.CallReservations[reserved].Call) && this.ReservationMode(reserved, op) == LoanRequirement.Uniq)
+                                {
+                                    // The call's own effect after activation, such as an intrinsic update through one target while
+                                    // another target is lent, is part of activating that call.
+                                    this.HoldOverlapActivation(reserved, -1, new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: reserved, Activation: true, LoanSource: this.Places[holder].Source));
+                                    continue;
+                                }
+
+                                if (reserved >= 0)
+                                {
+                                    // SPEC 15.6.7: the operation conflicts with a reservation, which is shown as its lending point.
+                                    this.ReportReservationConflict(new(at, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: reserved), own, reserved);
+                                    continue;
+                                }
+
+                                if (this.RestatesRejectedAcquisition(holder, value.Count > 0 ? this.ValueOperands[value.Start] : accessId))
+                                {
+                                    continue; // The rejected acquisition's record already states this overlap of the same two Loans.
+                                }
+
+                                if (operation.Kind == OwnershipOperationKind.Borrow && operation.Input >= 0)
+                                {
+                                    (this.rejectedAcquisitions ??= new()).Add((holder, operation.Input));
+                                }
+
+                                this.ReportIssue(destruction ? this.DestructionIssue(operation.Source, holder, root, lending)
+                                    : new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source));
+                            }
                         }
                     }
                 }
@@ -660,6 +663,16 @@ public sealed partial class OwnershipBody
         void AddOrigin(int place, BoundOrigin origin, LoanRequirement mode, bool referent = false)
         {
             var rooted = false;
+            if (Binding.IsLocalRegion(origin))
+            {
+                foreach (var source in this.Function.CodeContext.Compilation.Binding.LocalRegionSources(origin))
+                {
+                    AddOrigin(place, source, mode, referent);
+                }
+
+                return;
+            }
+
             if (origin.Kind == OriginKind.Intersection)
             {
                 for (var i = 0; i < origin.Operands.Count; i++)
@@ -1128,7 +1141,7 @@ public sealed partial class OwnershipBody
 
     private static bool ContainsProjection(BoundOrigin? origin)
     {
-        if (origin?.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Anchor)
+        if (origin is not null && (Binding.IsLocalRegion(origin) || origin.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Anchor))
         {
             return true;
         }
@@ -1864,6 +1877,11 @@ public sealed partial class OwnershipBody
     // exits of `label block: do` that deliver `n@ref` and `z@ref`.
     private int LoanCarryingDefinition(int holder, int root, int destruction, int count)
     {
+        if (this.loanFlowRoot == root)
+        {
+            return this.loanFlow[(destruction * count) + holder];
+        }
+
         if (this.Places[holder].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result) ||
             this.HasExplicitDependency(holder) || this.HasStoredBorrowRecord(holder, root))
         {

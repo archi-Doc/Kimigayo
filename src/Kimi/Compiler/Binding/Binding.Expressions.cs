@@ -746,7 +746,7 @@ public sealed partial class Binding
                         targetResult?.Sources.Add(actual);
                     }
 
-                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node))
+                    if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node) && !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
                     {
                         this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType);
                     }
@@ -1003,6 +1003,11 @@ public sealed partial class Binding
             this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
         }
 
+        if (symbol.Kind == BindingSymbolKind.Local && declared is null && inferred is not null)
+        {
+            declared = this.LocalBorrowType(inferred, variable, variable.InitializerKoto!);
+        }
+
         symbol.Type = declared ?? inferred;
         variable.NameKoto.BoundSymbol = symbol;
         Complete(variable.NameKoto, symbol.Type);
@@ -1204,7 +1209,7 @@ public sealed partial class Binding
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
     {
         var actual = this.BindNode(node, scope, expected);
-        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node))
+        if (expected is not null && actual is not null && !this.FitsTypeAt(actual, expected, node) && !this.CheckLocalTypeUse(actual, expected, node))
         {
             this.FailMismatch(node, node, actual, expected);
         }
@@ -1497,7 +1502,7 @@ public sealed partial class Binding
         }
 
         // SPEC 15.6.1: an assignment's Origin part is judged under the premises in scope, such as `origin other outlives anchor`.
-        if (comparison ? !Compatible(right, left) : !this.FitsTypeAt(right, left, binary))
+        if (comparison ? !Compatible(right, left) : !this.FitsTypeAt(right, left, binary) && !this.CheckLocalTypeUse(right, left, binary.Right))
         {
             if (comparison && this.CommonOriginType(left, right) is { } common)
             {

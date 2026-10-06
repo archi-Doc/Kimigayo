@@ -47,6 +47,21 @@ public sealed partial class OwnershipAnalysis
                 return false;
             }
 
+            if (reversed && Binding.IsLocalRegion(obligation.Shorter))
+            {
+                return this.ReportUnprovenOriginObligation(obligation with { Longer = obligation.Shorter, Shorter = longer, Equality = false }, true);
+            }
+
+            if (Binding.IsLocalRegion(longer))
+            {
+                foreach (var source in this.compilation.Binding.LocalRegionSources(longer))
+                {
+                    this.ReportUnprovenOriginObligation(obligation with { Longer = source, Equality = false }, true);
+                }
+
+                return false;
+            }
+
             if (!obligation.Equality && longer.Kind == OriginKind.Intersection)
             {
                 var count = this.issues.Count;

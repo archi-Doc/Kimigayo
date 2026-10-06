@@ -263,6 +263,12 @@ public sealed partial class Binding
             return;
         }
 
+        if (IsLocalRegion(longer) || IsLocalRegion(shorter))
+        {
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, context.Parameter, longer, shorter, Equality: equality));
+            return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
+        }
+
         var forward = this.ProvesOriginOutlives(longer, shorter, at) ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at);
         var backward = !equality || this.ProvesOriginOutlives(shorter, longer, at) ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at);
         if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)

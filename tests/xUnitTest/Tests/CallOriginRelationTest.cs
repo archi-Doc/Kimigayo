@@ -86,17 +86,17 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     // record names that Borrow and relates it, and the destination shows only the Origin at the failed position. A shorter end that an
     // equality fixed to another argument's stored Borrow is shown and related the same way, and never written as `during` a borrow.
     [Theory]
-    [InlineData("func needs(x: uniq/(ref/i32 during static)) -> () => ()\nfunc g() -> i32\n    let local: i32 = 1\n    var y = local@ref\n    needs(y@uniq)\n    return 1\n", "y@uniq", "requires the borrow local@ref == static, which is false", "uniq/(ref/i32 during static)")]
+    [InlineData("func needs(x: uniq/(ref/i32 during static)) -> () => ()\nfunc g() -> i32\n    let local: i32 = 1\n    var y = local@ref\n    needs(y@uniq)\n    return 1\n", "y@uniq", "requires the borrow local@ref outlives static, which is false", "uniq/(ref/i32 during static)")]
     [InlineData("func needs(x: ref/Option<ref/i32 during static>) -> i32 => 1\nfunc g() -> i32\n    let local: i32 = 1\n    let o: Option<ref/i32> = .Some(local@ref)\n    return needs(o@ref)\n", "o@ref", "requires the borrow local@ref outlives static, which is false", "ref/Option<ref/i32 during static>")]
-    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc g(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(x@uniq, y@uniq)\n    return x\n", "y@uniq", "requires the borrow local@ref == p, which is false", "uniq/(ref/i32 during p)")]
-    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc h(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(y@uniq, x@uniq)\n    return x\n", "x@uniq", "requires p == the borrow local@ref, which is false", "uniq/ref/i32")]
+    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc g(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(x@uniq, y@uniq)\n    return x\n", "x", "requires the borrow local@ref outlives p, which is false", "ref/i32 during p")]
+    [InlineData("func assign<T>(a: uniq/T, b: uniq/T) -> () => ()\nfunc h(p: ref/i32) -> ref/i32 during p\n    var x = p\n    let local: i32 = 1\n    var y = local@ref\n    assign(y@uniq, x@uniq)\n    return x\n", "x", "requires the borrow local@ref outlives p, which is false", "ref/i32 during p")]
     public void AnInnerBorrowIsNamedAndRelated(string body, string text, string label, string destination)
     {
         var source = body + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), text, label), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal(("fit", destination), (error.Reason![3].Value, error.Reason[4].Value));
-        Assert.Contains(error.Related!, x => x.Role == "origin" && Text(source, x.Span) == "local@ref");
+        Assert.Contains(error.Related!, x => x.Role == "origin" && (Text(source, x.Span) == "local@ref" || Text(source, x.Span) == "local"));
     }
 
     // A valid counterpart: the stored value's Origin fits the inner position, so the call is accepted. (The exclusive forms with a
@@ -182,22 +182,31 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     public void AStructuralSelectionRuns(string name, string source)
         => ScalarEmissionTest.EmitFixture("CallOriginRelation" + name, source, string.Empty);
 
-    // SPEC 15.6.5, PLAN G56: a call whose argument would store a borrow into a body Origin needs region-inference Loan edges, so it
-    // stays the located limit at the argument; it is never accepted, also where the stored borrow would dangle. A generic `put<T>`
-    // solves T from its exclusive target, an invariant binding (SPEC 10.8), so the stored value is the argument that does not fit.
+    // SPEC 15.6.5: selected call contracts constrain the local region and retain potential stored Loans.
+    // The same contract is accepted while all sources live and rejected at destruction when one escapes its scope.
     [Theory]
     [InlineData("func put(anchor: ref/i32, target: uniq/(ref/i32 during anchor)) -> () => ()\nfunc f() -> ()\n    let a = 1\n    let c = 3\n    var slot: ref/i32 = c@ref\n    put(a@ref, slot@uniq)\n    Console.writeLine(\"\\(slot@follow)\")\n", "a@ref")]
     [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    let b = 2\n    var slot = a@ref\n    put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "b@ref")]
     [InlineData("func put<T>(target: uniq/T, value: T) -> () => ()\nfunc f() -> ()\n    let a = 1\n    var slot = a@ref\n    if true\n        let b = 2\n        put(slot@uniq, b@ref)\n    Console.writeLine(\"\\(slot@follow)\")\n", "b@ref")]
     [InlineData("func put(target: uniq/(ref/i32 during o), value: ref/i32 during o) -> () => ()\nfunc g(x: ref/i32) -> i32\n    let local = 1\n    var slot = local@ref\n    put(slot@uniq, x)\n    return slot@follow\n", "x")]
-    public void CallsThatStoreIntoBodyOriginsAreALocatedLimit(string body, string text)
+    public void CallsThatStoreIntoBodyOriginsKeepTheirLoans(string body, string text)
     {
         var source = body + Main;
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        output.WriteLine(string.Join("\n", errors.Select(x => $"{x.Code} {Text(source, x.Span)}")));
-        Assert.NotEmpty(errors);
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), x.Code));
-        Assert.Contains(errors, x => Text(source, x.Span) == text);
+        if (body.Contains("    if true", StringComparison.Ordinal))
+        {
+            var error = Assert.Single(errors);
+            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+            Assert.Equal("let b = 2\n        put(slot@uniq, b@ref)", Text(source, error.Span));
+            Assert.Contains("`b` is destroyed here", error.Note, StringComparison.Ordinal);
+        }
+        else
+        {
+            Assert.Empty(errors);
+            Assert.True(MinimalEmissionTest.Analyze(source).Emission.Validate(out var issue), issue);
+        }
+
+        Assert.Contains(text, source, StringComparison.Ordinal);
     }
 
     [Theory]

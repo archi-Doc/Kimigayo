@@ -68,6 +68,16 @@ public sealed partial class Binding
     // or of the body's own inputs, would be lost. Such a chain is Unrepresentable, a located limit.
     internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
+        if (IsLocalRegion(longer))
+        {
+            return this.JudgeLocalRegion(longer, shorter, use);
+        }
+
+        if (IsLocalRegion(shorter))
+        {
+            return OriginJudgment.Proven;
+        }
+
         if (this.ProvesOriginOutlives(longer, shorter, use))
         {
             return OriginJudgment.Proven;

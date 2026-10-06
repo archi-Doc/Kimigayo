@@ -246,7 +246,7 @@ internal sealed partial class BodyLowering
     private static bool FitsValue(BoundType? source, BoundType? target, Parsing.Koto? use = null)
         => ReferenceEquals(source, target) ||
             (ReferenceTypes.StorageMatches(source, target) && (Binding.FitsType(source!, target!) ||
-                (use is not null && use.CodeContext.Compilation.Binding.FitsTypeAt(source!, target!, use)) || HasInferenceOrigin(source!) || HasInferenceOrigin(target!)));
+                (use is not null && use.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(source!, target!, use)) || HasInferenceOrigin(source!) || HasInferenceOrigin(target!)));
 
     private static bool HasInferenceOrigin(BoundType type)
     {
@@ -311,6 +311,6 @@ internal sealed partial class BodyLowering
             ? function.ReturnType?.BoundType : target.Source.BoundType;
         return this.instance is not null && declaredSource is not null && declaredTarget is not null &&
             ReferenceEquals(SignatureType(this, declaredSource), source.Type) && ReferenceEquals(SignatureType(this, declaredTarget), target.Type) &&
-            ReferenceTypes.StorageMatches(source.Type, target.Type) && this.instanceBinding!.FitsTypeAt(declaredSource, declaredTarget, use);
+            ReferenceTypes.StorageMatches(source.Type, target.Type) && this.instanceBinding!.FitsVerifiedTypeAt(declaredSource, declaredTarget, use);
     }
 }

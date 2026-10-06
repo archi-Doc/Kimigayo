@@ -328,7 +328,7 @@ internal sealed partial class BodyLowering
             var entry = this.arguments[cursor++];
             var place = body.Operations[entry].Place;
             if (!ReferenceEquals(body.Operations[entry].Source, call) ||
-                !call.CodeContext.Compilation.Binding.FitsTypeAt(body.Places[place].Type, parameterType, call))
+                !call.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(body.Places[place].Type, parameterType, call))
             {
                 return Fail("Common-function entry does not match its argument Type or call.", out failure);
             }

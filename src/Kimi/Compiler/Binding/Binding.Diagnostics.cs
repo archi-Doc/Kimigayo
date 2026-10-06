@@ -677,7 +677,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.1: the Origin relation that a structurally fitting value leaves at its destination, for phases that judge the fit.
     internal OriginRelationFact? OriginRelationOf(BoundType actual, BoundType expected, Koto at)
-        => ReferenceTypes.StorageMatches(expected, actual) && this.FailedOriginRelation(actual, expected, at, OriginVariance.Covariant) is { } relation
+        => ReferenceTypes.StorageMatches(expected, actual) && this.FailedOriginRelation(actual, expected, at, OriginVariance.Covariant, judged: HasLocalRegion(actual) || HasLocalRegion(expected)) is { } relation
             ? relation with { At = at, Destination = expected } : null;
 
     /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
@@ -932,6 +932,12 @@ public sealed partial class Binding
     private static Koto? BorrowSource(Koto value, BoundOrigin origin)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(value);
+        if (unwrapped.BoundType?.Origin is { } region && IsLocalRegion(region) &&
+            value.CodeContext.Compilation.Binding.LocalRegionSourceUse(region, origin) is { } evidence && !ReferenceEquals(evidence, value))
+        {
+            return BorrowSource(evidence, origin);
+        }
+
         if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrowValue)
         {
             // SPEC 23.3.6.5: at an inner position of a Borrow, such as the stored `local@ref` of `y@uniq` after `var y = local@ref`, the
@@ -1583,6 +1589,17 @@ public sealed partial class Binding
     // Adds the chain of each failing operand of `meet`, nested meets flattened in order; whether any was added.
     private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin meet, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all)
     {
+        if (IsLocalRegion(origin))
+        {
+            var found = false;
+            foreach (var source in this.LocalRegionSources(origin))
+            {
+                found |= this.AddFailingChains(use, source, meet, shorter, type, judged, all);
+            }
+
+            return found;
+        }
+
         if (origin.Kind != OriginKind.Intersection)
         {
             if (!this.OriginPartFails(origin, shorter, use, judged))
@@ -1610,6 +1627,19 @@ public sealed partial class Binding
     // Advice, before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
     private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted)
     {
+        if (IsLocalRegion(longer))
+        {
+            foreach (var source in this.LocalRegionSources(longer))
+            {
+                if (this.FailingOperand(source, shorter, use, judged, refuted) is { } failed)
+                {
+                    return failed;
+                }
+            }
+
+            return null;
+        }
+
         if (longer.Kind != OriginKind.Intersection)
         {
             return (!refuted || RefutesOriginRelation(longer, shorter)) && this.OriginPartFails(longer, shorter, use, judged) ? longer : null;

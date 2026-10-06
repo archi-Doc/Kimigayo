@@ -672,6 +672,12 @@ public sealed partial class Binding
             this.MeetLocalUpperBounds(declaration, inferred);
         }
 
+        if (declared.Origin is { Kind: OriginKind.Inference } localSlot && actual.Origin is not null && IsMutableDeclaration(owner))
+        {
+            var opened = this.LocalBorrowType(actual, owner, owner.InitializerKoto!);
+            declaration.Replacements[localSlot] = opened.Origin!;
+        }
+
         declaration.Scope = scope;
         declaration.State = 3;
         var visitor = this.originRewriteVisitor ??= new(this);

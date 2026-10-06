@@ -42,7 +42,7 @@ internal static class ReferenceTypes
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } && (ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0]))) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
             (type.Components[0].Kind == BoundTypeKind.Parameter ||
-                ((ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0])) && (type.Origin is { Kind: OriginKind.Input or OriginKind.Projection or OriginKind.Parameter or OriginKind.Intersection or OriginKind.Static or OriginKind.Anchor } or { Open: true }))));
+                ((ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0])) && (type.Origin is { Kind: OriginKind.Input or OriginKind.Projection or OriginKind.Parameter or OriginKind.Intersection or OriginKind.Static or OriginKind.Anchor } or { Open: true } || (type.Origin is { } region && Binding.IsLocalRegion(region))))));
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || ObjectTypes.IsBorrow(type);
 

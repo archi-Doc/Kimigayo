@@ -104,18 +104,10 @@ public class OwnershipJoinTest
         Assert.Contains(invalid.Ownership.Issues, static issue => issue.Failure == OwnershipFailure.ComparisonLoanConflict);
     }
 
-    // SPEC 15.4.4, 15.6.5, 23.3.6.1: reassigning a borrow local to another body-local Borrow is valid under local-region
-    // inference, which is not implemented; it is a located Unsupported, never an Origin relation that claims a missing proof.
+    // SPEC 15.4.4, 15.6.5: the declaration owns one inferred slot; each assigned value retains its own Loan.
     [Fact]
-    public void ReassigningABorrowLocalToAnotherBorrowIsUnsupported()
-    {
-        var c = MinimalEmissionTest.Analyze("let z = 0\nvar r = z@ref\nlet n = 5\nr = n@ref\nrequire r@follow == 5 else => $abort(\"r\")");
-        Assert.False(c.Binding.Result.IsComplete);
-        c.Binding.ReportDiagnostics();
-        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
-        Assert.Equal(nameof(Kimi.DiagnosticCode.UnsupportedBinding_Kd), error.Code);
-        Assert.Equal("r = n@ref", error.Text);
-    }
+    public void ReassigningABorrowLocalToAnotherBorrowRuns()
+        => ScalarEmissionTest.EmitFixture("OwnershipJoinReassign", "let z = 0\nvar r = z@ref\nlet n = 5\nr = n@ref\nrequire r@follow == 5 else => $abort(\"r\")", string.Empty);
 
     [Fact]
     public void CheckedValuesRejectLostOriginDependency()
