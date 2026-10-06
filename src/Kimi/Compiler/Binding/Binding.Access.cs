@@ -7,6 +7,22 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 9.3: enclosing declaration accessibility comes from functions and Containers. A Pattern scope's owner may
+    // bind a local in that same scope; following its BoundSymbol would revisit that local forever. Body/guard scopes
+    // are lexical scopes, not declarations with their own accessibility.
+    private static BindingSymbol? EnclosingAccessDeclaration(BindingSymbol symbol)
+    {
+        for (var scope = symbol.Scope; scope is not null; scope = scope.Parent)
+        {
+            if (scope.Owner is DeclarationContainerKoto or FunctionKoto && scope.Owner.BoundSymbol is { } enclosing)
+            {
+                return enclosing;
+            }
+        }
+
+        return null;
+    }
+
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
@@ -413,7 +429,7 @@ public sealed partial class Binding
             return true;
         }
 
-        for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
         {
             // The fixed-array member group stands for the public built-in Type (PLAN G32): only a member's own modifier applies.
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true } || (!ReferenceEquals(current, symbol) && this.Library.IsBuiltinMemberGroup(current.Declaration)))

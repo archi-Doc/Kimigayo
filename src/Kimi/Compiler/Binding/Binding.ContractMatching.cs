@@ -63,7 +63,7 @@ public sealed partial class Binding
 
     private static bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
     {
-        for (var current = member; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = member; current is not null; current = EnclosingAccessDeclaration(current))
         {
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
             {
@@ -111,7 +111,7 @@ public sealed partial class Binding
             return !ExternallyVisible(symbol) && ReferenceEquals(owner.CodeContext.Kotonoha, symbol.Declaration.CodeContext.Kotonoha);
         }
 
-        for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
         {
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
             {
@@ -137,7 +137,7 @@ public sealed partial class Binding
 
     private static bool ExternallyVisible(BindingSymbol symbol)
     {
-        for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
         {
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
             {
