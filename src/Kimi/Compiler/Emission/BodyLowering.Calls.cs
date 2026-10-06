@@ -273,13 +273,14 @@ internal sealed partial class BodyLowering
                 }
 
                 var root = this.referenceRoots[entry];
+                var sourceType = body.ConcreteAt(isDefault && acquisition.SourceType is { } declaredSource ? call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan) : acquisition.SourceType, id);
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, OwnershipAnalysis.BorrowedArgumentSource(sourceArgument))
                     : acquisition.Kind == ArgumentOperationKind.ReferenceRead
                     ? body.Values[root].Kind != OwnershipValueKind.PointerLoad || !ReferenceTypes.IsString(ValueType(body, root))
-                    : (body.Values[root].Kind is not (OwnershipValueKind.Parameter or OwnershipValueKind.Address) && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
-                        !ReferenceEquals(ValueType(body, root), SignatureType(this, acquisition.SourceType)))
+                    : (!isDefault && body.Values[root].Kind is not (OwnershipValueKind.Parameter or OwnershipValueKind.Address) && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
+                        !ReferenceEquals(ValueType(body, root), sourceType))
                 {
                     return Fail("Reference acquisition does not match its source.", out failure);
                 }

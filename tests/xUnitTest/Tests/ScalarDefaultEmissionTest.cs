@@ -386,15 +386,14 @@ public class ScalarDefaultEmissionTest
     }
 
     [Fact]
-    public void DefaultsReadReferencesToScalarsButSupplyOnlyScalars()
+    public void DefaultResultSupportDoesNotBroadenScalarLoopSupport()
     {
-        // SPEC 15.1.6: a binding of a shared Subject inside a default is a ref/T that the default may read; the value a
-        // default supplies to its parameter is a Scalar or Unit.
+        // The scalar loop/checking helper keeps its original boundary; default results now also include external references.
         var c = MinimalEmissionTest.Analyze("func f(x: ref/i32) => ()");
         var type = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parameters.Count == 1).Parameters[0].Type.BoundType;
         Assert.True(ReferenceTypes.IsScalarBorrow(type));
         Assert.True(ScalarDefaults.SupportsValue(type));
-        Assert.False(ScalarDefaults.SupportsResult(type));
+        Assert.True(ScalarDefaults.SupportsResult(type));
         Assert.True(ScalarDefaults.SupportsResult(BoundType.I32));
         Assert.True(ScalarDefaults.SupportsResult(BoundType.Unit));
         Assert.False(ScalarDefaults.SupportsValue(BoundType.String));

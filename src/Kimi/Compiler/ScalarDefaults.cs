@@ -60,11 +60,11 @@ internal static class ScalarDefaults
     internal static bool SupportsDelivered(BoundType? type) => SupportsResult(type) || IsErasedResult(type) || ReferenceTypes.IsBorrow(type) ||
         (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
 
-    /// <summary>Gets whether a default supplies a Scalar, Unit, string or independent aggregate retaining no Loan of a prepared argument.</summary>
+    /// <summary>Gets whether a default supplies a supported value; universal Type/Origin fitting and ownership check its dependencies.</summary>
     /// <param name="type">The parameter Type.</param>
     /// <returns>Whether the Type is a supported default result.</returns>
-    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
-        SupportsIndependentAggregate(type) || (type is not null && AbstractTypes.IsAbstract(type));
+    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceTypes.IsBorrow(type) ||
+        SupportsAggregate(type) || (type is not null && AbstractTypes.IsAbstract(type));
 
     /// <summary>Gets whether a default expression may compute or read a value of this Type: a supported result, or a safe
     /// reference to one, such as a binding of a shared Subject (SPEC 15.1.6).</summary>
@@ -101,7 +101,7 @@ internal static class ScalarDefaults
         return true;
     }
 
-    private static bool SupportsIndependentAggregate(BoundType? type) => type is { CarriesOrigin: false } &&
+    private static bool SupportsAggregate(BoundType? type) => type is not null &&
         (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
     private static bool SupportsExpressionType(BoundType? type) => SupportsValue(type) || SupportsResult(type) || ReferenceTypes.IsString(type) ||

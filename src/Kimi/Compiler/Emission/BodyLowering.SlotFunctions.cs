@@ -130,7 +130,7 @@ internal sealed partial class BodyLowering
             }
 
             var place = body.Places[call.Place];
-            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || !ReferenceEquals(place.Type, SignatureType(this, ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType)))
+            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || !ReferenceEquals(place.Type, body.ConcreteAt(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, id)))
             {
                 return Fail("Stored call result must have its own temporary storage.", out failure);
             }

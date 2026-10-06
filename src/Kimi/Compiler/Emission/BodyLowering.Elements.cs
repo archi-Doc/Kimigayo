@@ -122,7 +122,7 @@ internal sealed partial class BodyLowering
         }
 
         var place = body.Places[operation.Place];
-        return ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
+        return ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), place.Type) &&
             (operation.Source is IdentifierNameKoto { BoundSymbol.Kind: not BindingSymbolKind.PatternCandidate } identifier
                 ? identifier.BoundSymbol is { } symbol && ((body.TrySymbolPlaceAt(symbol, id, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
                 : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
@@ -245,8 +245,8 @@ internal sealed partial class BodyLowering
                 this.elementOperations[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation] is not { Kind: OwnershipOperationKind.ProjectElement, Source: BinaryKoto source, Input: -1 } operation ||
                 operation.Place != plan.Root || body.Values[plan.Operation].Kind != OwnershipValueKind.None ||
-                !(ElementAccess.TryType(source, out var declared, out var position) && SignatureType(this, declared) is { } element) || position != plan.Element ||
-                source.AttributeChain is not null || !ReferenceEquals(SignatureType(this, source.BoundType), element) || this.aggregateLayouts.Get(SignatureType(this, source.Left.BoundType)!) is null)
+                !(ElementAccess.TryType(source, out var declared, out var position) && body.ConcreteAt(declared, plan.Operation) is { } element) || position != plan.Element ||
+                source.AttributeChain is not null || !ReferenceEquals(body.ConcreteAt(source.BoundType, plan.Operation), element) || this.aggregateLayouts.Get(body.ConcreteAt(source.Left.BoundType, plan.Operation)!) is null)
             {
                 return Fail("Element address has no matching source and aggregate shape.", out failure);
             }
@@ -471,7 +471,7 @@ internal sealed partial class BodyLowering
         }
 
         var source = (BinaryKoto)body.Operations[plan.Operation].Source;
-        var receiverType = SignatureType(this, source.Left.BoundType)!;
+        var receiverType = body.ConcreteAt(source.Left.BoundType, id)!;
         if (receiverType.Kind == BoundTypeKind.Dictionary)
         {
             return Fail("Dictionary selection must use its Indexable Place call.", out failure);
