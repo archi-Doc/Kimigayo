@@ -291,6 +291,11 @@ public sealed partial class OwnershipAnalysis
     // substitution; a case substitution cannot fail.
     private BoundType? Concrete(BoundType? type)
     {
+        if (this.defaultContext >= 0)
+        {
+            type = this.body.SubstituteDefaultType(type, this.defaultContext);
+        }
+
         if (type is null)
         {
             return type;

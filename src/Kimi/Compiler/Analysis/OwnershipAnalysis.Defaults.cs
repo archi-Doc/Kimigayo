@@ -11,6 +11,7 @@ public sealed partial class OwnershipAnalysis
     private FunctionKoto? defaultFunction;
     private int defaultParameter;
     private int defaultDepth;
+    private int defaultContext = -1;
 
     private void PrepareDefaults(BoundCall plan, int mark)
     {
@@ -75,7 +76,21 @@ public sealed partial class OwnershipAnalysis
                 else if (complete)
                 {
                     // The explicit arguments are already acquired; the declaration expression reads those prepared slots.
-                    place = this.Argument(omitted.Expression, ArgumentOperationKind.Value);
+                    var contexts = this.body.DefaultContexts ??= new();
+                    var previousContext = this.defaultContext;
+                    var context = contexts.Count;
+                    contexts.Add((this.body.Operations.Count, int.MaxValue, plan, previousContext));
+                    this.defaultContext = context;
+                    try
+                    {
+                        place = this.Argument(omitted.Expression, ArgumentOperationKind.Value);
+                    }
+                    finally
+                    {
+                        var entry = contexts[context];
+                        contexts[context] = (entry.Start, this.body.Operations.Count, entry.Call, entry.Parent);
+                        this.defaultContext = previousContext;
+                    }
                 }
 
                 this.arguments.Add(place);

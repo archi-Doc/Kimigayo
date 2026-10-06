@@ -102,7 +102,8 @@ internal static class ScalarDefaults
     private static bool SupportsIndependentAggregate(BoundType? type) => type is { ContainsParameter: false, CarriesOrigin: false } &&
         (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
-    private static bool SupportsExpressionType(BoundType? type) => SupportsValue(type) || SupportsResult(type) || ReferenceTypes.IsString(type);
+    private static bool SupportsExpressionType(BoundType? type) => SupportsValue(type) || SupportsResult(type) || ReferenceTypes.IsString(type) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && SupportsExpressionType(type.Components[0]));
 
     private static bool IsErasedResult(BoundType? type) => type is { Kind: BoundTypeKind.Function, ContainsParameter: false };
 
@@ -129,6 +130,8 @@ internal static class ScalarDefaults
 
         return IsErasedResult(expression.BoundType) && expression switch
         {
+            IdentifierNameKoto => SupportsPreparedStorage(expression, function, parameterIndex),
+            InvocationKoto { BoundValueCall: { } call } invocation => SupportsValueCall(invocation, call, function, parameterIndex),
             InvocationKoto { BoundCall: { } call } invocation => SupportsCall(invocation, call, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsErased(parentheses.Operand, function, parameterIndex),
             IfKoto conditional => SupportsConditional(conditional, function, parameterIndex, true),
@@ -211,6 +214,11 @@ internal static class ScalarDefaults
             return true;
         }
 
+        if (expression.CodeContext.Compilation.Binding.PropertyCall(expression, PropertyAccessorKind.Get) is { BoundCall: { } getter } access)
+        {
+            return SupportsCall(access, getter, function, parameterIndex);
+        }
+
         return expression switch
         {
             NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or StringLiteralKoto => true,
@@ -226,6 +234,7 @@ internal static class ScalarDefaults
             MemberAccessKoto field when ElementAccess.BorrowedPathRoot(field) is not null => SupportsPreparedStorage(field, function, parameterIndex),
             BinaryKoto element when ElementAccess.IsSyntax(element) => SupportsPreparedStorage(element, function, parameterIndex),
             ParenthesizedKoto parentheses => SupportsExpression(parentheses.Operand, function, parameterIndex),
+            InvocationKoto { BoundValueCall: { } call } invocation => SupportsValueCall(invocation, call, function, parameterIndex),
             InvocationKoto { BoundCall: { } call } invocation => SupportsCall(invocation, call, function, parameterIndex),
             IfKoto conditional => SupportsConditional(conditional, function, parameterIndex, false),
             MatchKoto match => SupportsMatch(match, function, parameterIndex, false),
@@ -272,12 +281,13 @@ internal static class ScalarDefaults
     // SPEC 7.2.3: a default may call an ordinary function (effects included), or format text, with value arguments and temporary
     // shared inspections of supported expressions; its scalar or string result is independent of the prepared slots.
     // Each call prepares its own frame of pending slots, so nested omitted defaults may temporarily replace the outer context.
-    // Receivers, exclusive arguments and callable values retain their guards.
+    // Shared receivers (including callable values) use the same temporary inspections. Exclusive arguments retain their guard.
     private static bool SupportsCall(InvocationKoto invocation, BoundCall call, FunctionKoto function, int parameterIndex)
     {
-        if (invocation.IsValueCall || call.Receiver is not null ||
+        if (invocation.IsValueCall ||
             call.Target.CompilerFunction is not (CompilerFunctionKind.None or CompilerFunctionKind.TextToString) || call.Target.Declaration is not FunctionKoto { IsAnonymous: false } ||
-            call.ArgumentOperations.Length != invocation.ArgumentNodes.Count)
+            call.ArgumentOperations.Length != invocation.ArgumentNodes.Count ||
+            (call.Receiver is { } receiver && (call.ReceiverOperation.ParameterType?.Semantics != SemanticsKind.Ref || !SupportsExpression(receiver, function, parameterIndex))))
         {
             return false;
         }
@@ -285,6 +295,25 @@ internal static class ScalarDefaults
         for (var i = 0; i < invocation.ArgumentNodes.Count; i++)
         {
             if ((call.ArgumentOperations[i].Kind != ArgumentOperationKind.Value && call.ArgumentOperations[i].ParameterType?.Semantics != SemanticsKind.Ref) ||
+                !SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool SupportsValueCall(InvocationKoto invocation, BoundValueCall call, FunctionKoto function, int parameterIndex)
+    {
+        if (call.ReceiverKind != SemanticsKind.Ref || !SupportsExpression(call.Receiver, function, parameterIndex) || call.Arguments.Length != invocation.ArgumentNodes.Count)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < invocation.ArgumentNodes.Count; i++)
+        {
+            if ((call.Arguments[i].Kind != ArgumentOperationKind.Value && call.Arguments[i].ParameterType?.Semantics != SemanticsKind.Ref) ||
                 !SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
             {
                 return false;
@@ -337,7 +366,7 @@ internal static class ScalarDefaults
 
     private static bool SupportsMatchSubject(Koto subject, FunctionKoto function, int parameterIndex)
     {
-        if (SupportsExpressionType(subject.BoundType) || IsErasedResult(subject.BoundType) || ReferenceEquals(subject.BoundType, BoundType.Never))
+        if (subject.ErasedFunctionType is not null || SupportsExpressionType(subject.BoundType) || IsErasedResult(subject.BoundType) || ReferenceEquals(subject.BoundType, BoundType.Never))
         {
             return SupportsExpression(subject, function, parameterIndex);
         }
@@ -459,7 +488,7 @@ internal static class ScalarDefaults
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } =>
                 ReferenceEquals(symbol.Scope.Owner, function) && symbol.Slot < parameterIndex,
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: FieldKoto local } } =>
-                SupportsPatternValue(local.BoundType) && IsInsideDefault(local, function, parameterIndex),
+                (SupportsPatternValue(local.BoundType) || SupportsResult(local.BoundType) || IsErasedResult(local.BoundType)) && IsInsideDefault(local, function, parameterIndex),
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern } } local =>
                 SupportsPatternValue(local.BoundType) && IsInsideDefault(pattern, function, parameterIndex),
             MemberAccessKoto field when ElementAccess.BorrowedPathRoot(field) is not null =>

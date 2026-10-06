@@ -533,6 +533,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount), this.caseBit);
+        this.defaultContext = -1;
         // Abstract Origin bindings affect field Types even when layout is fully
         // concrete. Prepare the same substituted metadata used by closed calls.
         for (var parameterIndex = 0; parameterIndex < function.Parameters.Count; parameterIndex++)
@@ -825,7 +826,8 @@ public sealed partial class OwnershipAnalysis
             return place;
         }
 
-        // Only locals and parameters reach here; temporaries transfer without a Place use.
+        // Locals, parameters and the prepared slots named by a default reach here. A Copy retains the slot's complete
+        // Type, including its caller's Origins; the declaration syntax may name different Origin binders.
         var stored = this.body.PlaceStorage[place];
         if (acquisition is null)
         {
@@ -844,7 +846,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.CheckAcquisition(place, acquisition);
-        var value = this.Temporary(source, false);
+        var value = this.Place(source, stored.Type, OwnershipPlaceKind.Temporary, true);
         this.Emit(OwnershipOperationKind.Consume, source, place, value, acquisition ?? stored.Acquisition);
         return this.RegisterTemporary(value);
     }

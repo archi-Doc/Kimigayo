@@ -113,6 +113,14 @@ public sealed partial class OwnershipAnalysis
                     }
 
                     return;
+                case InvocationKoto { BoundValueCall: { } plan } call:
+                    this.Visit(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
+                    for (var i = 0; i < call.ArgumentNodes.Count; i++)
+                    {
+                        this.Visit(call.ArgumentNodes[i], plan.Arguments[i].Kind == ArgumentOperationKind.Value ? PlaceUseKind.Consume : PlaceUseKind.Read);
+                    }
+
+                    return;
                 case InvocationKoto { BoundCall: { } plan } call:
                     if (plan.Receiver is { } receiver)
                     {

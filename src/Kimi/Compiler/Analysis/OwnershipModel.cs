@@ -380,6 +380,7 @@ public sealed partial class OwnershipBody
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
+        this.DefaultContexts?.Clear();
         this.EdgeStorage.Clear();
         this.EdgeHeads.Clear();
         this.IncomingEdges.Clear();
