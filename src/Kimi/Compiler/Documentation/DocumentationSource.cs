@@ -12,11 +12,14 @@ namespace Kimi.Compiler.Documentation;
 public sealed class DocumentationSource
 {
     private readonly List<DocumentationComment> comments = new();
+    private readonly Compilation? optionalOwner;
     private bool hasParseErrors;
+    private bool failed;
 
-    internal DocumentationSource(SourceDocument source)
+    internal DocumentationSource(SourceDocument source, Compilation? optionalOwner = null)
     {
         this.Source = source;
+        this.optionalOwner = optionalOwner;
         this.Comments = this.comments.AsReadOnly();
     }
 
@@ -35,35 +38,51 @@ public sealed class DocumentationSource
     /// <summary>Gets source-ordered comments, including unassociated candidates.</summary>
     public IReadOnlyList<DocumentationComment> Comments { get; }
 
-    internal static DocumentationSource? FromCandidates(SourceDocument document, ReadOnlySpan<Candidate> candidates)
+    internal static DocumentationSource? FromCandidates(SourceDocument document, ReadOnlySpan<Candidate> candidates, Compilation? optionalOwner = null)
     {
         if (candidates.IsEmpty)
         {
             return null;
         }
 
-        var result = new DocumentationSource(document);
-        result.comments.EnsureCapacity(candidates.Length);
-        foreach (var candidate in candidates)
+        try
         {
-            result.comments.Add(new(result, candidate.Span, candidate.Indent, candidate.Recognized));
-        }
+            var result = new DocumentationSource(document, optionalOwner);
+            result.comments.EnsureCapacity(candidates.Length);
+            foreach (var candidate in candidates)
+            {
+                result.comments.Add(new(result, candidate.Span, candidate.Indent, candidate.Recognized));
+            }
 
-        return result;
+            return result;
+        }
+        catch (Exception ex) when (optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            optionalOwner.RecordDocumentationFailure(document, ex.Message);
+            return null;
+        }
     }
 
     // Snapshot lexical candidates before parsing assigns declarations or suppresses ranges. These values may be
     // shared with another compilation; mutable comments and their source/declaration owners may not.
     internal Candidate[] CaptureCandidates()
     {
-        var result = new Candidate[this.comments.Count];
-        for (var i = 0; i < result.Length; i++)
+        try
         {
-            var comment = this.comments[i];
-            result[i] = new(comment.Span, comment.Indent, comment.IsRecognized);
-        }
+            var result = new Candidate[this.comments.Count];
+            for (var i = 0; i < result.Length; i++)
+            {
+                var comment = this.comments[i];
+                result[i] = new(comment.Span, comment.Indent, comment.IsRecognized);
+            }
 
-        return result;
+            return result;
+        }
+        catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            this.Fail(ex);
+            return [];
+        }
     }
 
     /// <summary>An immutable lexical range, independent of declaration selection and compilation ownership.</summary>
@@ -112,6 +131,62 @@ public sealed class DocumentationSource
     }
 
     internal void SetLocation(string projectDirectory, string? modId = null, int additionOrder = 0)
+        => this.Collect((projectDirectory, modId, additionOrder), static (source, value) => source.SetLocationCore(value.projectDirectory, value.modId, value.additionOrder));
+
+    internal void Merge(DocumentationSource nested)
+        => this.Collect(nested, static (source, value) => source.MergeCore(value));
+
+    internal void Suppress(SourceSpan span, bool excluded = false)
+        => this.Collect((span, excluded), static (source, value) => source.SuppressCore(value.span, value.excluded));
+
+    internal void Finish(bool parseErrors)
+        => this.Collect(parseErrors, static (source, value) => source.FinishCore(value));
+
+    internal void Exclude(int start, int syntaxEnd, int nextToken)
+        => this.Collect((start, syntaxEnd, nextToken), static (source, value) => source.ExcludeCore(value.start, value.syntaxEnd, value.nextToken));
+
+    internal void Associate(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    {
+        if (this.failed)
+        {
+            return;
+        }
+
+        try
+        {
+            this.AssociateCore(declaration, header, attributes, tokens);
+        }
+        catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            this.Fail(ex);
+        }
+    }
+
+    private void Collect<T>(T value, Action<DocumentationSource, T> collect)
+    {
+        if (this.failed)
+        {
+            return;
+        }
+
+        try
+        {
+            collect(this, value);
+        }
+        catch (Exception ex) when (this.optionalOwner is not null && Compilation.OptionalHoverFailure(ex))
+        {
+            this.Fail(ex);
+        }
+    }
+
+    private void Fail(Exception ex)
+    {
+        this.failed = true;
+        this.comments.Clear();
+        this.optionalOwner!.RecordDocumentationFailure(this.Source, ex.Message);
+    }
+
+    private void SetLocationCore(string projectDirectory, string? modId, int additionOrder)
     {
         this.ModId = modId;
         this.AdditionOrder = additionOrder;
@@ -122,7 +197,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Merge(DocumentationSource nested)
+    private void MergeCore(DocumentationSource nested)
     {
         // Interpolation expressions are lexed by the parser. Insert their
         // source-ordered ranges without retaining either token buffer.
@@ -138,7 +213,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Suppress(SourceSpan span, bool excluded = false)
+    private void SuppressCore(SourceSpan span, bool excluded)
     {
         var index = this.FindBefore(span.Start) + 1;
         for (; index < this.comments.Count && this.comments[index].Span.Start < span.End; index++)
@@ -152,7 +227,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Finish(bool parseErrors)
+    private void FinishCore(bool parseErrors)
     {
         this.hasParseErrors |= parseErrors;
         if (parseErrors)
@@ -165,7 +240,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Exclude(int start, int syntaxEnd, int nextToken)
+    private void ExcludeCore(int start, int syntaxEnd, int nextToken)
     {
         this.Suppress(SourceSpan.FromBounds(start, Math.Max(start, syntaxEnd)), excluded: true);
         // Layout tokens point at the next syntax. Include trailing comments only
@@ -181,7 +256,7 @@ public sealed class DocumentationSource
         }
     }
 
-    internal void Associate(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
+    private void AssociateCore(Koto declaration, SourceSpan header, AttributeKoto? attributes, ReadOnlySpan<Token> tokens)
     {
         var headerStart = header.Start;
         var tokenIndex = 0;

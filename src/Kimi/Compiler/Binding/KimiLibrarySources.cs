@@ -71,19 +71,20 @@ public sealed partial class KimiLibrary
         internal ReadOnlySpan<Token> GetTokens(CodeContext context)
         {
             var collect = context.Compilation.CollectDocumentation;
+            var optionalOwner = context.Compilation.CollectHover ? context.Compilation : null;
             var cached = Volatile.Read(ref this.tokens);
             var candidates = collect ? Volatile.Read(ref this.documentation) : null;
             if (cached is not null && (!collect || candidates is not null))
             {
                 if (collect)
                 {
-                    context.Documentation = DocumentationSource.FromCandidates(context.SourceDocument!, candidates);
+                    context.Documentation = DocumentationSource.FromCandidates(context.SourceDocument!, candidates, optionalOwner);
                 }
 
                 return cached;
             }
 
-            var tokenizer = new Tokenizer(context.DiagnosticCollection, context.SourceDocument!) { CollectDocumentation = collect };
+            var tokenizer = new Tokenizer(context.DiagnosticCollection, context.SourceDocument!) { CollectDocumentation = collect, OptionalHoverOwner = optionalOwner };
             try
             {
                 tokenizer.ReadAll();
@@ -99,7 +100,10 @@ public sealed partial class KimiLibrary
                     {
                         // Empty is a completed collection too. Publish only ranges; parsing below mutates its own comments.
                         var collected = tokenizer.Documentation?.CaptureCandidates() ?? [];
-                        Interlocked.CompareExchange(ref this.documentation, collected, null);
+                        if (optionalOwner?.HasDocumentationFailure(context.SourceDocument!) != true)
+                        {
+                            Interlocked.CompareExchange(ref this.documentation, collected, null);
+                        }
                     }
                 }
 

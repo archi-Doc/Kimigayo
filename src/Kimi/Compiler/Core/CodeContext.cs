@@ -126,7 +126,7 @@ public sealed class CodeContext
         this.Compilation.BeginSourceParsing();
         // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
         var diagnostics = this.DiagnosticCollection.For(sourceDocument);
-        var tokenizer = new Tokenizer(diagnostics, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
+        var tokenizer = new Tokenizer(diagnostics, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation, OptionalHoverOwner = this.Compilation.CollectHover ? this.Compilation : null };
         try
         {
             tokenizer.ReadAll();

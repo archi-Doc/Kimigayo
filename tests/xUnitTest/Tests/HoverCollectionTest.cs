@@ -71,6 +71,58 @@ public sealed class HoverCollectionTest : IDisposable
     {
         Assert.Throws<OperationCanceledException>(() => CheckService.TryCreateHover(0, static _ => throw new OperationCanceledException(), out _));
         Assert.Throws<PendingInputException>(() => CheckService.TryCreateHover(0, static _ => throw new PendingInputException("changed.kimi"), out _));
+        Assert.False(Compilation.OptionalHoverFailure(new OperationCanceledException()));
+        Assert.False(Compilation.OptionalHoverFailure(new PendingInputException("changed.kimi")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void CollectionFailuresPreserveDeclarationsAndOtherSources(bool duringAssociation)
+    {
+        var compilation = Compilation.CreateForTest();
+        compilation.CollectHover = true;
+        compilation.CollectDocumentation = true;
+        var failed = new SourceDocument(Path.Combine(this.directory, "failed.kimi"), "/// Lost description.\nstruct Failed\n");
+        var healthy = new SourceDocument(Path.Combine(this.directory, "healthy.kimi"), "/// Kept description.\nstruct Healthy\n");
+        compilation.Kotonoha.AddSource(failed);
+        compilation.Kotonoha.AddSource(healthy);
+        var documentation = Assert.Single(compilation.Kotonoha.DocumentationSources, source => ReferenceEquals(source.Source, failed));
+        if (duringAssociation)
+        {
+            documentation.Exclude(-1, 0, 0); // An invalid optional association operation must not escape into core parsing.
+        }
+        else
+        {
+            documentation.SetLocation("\0"); // Physical placement cannot be computed from this invalid path.
+        }
+
+        Assert.True(compilation.HasDocumentationFailure(failed));
+        Assert.False(compilation.HasDocumentationFailure(healthy));
+        Assert.NotNull(compilation.DocumentationFailure);
+        Assert.Empty(documentation.Comments);
+        Assert.True(compilation.Bind().IsComplete);
+        Assert.Empty(TestDiagnostics.Of(compilation));
+        var snapshot = compilation.Binding.CreateHoverSnapshot();
+        var failedIndex = snapshot.Documents[SourceIdentity.FromPath(failed.Path)];
+        var failedInfo = failedIndex.Entries[failedIndex.Find(failed.SourceText.IndexOf("Failed", StringComparison.Ordinal))].Info;
+        var failedDeclaration = Assert.Single(failedInfo.Declarations);
+        Assert.Equal("struct Failed", failedDeclaration.Header);
+        Assert.Equal("Documentation unavailable: collection failure", failedDeclaration.DocumentationNotice);
+        Assert.Empty(failedDeclaration.Documentation);
+        Assert.NotNull(failedInfo.Copy);
+        var healthyIndex = snapshot.Documents[SourceIdentity.FromPath(healthy.Path)];
+        var healthyInfo = healthyIndex.Entries[healthyIndex.Find(healthy.SourceText.IndexOf("Healthy", StringComparison.Ordinal))].Info;
+        Assert.Null(Assert.Single(healthyInfo.Declarations).DocumentationNotice);
+        Assert.Single(healthyInfo.Declarations[0].Documentation);
+    }
+
+    [Fact]
+    public void StandaloneDocumentationRetainsItsFailureContract()
+    {
+        var source = new SourceDocument(Path.Combine(this.directory, "standalone.kimi"), "/// Comment");
+        var documentation = new DocumentationSource(source);
+        Assert.Throws<ArgumentException>(() => documentation.SetLocation("\0"));
     }
 
     [Theory]

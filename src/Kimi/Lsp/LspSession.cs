@@ -854,7 +854,7 @@ internal sealed partial class LspSession : IDisposable
 
         if (result.Output.HoverFault is { } hoverFault)
         {
-            this.Log(2, $"Hover information unavailable for {result.Key.Owner}: {hoverFault}");
+            this.Log(2, $"Hover processing for {result.Key.Owner}: {hoverFault}");
         }
 
         if (previous?.Output.Outcome != result.Output.Outcome)

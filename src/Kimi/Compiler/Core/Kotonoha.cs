@@ -87,7 +87,14 @@ public sealed partial class Kotonoha
     {
         if (documentation is not null)
         {
-            (this.documentationSources ??= new()).Add(documentation);
+            try
+            {
+                (this.documentationSources ??= new()).Add(documentation);
+            }
+            catch (Exception ex) when (this.Compilation.CollectHover && Compilation.OptionalHoverFailure(ex))
+            {
+                this.Compilation.RecordDocumentationFailure(documentation.Source, ex.Message);
+            }
         }
     }
 
@@ -265,7 +272,7 @@ public sealed partial class Kotonoha
 
         // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
         var diagnosticCollection = this.Compilation.Diagnostics.GetOrAddCollection(path, this).For(sourceDocument);
-        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation };
+        var tokenizer = new Tokenizer(diagnosticCollection, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation, OptionalHoverOwner = this.Compilation.CollectHover ? this.Compilation : null };
         var codeContext = new CodeContext(this, diagnosticCollection, sourceDocument);
 
         // Tokenize and parse

@@ -19,8 +19,11 @@ Effect projection shares existing bound judgments, retaining requirement and Cal
 Property supplements describe verified operations without asserting use-site writability. Type-parameter Constraints,
 implicit Unit results and specialization documentation roles remain distinct. Recursive header/Type/identity projection
 has deterministic resource guards. The bounded internal renderer preserves parsed Markdown/plaintext structure, isolated
-documentation failures and completed-block truncation (`HoverRenderingTest`). Full collection isolation, client navigation
-review and responsiveness measurements remain in the H1–H6 track in `docs/dev/PLAN.md`; current limits are in
+documentation failures and completed-block truncation (`HoverRenderingTest`). Opted-in lexical collection, association,
+placement, embedded candidate reuse and detachment now isolate documentation failures by source; failed sources have a
+notice while established headers/proofs and other sources' comments remain usable. Core parsing diagnostics and ordinary
+documentation-publisher failure behavior are preserved (`HoverCollectionTest`). Client navigation review and responsiveness
+measurements remain in the H5–H6 track in `docs/dev/PLAN.md`; current limits are in
 [Hover implementation notes](dev/HOVER.md). Existing unsupported language forms (including merged independent requirement
 identities and generic Property requirements) are not made available by Hover.
 

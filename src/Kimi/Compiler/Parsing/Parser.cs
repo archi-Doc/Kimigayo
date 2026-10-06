@@ -4205,6 +4205,7 @@ Separator:
             var tokenizer = new Tokenizer(reader.Diagnostic, reader.CodeContext.SourceDocument!, SourceSpan.FromBounds(token.Span.Start + open, token.Span.Start + close + 1))
             {
                 CollectDocumentation = reader.CodeContext.Compilation.CollectDocumentation,
+                OptionalHoverOwner = reader.CodeContext.Compilation.CollectHover ? reader.CodeContext.Compilation : null,
             };
             try
             {

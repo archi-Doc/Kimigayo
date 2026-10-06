@@ -106,6 +106,10 @@ internal ref struct Tokenizer
 
     internal bool CollectDocumentation { get; set; }
 
+    internal Compilation? OptionalHoverOwner { get; set; }
+
+    internal bool DocumentationFailed { get; private set; }
+
     internal Documentation.DocumentationSource? Documentation { get; private set; }
 
     /// <summary>
@@ -1473,10 +1477,19 @@ EndOfFile:
     private void ReadSingleLineComment()
     {// // Comment\n
         var idx = this.span.IndexOfAny('\r', '\n');
-        if (this.CollectDocumentation && this.span.Length >= 3 && this.span[2] == '/' && (this.span.Length == 3 || this.span[3] != '/'))
+        if (this.CollectDocumentation && !this.DocumentationFailed && this.span.Length >= 3 && this.span[2] == '/' && (this.span.Length == 3 || this.span[3] != '/'))
         {
-            this.Documentation ??= new(this.sourceDocument);
-            this.Documentation.AddLine(this.position, this.position + (idx < 0 ? this.span.Length : idx));
+            try
+            {
+                this.Documentation ??= new(this.sourceDocument, this.OptionalHoverOwner);
+                this.Documentation.AddLine(this.position, this.position + (idx < 0 ? this.span.Length : idx));
+            }
+            catch (Exception ex) when (this.OptionalHoverOwner is not null && Compilation.OptionalHoverFailure(ex))
+            {
+                this.DocumentationFailed = true;
+                this.Documentation = null;
+                this.OptionalHoverOwner.RecordDocumentationFailure(this.sourceDocument, ex.Message);
+            }
         }
 
         if (idx < 0)

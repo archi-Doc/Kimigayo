@@ -12,7 +12,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    internal HoverSnapshot CreateHoverSnapshot() => new HoverBuilder(this).Build();
+    internal HoverSnapshot CreateHoverSnapshot()
+        => this.compilation.HoverFailure is { } failure ? throw new InvalidOperationException(failure) : new HoverBuilder(this).Build();
 
     // This builder is local to optional post-check projection. Its dictionaries and all compiler references die together.
     private sealed partial class HoverBuilder(Binding binding)
@@ -29,12 +30,18 @@ public sealed partial class Binding
         private readonly Dictionary<(HoverDeclaration Declaration, BoundType Type, ConstraintProof Copy), HoverInfo> typeDescriptions = new();
         private readonly Dictionary<SourceDocument, Dictionary<SourceSpan, Candidate>> documents = new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<string> syntaxErrorSources = new(SourceIdentity.PathComparer);
+        private readonly HashSet<string> documentationErrorSources = new(SourceIdentity.PathComparer);
         private readonly List<EffectHover> legacyEffects = [];
         private readonly HoverBudget budget = new(maximumWork: 4 * HoverLimits.Work);
 
         internal HoverSnapshot Build()
         {
             var compilation = binding.compilation;
+            foreach (var failedSource in compilation.DocumentationFailureSources)
+            {
+                this.documentationErrorSources.Add(failedSource.Path);
+            }
+
             foreach (var source in compilation.Kotonoha.SourceDocuments)
             {
                 if (!source.Path.StartsWith(SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) &&
@@ -52,22 +59,41 @@ public sealed partial class Binding
                     {
                         this.syntaxErrorSources.Add(source.Path);
                     }
+
+                    if (compilation.HasDocumentationFailure(source))
+                    {
+                        this.documentationErrorSources.Add(source.Path);
+                    }
                 }
 
                 foreach (var source in module.DocumentationSources)
                 {
-                    foreach (var comment in source.Comments)
+                    try
                     {
-                        if (comment.IsSelected && comment.Declaration is { } declaration)
+                        if (compilation.HasDocumentationFailure(source.Source))
                         {
-                            declaration = Canonical(declaration);
-                            if (!this.comments.TryGetValue(declaration, out var list))
-                            {
-                                this.comments.Add(declaration, list = []);
-                            }
-
-                            list.Add(comment);
+                            this.documentationErrorSources.Add(source.Source.Path);
+                            continue;
                         }
+
+                        foreach (var comment in source.Comments)
+                        {
+                            if (comment.IsSelected && comment.Declaration is { } declaration)
+                            {
+                                declaration = Canonical(declaration);
+                                if (!this.comments.TryGetValue(declaration, out var list))
+                                {
+                                    this.comments.Add(declaration, list = []);
+                                }
+
+                                list.Add(comment);
+                            }
+                        }
+                    }
+                    catch (Exception ex) when (Compilation.OptionalHoverFailure(ex))
+                    {
+                        compilation.RecordDocumentationFailure(source.Source, ex.Message);
+                        this.documentationErrorSources.Add(source.Source.Path);
                     }
                 }
             }
@@ -343,41 +369,13 @@ public sealed partial class Binding
 
                 return result != 0 ? result : a.Name.Start.CompareTo(b.Name.Start);
             });
-            var documentation = new List<HoverDocumentation>();
-            var parameters = syntax.BoundSymbol is null || !this.comments.ContainsKey(syntax) ? [] : DocumentationMarkdown.Parameters(syntax);
-            if (this.comments.TryGetValue(syntax, out var selected))
-            {
-                foreach (var comment in selected)
-                {
-                    var location = comment.Owner;
-                    documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters, this.Placement(syntax.Kotonoha)));
-                }
-            }
-
-            documentation.Sort(static (a, b) =>
-            {
-                var result = string.CompareOrdinal(a.Project, b.Project);
-                if (result == 0)
-                {
-                    result = (a.ModId is not null).CompareTo(b.ModId is not null);
-                }
-
-                if (result == 0)
-                {
-                    result = string.CompareOrdinal(a.ModId ?? a.LogicalName, b.ModId ?? b.LogicalName);
-                }
-
-                if (result == 0)
-                {
-                    result = a.AdditionOrder.CompareTo(b.AdditionOrder);
-                }
-
-                return result != 0 ? result : a.DeclarationSpan.Start.CompareTo(b.DeclarationSpan.Start);
-            });
+            var documentation = this.Documentation(syntax, out var projectionFailed);
             var deferred = source is not null && binding.compilation.Diagnostics.HasSyntaxErrors(source);
+            var documentationFailed = projectionFailed || (source is not null && binding.compilation.HasDocumentationFailure(source));
             foreach (var origin in origins)
             {
                 deferred |= this.syntaxErrorSources.Contains(origin.Source);
+                documentationFailed |= this.documentationErrorSources.Contains(origin.Source);
             }
 
             var header = HoverHeader(syntax);
@@ -388,12 +386,67 @@ public sealed partial class Binding
             }
             else
             {
-                result = new(kind, owner, header, origins, documentation.ToArray(), deferred ? "Documentation deferred: syntax errors" : null, Details: this.DeclarationDetails(syntax), ImplementationNote: syntax is FunctionKoto { IsSpecialization: true });
+                var notice = documentationFailed ? (deferred ? "Documentation deferred: syntax errors\nDocumentation unavailable: collection failure" : "Documentation unavailable: collection failure") : deferred ? "Documentation deferred: syntax errors" : null;
+                result = new(kind, owner, header, origins, documentation, notice, Details: this.DeclarationDetails(syntax), ImplementationNote: syntax is FunctionKoto { IsSpecialization: true });
             }
 
             result = result with { Identity = this.DeclarationIdentity(syntax) };
             this.declarations.Add(syntax, result);
             return result;
+        }
+
+        private HoverDocumentation[] Documentation(Koto syntax, out bool failed)
+        {
+            failed = false;
+            try
+            {
+                if (!this.comments.TryGetValue(syntax, out var selected))
+                {
+                    return [];
+                }
+
+                var documentation = new List<HoverDocumentation>(selected.Count);
+                var parameters = syntax.BoundSymbol is null ? [] : DocumentationMarkdown.Parameters(syntax);
+                foreach (var comment in selected)
+                {
+                    if (binding.compilation.HasDocumentationFailure(comment.Source))
+                    {
+                        failed = true;
+                        continue;
+                    }
+
+                    var location = comment.Owner;
+                    documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters, this.Placement(syntax.Kotonoha)));
+                }
+
+                documentation.Sort(static (a, b) =>
+                {
+                    var result = string.CompareOrdinal(a.Project, b.Project);
+                    if (result == 0)
+                    {
+                        result = (a.ModId is not null).CompareTo(b.ModId is not null);
+                    }
+
+                    if (result == 0)
+                    {
+                        result = string.CompareOrdinal(a.ModId ?? a.LogicalName, b.ModId ?? b.LogicalName);
+                    }
+
+                    if (result == 0)
+                    {
+                        result = a.AdditionOrder.CompareTo(b.AdditionOrder);
+                    }
+
+                    return result != 0 ? result : a.DeclarationSpan.Start.CompareTo(b.DeclarationSpan.Start);
+                });
+                return documentation.ToArray();
+            }
+            catch (Exception ex) when (Compilation.OptionalHoverFailure(ex))
+            {
+                binding.compilation.RecordDocumentationFailure(syntax.CodeContext.SourceDocument, ex.Message, invalidateSource: false);
+                failed = true;
+                return [];
+            }
         }
 
         private string Project(Koto syntax)
