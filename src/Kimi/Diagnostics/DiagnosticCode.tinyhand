@@ -605,6 +605,14 @@
     Category="Language"
     Message="A default expression cannot move a preceding prepared argument or its owned contents"
 
+  + Name="DefaultArgumentAccess_Kd"
+    Category="Language"
+    Message="A default expression cannot modify or exclusively access a preceding prepared argument or its owned contents"
+
+  + Name="DefaultArgumentBorrow_Kd"
+    Category="Language"
+    Message="A default result cannot retain a new Borrow or Reborrow of a preceding prepared argument"
+
   + Name="TransferRequired_Kd"
     Category="Language"
     Message="A bare Place is never moved; @move is the only spelling that transfers it"

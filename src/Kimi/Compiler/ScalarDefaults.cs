@@ -248,16 +248,17 @@ internal static class ScalarDefaults
             LabeledKoto labeled => SupportsExpression(labeled.Target, function, parameterIndex),
             ExitKoto or YieldKoto or ContinueKoto => SupportsTransfer((JumpKoto)expression, function, parameterIndex),
             ConversionKoto conversion when conversion.ConversionBinding is ConversionBinding.Identity or ConversionBinding.Literal or
-                ConversionBinding.Integer or ConversionBinding.Floating or ConversionBinding.Numeric or ConversionBinding.Transfer =>
+                ConversionBinding.Integer or ConversionBinding.Floating or ConversionBinding.Numeric or ConversionBinding.Transfer or
+                ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow =>
                 SupportsExpression(conversion.Left, function, parameterIndex),
-            ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Ref } conversion =>
+            ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion =>
                 SupportsExpression(conversion.Left, function, parameterIndex),
             UnaryKoto unary when unary.Akind is KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.Not =>
                 SupportsExpression(unary.Operand, function, parameterIndex),
             UnaryKoto unary when unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement =>
-                SupportsWritableLocal(unary.Operand, function, parameterIndex),
+                SupportsExpression(unary.Operand, function, parameterIndex),
             BinaryKoto binary when binary.Akind == KotoKind.Equals || ElementAccess.UpdateOperator(binary.Akind) != KotoKind.Invalid =>
-                SupportsWritableLocal(binary.Left, function, parameterIndex) && SupportsExpression(binary.Right, function, parameterIndex),
+                SupportsExpression(binary.Left, function, parameterIndex) && SupportsExpression(binary.Right, function, parameterIndex),
             BinaryKoto binary when binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or
                 KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan or
                 KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or
@@ -283,21 +284,20 @@ internal static class ScalarDefaults
     // SPEC 7.2.3: a default may call an ordinary function (effects included), or format text, with value arguments and temporary
     // shared inspections of supported expressions; its scalar or string result is independent of the prepared slots.
     // Each call prepares its own frame of pending slots, so nested omitted defaults may temporarily replace the outer context.
-    // Shared receivers (including callable values) use the same temporary inspections. Exclusive arguments retain their guard.
+    // Declaration ownership checking protects prepared inputs; independent default-local arguments may be acquired exclusively.
     private static bool SupportsCall(InvocationKoto invocation, BoundCall call, FunctionKoto function, int parameterIndex)
     {
         if (invocation.IsValueCall ||
             call.Target.CompilerFunction is not (CompilerFunctionKind.None or CompilerFunctionKind.TextToString) || call.Target.Declaration is not FunctionKoto { IsAnonymous: false } ||
             call.ArgumentOperations.Length != invocation.ArgumentNodes.Count ||
-            (call.Receiver is { } receiver && (call.ReceiverOperation.ParameterType?.Semantics != SemanticsKind.Ref || !SupportsExpression(receiver, function, parameterIndex))))
+            (call.Receiver is { } receiver && !SupportsExpression(receiver, function, parameterIndex)))
         {
             return false;
         }
 
         for (var i = 0; i < invocation.ArgumentNodes.Count; i++)
         {
-            if ((call.ArgumentOperations[i].Kind != ArgumentOperationKind.Value && call.ArgumentOperations[i].ParameterType?.Semantics != SemanticsKind.Ref) ||
-                !SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
+            if (!SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
             {
                 return false;
             }
@@ -308,15 +308,14 @@ internal static class ScalarDefaults
 
     private static bool SupportsValueCall(InvocationKoto invocation, BoundValueCall call, FunctionKoto function, int parameterIndex)
     {
-        if (call.ReceiverKind != SemanticsKind.Ref || !SupportsExpression(call.Receiver, function, parameterIndex) || call.Arguments.Length != invocation.ArgumentNodes.Count)
+        if (!SupportsExpression(call.Receiver, function, parameterIndex) || call.Arguments.Length != invocation.ArgumentNodes.Count)
         {
             return false;
         }
 
         for (var i = 0; i < invocation.ArgumentNodes.Count; i++)
         {
-            if ((call.Arguments[i].Kind != ArgumentOperationKind.Value && call.Arguments[i].ParameterType?.Semantics != SemanticsKind.Ref) ||
-                !SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
+            if (!SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
             {
                 return false;
             }
@@ -451,31 +450,6 @@ internal static class ScalarDefaults
 
     private static bool SupportsResultSource(Koto source, FunctionKoto function, int parameterIndex, bool erased)
         => erased ? SupportsErased(source, function, parameterIndex) : SupportsExpression(source, function, parameterIndex);
-
-    private static bool SupportsWritableLocal(Koto target, FunctionKoto function, int parameterIndex)
-    {
-        var root = KotoHelper.UnwrapParentheses(target);
-        while (root is BinaryKoto element && ElementAccess.IsSyntax(element) && ElementAccess.TryType(element, out _, out _))
-        {
-            if (element.Left.BoundType?.Kind != BoundTypeKind.Tuple || !SupportsPatternValue(element.Left.BoundType))
-            {
-                return false;
-            }
-
-            root = KotoHelper.UnwrapParentheses(element.Left);
-        }
-
-        if (root is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local } symbol } ||
-            !IsInsideDefault(symbol.Declaration, function, parameterIndex) || !SupportsExpression(target, function, parameterIndex))
-        {
-            return false;
-        }
-
-        // Guard candidates are a distinct immutable identity. Only the selected
-        // body's var binding owns a writable local, just like a var declaration.
-        return symbol.Declaration is FieldKoto { VariableKind: VariableKind.Var } or
-            SyntaxFormKoto { Akind: KotoKind.BindingPattern, IsMutablePattern: true };
-    }
 
     private static bool SupportsPreparedStorage(Koto source, FunctionKoto function, int parameterIndex)
     {

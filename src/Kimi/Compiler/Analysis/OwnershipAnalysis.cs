@@ -99,6 +99,13 @@ public sealed partial class OwnershipAnalysis
             return this.Result = new(false, 0, this.issues.Count, 0);
         }
 
+        this.collector.DefaultsOnly = true;
+        foreach (var module in this.compilation.SourceModules)
+        {
+            this.collector.Visit(module.RootKoto);
+        }
+
+        this.collector.DefaultsOnly = false;
         foreach (var module in this.compilation.SourceModules)
         {
             this.collector.Visit(module.RootKoto);
@@ -164,7 +171,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.issues.Clear();
-        this.definiteDefaults.Clear();
+        this.invalidDefaults.Clear();
+        this.checkedDefaults.Clear();
         this.candidates.Clear();
         this.unmatchedCheckingSeeds.Clear();
     }
@@ -208,6 +216,14 @@ public sealed partial class OwnershipAnalysis
             if (issue.Failure == OwnershipFailure.DefaultArgumentMove)
             {
                 ReportDefaultMove(issue);
+                continue;
+            }
+
+            if (issue.Failure is OwnershipFailure.DefaultArgumentAccess or OwnershipFailure.DefaultArgumentBorrow)
+            {
+                var advice = issue.Failure == OwnershipFailure.DefaultArgumentAccess ? "Use temporary shared inspection, or create an independent value inside the default" :
+                    "Return an independent value or Copy an existing shared reference with external dependencies";
+                issue.Source.Report(requirement, issue.Code, related: issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, advice: advice);
                 continue;
             }
 
@@ -594,7 +610,7 @@ public sealed partial class OwnershipAnalysis
                 this.SetValue(initialized, OwnershipValueKind.Parameter, [], constant: i);
             }
 
-            if (declarationDefault < 0 && parameter.DefaultValue is { } defaultValue && !ScalarDefaults.Supports(function, i) && !this.DefiniteDefaultMove(function, i, defaultValue))
+            if (declarationDefault < 0 && parameter.DefaultValue is { } defaultValue && !ScalarDefaults.Supports(function, i) && !this.InvalidDefault(function, i, defaultValue))
             {
                 this.Unsupported(defaultValue);
             }
@@ -609,7 +625,7 @@ public sealed partial class OwnershipAnalysis
             var reported = this.body.IssueStorage.Count;
             this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
             this.Connect(this.current, this.normalExit);
-            this.CompleteBody(function);
+            this.CompleteBody(function, declarationDefault);
             return;
         }
 
@@ -694,13 +710,18 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private void CompleteBody(FunctionKoto function)
+    private void CompleteBody(FunctionKoto function, int declarationDefault = -1)
     {
         this.body.Solve();
         this.FinalizeResults();
         this.body.CheckUnreachable();
         this.body.PrepareCallReservations();
         this.body.VerifyBorrows();
+        if (declarationDefault >= 0)
+        {
+            this.body.VerifyPreparedDefault(this.resultPlace);
+        }
+
         this.body.VerifyCallReservations();
         this.body.ReportReservedElementWrites(completed: true);
         this.AppendIssues();
@@ -2374,6 +2395,8 @@ public sealed partial class OwnershipAnalysis
     {
         private readonly OwnershipAnalysis owner;
 
+        internal bool DefaultsOnly { get; set; }
+
         internal Collector(OwnershipAnalysis owner)
         {
             this.owner = owner;
@@ -2383,6 +2406,17 @@ public sealed partial class OwnershipAnalysis
         {
             if (node is FunctionKoto && TestDefinition.Marker(node) is not null && !TestDefinition.IsIncluded(node))
             {
+                return;
+            }
+
+            if (this.DefaultsOnly)
+            {
+                if (node is FunctionKoto declaration)
+                {
+                    this.owner.CheckDefaultDeclarations(declaration);
+                }
+
+                node.VisitChildren(this);
                 return;
             }
 

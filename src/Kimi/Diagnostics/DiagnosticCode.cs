@@ -124,6 +124,8 @@ public enum DiagnosticCode
     UnsupportedOwnership_Kd,
     UnsupportedIntegerOperation_Kd,
     DefaultArgumentMove_Kd,
+    DefaultArgumentAccess_Kd,
+    DefaultArgumentBorrow_Kd,
     TransferRequired_Kd,
     StaticMovePathRequired_Kd,
     ExclusiveBorrowRequired_Kd,

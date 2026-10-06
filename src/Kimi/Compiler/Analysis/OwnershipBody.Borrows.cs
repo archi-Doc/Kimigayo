@@ -308,31 +308,7 @@ public sealed partial class OwnershipBody
             }
         }
 
-        // The one operation defining each reference holder, or -2 for several; the authority transfer (StoredReferent) and the
-        // ancestry walks follow it to the actual stored value.
-        Grow(ref this.borrowDefinitions, count);
-        this.borrowDefinitions.AsSpan(0, count).Fill(-1);
-        for (var id = 0; id < this.Operations.Count; id++)
-        {
-            var defined = this.Operations[id] switch
-            {
-                { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
-                { Kind: OwnershipOperationKind.Consume, Input: >= 0, Acquisition: AcquisitionKind.Move } moved when ReferenceTypes.IsBorrow(this.Places[moved.Input].Type) => moved.Input,
-                { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
-                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
-                { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
-                { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
-                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } item when this.Values[id].Kind == OwnershipValueKind.Sequence => item.Place,
-                { Kind: OwnershipOperationKind.PayloadPlacement, Place: >= 0 } placement => placement.Place,
-                _ => -1,
-            };
-
-            if (defined >= 0)
-            {
-                ref var definition = ref this.borrowDefinitions[defined];
-                definition = definition == -1 ? id : -2;
-            }
-        }
+        this.PrepareBorrowDefinitions();
 
         this.PrepareRetentions();
         this.RetainBorrowAuthority(count);
@@ -518,10 +494,11 @@ public sealed partial class OwnershipBody
                                 : value.Kind == OwnershipValueKind.Address ? accessMode : LoanRequirement.Ref;
                             // Lending the slot that stores a reference does not access its external referent. The
                             // subsequent reborrow/store checks that separate capability, including call activation.
-                            var referenceSlot = value.Kind is OwnershipValueKind.Sequence or OwnershipValueKind.Address && operation.Place >= 0 &&
-                                ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) &&
-                                ReferenceTypes.IsBorrow(this.Places[operation.Place].Type.Components[0]) && this.IsExclusiveBorrowInput(root) &&
-                                !ReferenceEquals(this.Places[root].Type.Components[0], this.Places[operation.Place].Type.Components[0]);
+                            var addressed = ValuePlaceForBorrow(operation);
+                            var referenceSlot = value.Kind is OwnershipValueKind.Sequence or OwnershipValueKind.Address && addressed >= 0 &&
+                                ReferenceTypes.IsBorrow(this.Places[addressed].Type) &&
+                                ReferenceTypes.IsBorrow(this.Places[addressed].Type.Components[0]) &&
+                                !ReferenceEquals(this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type, this.Places[addressed].Type.Components[0]);
                             if (!referenceSlot && sourcePlace >= 0 && this.BorrowModeAt(sourcePlace, root, op, this.borrowDependencies[(sourcePlace * count) + root]) != LoanRequirement.None &&
                                 (value.Kind is not (OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad) || sourcePlace == root ||
                                     (ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
@@ -1436,6 +1413,35 @@ public sealed partial class OwnershipBody
     // SPEC 7.6.2, 15.8.2: an environment binding that stores a reference is, like a borrowed parameter, a root whose referent lies
     // outside the closure body; the body reaches that referent only through the binding.
     private bool IsEnvironmentBorrow(int place) => this.IsEnvironmentBinding(place) && ReferenceTypes.IsBorrow(this.Places[place].Type);
+
+    private void PrepareBorrowDefinitions()
+    {
+        // The one operation defining each reference holder, or -2 for several; the authority transfer (StoredReferent) and the
+        // ancestry walks follow it to the actual stored value.
+        Grow(ref this.borrowDefinitions, this.Places.Count);
+        this.borrowDefinitions.AsSpan(0, this.Places.Count).Fill(-1);
+        for (var id = 0; id < this.Operations.Count; id++)
+        {
+            var defined = this.Operations[id] switch
+            {
+                { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
+                { Kind: OwnershipOperationKind.Consume, Input: >= 0, Acquisition: AcquisitionKind.Move } moved when ReferenceTypes.IsBorrow(this.Places[moved.Input].Type) => moved.Input,
+                { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
+                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
+                { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
+                { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
+                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } item when this.Values[id].Kind == OwnershipValueKind.Sequence => item.Place,
+                { Kind: OwnershipOperationKind.PayloadPlacement, Place: >= 0 } placement => placement.Place,
+                _ => -1,
+            };
+
+            if (defined >= 0)
+            {
+                ref var definition = ref this.borrowDefinitions[defined];
+                definition = definition == -1 ? id : -2;
+            }
+        }
+    }
 
     // SPEC 15.6.3, 15.8.2: an exclusive reference held by a body input, a parameter or an environment binding of the closure being
     // analyzed, with a declared Origin is its own external capability root, independent of the Origin's shared name. An elided

@@ -64,10 +64,10 @@ public sealed partial class OwnershipAnalysis
             {
                 this.defaultParameter = omitted.Parameter.Slot;
                 var place = -1;
-                if (this.DefiniteDefaultMove(target, this.defaultParameter, omitted.Expression))
+                if (this.InvalidDefault(target, this.defaultParameter, omitted.Expression))
                 {
-                    // Declaration checking owns the rejected Move. Do not execute it against the pending caller's slots and
-                    // manufacture a moved-argument error at callee entry; no value is acquired from this invalid default.
+                    // Declaration checking owns the rejected default. Do not execute it against the pending caller's slots
+                    // and manufacture call-entry conflicts; no value is acquired from this invalid default.
                 }
                 else if (this.flow!.DefaultCompletionPending(omitted.Expression) || !ScalarDefaults.Supports(target, this.defaultParameter))
                 {

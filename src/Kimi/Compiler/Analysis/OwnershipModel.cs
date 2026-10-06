@@ -145,6 +145,8 @@ public enum OwnershipFailure : byte
     ExpansionLimit,
     ComparisonLoanConflict,
     DefaultArgumentMove,
+    DefaultArgumentAccess,
+    DefaultArgumentBorrow,
     Internal,
 
     // SPEC 15.1.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
@@ -233,6 +235,8 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.ComparisonLoanConflict => this.Activation ? (this.Source is InvocationKoto ? DiagnosticCode.CallActivationConflict_Kd : DiagnosticCode.PlacementActivationConflict_Kd) :
             this.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
         OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
+        OwnershipFailure.DefaultArgumentAccess => DiagnosticCode.DefaultArgumentAccess_Kd,
+        OwnershipFailure.DefaultArgumentBorrow => DiagnosticCode.DefaultArgumentBorrow_Kd,
         OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
         OwnershipFailure.UnprovenOrigin => this.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter }
             ? Binding.RefutesOriginRelation(longer, shorter) ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd

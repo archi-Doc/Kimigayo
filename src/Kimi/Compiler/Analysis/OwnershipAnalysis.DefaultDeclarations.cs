@@ -6,19 +6,20 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private readonly Dictionary<Koto, bool> definiteDefaults = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, bool> invalidDefaults = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Koto> checkedDefaults = new(ReferenceEqualityComparer.Instance);
     private DefaultDeclarationVisitor? defaultDeclarations;
     private DefaultDeclarationVisitor? definiteDefaultProbe;
     private OwnershipBody? defaultBody;
 
-    // SPEC 7.2.3: whether a default definitely moves a preceding prepared argument. That declaration error is the default's
-    // problem, so an unsupported execution of the same default adds no record.
-    private bool DefiniteDefaultMove(FunctionKoto function, int index, Koto expression)
+    // SPEC 7.2.3: declaration checking owns a rejected default. A caller never executes it against its pending inputs.
+    // Before the declaration pass reaches a nested callee, the probe recognizes definite forbidden Moves without building it.
+    private bool InvalidDefault(FunctionKoto function, int index, Koto expression)
     {
-        if (!this.definiteDefaults.TryGetValue(expression, out var definite))
+        if (!this.invalidDefaults.TryGetValue(expression, out var definite))
         {
             definite = (this.definiteDefaultProbe ??= new(this, probe: true)).Probe(function, index, expression);
-            this.definiteDefaults[expression] = definite;
+            this.invalidDefaults[expression] = definite;
         }
 
         return definite;
@@ -28,13 +29,16 @@ public sealed partial class OwnershipAnalysis
     {
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (function.Parameters[i].DefaultValue is { } expression)
+            if (function.Parameters[i].DefaultValue is { } expression && this.checkedDefaults.Add(expression))
             {
+                var before = this.issues.Count;
                 (this.defaultDeclarations ??= new(this)).Check(function, i, expression);
-                if (ScalarDefaults.Supports(function, i))
+                if (before == this.issues.Count && ScalarDefaults.Supports(function, i))
                 {
                     this.Build(function, i);
                 }
+
+                this.invalidDefaults[expression] = before != this.issues.Count;
             }
         }
     }
@@ -234,6 +238,12 @@ public sealed partial class OwnershipAnalysis
             if (this.use != PlaceUseKind.Consume || source.BoundType is not { } type)
             {
                 return;
+            }
+
+            if (!this.transfer && owner.compilation.Binding.TryGetAdaptation(source, out var adaptation) &&
+                adaptation.Kind is ExpectedAdaptationKind.ReferentRead or ExpectedAdaptationKind.SharedBorrow or ExpectedAdaptationKind.Reborrow or ExpectedAdaptationKind.ReferenceRead)
+            {
+                return; // The committed acquisition inspects or reborrows the input; it does not move its slot.
             }
 
             var root = source;
