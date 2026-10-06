@@ -129,7 +129,9 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var result = this.Place(source, argument.ParameterType, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
+        // Keep the actual source Loan when a shared parameter Origin shortens several arguments together.
+        var type = this.compilation.Binding.PreparedBorrowType(argument.Source!, argument.ParameterType!);
+        var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
         this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: LoanRequirement.Ref);
         this.BeginSharedLoan(place, call);
         return this.RegisterTemporary(result);

@@ -141,7 +141,7 @@ internal sealed partial class BodyLowering
                 case OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.CallEntry when value.Kind == OwnershipValueKind.Alias:
                     var input = Input(body, id, 0);
                     if ((uint)input >= (uint)id || this.referenceRoots[input] < 0 || !ReferenceEquals(type, ValueType(body, input)) ||
-                        (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition != AcquisitionKind.Copy) ||
+                        (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition is not (AcquisitionKind.Copy or AcquisitionKind.Move)) ||
                         ValuePlace(body.Operations[input]) != operation.Place)
                     {
                         return Fail("Reference Copy has no matching source value.", out failure);

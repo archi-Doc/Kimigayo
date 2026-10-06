@@ -50,13 +50,13 @@ internal sealed partial class BodyLowering
 
         var layout = exchange || swap ? this.aggregatePlaces[operation.Place] : this.aggregateLayouts.GetStored(type);
         var representation = layout?.Value ?? WindowsLowering.GetValue(type);
-        if (representation is null || (!ScalarTypes.Supports(type) && layout is null && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.String)))
+        if (representation is null || (!ReferenceTypes.IsValue(type) && layout is null && !ReferenceEquals(type, BoundType.Unit) && !ReferenceEquals(type, BoundType.String)))
         {
             return Fail("Borrowed update has no complete value representation.", out failure);
         }
 
         // Materialize the payload/storage address with the ordinary value-borrow ABI.
-        if (swap && ScalarTypes.Supports(type))
+        if (swap && ReferenceTypes.IsValue(type))
         {
             if (input < 0 || (body.IsReachable(id) && !this.Dominates(input, id)))
             {
@@ -104,7 +104,7 @@ internal sealed partial class BodyLowering
                 return Fail("Borrowed update value does not dominate placement.", out failure);
             }
 
-            function.AddScalar(EmissionOpcode.StoreElement, id, [this.PhysicalOperand(body, input)], representation.ComputationType, place: id, representation: representation);
+            function.AddScalar(EmissionOpcode.StoreElement, id, [ReferenceTypes.IsString(type) ? this.ReferenceOperand(body, input) : this.PhysicalOperand(body, input)], representation.ComputationType, place: id, representation: representation);
         }
 
         this.AddStringFlags(function, operation, id);

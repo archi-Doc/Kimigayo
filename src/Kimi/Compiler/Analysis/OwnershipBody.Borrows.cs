@@ -72,6 +72,9 @@ public sealed partial class OwnershipBody
 
         // The referent, or else the holder, of an exclusive reference takes the stored value's authority through the storage Type.
         Store,
+
+        // Old contents reach the result/other target before new contents are installed; slot authority is unchanged.
+        Update,
     }
 
     // SPEC 15.6.3: how RetainBorrowAuthority carries retained authority through a value into the Place its operation defines.
@@ -119,6 +122,7 @@ public sealed partial class OwnershipBody
         OwnershipOperationKind.DecomposeCase => OperationFlow.Decomposition,
         OwnershipOperationKind.Call => OperationFlow.Call,
         OwnershipOperationKind.StorePointer => OperationFlow.Store,
+        OwnershipOperationKind.UpdateBorrowed => OperationFlow.Update,
 
         // Control flow and scope: no value reaches a Place. Declare brings an uninitialized Place into scope and Cleanup
         // destroys one, which holds nothing after; an Unsupported body is rejected.
@@ -154,9 +158,8 @@ public sealed partial class OwnershipBody
         // A scalar element input flows through the operation's Alias value; an aggregate input has no edge to the root (limit).
         OwnershipOperationKind.WriteElement => OperationFlow.None,
 
-        // SPEC 13.7: the Input of a borrowed field write is a ComputeUpdate scalar, and a borrowed update replaces Owned-proven
-        // content (except the Option take, whose result keeps the old content's Loans through its Type); no reference is stored.
-        OwnershipOperationKind.WriteBorrowedField or OwnershipOperationKind.UpdateBorrowed => OperationFlow.None,
+        // SPEC 13.7: the Input of a borrowed field write is a ComputeUpdate scalar; no reference is stored.
+        OwnershipOperationKind.WriteBorrowedField => OperationFlow.None,
 
         _ => OperationFlow.Unclassified,
     };
@@ -194,7 +197,7 @@ public sealed partial class OwnershipBody
         // temporary's Loans come from its Type (AddType) and its ancestry from the projected root (ProjectedBorrowValue).
         OwnershipValueKind.Element => ValueFlow.None,
 
-        // See the WriteBorrowedField and UpdateBorrowed rows: no reference is stored.
+        // The operation carries the update; a borrowed field write has a scalar input.
         OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => ValueFlow.None,
 
         // SPEC 7.6.4: an erased Function value holds no Loan.
@@ -224,6 +227,8 @@ public sealed partial class OwnershipBody
     internal void VerifyBorrows()
     {
         this.ClearStoredBorrows();
+        this.contentUpdates.Clear();
+        this.contentSlots.Clear();
         this.borrowRoots?.Clear();
         this.preparedLoanConflicts?.Clear();
         this.activatedLoans?.Clear();
@@ -309,7 +314,7 @@ public sealed partial class OwnershipBody
         }
 
         this.PrepareBorrowDefinitions();
-
+        this.PrepareContentUpdates(count);
         this.PrepareRetentions();
         this.RetainBorrowAuthority(count);
         (this.liveBorrowPlaces ??= new()).Clear();
@@ -344,6 +349,7 @@ public sealed partial class OwnershipBody
 
         this.PrepareSlicePaths();
         this.PrepareCheckingBorrowEdges();
+        this.PrepareContentPredecessors();
         this.PrepareStoredBorrowActivity();
         this.borrowLive.Reset(OwnershipStorage.Cells(liveWidth, this.Operations.Count, 1, "borrow liveness"));
         bool changed;
@@ -477,7 +483,7 @@ public sealed partial class OwnershipBody
                             continue;
                         }
 
-                        var conflict = rootLost || (!external && accessConflict);
+                        var conflict = rootLost || (!external && accessConflict) || (pass == 2 && this.InvalidatesContentChild(accessId, p));
                         var value = this.Values[accessId];
                         // SPEC 15.6.3: an access through a holder of an external root's Loan that is no descendant of the root, such
                         // as a reference stored through a contract (RetainBorrowAuthority), meets the Loans of the root's other
@@ -500,14 +506,15 @@ public sealed partial class OwnershipBody
                                 ReferenceTypes.IsBorrow(this.Places[addressed].Type.Components[0]) &&
                                 !ReferenceEquals(this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type, this.Places[addressed].Type.Components[0]);
                             if (!referenceSlot && sourcePlace >= 0 && this.BorrowModeAt(sourcePlace, root, op, this.borrowDependencies[(sourcePlace * count) + root]) != LoanRequirement.None &&
-                                (value.Kind is not (OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad) || sourcePlace == root ||
+                                (value.Kind is not (OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedUpdate) || sourcePlace == root ||
                                     (ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
                                         ReferenceEquals(
                                             this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type,
                                             this.Places[sourcePlace].Type.Components[0])) ||
                                     this.IsBorrowAncestor(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), sourcePlace)) &&
                                 (mode == LoanRequirement.Uniq || access == LoanRequirement.Uniq) && !this.IsBorrowAncestor(receiver, p) &&
-                                !this.IsDisjointProjection(accessId, p) && !this.IsDisjointSplitChild(receiver, p))
+                                !this.IsDisjointProjection(accessId, p) && !this.IsDisjointSplitChild(receiver, p) && !this.IndependentUpdatedCallResult(receiver, p, op) &&
+                                !this.IndependentUpdatedCallResult(this.borrowDefinitions[p] >= 0 ? this.borrowDefinitions[p] : this.ProducingValue(p, op), this.ContentOwner(receiver, sourcePlace), op))
                             {
                                 conflict = true;
                             }
@@ -1214,7 +1221,7 @@ public sealed partial class OwnershipBody
     // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
     // ends there. Liveness stops at it, and so does a stored dependency.
     private static bool DefinesBorrowHolder(OwnershipOperation operation, int place)
-        => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PayloadPlacement) ||
+        => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.UpdateBorrowed) ||
             (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern) ||
             (operation.Place == place && operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition == AcquisitionKind.Move);
 
@@ -1425,6 +1432,7 @@ public sealed partial class OwnershipBody
             var defined = this.Operations[id] switch
             {
                 { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
+                { Kind: OwnershipOperationKind.UpdateBorrowed, Place: >= 0 } update => update.Place,
                 { Kind: OwnershipOperationKind.Consume, Input: >= 0, Acquisition: AcquisitionKind.Move } moved when ReferenceTypes.IsBorrow(this.Places[moved.Input].Type) => moved.Input,
                 { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
                 { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
@@ -1512,7 +1520,28 @@ public sealed partial class OwnershipBody
                         ApplyRetentions(id); // The writable referents of the call's arguments (PrepareRetentions).
                         break;
                     case OperationFlow.Store:
-                        ApplyRetentions(id); // The referent of the store (PrepareRetentions).
+                    case OperationFlow.Update:
+                        for (var u = 0; u < this.contentUpdates.Count; u++)
+                        {
+                            var update = this.contentUpdates[u];
+                            if (update.Operation != id)
+                            {
+                                continue;
+                            }
+
+                            if (update.Result >= 0)
+                            {
+                                Merge(update.Result, update.Target, id, before: true);
+                            }
+
+                            if (update.Swap)
+                            {
+                                Merge(update.Incoming, update.Target, id, update.Type, before: true);
+                            }
+
+                            Merge(update.Target, update.Incoming, id, update.Type, before: update.Swap);
+                        }
+
                         break;
                     case OperationFlow.None:
                         break;
@@ -1569,12 +1598,14 @@ public sealed partial class OwnershipBody
 
         // Records when the destination's dependency on root exists: after the call at `at` that retains the referent through the
         // storage Type of its contract, or after `at` where the source holds a stored dependency; null when it exists everywhere.
-        bool? Store(int destination, int source, int root, int at, BoundType? storage)
-            => storage is not null ? this.AddStoredBorrowStart(destination, root, at)
+        bool? Store(int destination, int source, int root, int at, BoundType? storage, bool before)
+            => this.contentSlots.Contains((destination, root)) || before
+                ? this.IsStoredBorrow(source, root) ? this.AddStoredBorrowTransfer(source, destination, root, at, before: true) : this.AddStoredBorrowStart(destination, root, at)
+                : storage is not null ? this.AddStoredBorrowStart(destination, root, at)
                 : this.IsStoredBorrow(source, root) ? this.AddStoredBorrowTransfer(source, destination, root, at) : null;
 
         // The destination takes the source's dependencies at operation `at`.
-        void Merge(int destination, int source, int at, BoundType? storage = null)
+        void Merge(int destination, int source, int at, BoundType? storage = null, bool before = false)
         {
             if (destination < 0 || source < 0 || destination == source)
             {
@@ -1599,11 +1630,11 @@ public sealed partial class OwnershipBody
                     this.borrowDependencies[(destination * count) + root] = requirement;
                     target = requirement;
                     changed = true;
-                    _ = Store(destination, source, root, at, storage);
+                    _ = Store(destination, source, root, at, storage, before);
                 }
                 else if (input != LoanRequirement.None && target != LoanRequirement.None && this.HasStoredBorrowRecord(destination, root))
                 {
-                    changed |= Store(destination, source, root, at, storage) ?? this.SetStoredBorrowEverywhere(destination, root);
+                    changed |= Store(destination, source, root, at, storage, before) ?? this.SetStoredBorrowEverywhere(destination, root);
                 }
 
                 if (target != LoanRequirement.None && input > target)
