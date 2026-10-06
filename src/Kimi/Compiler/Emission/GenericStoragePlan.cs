@@ -171,6 +171,72 @@ internal sealed partial class GenericStoragePlan
         return this.PrepareEntryDependencies(compilation, module, layouts, evaluator.Call, template, context, 0, out failure);
     }
 
+    internal bool PrepareFormatting(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
+    {
+        failure = null;
+        if (!IsFormattingCallback(site) || this.formattingCalls.ContainsKey(site))
+        {
+            return true;
+        }
+
+        if (!compilation.Binding.TryResolveFormattingCallback(site, out var call))
+        {
+            return Fail("Formatting callback has no verified conformance witness.", out failure);
+        }
+
+        var writer = site.Target.CompilerFunction == CompilerFunctionKind.TextWriter;
+        if (call is null)
+        {
+            return true;
+        }
+
+        if (call.Target.Declaration is not FunctionKoto target)
+        {
+            return Fail("Formatting callback has no verified conformance witness.", out failure);
+        }
+
+        FunctionAbi? abi;
+        if (IsGeneric(target))
+        {
+            if (!this.templates.TryGetValue(target, out var template) ||
+                !this.PrepareEntry(compilation, module, layouts, call, template, out var entry, out failure, depth + 1))
+            {
+                return Fail(failure ?? "Formatting callback has no verified generic body.", out failure);
+            }
+
+            abi = entry!.Selected ?? entry.Abi;
+        }
+        else
+        {
+            abi = this.functions!.GetValueOrDefault(target);
+        }
+
+        if (abi is not { Result: "void", NoReturn: false, ResultSlot: true, Parameters.Length: 3 } ||
+            abi.Parameters[0].Kind != AbiParameterKind.ResultSlot || abi.Parameters[1].Type != "ptr" || abi.Parameters[2].Type != (writer ? "i64" : "ptr"))
+        {
+            return Fail("Formatting callback has no verified physical signature.", out failure);
+        }
+
+        if (!writer)
+        {
+            if (!this.formattingWrites.TryGetValue(abi, out var wrapper))
+            {
+                wrapper = new("__kimi_writer_write_user" + this.formattingWrites.Count, "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)], resultSlot: true);
+                this.formattingWrites.Add(abi, wrapper);
+                module.FormattingWrites.Add(new(wrapper, abi));
+            }
+
+            abi = wrapper;
+            if (site.Target.CompilerFunction is CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
+            {
+                abi = this.PrepareFormattingConversion(module, abi, site.Target.CompilerFunction);
+            }
+        }
+
+        this.formattingCalls.Add(site, abi);
+        return true;
+    }
+
     private static bool Fail(string reason, out string? failure)
     {
         failure = reason;
@@ -192,7 +258,7 @@ internal sealed partial class GenericStoragePlan
             // The declared Type, not the Place Type: a generic template's first Semantics case substitutes its pair layers (SPEC 8.10).
             if (operation.Kind != OwnershipOperationKind.Produce || operation.Place < 0 ||
                 operation.Source.BoundType is not { Kind: BoundTypeKind.FunctionItem } produced || (produced.Components.Count == 0 && produced.LengthArguments.Length == 0) ||
-                produced.Symbol?.Declaration is not FunctionKoto target)
+                produced.Symbol?.Declaration is not FunctionKoto target || produced.Symbol.CompilerFunction != CompilerFunctionKind.None)
             {
                 continue;
             }
@@ -449,72 +515,6 @@ internal sealed partial class GenericStoragePlan
             }
         }
 
-        return true;
-    }
-
-    private bool PrepareFormatting(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
-    {
-        failure = null;
-        if (!IsFormattingCallback(site) || this.formattingCalls.ContainsKey(site))
-        {
-            return true;
-        }
-
-        if (!compilation.Binding.TryResolveFormattingCallback(site, out var call))
-        {
-            return Fail("Formatting callback has no verified conformance witness.", out failure);
-        }
-
-        var writer = site.Target.CompilerFunction == CompilerFunctionKind.TextWriter;
-        if (call is null)
-        {
-            return true;
-        }
-
-        if (call.Target.Declaration is not FunctionKoto target)
-        {
-            return Fail("Formatting callback has no verified conformance witness.", out failure);
-        }
-
-        FunctionAbi? abi;
-        if (IsGeneric(target))
-        {
-            if (!this.templates.TryGetValue(target, out var template) ||
-                !this.PrepareEntry(compilation, module, layouts, call, template, out var entry, out failure, depth + 1))
-            {
-                return Fail(failure ?? "Formatting callback has no verified generic body.", out failure);
-            }
-
-            abi = entry!.Selected ?? entry.Abi;
-        }
-        else
-        {
-            abi = this.functions!.GetValueOrDefault(target);
-        }
-
-        if (abi is not { Result: "void", NoReturn: false, ResultSlot: true, Parameters.Length: 3 } ||
-            abi.Parameters[0].Kind != AbiParameterKind.ResultSlot || abi.Parameters[1].Type != "ptr" || abi.Parameters[2].Type != (writer ? "i64" : "ptr"))
-        {
-            return Fail("Formatting callback has no verified physical signature.", out failure);
-        }
-
-        if (!writer)
-        {
-            if (!this.formattingWrites.TryGetValue(abi, out var wrapper))
-            {
-                wrapper = new("__kimi_writer_write_user" + this.formattingWrites.Count, "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)], resultSlot: true);
-                this.formattingWrites.Add(abi, wrapper);
-                module.FormattingWrites.Add(new(wrapper, abi));
-            }
-
-            abi = wrapper;
-            if (site.Target.CompilerFunction is CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
-            {
-                abi = this.PrepareFormattingConversion(module, abi, site.Target.CompilerFunction);
-            }
-        }
-
-        this.formattingCalls.Add(site, abi);
         return true;
     }
 

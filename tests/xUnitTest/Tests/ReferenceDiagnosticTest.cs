@@ -74,8 +74,6 @@ public class ReferenceDiagnosticTest
     [InlineData("func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c = T.compare\n    return c(a, b)", "T.compare")]
     [InlineData("func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c = T.compare\n    return 0", "T.compare")]
     [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet p = Holder.peek\nrequire p(h@ref) == 3 else => $abort(\"p\")", "Holder.peek")]
-    [InlineData("let b = Raw.allocate<u8>\nlet p = b(4)", "Raw.allocate<u8>")]
-    [InlineData("let a: (isize) -> raw/u8 = Raw.allocate<u8>", "Raw.allocate<u8>")]
     public void AnUnimplementedReferenceIsOneLocatedUnsupportedRecord(string source, string text)
     {
         var c = MinimalEmissionTest.Analyze(source);

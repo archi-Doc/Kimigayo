@@ -513,7 +513,7 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 case EmissionOpcode.CallValue:
-                    WriteValueCall(output, function, instruction);
+                    WriteValueCall(output, constants, function, instruction);
                     break;
 
                 case EmissionOpcode.ReturnVoid:
@@ -612,6 +612,9 @@ internal static partial class LlvmModuleWriter
                 case EmissionOperandKind.CallerLocation:
                 case EmissionOperandKind.CallerLocationLength:
                     WriteOperand(output, operand);
+                    break;
+                case EmissionOperandKind.ReturnAddress:
+                    output.Write("%ret");
                     break;
                 case EmissionOperandKind.SlotAddress:
                     WriteSlot(output, function ?? throw new InvalidOperationException("Slot argument without a function."), (int)operand.Value);

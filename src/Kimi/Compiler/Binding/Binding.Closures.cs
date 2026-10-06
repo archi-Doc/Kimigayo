@@ -546,6 +546,7 @@ public sealed partial class Binding
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
         symbol.HeaderBound = true;
+        var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.symbols[function.Parameters[i]].Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
@@ -555,6 +556,11 @@ public sealed partial class Binding
         symbol.Type = function.ReturnType is { } annotation
             ? expected is null ? this.BindType(annotation, scope) : this.ClosureResultType(function, expected.Components[0], scope)
             : openResult ? null : expected?.Components[1];
+        this.CompleteOriginDeclaration(originDeclaration);
+        for (var i = 0; i < function.Parameters.Count; i++)
+        {
+            this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
+        }
 
         if (function.Captures is { } captures)
         {

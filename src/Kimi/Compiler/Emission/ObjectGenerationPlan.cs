@@ -144,74 +144,7 @@ internal sealed class ObjectGenerationPlan
         return true;
     }
 
-    private static BoundType? Base(Compilation compilation, BoundType type)
-        => type.Symbol?.Declaration is StructKoto { Bases.Count: 1 } structure ? compilation.Binding.StoredType(structure.Bases[0], type) : null;
-
-    private static void WriteKey(StringBuilder output, BoundType type, string directory)
-    {
-        output.Append(SemanticsNames[type.Semantics]).Append(':').Append(KindNames[type.Kind]).Append(':');
-        if (type.Symbol is { } symbol)
-        {
-            var module = symbol.Declaration.CodeContext.Kotonoha;
-            if (ReferenceEquals(module, module.Compilation.Kotonoha))
-            {
-                output.Append(module.Compilation.Project.ProjectFile.PackageId).Append('@').Append(module.Compilation.Project.ProjectFile.PackageVersion);
-            }
-
-            // Imported module names already contain the resolved dependency key.
-            output.Append(':').Append(module.Name).Append(':');
-            WriteContainers(output, symbol.Declaration);
-            output.Append(':').Append(symbol.Name);
-            if (type.Kind == BoundTypeKind.Closure)
-            {
-                var path = symbol.Declaration.CodeContext.SourceDocument?.Path ?? string.Empty;
-                path = Path.IsPathRooted(path) ? Path.GetRelativePath(directory, path) : path;
-                output.Append(':').Append(path.Replace('\\', '/')).Append(':').Append(symbol.Declaration.Span.Start);
-            }
-        }
-        else
-        {
-            output.Append(type.Name);
-        }
-
-        // Origins carry static dependencies, never Runtime Type Identity.
-        output.Append(':').Append(type.Length).Append('<');
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (i != 0)
-            {
-                output.Append(',');
-            }
-
-            WriteKey(output, type.Components[i], directory);
-        }
-
-        output.Append('>');
-    }
-
-    private static bool WriteContainers(StringBuilder output, Koto? node)
-    {
-        if (node is null)
-        {
-            return false;
-        }
-
-        var written = WriteContainers(output, node.Parent);
-        if (node is DeclarationContainerKoto container)
-        {
-            if (written)
-            {
-                output.Append('/');
-            }
-
-            output.Append(container.Name);
-            return true;
-        }
-
-        return written;
-    }
-
-    private bool AddCall(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, out string? failure)
+    internal bool AddCall(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, out string? failure)
     {
         failure = null;
         if (call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc) || this.calls.ContainsKey(call))
@@ -288,6 +221,73 @@ internal sealed class ObjectGenerationPlan
         module.NeedsObjectRuntime = true;
         this.calls.Add(call, new(payload, call.ReturnType, entry));
         return true;
+    }
+
+    private static BoundType? Base(Compilation compilation, BoundType type)
+        => type.Symbol?.Declaration is StructKoto { Bases.Count: 1 } structure ? compilation.Binding.StoredType(structure.Bases[0], type) : null;
+
+    private static void WriteKey(StringBuilder output, BoundType type, string directory)
+    {
+        output.Append(SemanticsNames[type.Semantics]).Append(':').Append(KindNames[type.Kind]).Append(':');
+        if (type.Symbol is { } symbol)
+        {
+            var module = symbol.Declaration.CodeContext.Kotonoha;
+            if (ReferenceEquals(module, module.Compilation.Kotonoha))
+            {
+                output.Append(module.Compilation.Project.ProjectFile.PackageId).Append('@').Append(module.Compilation.Project.ProjectFile.PackageVersion);
+            }
+
+            // Imported module names already contain the resolved dependency key.
+            output.Append(':').Append(module.Name).Append(':');
+            WriteContainers(output, symbol.Declaration);
+            output.Append(':').Append(symbol.Name);
+            if (type.Kind == BoundTypeKind.Closure)
+            {
+                var path = symbol.Declaration.CodeContext.SourceDocument?.Path ?? string.Empty;
+                path = Path.IsPathRooted(path) ? Path.GetRelativePath(directory, path) : path;
+                output.Append(':').Append(path.Replace('\\', '/')).Append(':').Append(symbol.Declaration.Span.Start);
+            }
+        }
+        else
+        {
+            output.Append(type.Name);
+        }
+
+        // Origins carry static dependencies, never Runtime Type Identity.
+        output.Append(':').Append(type.Length).Append('<');
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (i != 0)
+            {
+                output.Append(',');
+            }
+
+            WriteKey(output, type.Components[i], directory);
+        }
+
+        output.Append('>');
+    }
+
+    private static bool WriteContainers(StringBuilder output, Koto? node)
+    {
+        if (node is null)
+        {
+            return false;
+        }
+
+        var written = WriteContainers(output, node.Parent);
+        if (node is DeclarationContainerKoto container)
+        {
+            if (written)
+            {
+                output.Append('/');
+            }
+
+            output.Append(container.Name);
+            return true;
+        }
+
+        return written;
     }
 
     private void RegisterType(Compilation compilation, BoundType type)

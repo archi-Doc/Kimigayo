@@ -18,6 +18,7 @@ public sealed partial class LlvmEmitter
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
     private readonly DefaultGenerationPlan defaults = new();
+    private readonly CompilerFunctionAdapters compilerEntries = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundProperty, FunctionAbi> staticGetters = new(ReferenceEqualityComparer.Instance);
     private readonly List<StaticScalarEntry> staticEntries = new();
@@ -92,6 +93,8 @@ public sealed partial class LlvmEmitter
         this.generics.Clear();
         this.defaults.Clear();
         this.lowering.Defaults = this.defaults;
+        this.compilerEntries.Begin(c, module, this.lowering, this.generics, this.objects);
+        this.lowering.CompilerEntries = this.compilerEntries;
         try
         {
             var destructorOrdinal = 0;
@@ -279,6 +282,7 @@ public sealed partial class LlvmEmitter
                 failure = storageLimit;
             }
 
+            this.compilerEntries.Clear();
             this.functions.Clear();
             this.staticGetters.Clear();
             this.generics.Clear();

@@ -48,7 +48,7 @@ public sealed partial class Binding
     // context is retained per Item Type, so repeated preparation finds the same generic entry and allocates nothing.
     internal BoundCall? FunctionItemContext(BoundType type)
     {
-        if (type.Kind != BoundTypeKind.FunctionItem || (type.Components.Count == 0 && type.LengthArguments.Length == 0) || type.ContainsParameter ||
+        if (type.Kind != BoundTypeKind.FunctionItem || type.ContainsParameter ||
             type.Symbol is not { Type: { } result, Declaration: FunctionKoto function })
         {
             return null;
@@ -76,7 +76,16 @@ public sealed partial class Binding
         try
         {
             CopyItemArguments(type, function, own);
-            created.Set(type.Symbol, boundResult, null, [], own.AsSpan(0, function.GenericArguments.Count), declaringType: ItemDeclaringType(type, function), lengthArguments: type.LengthArguments);
+            // A compiler entry consumes already-acquired logical parameters. These contract operands let its
+            // ordinary object/formatting planners resolve the same witnesses without inventing a source call.
+            var operations = type.Symbol.CompilerFunction == CompilerFunctionKind.None ? [] : new BoundArgumentOperation[function.Parameters.Count];
+            for (var i = 0; i < operations.Length; i++)
+            {
+                var parameter = this.ItemType(function.Parameters[i].Type.BoundType!, type, function)!;
+                operations[i] = new(function.Parameters[i].Type, parameter, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: i);
+            }
+
+            created.Set(type.Symbol, boundResult, null, [], own.AsSpan(0, function.GenericArguments.Count), declaringType: ItemDeclaringType(type, function), operations: operations, lengthArguments: type.LengthArguments);
         }
         finally
         {

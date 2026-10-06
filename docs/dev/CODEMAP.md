@@ -148,6 +148,7 @@ Generic references bind their slots in `Binding.FunctionTypes.BindReferenceArgum
 
 `FunctionItemResultTest` covers declaration references in control-flow results; `Binding.ControlFlow` surveys value evidence and `Binding.Expressions` applies fixed Function expectations through ordinary result storage.
 
+`CompilerFunctionAdapters` prepares closed compiler Item entries from `Binding.FunctionItems.FunctionItemContext`; `GenericStoragePlan.PrepareFormatting`, `ObjectGenerationPlan.AddCall`, `BodyLowering.CompilerEntries` and `BodyLowering.Updates.AddWholeUpdate` share existing implementations. `BodyLowering.Closures` and `LlvmModuleWriter.Closures` carry dynamic invocation locations separately from immutable context. `CompilerFunctionReferenceTest` covers adapters, defaults, standard/user Abort positions and allocation reuse.
 `Binding.DiagnosticTypes` retains Function Item declaration qualifiers; `FunctionItemDiagnosticTest` checks public records, CLI/LSP output and nested-group designators in `ControlFlowAnalysis`.
 Shared payload authority failures retain conversion targets and rejected receiver Types in `Binding.Diagnostics`/`Binding.Calls`; `SharedObjectDiagnosticTest` covers intrinsic clone Advice and CLI/LSP output.
 

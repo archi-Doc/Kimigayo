@@ -287,18 +287,12 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
-    // Members of Origin-bearing containers, requirements referenced through a constrained Type (SPEC 10.5, `T.compare`),
-    // generic functions that the compiler implements are not yet referenced; an instance
-    // member is referenced unbound, through its Type (SPEC 7.3), and a generic container is named with its Type arguments.
+    // Members of Origin-bearing containers and requirements referenced through a constrained Type (SPEC 10.5,
+    // `T.compare`) remain limited. An instance member is referenced unbound through its Type (SPEC 7.3).
     private static bool UnsupportedReference(BindingSymbol candidate, FunctionKoto function, bool unbound, BoundType? declaringType)
     {
         if ((candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
             (candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && !ContainerBound(candidate, declaringType)))
-        {
-            return true;
-        }
-
-        if (function.GenericArguments.Count != 0 && (candidate.Intrinsic != IntrinsicKind.None || candidate.CompilerFunction != CompilerFunctionKind.None))
         {
             return true;
         }

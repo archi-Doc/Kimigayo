@@ -579,6 +579,8 @@ let item = add                         // Concrete Function Item; Copy.
 let erased: (i32, i32) -> i32 = add    // Common owned value; Non-Copy.
 ```
 
+A safe compiler-implemented function is referenced by the same rule. When a standard operation is invoked through a Function Item, Callable contract or common Function value, its Abort context is the actual invocation expression (§22.5.1), not the reference or conversion site. This diagnostic context is not part of the Function Item identity or its empty environment. An allocation failure while creating an erased environment belongs to the conversion expression.
+
 At a position whose fixed expected Type (§10.2) is a common Function Type, a Function Item or concrete Closure is converted implicitly, by the erasure row of the [common adaptation table](10-overload-resolution-and-inference.md#102-common-adaptation-at-expected-types), exactly when:
 
 - its signature fits, with the same task-slot presence ([§24.2.4](24-suspension-and-asynchronous-tasks.md#2424-compatibility)), and its minimum receiver is Shared;

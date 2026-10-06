@@ -68,6 +68,11 @@ internal sealed partial class BodyLowering
     // A generic Item enters the instance of its bound arguments, or the explicit specialization selected for them.
     private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition)
     {
+        if (type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None))
+        {
+            return this.CompilerEntries?.Get(type);
+        }
+
         if (type.Kind == BoundTypeKind.FunctionItem && (type.Components.Count != 0 || type.LengthArguments.Length != 0))
         {
             return definition.CodeContext.Compilation.Binding.FunctionItemContext(type) is { } item && this.GenericCalls?.GetValueOrDefault(item) is { } instance
@@ -85,13 +90,13 @@ internal sealed partial class BodyLowering
         var resultSlot = FunctionAbi.HasResultSlot(result, this.aggregateLayouts);
         foreach (var candidate in this.valueCallAbis)
         {
-            if (FunctionAbiPool.Matches(candidate, result, inputs, resultSlot, this.aggregateLayouts))
+            if (FunctionAbiPool.Matches(candidate, result, inputs, resultSlot, this.aggregateLayouts, callerLocation: true))
             {
                 return candidate;
             }
         }
 
-        var abi = FunctionAbiPool.Build(string.Empty, result, inputs, resultSlot, this.aggregateLayouts);
+        var abi = FunctionAbiPool.Build(string.Empty, result, inputs, resultSlot, this.aggregateLayouts, callerLocation: true);
         this.valueCallAbis.Add(abi);
         return abi;
     }
@@ -122,7 +127,7 @@ internal sealed partial class BodyLowering
                 !ReferenceEquals(body.ConcreteAt(operation.Source.ErasedFunctionType, id), body.Places[operation.Place].Type) ||
                 operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
                 !operation.Source.CodeContext.Compilation.Binding.ItemContractFits(source, itemSignature, body.Places[operation.Place].Type, operation.Source) ||
-                this.ClosureEntry(source, itemDefinition) is not { CallerLocation: false } itemEntry ||
+                this.ClosureEntry(source, itemDefinition) is not { } itemEntry ||
                 (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Function Item erasure requires an acquired Item and its checked signature.", out failure);
@@ -363,7 +368,7 @@ internal sealed partial class BodyLowering
         var receiverType = receiver.Kind == BoundTypeKind.Semantics ? receiver.Components[0] : receiver;
         var itemCall = receiverType.Kind == BoundTypeKind.FunctionItem;
         var concreteEntry = receiverType.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem && receiverType.Symbol?.Declaration is FunctionKoto definition ? this.ClosureEntry(receiverType, definition) : null;
-        if (itemCall && concreteEntry is not { CallerLocation: false })
+        if (itemCall && concreteEntry is null)
         {
             return Fail("Function Item call requires its resolved declaration entry.", out failure);
         }
@@ -415,10 +420,26 @@ internal sealed partial class BodyLowering
             function.Operands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));
         }
 
+        var invocationLocation = -1;
         foreach (var physical in abi.Parameters)
         {
             if (physical.Kind is AbiParameterKind.Environment or AbiParameterKind.Context or AbiParameterKind.ResultSlot)
             {
+                continue;
+            }
+
+            if (physical.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
+            {
+                if (!function.Abi.CallerLocation && invocationLocation < 0 && !this.TryGetLocation(call, directory, constants, out invocationLocation))
+                {
+                    return Fail("A value call requires its invocation location.", out failure);
+                }
+
+                function.Operands.Add(new(
+                    function.Abi.CallerLocation
+                        ? physical.Kind == AbiParameterKind.Location ? EmissionOperandKind.CallerLocation : EmissionOperandKind.CallerLocationLength
+                        : physical.Kind == AbiParameterKind.Location ? EmissionOperandKind.ConstantAddress : EmissionOperandKind.ConstantLength,
+                    invocationLocation));
                 continue;
             }
 

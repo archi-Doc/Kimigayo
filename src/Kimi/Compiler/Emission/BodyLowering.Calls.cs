@@ -99,6 +99,8 @@ internal sealed partial class BodyLowering
 
     internal DefaultGenerationPlan? Defaults { get; set; }
 
+    internal CompilerFunctionAdapters? CompilerEntries { get; set; }
+
     internal void ClearFunctionContext()
     {
         this.matchBody = null;
@@ -322,7 +324,7 @@ internal sealed partial class BodyLowering
         long writerKind = -1;
         EmissionOperand writerDispatch = default;
         if (plan.Target.CompilerFunction == CompilerFunctionKind.TextWriter &&
-            !this.PrepareWriterDispatch(library, plan, function, returnType, out writerKind, out writerDispatch, out failure))
+            !this.PrepareWriterDispatch(plan, function, returnType, out writerKind, out writerDispatch, out failure))
         {
             return false;
         }

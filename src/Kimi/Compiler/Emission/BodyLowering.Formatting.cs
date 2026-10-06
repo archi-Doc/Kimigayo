@@ -10,24 +10,8 @@ internal sealed partial class BodyLowering
     // on each adapter validation allocates a RuntimeFieldInfoStub on this runtime.
     private static readonly int[] FormattingWriterOffsets = [0, 8, 16, 56, 24, 32, 40, 48];
 
-    private int BuiltinFormatKind(BoundCall call)
+    internal static int BuiltinFormatKind(BoundType type)
     {
-        var logical = call.Target.CompilerFunction == CompilerFunctionKind.WriterWrite ? 1 : 0;
-        var required = call.Receiver is not null && call.ReceiverOperation.ParameterIndex == logical ? call.ReceiverOperation.ParameterType : null;
-        for (var i = 0; required is null && i < call.ArgumentOperations.Length; i++)
-        {
-            if (call.ArgumentOperations[i].ParameterIndex == logical)
-            {
-                required = call.ArgumentOperations[i].ParameterType;
-            }
-        }
-
-        if (SignatureType(this, required) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } reference)
-        {
-            return -1;
-        }
-
-        var type = reference.Components[0];
         var width = ScalarTypes.Width(type);
         if (width != 0)
         {
@@ -38,7 +22,7 @@ internal sealed partial class BodyLowering
             ReferenceEquals(type, BoundType.String) ? 16 : FormattingTypes.IsUtf8Slice(type) ? 17 : -1;
     }
 
-    private bool PrepareWriterDispatch(KimiLibrary library, BoundCall call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
+    internal bool PrepareWriterDispatch(BoundCall call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
     {
         kind = -1;
         dispatch = new(EmissionOperandKind.NullAddress, 0);
@@ -86,5 +70,25 @@ internal sealed partial class BodyLowering
 
         dispatch = new(EmissionOperandKind.FunctionAddress, index);
         return true;
+    }
+
+    private int BuiltinFormatKind(BoundCall call)
+    {
+        var logical = call.Target.CompilerFunction == CompilerFunctionKind.WriterWrite ? 1 : 0;
+        var required = call.Receiver is not null && call.ReceiverOperation.ParameterIndex == logical ? call.ReceiverOperation.ParameterType : null;
+        for (var i = 0; required is null && i < call.ArgumentOperations.Length; i++)
+        {
+            if (call.ArgumentOperations[i].ParameterIndex == logical)
+            {
+                required = call.ArgumentOperations[i].ParameterType;
+            }
+        }
+
+        if (SignatureType(this, required) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } reference)
+        {
+            return -1;
+        }
+
+        return BuiltinFormatKind(reference.Components[0]);
     }
 }

@@ -296,20 +296,11 @@ public class FunctionDefaultTest
         Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
     }
 
-    // A compiler-implemented Item has no executable erasure adapter yet; its default stays one located record at check.
-    // Owned aggregate results and Copy struct/enum/fixed-array entries execute in AggregateDefaultTest.
     [Theory]
-    [InlineData("func both(text: string, show: (ref/string) -> () = Console.writeLine) -> () => show(text@ref)\npublic func main() -> ()\n    both(\"hi\")\n", "= Console.writeLine", "Console.writeLine")]
-    [InlineData("let show: (ref/string) -> () = Console.writeLine\nshow(\"hi\")", "= Console.writeLine", "Console.writeLine")]
-    public void CalledDefaultsOutsideTheSubsetStayLocated(string source, string anchor, string text)
-    {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        var start = source.IndexOf(anchor, StringComparison.Ordinal) + anchor.IndexOf(text, StringComparison.Ordinal);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedOwnership_Kd), start, text.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Internal);
-        Assert.False(c.Emission.Validate(out _));
-    }
+    [InlineData("Default", "func both(text: string, show: (ref/string) -> () = Console.writeLine) -> () => show(text@ref)\npublic func main() -> ()\n    both(\"hi\")\n")]
+    [InlineData("Expression", "let show: (ref/string) -> () = Console.writeLine\nshow(\"hi\")")]
+    public void CompilerFunctionDefaultsExecute(string name, string source)
+        => ScalarEmissionTest.EmitFixture("CompilerFunctionDefault" + name, source, "hi\n");
 
     [Fact]
     public void RebindingAndReloadRebuildFunctionDefaultPlans()

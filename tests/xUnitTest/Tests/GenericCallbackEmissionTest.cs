@@ -74,7 +74,10 @@ public class GenericCallbackEmissionTest
         Assert.Empty(module.PendingEntries);
         var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
         var valueCall = Assert.Single(instance.Instructions, x => x.Opcode == EmissionOpcode.CallValue);
-        Assert.Equal([type == "bool" ? "i1" : type], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
+        Assert.Equal([type == "bool" ? "i1" : type, "ptr", "i64"], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());
+        Assert.True(valueCall.Callee.CallerLocation);
+        Assert.Equal(AbiParameterKind.Location, valueCall.Callee.Parameters[^2].Kind);
+        Assert.Equal(AbiParameterKind.LocationLength, valueCall.Callee.Parameters[^1].Kind);
     }
 
     [Theory]

@@ -1030,9 +1030,9 @@ public sealed partial class OwnershipAnalysis
         if (node.ErasedFunctionType is { } erased)
         {
             if (node.BoundType?.Kind == BoundTypeKind.FunctionItem && node.BoundSymbol is { Declaration: FunctionKoto item } symbol &&
-                ((item.Body ?? item.ExpressionBody) is null || item.IsRequirement || KimiLibraryCatalog.RequiresCallerLocation(symbol)))
+                (((item.Body ?? item.ExpressionBody) is null && symbol.CompilerFunction == CompilerFunctionKind.None) || item.IsRequirement))
             {
-                this.Unsupported(node); // The common Item erasure adapter needs an executable entry (STATUS N27c).
+                this.Unsupported(node); // A requirement without a selected executable entry cannot be erased.
                 return -1;
             }
 

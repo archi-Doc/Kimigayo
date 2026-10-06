@@ -31,7 +31,7 @@ internal static partial class LlvmModuleWriter
         output.Write("(i64 %environment");
         foreach (var parameter in entry.Parameters)
         {
-            if (parameter.Kind is not (AbiParameterKind.Environment or AbiParameterKind.Context))
+            if (parameter.Kind is not (AbiParameterKind.Environment or AbiParameterKind.Context or AbiParameterKind.Location or AbiParameterKind.LocationLength))
             {
                 output.Write(", ");
                 output.Write(parameter.Type);
@@ -40,7 +40,7 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        output.Write(", ptr %context) #0 {\nentry:\n");
+        output.Write(", ptr %location, i64 %location_length, ptr %context) #0 {\nentry:\n");
         output.Write(heap ? "  %storage = inttoptr i64 %environment to ptr\n" : "  %storage = alloca i64, align 8\n  store i64 %environment, ptr %storage, align 8\n");
         output.Write(entry.Result == "void" ? "  call " : "  %result = call ");
         output.Write(entry.Result);
@@ -234,7 +234,7 @@ internal static partial class LlvmModuleWriter
     }
 
     // The value is in Place's slot, or at the address of a leading operand beyond the ABI parameters when a reference holds it.
-    private static void WriteValueCall(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
+    private static void WriteValueCall(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
         var id = instruction.Operation;
         var abi = instruction.Callee!;
@@ -278,7 +278,19 @@ internal static partial class LlvmModuleWriter
             output.Write(", ");
             output.Write(abi.Parameters[i - first].Type);
             output.Write(' ');
-            WriteStorageAddress(output, function, operands[i]);
+            if (operands[i].Kind == EmissionOperandKind.ConstantAddress)
+            {
+                output.Write('@');
+                output.Write(constants[(int)operands[i].Value].Name);
+            }
+            else if (operands[i].Kind == EmissionOperandKind.ConstantLength)
+            {
+                WriteNumber(output, constants[(int)operands[i].Value].ByteLength);
+            }
+            else
+            {
+                WriteStorageAddress(output, function, operands[i]);
+            }
         }
 
         Name(output, ", ptr %context", id);
