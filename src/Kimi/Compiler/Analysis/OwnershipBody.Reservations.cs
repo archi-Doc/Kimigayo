@@ -318,9 +318,9 @@ public sealed partial class OwnershipBody
     {
         if (origin.Kind == OriginKind.Intersection)
         {
-            foreach (var operand in origin.Operands)
+            for (var i = 0; i < origin.Operands.Count; i++)
             {
-                if (this.OriginNamesRoot(operand, root))
+                if (this.OriginNamesRoot(origin.Operands[i], root))
                 {
                     return true;
                 }
