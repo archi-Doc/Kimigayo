@@ -209,6 +209,19 @@ public class ContentUpdateTest
         }
     }
 
+    [Theory]
+    [InlineData("a@follow = 3")]
+    [InlineData("Kimi.Intrinsics.replace(a, with: 3)")]
+    [InlineData("_ = Kimi.Intrinsics.exchange(a, with: 3)")]
+    public void OpaqueReferentUpdatesPreserveTheStorageLoanAtEveryAccess(string update)
+    {
+        var source = "var values: Array<i32> = [1, 2]\nmatch values.tryGetPairUniq(first: 0, second: 1)\n    .Some((let a, let b))\n        let child = a@follow@ref\n        " + update +
+            "\n        b@follow = 4\n        " + update + "\n        require child == 1 else => $abort(\"child\")\n    .None => ()";
+        var result = DiagnosticCorpus.Check(source);
+        Assert.Equal(2, result.Diagnostics.Length);
+        Assert.All(result.Diagnostics, static record => Assert.True(record.Code is "ComparisonLoanConflict_Kd" or "CallActivationConflict_Kd"));
+    }
+
     [TestClass(DisableParallelization = true)]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests

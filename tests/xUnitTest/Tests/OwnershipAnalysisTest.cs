@@ -55,7 +55,6 @@ public class OwnershipAnalysisTest
 
     [Theory]
     [InlineData("let fixed: [2 of string] = [\"a\", \"b\"]\nvar i: isize = 0\nConsole.writeLine(fixed[i])")]
-    [InlineData("func f(x: string = \"x\") => ()\nf()")]
     public void UnsupportedOwnershipCannotBecomeVerified(string source)
     {
         var c = Parse(source);
@@ -63,6 +62,16 @@ public class OwnershipAnalysisTest
         Assert.False(result.IsVerified);
         Assert.True(result.UnsupportedCount > 0, Describe(c));
         Assert.All(c.Ownership.Bodies, x => Assert.False(x.IsVerified));
+    }
+
+    [Fact]
+    public void OwnedDefaultsNowVerifyThroughTheOrdinaryPipeline()
+    {
+        var c = Parse("func f(x: string = \"x\") => ()\nf()");
+        var result = c.Ownership.Analyze();
+        Assert.True(result.IsVerified, Describe(c));
+        Assert.Equal(0, result.UnsupportedCount);
+        Assert.All(c.Ownership.Bodies, static body => Assert.True(body.IsVerified));
     }
 
     [Fact]
