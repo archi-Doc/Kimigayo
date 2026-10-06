@@ -363,7 +363,9 @@ internal sealed partial class BodyLowering
             owner = SignatureType(this, owner);
             element = SignatureType(this, element);
             var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
-            if (layout is null || (uint)position >= (uint)layout.Count || !ReferenceEquals(element, SignatureType(this, level.BoundType)))
+            var selected = SignatureType(this, level.BoundType);
+            if (layout is null || (uint)position >= (uint)layout.Count || element is null || selected is null ||
+                !level.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(element, selected, level))
             {
                 return false;
             }

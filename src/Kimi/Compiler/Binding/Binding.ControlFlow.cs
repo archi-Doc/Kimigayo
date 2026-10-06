@@ -223,7 +223,7 @@ public sealed partial class Binding
         }
 
         context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
-        if (context.PartialEvidence && context.Expected is { CarriesOrigin: true })
+        if ((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesOrigin: true })
         {
             // SPEC 14.9.1, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
             // of a later body-local Borrow.

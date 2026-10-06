@@ -316,6 +316,19 @@ public sealed partial class OwnershipBody
 
     private bool OriginNamesRoot(BoundOrigin origin, int root)
     {
+        if (Binding.IsLocalRegion(origin))
+        {
+            foreach (var source in this.Function.CodeContext.Compilation.Binding.LocalRegionSources(origin))
+            {
+                if (this.OriginNamesRoot(source, root))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         if (origin.Kind == OriginKind.Parameter)
         {
             // A declared-Origin exclusive input is its own capability root, just like an elided Input Origin.

@@ -392,7 +392,7 @@ public sealed partial class Binding
         {
             if (IsInvariantLayer(actual, this))
             {
-                if (!ReferenceEquals(actual.Components[i], expected.Components[i]))
+                if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use, OriginVariance.Invariant))
                 {
                     return false;
                 }

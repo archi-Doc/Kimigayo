@@ -240,10 +240,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     public void AResultOnlyUniversalIsInstantiatedToTheOpenRegion(string name, string body)
         => ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceResultOnly" + name, "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc constantOf(n: ref/i32) -> ref/i32 during s => $abort(\"never\")\n" + body + "\nrequire r == 7 else => $abort(\"result only\")", string.Empty);
 
-    // The instantiated open region still takes no later borrow (the located limit), and a universal that a clause bounds by an input
-    // is not result-only, so only a per-call Origin would satisfy the slot: the call stays NoApplicableOverload_Kd (STATUS limit).
+    // A universal bounded by an input is not result-only: this separate signature inference boundary remains located.
     [Theory]
-    [InlineData("    var r = make(constant)\n    let local: i32 = 3\n    r = local@ref\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "r = local@ref")]
     [InlineData("    let r = makeOf(bounded)\n    Console.writeLine(\"\\(r@follow)\")\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "makeOf(bounded)")]
     public void AResultOnlyInstantiationKeepsItsLimits(string body, string code, string text)
     {
@@ -309,18 +307,30 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Single(System.Text.RegularExpressions.Regex.Matches(ir, @"define internal \S+ @__kimi_generic_entry\d+\("));
     }
 
-    // SPEC 15.6.5: an open region holds no Loans, so a later borrow fitted into it would lose its Loan. Such a fit is never accepted:
-    // the spec proves it and leaves it to region inference, so it is the located limit at the value fitted into the region, at an
-    // assignment and at a call argument alike (SPEC 15.6.1: the call is selected by the structural part of its fits).
+    // Local-region inference keeps the actual Loan inserted after a result-only call or at a generic argument.
     [Theory]
-    [InlineData("    var z = runOnly(len)\n    z = .Some(y@ref)\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
-    [InlineData("    let z = keepSome(len, .Some(y@ref))\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
-    public void AnOpenRegionTakesNoLaterBorrow(string body, string code, string text)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnOpenRegionRetainsLaterBorrows(bool argument)
     {
-        var source = "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nfunc keepSome<T>(action: (T) -> i32, value: Option<T>) -> Option<T> => value@move\n" +
-            "func len(n: ref/i32) -> i32 => n@follow\npublic func main() -> ()\n    var y: i32 = 3\n" + body + "    y = 4\n    match z\n        .Some(let v) => Console.writeLine(\"\\(v@follow)\")\n        .None => ()\n";
+        const string Declarations = "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nfunc keepSome<T>(action: (T) -> i32, value: Option<T>) -> Option<T> => value@move\nfunc len(n: ref/i32) -> i32 => n@follow\n";
+        var body = argument ? "    let z = keepSome(len, .Some(y@ref))\n" : "    var z = runOnly(len)\n    z = .Some(y@ref)\n";
+        var prefix = Declarations + "public func main() -> ()\n    var y: i32 = 3\n" + body;
+        const string Use = "    match z\n        .Some(let v) => require v@follow == 3 else => $abort(\"value\")\n        .None => $abort(\"none\")\n";
+        var source = prefix + "    y = 4\n" + Use;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, text), (error.Code, Text(source, error.Span)));
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "y = 4"), (error.Code, Text(source, error.Span)));
+        ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceLaterBorrow" + argument, prefix + Use + "    y = 4\n", string.Empty);
+    }
+
+    [Fact]
+    public void AResultOnlyInstantiationAllowsLocalReassignment()
+    {
+        const string Source = "func constant() -> ref/i32 during s => $abort(\"never\")\nfunc make<T>(f: () -> T) -> T => f()\npublic func main()\n    var r = make(constant)\n    let local: i32 = 3\n    r = local@ref\n    require r@follow == 3 else => $abort(\"value\")\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out _), MinimalEmissionTest.Describe(c, null));
     }
 
     // SPEC 15.3.6, 10.8: when only the argument's own per-call Origin would satisfy the slot (the Function value or Callable proof holds

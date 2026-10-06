@@ -1071,48 +1071,6 @@ public sealed partial class OwnershipBody
         }
     }
 
-    private static LoanRequirement NamedOriginRequirement(BoundType type, BoundOrigin origin)
-    {
-        var result = Contains(type.Origin, origin)
-            ? type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref
-            : LoanRequirement.None;
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (Contains(type.OriginArguments[i], origin))
-            {
-                result = (LoanRequirement)Math.Max((int)result, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref));
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            result = (LoanRequirement)Math.Max((int)result, (int)NamedOriginRequirement(type.Components[i], origin));
-        }
-
-        return result;
-
-        static bool Contains(BoundOrigin? expression, BoundOrigin origin)
-        {
-            if (ReferenceEquals(expression, origin))
-            {
-                return true;
-            }
-
-            if (expression is not null)
-            {
-                for (var i = 0; i < expression.Operands.Count; i++)
-                {
-                    if (Contains(expression.Operands[i], origin))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-    }
-
     private static bool HasProjection(BoundType type)
     {
         if (ContainsProjection(type.Origin))
@@ -1204,35 +1162,6 @@ public sealed partial class OwnershipBody
         }
     }
 
-    // Whether an input Type names any non-static Origin of a result Type.
-    private static bool NamesResultOrigin(BoundType type, BoundType input)
-    {
-        if (type.Origin is { Kind: not OriginKind.Static } origin && NamedOriginRequirement(input, origin) != LoanRequirement.None)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (type.OriginArguments[i].Kind != OriginKind.Static && NamedOriginRequirement(input, type.OriginArguments[i]) != LoanRequirement.None)
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (NamesResultOrigin(type.Components[i], input))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
-    // ends there. Liveness stops at it, and so does a stored dependency.
     private static bool DefinesBorrowHolder(OwnershipOperation operation, int place)
         => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.UpdateBorrowed) ||
             (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern) ||
@@ -1630,7 +1559,7 @@ public sealed partial class OwnershipBody
             {
                 var root = this.borrowRoots[rootIndex];
                 if (storage is not null && (!this.IsExclusiveBorrowInput(root) ||
-                    NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None))
+                    this.NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None))
                 {
                     continue;
                 }
@@ -1639,7 +1568,7 @@ public sealed partial class OwnershipBody
                 var target = original;
                 var input = this.retainedBorrowAuthority[(source * count) + root];
                 if (input != LoanRequirement.None && target == LoanRequirement.None && this.IsExclusiveBorrowInput(root) &&
-                    NamedOriginRequirement(this.Places[destination].Type, this.Places[root].Type.Origin!) is not LoanRequirement.None and var requirement)
+                    this.NamedOriginRequirement(this.Places[destination].Type, this.Places[root].Type.Origin!) is not LoanRequirement.None and var requirement)
                 {
                     this.borrowDependencies[(destination * count) + root] = requirement;
                     target = requirement;
@@ -1665,6 +1594,59 @@ public sealed partial class OwnershipBody
         }
     }
 
+    private LoanRequirement NamedOriginRequirement(BoundType type, BoundOrigin origin)
+    {
+        var result = Contains(type.Origin, origin)
+            ? type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref
+            : LoanRequirement.None;
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (Contains(type.OriginArguments[i], origin))
+            {
+                result = (LoanRequirement)Math.Max((int)result, (int)(type.Symbol?.Schema?.Origins[i].LoanRequirement ?? LoanRequirement.Ref));
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            result = (LoanRequirement)Math.Max((int)result, (int)this.NamedOriginRequirement(type.Components[i], origin));
+        }
+
+        return result;
+
+        bool Contains(BoundOrigin? expression, BoundOrigin origin)
+            => expression is not null && this.Function.CodeContext.Compilation.Binding.RegionContains(expression, origin);
+    }
+
+    // Whether an input Type names any non-static Origin of a result Type.
+    private bool NamesResultOrigin(BoundType type, BoundType input)
+    {
+        if (type.Origin is { Kind: not OriginKind.Static } origin && this.NamedOriginRequirement(input, origin) != LoanRequirement.None)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (type.OriginArguments[i].Kind != OriginKind.Static && this.NamedOriginRequirement(input, type.OriginArguments[i]) != LoanRequirement.None)
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.NamesResultOrigin(type.Components[i], input))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
+    // ends there. Liveness stops at it, and so does a stored dependency.
     // SPEC 13.5.5.1: the Place a reference's value addresses, through the value's one definition chain: a slot borrow (the borrowed
     // Place stores the referent Type, as holder@uniq does) names it; a Reborrow continues at the reborrowed value and a reference
     // local at its one definition. A reference loaded from a slot or received as an input addresses no Place of the body, so the
@@ -1714,6 +1696,16 @@ public sealed partial class OwnershipBody
             ReferenceEquals(this.Places[named].Type, this.Places[holder].Type.Components[0]))
         {
             return named;
+        }
+
+        if (this.Places[holder].Type.Origin is { } region && Binding.IsLocalRegion(region))
+        {
+            var sources = this.Function.CodeContext.Compilation.Binding.LocalRegionSources(region);
+            if (sources.Length == 1 && this.ProjectionPlace(sources[0]) is >= 0 and var single &&
+                ReferenceEquals(this.Places[single].Type, this.Places[holder].Type.Components[0]))
+            {
+                return single;
+            }
         }
 
         return holder;
@@ -1801,7 +1793,7 @@ public sealed partial class OwnershipBody
         for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
         {
             var root = this.borrowRoots[rootIndex];
-            if (this.IsExclusiveBorrowInput(root) && NamedOriginRequirement(storage, this.Places[root].Type.Origin!) != LoanRequirement.None)
+            if (this.IsExclusiveBorrowInput(root) && this.NamedOriginRequirement(storage, this.Places[root].Type.Origin!) != LoanRequirement.None)
             {
                 return true;
             }
@@ -1879,7 +1871,7 @@ public sealed partial class OwnershipBody
     {
         if (this.loanFlowRoot == root)
         {
-            return this.loanFlow[(destruction * count) + holder];
+            return this.loanSlots[holder] >= 0 ? this.LoanPartValue(destruction, this.loanSlots[holder]) : -1;
         }
 
         if (this.Places[holder].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result) ||
@@ -3077,7 +3069,7 @@ public sealed partial class OwnershipBody
             for (var i = 0; i < evaluation.Parameter; i++)
             {
                 var input = this.DefaultInputs![evaluation.Start + i];
-                if (NamesResultOrigin(result, this.Places[input.Place].Type))
+                if (this.NamesResultOrigin(result, this.Places[input.Place].Type))
                 {
                     if (sole >= 0)
                     {
@@ -3233,7 +3225,7 @@ public sealed partial class OwnershipBody
 
                 sole = entry;
             }
-            else if (NamesResultOrigin(result, type))
+            else if (this.NamesResultOrigin(result, type))
             {
                 return -1;
             }
@@ -3254,7 +3246,7 @@ public sealed partial class OwnershipBody
         for (var entry = call - 1; entry > receiver; entry--)
         {
             var input = this.Operations[entry];
-            if (input.Place < 0 || NamesResultOrigin(result, this.Places[input.Place].Type))
+            if (input.Place < 0 || this.NamesResultOrigin(result, this.Places[input.Place].Type))
             {
                 return true;
             }
@@ -3273,7 +3265,7 @@ public sealed partial class OwnershipBody
             if (type.Origin is { Kind: not OriginKind.Static } origin)
             {
                 found = true;
-                if (NamedOriginRequirement(input, origin) == LoanRequirement.None)
+                if (this.NamedOriginRequirement(input, origin) == LoanRequirement.None)
                 {
                     return false;
                 }
@@ -3284,7 +3276,7 @@ public sealed partial class OwnershipBody
                 if (type.OriginArguments[i].Kind != OriginKind.Static)
                 {
                     found = true;
-                    if (NamedOriginRequirement(input, type.OriginArguments[i]) == LoanRequirement.None)
+                    if (this.NamedOriginRequirement(input, type.OriginArguments[i]) == LoanRequirement.None)
                     {
                         return false;
                     }

@@ -634,6 +634,11 @@ public sealed partial class Binding
             return Complete(function, null);
         }
 
+        if (function.ReturnType is null && (expected is null || openResult))
+        {
+            symbol.Type = this.ResolveLocalResultOrigins(symbol.Type);
+        }
+
         var buffer = this.typeScratch.Rent(Math.Max(function.Parameters.Count, plan.Storage.Count));
         try
         {

@@ -661,6 +661,7 @@ public sealed partial class Binding
         }
 
         OriginDeclaration? declaration = null;
+        var localSlot = -1;
         Match(declared, actual, OriginVariance.Covariant);
         if (declaration is null)
         {
@@ -670,12 +671,6 @@ public sealed partial class Binding
         if (declaration.Inferred is { Count: > 0 } inferred)
         {
             this.MeetLocalUpperBounds(declaration, inferred);
-        }
-
-        if (declared.Origin is { Kind: OriginKind.Inference } localSlot && actual.Origin is not null && IsMutableDeclaration(owner))
-        {
-            var opened = this.LocalBorrowType(actual, owner, owner.InitializerKoto!);
-            declaration.Replacements[localSlot] = opened.Origin!;
         }
 
         declaration.Scope = scope;
@@ -726,10 +721,24 @@ public sealed partial class Binding
 
         void Bind(BoundOrigin pending, BoundOrigin value, OriginVariance polarity)
         {
-            if (pending.Kind == OriginKind.Inference)
+            if (pending.Kind == OriginKind.Inference && !IsLocalRegion(pending))
             {
                 declaration ??= this.OriginDeclarationFor(owner);
-                declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value) : value;
+                if (IsMutableDeclaration(owner))
+                {
+                    var region = declaration.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
+                        ? previous : this.LocalRegionSlot(owner, localSlot--);
+                    declaration.Replacements[pending] = region;
+                    if (!ReferenceEquals(value, pending))
+                    {
+                        this.AddOriginFit(value, region, declared, owner.InitializerKoto!, polarity);
+                    }
+                }
+                else
+                {
+                    declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value) : value;
+                }
+
                 if (declaration.Relations.Count != 0)
                 {
                     // Only a local's own clauses read the variance (MeetLocalUpperBounds, JudgeDeclaredRelation).
@@ -756,7 +765,14 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var met = this.Meet(current, this.ResolveOrigin(relation.Longer, declaration));
+                var longer = this.ResolveOrigin(relation.Longer, declaration);
+                if (IsLocalRegion(current))
+                {
+                    this.AddObligation(new(BindingObligationKind.OriginOutlives, relation.Syntax, BindingDeadline.BodyOrigins, null, longer, current, Clause: relation.Syntax));
+                    continue;
+                }
+
+                var met = this.Meet(current, longer);
                 if (!ReferenceEquals(met, current))
                 {
                     declaration.Replacements[relation.Shorter] = met;

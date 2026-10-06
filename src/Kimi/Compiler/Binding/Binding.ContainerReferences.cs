@@ -285,7 +285,7 @@ public sealed partial class Binding
 
     private static BoundOrigin? InferenceAtom(BoundOrigin origin)
     {
-        if (origin.Kind == OriginKind.Inference)
+        if (origin.Kind == OriginKind.Inference && !IsLocalRegion(origin))
         {
             return origin;
         }

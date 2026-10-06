@@ -334,7 +334,7 @@ public sealed partial class Binding
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
-                    if (!(hint is not null && this.FitsTypeAt(adapted, hint, source)) && !this.Infer(inferred, adapted, declaration, arguments, true))
+                    if (!(hint is not null && (this.FitsTypeAt(adapted, hint, source) || this.CheckLocalTypeUse(adapted, hint, source))) && !this.Infer(inferred, adapted, declaration, arguments, true))
                     {
                         // SPEC 15.6.1: a payload that fits its expected payload Type only structurally fails in its Origin relations, at
                         // the payload value, never as a Type mismatch.
@@ -376,7 +376,7 @@ public sealed partial class Binding
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
 
-                if (!this.FitsTypeAt(result, expected, use))
+                if (!this.FitsTypeAt(result, expected, use) && !this.CheckLocalTypeUse(result, expected, use))
                 {
                     return this.RecordMismatch(use, use, result, expected);
                 }
@@ -386,7 +386,7 @@ public sealed partial class Binding
             {
                 var type = this.StoredType(payload[i].BoundType!, result)!;
                 var operation = operations[i];
-                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || !this.FitsTypeAt(adapted, type, operation.Source!))
+                if (!this.AdaptInput(operation.Source!, type, operation.SourceType!, scope, null, null, out var adapted, out var quality, out var kind) || (!this.FitsTypeAt(adapted, type, operation.Source!) && !this.CheckLocalTypeUse(adapted, type, operation.Source!)))
                 {
                     return this.Fail(use, BindingFailure.TypeMismatch);
                 }
@@ -483,9 +483,22 @@ public sealed partial class Binding
     {
         for (var node = use.Parent; node is not null; node = node.Parent)
         {
-            if (!this.initializerOrigins.TryGetValue(node, out var declaration) || declaration.State < 2 || declaration.Replacements.Count == 0)
+            if (this.initializerOrigins.TryGetValue(node, out var initializer))
             {
-                continue;
+                Apply(initializer);
+            }
+
+            if (node is VariableKoto && this.originDeclarations.TryGetValue(node, out var local))
+            {
+                Apply(local);
+            }
+        }
+
+        void Apply(OriginDeclaration declaration)
+        {
+            if (declaration.State < 2 || declaration.Replacements.Count == 0)
+            {
+                return;
             }
 
             var source = construction.PayloadOperations;

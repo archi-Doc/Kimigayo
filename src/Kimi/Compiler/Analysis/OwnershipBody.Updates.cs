@@ -70,7 +70,7 @@ public sealed partial class OwnershipBody
             // only the stored Type's internal dependencies participate in replacing contents (SPEC 15.7.3).
             var holder = this.Places[place].Type;
             if (root == place || (!ReferenceEquals(holder, storage) && holder.Origin is { } origin && this.OriginNamesRoot(origin, root)) || (this.IsExclusiveBorrowInput(root)
-                ? NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None
+                ? this.NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None
                 : this.borrowDependencies[(place * count) + root] == LoanRequirement.None))
             {
                 continue;

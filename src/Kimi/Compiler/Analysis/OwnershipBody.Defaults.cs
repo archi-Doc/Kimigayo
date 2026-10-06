@@ -134,7 +134,7 @@ public sealed partial class OwnershipBody
                         for (var i = 0; i < evaluation.Parameter; i++)
                         {
                             var input = this.DefaultInputs![evaluation.Start + i];
-                            if (NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
+                            if (this.NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
                             {
                                 work.Add(input.Read);
                             }
@@ -147,7 +147,7 @@ public sealed partial class OwnershipBody
                     // be checked; failure to identify a sole ancestor is not proof that a new Loan cannot escape.
                     for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
                     {
-                        if (input.Place >= 0 && NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
+                        if (input.Place >= 0 && this.NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
                         {
                             work.Add(entry);
                         }

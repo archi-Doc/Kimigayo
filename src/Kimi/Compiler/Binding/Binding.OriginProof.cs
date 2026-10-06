@@ -61,13 +61,13 @@ public sealed partial class Binding
     internal bool OriginRelationFails(BoundOrigin longer, BoundOrigin shorter, Koto use)
         => this.JudgeOriginRelation(longer, shorter, use) is OriginJudgment.Refuted or OriginJudgment.Unknown;
 
-    // SPEC 15.6.5: Proven by the solver's premises, or because static, which holds no Loan of the body, outlives a finite Origin or
-    // an inferred region; Refuted when a finite Origin must outlive a fixed one; Unknown between fixed Origins. Any other chain with a
-    // finite Origin or an inferred region at one end is Proven by the spec and constrains region inference, which ownership analysis
-    // does not perform: its Loans follow only the Origins written in a holder's Type, so the longer end's Loans, those of a Borrow
-    // or of the body's own inputs, would be lost. Such a chain is Unrepresentable, a located limit.
+    // SPEC 15.6.5: local storage regions carry their source bounds to ownership; a finite-to-local-to-fixed chain is refuted
+    // even in checking code. Fixed contracts still need established premises. Finite relations outside that graph retain their
+    // located implementation boundary until ownership can carry their Loans too.
     internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
         if (IsLocalRegion(longer))
         {
             return this.JudgeLocalRegion(longer, shorter, use);
@@ -133,6 +133,13 @@ public sealed partial class Binding
     // in a construction qualifier. Published contracts and subsequent uses of the local never open inference again.
     private OriginDeclaration? OpenInitializerInference(BoundOrigin atom, Koto use)
     {
+        // A body's stable storage slot is already owned by its declaration. In particular, an enclosing closure initializer
+        // must not solve that slot as one of its own omitted Origins.
+        if (IsLocalRegion(atom))
+        {
+            return null;
+        }
+
         for (var node = atom.Binder; node is not null; node = node.Parent)
         {
             if (node is VariableKoto { InitializerKoto: { } initializer } variable && IsWithin(use, initializer) &&
@@ -514,6 +521,14 @@ public sealed partial class Binding
     {
         var use = relation.Syntax;
         var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality);
+        var resolvedLonger = this.OriginAtUse(relation.Longer, use);
+        var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
+        if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter))
+        {
+            this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
+            return;
+        }
+
         var judgment = this.JudgeOriginObligation(obligation, out var reversed);
         if (judgment == OriginJudgment.Proven)
         {

@@ -13,7 +13,7 @@ public sealed partial class Binding
     private int regionVersion;
 
     internal static bool IsLocalRegion(BoundOrigin origin)
-        => origin is { Kind: OriginKind.Inference, Binder: VariableKoto, Slot: < 0 };
+        => origin.Open || origin is { Kind: OriginKind.Inference, Binder: VariableKoto, Slot: < 0 };
 
     internal static bool HasLocalRegion(BoundType type)
     {
@@ -22,14 +22,14 @@ public sealed partial class Binding
             return false;
         }
 
-        if (type.Origin is { } origin && IsLocalRegion(origin))
+        if (type.Origin is { } origin && HasLocalRegion(origin))
         {
             return true;
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (IsLocalRegion(type.OriginArguments[i]))
+            if (HasLocalRegion(type.OriginArguments[i]))
             {
                 return true;
             }
@@ -38,6 +38,35 @@ public sealed partial class Binding
         for (var i = 0; i < type.Components.Count; i++)
         {
             if (HasLocalRegion(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal bool RegionContains(BoundOrigin expression, BoundOrigin origin)
+    {
+        if (ReferenceEquals(expression, origin))
+        {
+            return true;
+        }
+
+        if (IsLocalRegion(expression))
+        {
+            foreach (var source in this.LocalRegionSources(expression))
+            {
+                if (ReferenceEquals(source, origin))
+                {
+                    return true;
+                }
+            }
+        }
+
+        for (var i = 0; i < expression.Operands.Count; i++)
+        {
+            if (this.RegionContains(expression.Operands[i], origin))
             {
                 return true;
             }
@@ -71,7 +100,10 @@ public sealed partial class Binding
 
                 if (this.localRegions.TryGetValue(current, out var parents))
                 {
-                    this.regionWork.AddRange(parents.Parents);
+                    for (var i = parents.Parents.Count - 1; i >= 0; i--)
+                    {
+                        this.regionWork.Add(this.OriginAtUse(parents.Parents[i], parents.Values[i]));
+                    }
                 }
                 else if (current.Kind == OriginKind.Intersection)
                 {
@@ -80,7 +112,7 @@ public sealed partial class Binding
                         this.regionWork.Add(current.Operands[i]);
                     }
                 }
-                else
+                else if (!current.Open)
                 {
                     region.Sources.Add(current);
                 }
@@ -120,6 +152,24 @@ public sealed partial class Binding
         return null;
     }
 
+    private static bool HasLocalRegion(BoundOrigin origin)
+    {
+        if (IsLocalRegion(origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (HasLocalRegion(origin.Operands[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private void ResetLocalRegions()
     {
         foreach (var region in this.localRegions.Values)
@@ -135,23 +185,112 @@ public sealed partial class Binding
         this.regionVisited.Clear();
     }
 
-    private BoundType LocalBorrowType(BoundType type, VariableKoto owner, Koto value)
+    private BoundOrigin LocalRegionSlot(VariableKoto owner, int slot)
     {
-        // U7 opens the outer borrow slot of mutable locals. Structural and nested storage inference share this path in U9.
-        if (!IsMutableDeclaration(owner) || type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Origin: { } source })
-        {
-            return type;
-        }
-
-        var origin = this.OriginAtom(owner, OriginKind.Inference, -1);
+        var origin = this.OriginAtom(owner, OriginKind.Inference, slot);
         if (!this.localRegions.ContainsKey(origin))
         {
             this.localRegions.Add(origin, new());
         }
 
-        var result = this.WithOrigins(type, origin, (BoundOrigin[])type.OriginArguments);
-        this.AddObligation(new(BindingObligationKind.OriginOutlives, value, BindingDeadline.BodyOrigins, result, source, origin));
+        return origin;
+    }
+
+    private BoundType LocalBorrowType(BoundType type, VariableKoto owner, Koto value)
+    {
+        if (!IsMutableDeclaration(owner) || !type.CarriesOrigin)
+        {
+            return type;
+        }
+
+        var slot = -1;
+        var result = Open(type);
+        _ = this.CheckTypeUse(type, result, value);
         return result;
+
+        BoundType Open(BoundType current)
+        {
+            // A complete generic binding and a callable's quantified signature are contracts, not local storage slots.
+            if (!current.CarriesOrigin || current.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter)
+            {
+                return current;
+            }
+
+            var components = this.RentTypes(current.Components.Count);
+            var arguments = this.originScratch.Rent(current.OriginArguments.Count);
+            try
+            {
+                var origin = current.Origin is null ? null : this.LocalRegionSlot(owner, slot--);
+                for (var i = 0; i < current.OriginArguments.Count; i++)
+                {
+                    arguments[i] = this.LocalRegionSlot(owner, slot--);
+                }
+
+                for (var i = 0; i < current.Components.Count; i++)
+                {
+                    components[i] = Open(current.Components[i]);
+                }
+
+                return this.InternType(current.Kind, current.Symbol, current.Semantics, components.AsSpan(0, current.Components.Count), current.Length, origin, arguments.AsSpan(0, current.OriginArguments.Count), current.LengthExpression, current.ClosureContext, current.LengthArguments, current.ResultMode);
+            }
+            finally
+            {
+                this.typeScratch.Return(components, clearArray: true);
+                this.originScratch.Return(arguments, clearArray: true);
+            }
+        }
+    }
+
+    private BoundType ResolveLocalResultOrigins(BoundType type)
+    {
+        if (!HasLocalRegion(type))
+        {
+            return type;
+        }
+
+        var components = this.RentTypes(type.Components.Count);
+        var arguments = this.originScratch.Rent(type.OriginArguments.Count);
+        try
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                components[i] = this.ResolveLocalResultOrigins(type.Components[i]);
+            }
+
+            for (var i = 0; i < type.OriginArguments.Count; i++)
+            {
+                arguments[i] = Resolve(type.OriginArguments[i]);
+            }
+
+            return this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? Resolve(origin) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+            this.originScratch.Return(arguments, clearArray: true);
+        }
+
+        BoundOrigin Resolve(BoundOrigin origin)
+        {
+            if (!IsLocalRegion(origin))
+            {
+                return origin;
+            }
+
+            var sources = this.LocalRegionSources(origin);
+            if (sources.IsEmpty)
+            {
+                return origin;
+            }
+
+            var result = sources[0];
+            for (var i = 1; i < sources.Length; i++)
+            {
+                result = this.Meet(result, sources[i]);
+            }
+
+            return result;
+        }
     }
 
     private void RecordLocalRegionBound(in BindingObligation obligation)
@@ -170,7 +309,17 @@ public sealed partial class Binding
 
         void Add(BoundOrigin source, BoundOrigin target)
         {
-            if (!ReferenceEquals(source, target) && this.localRegions.TryGetValue(target, out var region) && !region.Parents.Contains(source))
+            if (ReferenceEquals(source, target) || !IsLocalRegion(target))
+            {
+                return;
+            }
+
+            if (!this.localRegions.TryGetValue(target, out var region))
+            {
+                this.localRegions.Add(target, region = new());
+            }
+
+            if (!region.Parents.Contains(source))
             {
                 region.Parents.Add(source);
                 region.Values.Add(evidence);
@@ -190,7 +339,7 @@ public sealed partial class Binding
         }
 
         var sources = this.LocalRegionSources(longer);
-        var result = sources.IsEmpty ? OriginJudgment.Unknown : OriginJudgment.Proven;
+        var result = OriginJudgment.Proven;
         foreach (var source in sources)
         {
             var judgment = this.JudgeOriginRelation(source, shorter, use);

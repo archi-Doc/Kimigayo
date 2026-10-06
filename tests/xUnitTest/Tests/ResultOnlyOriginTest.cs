@@ -11,7 +11,7 @@ namespace XunitTest;
 // SPEC 15.3.6: in an executable body, a callee Origin that nothing at the call bounds, such as the result-only `s` of
 // `none() -> Option<ref/i32 during s>` at a call whose result initializes an unannotated local, is a local region of the call. It needs
 // no annotation, is never replaced by static and never makes the candidate pending; no input supplies it, so it holds no Loans. A use
-// that would store a borrow into it needs region inference and stays a located limit.
+// that stores a borrow contributes its Loan to the local region.
 public class ResultOnlyOriginTest
 {
     private const string Main = "public func main() => ()\n";
@@ -62,18 +62,13 @@ public class ResultOnlyOriginTest
         Assert.Equal("fit", error.Reason![3].Value);
     }
 
-    // SPEC 15.6.5: a borrow fitted into the region would lose its Loan without region inference, so such uses stay located limits; an
-    // annotated local whose Origin is omitted takes the call's Origin from its own inferred region, which is the LR limit.
+    // SPEC 15.3.6, 15.6.5: a result-only region starts without Loans, then receives the actual stored values.
     [Theory]
-    [InlineData(None + "func f() -> i32\n    var k = none()\n    let y: i32 = 3\n    k = .Some(y@ref)\n    return 1\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
-    [InlineData(None + "func put<T>(slot: uniq/T, v: T) -> ()\n    slot@follow = v@move\nfunc f() -> i32\n    var q = none()\n    let y: i32 = 3\n    put(q@uniq, .Some(y@ref))\n    return 1\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), ".Some(y@ref)")]
-    [InlineData(None + "func needsStatic(o: Option<ref/i32 during static>) -> i32 => 1\nfunc f() -> i32 => needsStatic(none())\n", nameof(DiagnosticCode.UnsupportedOwnership_Kd), "none()")]
-    public void AUseThatNeedsRegionInferenceIsALocatedLimit(string body, string code, string text)
-    {
-        var source = body + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, text), (error.Code, Text(source, error.Span)));
-    }
+    [InlineData("Store", None + "func f() -> i32\n    var k = none()\n    let y: i32 = 3\n    k = .Some(y@ref)\n    return 1\n")]
+    [InlineData("IndirectStore", None + "func put<T>(slot: uniq/T, v: T) -> ()\n    slot@follow = v@move\nfunc f() -> i32\n    var q = none()\n    let y: i32 = 3\n    put(q@uniq, .Some(y@ref))\n    return 1\n")]
+    [InlineData("EmptyStatic", None + "func needsStatic(o: Option<ref/i32 during static>) -> i32 => 1\nfunc f() -> i32 => needsStatic(none())\n")]
+    public void LocalRegionsComposeWithStoresAndEmptyResults(string name, string body)
+        => ScalarEmissionTest.EmitFixture("ResultOnlyRegion" + name, body + "public func main() => require f() == 1 else => $abort(\"region\")", string.Empty);
 
     [Trait("Purpose", "Allocation")]
     [Fact]
