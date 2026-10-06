@@ -212,13 +212,13 @@ public class ResultPremiseTest
         Assert.Equal("requires the borrow local@ref outlives static, which is false", call.Label);
         Assert.Equal("wellFormed", call.Reason![3].Value);
 
-        // An unsatisfiable declared relation leaves the one candidate inapplicable, as at a direct call (G56 U3).
+        // Origin conditions belong to the selected Item, at the argument supplying the failed relation.
         var clause = Pin + "func escape() -> ref/i32 during static\n    let local: i32 = 5\n    let fr = pin\n    return fr(local@ref)\n" + Main;
-        var inapplicable = Assert.Single(DiagnosticCorpus.Check(clause).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "fr(local@ref)", "none of 1 candidates applies"), (inapplicable.Code, Text(clause, inapplicable.Span), inapplicable.Label));
-        var candidate = Assert.Single(inapplicable.Related!);
-        Assert.Equal("candidate", candidate.Role);
-        Assert.StartsWith("pin(p: ref/i32)", Text(clause, candidate.Span), StringComparison.Ordinal);
+        var failure = Assert.Single(DiagnosticCorpus.Check(clause).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref"), (failure.Code, Text(clause, failure.Span)));
+        Assert.Equal("requires the borrow local@ref outlives static, which is false", failure.Label);
+        Assert.Equal("declared", failure.Reason!.Single(x => x.Name == "source").Value);
+        Assert.Contains(failure.Related!, x => x.Role == "relation" && Text(clause, x.Span) == "origin p outlives static");
         Assert.True(DiagnosticCorpus.Check(written.Replace("func escape(x: ref/i32) -> ref/i32 during x", "func escape(x: ref/i32) -> i32", StringComparison.Ordinal)
             .Replace("    return pair.1\n", "    return pair.1@follow\n", StringComparison.Ordinal)).Accepted);
     }

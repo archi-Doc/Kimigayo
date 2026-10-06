@@ -641,6 +641,11 @@ public sealed partial class Binding
     {
         declaration.Scope = scope;
         declaration.State = 3;
+        foreach (var replacement in declaration.Replacements)
+        {
+            this.RecordRegionBound(this.ResolveOrigin(replacement.Value, declaration), replacement.Key, declaration.Owner);
+        }
+
         for (var i = this.obligations.Count - 1; i >= 0; i--)
         {
             var obligation = this.obligations[i];

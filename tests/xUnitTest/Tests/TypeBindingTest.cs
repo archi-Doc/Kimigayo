@@ -111,12 +111,13 @@ public class TypeBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var local = Nodes(c).OfType<FieldKoto>().Single();
         var input = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters[0].Type.BoundType!;
-        // A matching initializer resolves the omitted Origin immediately; the
-        // completed local keeps that same fixed dependency through rebinding.
-        Assert.Equal(OriginKind.Input, local.BoundType!.Origin!.Kind);
-        Assert.Same(input.Origin, local.BoundType.Origin);
+        // The mutable local owns one stable region; its initializer contributes the fixed input bound.
+        Assert.True(Binding.IsLocalRegion(local.BoundType!.Origin!));
+        Assert.NotSame(input.Origin, local.BoundType.Origin);
+        Assert.Contains(input.Origin!, c.Binding.LocalRegionSources(local.BoundType.Origin!).ToArray());
         Assert.DoesNotContain(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginInference);
-        Assert.DoesNotContain(c.Binding.Obligations, x => ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Kotonoha));
+        Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginOutlives &&
+            ReferenceEquals(x.Longer, input.Origin) && ReferenceEquals(x.Shorter, local.BoundType.Origin));
         var origin = local.BoundType.Origin;
         var count = c.Binding.Obligations.Count;
         Assert.True(c.Bind().IsComplete, Describe(c));

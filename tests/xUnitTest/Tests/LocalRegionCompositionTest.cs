@@ -13,10 +13,12 @@ public class LocalRegionCompositionTest
     private const string Cell = "struct Cell {source}\n    public var item: ref/i32 during source\n    public init(item: ref/i32 during source) => self.item = item\n";
     private const string Put = "func put<T>(slot: uniq/T, value: T) => slot@follow = value@move\n";
     private const string None = "func none() -> Option<ref/i32 during source> => .None\n";
+    private const string Box = "struct Box<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
 
     [Theory]
     [InlineData("Tuple", Values + "var value = (a@ref, 7)\nvalue = (b@ref, 9)\nrequire value.0@follow == 2 and value.1 == 9 else => $abort(\"tuple\")")]
     [InlineData("FixedArray", Values + "var value: [1 of ref/i32] = [a@ref]\nvalue = [b@ref]\nrequire value[0]@follow == 2 else => $abort(\"fixed\")")]
+    [InlineData("InitializerAlias", Box + Values + "var value = Box<ref/i32>.init(a@ref)\nrequire value.item@follow == 1 else => $abort(\"alias\")")]
     [InlineData("Struct", Cell + Values + "var value = Cell.init(a@ref)\nvalue.item = b@ref\nrequire value.item@follow == 2 else => $abort(\"field\")")]
     [InlineData("Array", Values + "var value: Array<ref/i32> = [a@ref]\nvalue@uniq.append(b@ref)\nrequire value[0]@follow == 1 and value[1]@follow == 2 else => $abort(\"array\")")]
     [InlineData("Dictionary", Values + "var value: Dictionary<i32, ref/i32> = [1: a@ref]\nvalue[1] = b@ref\nrequire value[1]@follow == 2 else => $abort(\"dictionary\")")]
@@ -37,6 +39,7 @@ public class LocalRegionCompositionTest
     [InlineData("FixedEnded", MutableValues + "var value: [1 of ref/i32] = [a@ref]\nvalue = [b@ref]\na = 3\nrequire value[0]@follow == 2 else => $abort(\"fixed\")")]
     [InlineData("StructEnded", Cell + MutableValues + "var value = Cell.init(a@ref)\nvalue = Cell.init(b@ref)\na = 3\nrequire value.item@follow == 2 else => $abort(\"struct\")")]
     [InlineData("FieldEnded", Cell + MutableValues + "var value = Cell.init(a@ref)\nvalue.item = b@ref\na = 3\nrequire value.item@follow == 2 else => $abort(\"field\")")]
+    [InlineData("InitializerAliasEnded", Box + MutableValues + "var value = Box<ref/i32>.init(a@ref)\nvalue.item = b@ref\na = 3\nrequire value.item@follow == 2 else => $abort(\"alias\")")]
     [InlineData("ArrayEnded", MutableValues + "var value: Array<ref/i32> = [a@ref]\nvalue = [b@ref]\na = 3\nrequire value[0]@follow == 2 else => $abort(\"array\")")]
     [InlineData("DictionaryEnded", MutableValues + "var value: Dictionary<i32, ref/i32> = [1: a@ref]\nvalue = [1: b@ref]\na = 3\nrequire value[1]@follow == 2 else => $abort(\"dictionary\")")]
     [InlineData("EnumEnded", MutableValues + "var value: Option<ref/i32> = .Some(a@ref)\nvalue = .None\na = 3\nmatch value\n    .Some(_) => $abort(\"some\")\n    .None => ()")]
@@ -54,6 +57,7 @@ public class LocalRegionCompositionTest
     [InlineData(MutableValues + "var value = (a@ref, 7)\nvalue = (b@ref, 9)\nb = 3\nrequire value.0@follow == 2 else => $abort(\"tuple\")", "b = 3")]
     [InlineData(MutableValues + "var value: [1 of ref/i32] = [a@ref]\nvalue = [b@ref]\nb = 3\nrequire value[0]@follow == 2 else => $abort(\"fixed\")", "b = 3")]
     [InlineData(Cell + MutableValues + "var value = Cell.init(a@ref)\nvalue.item = b@ref\nb = 3\nrequire value.item@follow == 2 else => $abort(\"field\")", "b = 3")]
+    [InlineData(Box + MutableValues + "var value = Box<ref/i32>.init(a@ref)\na = 3\nrequire value.item@follow == 1 else => $abort(\"alias\")", "a = 3")]
     [InlineData(MutableValues + "var value: Array<ref/i32> = [a@ref]\nvalue@uniq.append(b@ref)\nb = 3\nrequire value[1]@follow == 2 else => $abort(\"array\")", "b = 3")]
     [InlineData(MutableValues + "var value: Dictionary<i32, ref/i32> = [1: a@ref]\nvalue[1] = b@ref\nb = 3\nrequire value[1]@follow == 2 else => $abort(\"dictionary\")", "b = 3")]
     [InlineData(MutableValues + "var value: Option<ref/i32> = .None\nvalue = .Some(b@ref)\nb = 3\nmatch value\n    .Some(let item) => require item@follow == 2 else => $abort(\"some\")\n    .None => ()", "b = 3")]
@@ -74,6 +78,7 @@ public class LocalRegionCompositionTest
     [Trait("Purpose", "Allocation")]
     [InlineData(MutableValues + "var value = (a@ref, a@ref)\nvalue.0 = b@ref\nvalue.1 = b@ref\na = 3\nrequire value.0@follow == 2 else => $abort(\"parts\")")]
     [InlineData(Values + "var value: Option<ref/i32> = .None\nvalue = .Some(b@ref)\nmatch value\n    .Some(let item) => require item@follow == 2 else => $abort(\"some\")\n    .None => ()")]
+    [InlineData(Box + MutableValues + "var value = Box<ref/i32>.init(a@ref)\nvalue.item = b@ref\na = 3\nrequire value.item@follow == 2 else => $abort(\"alias\")")]
     [InlineData(Values + "let f = func [a@ref, b@ref] ()\n    var view = a\n    view = b\n    return view\nrequire f()@follow == 2 else => $abort(\"result\")")]
     public void CompositeRegionsReuseTheirGraphsAndStorage(string source)
     {

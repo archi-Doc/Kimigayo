@@ -195,6 +195,7 @@ public sealed partial class Binding
         this.ResetPass(BindingMode.Provisional);
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
+        this.functionItemContexts.Clear();
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)

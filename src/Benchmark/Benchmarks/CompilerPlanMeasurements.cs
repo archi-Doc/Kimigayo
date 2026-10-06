@@ -18,14 +18,18 @@ internal static class CompilerPlanMeasurements
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run(bool callable = false, bool views = false)
+    internal static void Run(bool callable = false, bool views = false, bool regions = false)
     {
         var results = new List<object>();
-        foreach (var name in views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" })
+        var workloads = regions
+            ? new[] { ("candidates", 4), ("candidates", 8), ("candidates", 16), ("results", 4), ("results", 8), ("results", 16), ("regions", 4), ("regions", 8), ("regions", 16) }
+            : (views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" }).Select(static name => (name, 0)).ToArray();
+        foreach (var (name, size) in workloads)
         {
             var stored = name == "stored";
             var source = name switch
             {
+                "candidates" or "results" or "regions" => VerificationWorkloads.CallableRegions(name, size),
                 "exclusive-views" => VerificationWorkloads.ExclusiveViews,
                 "slice-copies" => VerificationWorkloads.SliceCopies,
                 "fixed-reference" => VerificationWorkloads.ContextualFunctionReference,
@@ -41,15 +45,15 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
             }
 
-            foreach (var phase in callable || views ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
+            foreach (var phase in callable || views || regions ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
             {
-                if ((callable || views) && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
+                if ((callable || views || regions) && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
                 {
                     throw new InvalidOperationException("Rebound workload must pass startup and ownership before measurement.");
                 }
@@ -79,7 +83,11 @@ internal static class CompilerPlanMeasurements
                     milliseconds[sample] = elapsed.TotalMilliseconds / Iterations;
                 }
 
-                results.Add(new { name, stored, phase, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
+                var packedTableBytes = c.Ownership.Bodies.Sum(static body => body.BorrowStorageBytes);
+                var regionPayloadBytes = c.Ownership.Bodies.Sum(static body => body.LocalRegionStorageBytes);
+                var regionIndexCapacity = c.Ownership.Bodies.Sum(static body => body.LocalRegionIndexCapacity);
+                var peakRegionCells = c.Ownership.Bodies.Sum(static body => body.PeakLocalLoanCells);
+                results.Add(new { name, size, stored, phase, packedTableBytes, regionPayloadBytes, regionIndexCapacity, peakRegionCells, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
 
                 void RunOnce()
                 {

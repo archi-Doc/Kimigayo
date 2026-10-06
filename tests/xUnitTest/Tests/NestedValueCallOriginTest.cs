@@ -1,15 +1,40 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
 
 public class NestedValueCallOriginTest
 {
+    [Theory]
+    [InlineData("let f = pin")]
+    [InlineData("let item = pin\n    let f = item@ref")]
+    public void ASelectedItemReportsItsFailedClauseAtTheSupplyingArgument(string reference)
+    {
+        var source = "func pin(p: ref/i32) -> ref/i32 during static\n    origin p outlives static\n    return p\nfunc use()\n    let n = 1\n    " + reference + "\n    _ = f(n@ref)\npublic func main() => ()";
+        var check = DiagnosticCorpus.Check(source);
+        var error = Assert.Single(check.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
+        Assert.Equal("n@ref", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Equal("declared", error.Reason!.Single(x => x.Name == "source").Value);
+        Assert.Contains(error.Related!, x => x.Role == "relation" && source.Substring(x.Span!.Value.Start, x.Span.Value.Length) == "origin p outlives static");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(new(check.Diagnostics, check.Sources), string.Empty);
+        Assert.Contains("requires the borrow n@ref outlives static, which is false", console.Text, StringComparison.Ordinal);
+        Assert.Contains(" = relation: ", console.Text, StringComparison.Ordinal);
+        var identity = SourceIdentity.FromPath(check.Sources[error.Source].Path);
+        var sent = Assert.Single(WorkspaceCheck.Place(check, [identity], identity, true)[identity]);
+        Assert.Equal((error.Code, error.Display!.Range), (sent.Code, sent.Range));
+        var clause = error.Related!.Single(x => x.Role == "relation");
+        Assert.Contains(sent.RelatedInformation!, x => x.Location.Range == clause.Range);
+    }
+
     [Theory]
     [InlineData("Tuple", "func pick(pair: (ref/i32 during source, i32)) -> ref/i32 during source => pair.0\nlet f = pick\nlet n = 7\nrequire f((n@ref, 1))@follow == 7 else => $abort(\"tuple\")")]
     [InlineData("Slice", "func pick(values: Slice<i32>) -> ref/i32 during values.source => values[0]@ref\nlet f = pick\nlet n: [1 of i32] = [7]\nrequire f(n[..])@follow == 7 else => $abort(\"slice\")")]

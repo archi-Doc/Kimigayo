@@ -130,32 +130,26 @@ public class CallbackEmissionTest
         Assert.Empty(output.ToString());
     }
 
-    // SPEC 10.5 permits length-generic reference selection against a fixed signature. That selection is still unsupported;
-    // Type-generic references are exercised by GenericFunctionReferenceTest and nongeneric Items by FunctionItemTest.
+    // SPEC 10.5: a fixed signature binds the length in stored and returned common Function values.
     [Theory]
-    [InlineData("let f: ([3 of i32]) -> i32 = inc")]
-    [InlineData("func g() -> ([3 of i32]) -> i32 => inc")]
-    public void UnsupportedGenericReferencesReportTheReference(string body)
-    {
-        var c = MinimalEmissionTest.Analyze("func inc<length N>(v: [N of i32]) -> i32 => v[0]\n" + body);
-        Assert.False(c.Binding.Result.IsComplete);
-        c.Binding.ReportDiagnostics();
-        c.Ownership.ReportDiagnostics();
-        var diagnostics = TestDiagnostics.Of(c);
-        Assert.Single(diagnostics);
-        Assert.All(diagnostics, x => Assert.True(x.Code == "UnsupportedBinding_Kd" && x.Text == "inc", x.ToString() + " " + x.Text));
-    }
+    [InlineData("Stored", "let f: ([3 of i32]) -> i32 = inc")]
+    [InlineData("Returned", "func g() -> ([3 of i32]) -> i32 => inc\nlet f = g()")]
+    public void FixedSignaturesBindLengthReferences(string name, string body)
+        => ScalarEmissionTest.EmitFixture(
+            "CallbackLengthReference" + name,
+            "func inc<length N>(v: [N of i32]) -> i32 => v[0]\n" + body + "\nrequire f([42, 2, 3]) == 42 else => $abort(\"length\")",
+            string.Empty);
 
     [Fact]
-    public void CliAndLspPlaceUnsupportedGenericReferencesAtTheReference()
+    public void CliAndLspPlaceUnsolvedLengthReferencesAtTheReference()
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = MinimalEmissionTest.Analyze("func inc<length N>(v: [N of i32]) -> i32 => v[0]\nlet f: ([3 of i32]) -> i32 = inc", path);
+        var c = MinimalEmissionTest.Analyze("func inc<length N>(v: [(N * 2) of i32]) -> i32 => v[0]\nlet f: ([3 of i32]) -> i32 = inc", path);
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var error = Assert.Single(result.Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+        Assert.Equal(nameof(DiagnosticCode.TypeMismatch_Kd), error.Code);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("Hello.kimi:2:30", console.Text, StringComparison.Ordinal);

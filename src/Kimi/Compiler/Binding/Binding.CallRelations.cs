@@ -118,6 +118,12 @@ public sealed partial class Binding
             this.JudgeCallFit(selected, operations, argumentCount, i);
         }
 
+        this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
+        this.PublishCallRelations();
+    }
+
+    private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    {
         if (this.originDeclarations.TryGetValue(selected, out var declaration))
         {
             foreach (var relation in declaration.Relations)
@@ -129,8 +135,6 @@ public sealed partial class Binding
                 this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
             }
         }
-
-        this.PublishCallRelations();
 
         BoundOrigin Substitute(BoundOrigin origin)
         {
@@ -268,7 +272,7 @@ public sealed partial class Binding
         var backwardProven = !equality || this.ProvesOriginOutlives(shorter, longer, at);
         if (!FixedOrigin(longer) || !FixedOrigin(shorter))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, context.Parameter, longer, shorter, Equality: equality));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null));
             return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
         }
 

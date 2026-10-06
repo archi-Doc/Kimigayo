@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
+
 namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
@@ -13,6 +15,17 @@ public sealed partial class OwnershipBody
     private int loanFlowRoot = -1;
     private int[] loanSlots = [];
     private int[] loanProjectionSlots = [];
+
+    // Element payload only: excludes object headers and hash buckets, whose entry capacity is reported separately.
+    internal long LocalRegionStorageBytes => (4L * (this.loanFlow.Length + this.loanSlots.Length + this.loanProjectionSlots.Length + this.retentionStarts.Length + this.referentTargets.Capacity)) +
+        this.loanQueued.Length + ((long)Unsafe.SizeOf<LoanFlowPart>() * this.loanParts.Capacity) + (8L * this.referentWork.Capacity) +
+        ((long)Unsafe.SizeOf<(int, int, int, BoundType, int, bool)>() * this.retentions.Capacity);
+
+    internal int LocalRegionIndexCapacity => this.loanPartIndex.EnsureCapacity(0) + this.referentCache.EnsureCapacity(0) + this.referentVisited.EnsureCapacity(0);
+
+    internal int LocalLoanFlowCapacity => this.loanFlow.Length;
+
+    internal int PeakLocalLoanCells { get; private set; }
 
     private static int Combine(int left, int right) => left == -1 ? right : right == -1 ? left : Math.Min(left, right);
 
@@ -34,6 +47,7 @@ public sealed partial class OwnershipBody
         var width = this.loanParts.Count;
         var operations = this.Operations.Count;
         Grow(ref this.loanFlow, OwnershipStorage.Cells(operations, width, 32, "local Loan flow"));
+        this.PeakLocalLoanCells = Math.Max(this.PeakLocalLoanCells, operations * width);
         this.loanFlow.AsSpan(0, operations * width).Fill(-1);
         Grow(ref this.loanQueued, operations);
         this.loanQueued.AsSpan(0, operations).Clear();

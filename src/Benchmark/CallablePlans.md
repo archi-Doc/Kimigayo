@@ -19,3 +19,24 @@ all timings, thread-allocation samples, source hashes, configuration and runtime
 
 Timing observations are not test thresholds or speedup evidence. Native O0/O2 regressions separately establish
 behavior and cleanup. The object command keeps its existing inputs, phases and repetition counts.
+
+## Local-region and Callable scaling
+
+`--local-regions` uses the same fixed 32 warm-ups, seven samples and 64 iterations per sample, with
+three axes at 4, 8 and 16: normalized Callable candidates, anonymous result sources, and local region
+variables with independent joins and a loop. Inputs are shared with `CallableRegionScalingTest`.
+The candidate workload checks an uninstantiated generic body; its emission timing does not measure
+native execution of the selected generic call. Concrete candidate execution has separate functional fixtures.
+
+Reports include packed borrow-table payload bytes, region-flow/retention/referent array and list payload
+bytes, region hash-index entry capacities, and peak requested region-flow cells. Payload counts exclude
+object headers, hash buckets and shared pre-existing CFG/worklist storage; they are not total heap size.
+Flow storage is reused per borrowed root and bounded by operations times sparse relevant storage paths,
+with the common geometric capacity policy. Referent queries retain their union of targets; this can grow
+with both queried values and reachable targets. Regression checks keep the packed-table budget unchanged,
+assert stable repeated capacities and zero warm allocation, and bound retained flow capacity by its peak
+request. Timing has no pass/fail threshold; retain every report, including failures.
+
+```powershell
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --local-regions > artifacts/benchmarks/local-regions.json
+```

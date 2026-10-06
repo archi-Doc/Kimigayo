@@ -506,7 +506,8 @@ public sealed partial class Binding
             dependent = true; // SPEC 15.8.2: a result over the closure's environment depends on the call receiver.
         }
 
-        var operations = this.argumentOperationScratch.Rent(count);
+        var operations = this.argumentOperationScratch.Rent(count + 1);
+        operations[count] = default; // Common call-relation helpers reserve the last slot for a receiver.
         var instantiated = this.RentTypes(count);
         var inputCount = ownBinder is null ? 0 : InputOriginCount(ownBinder);
         var originCount = ownBinder is FunctionKoto function ? function.Origins.Count : 0;
@@ -579,6 +580,13 @@ public sealed partial class Binding
 
                 instantiated[i] = parameter;
                 operations[i] = operations[i] with { ParameterType = parameter };
+            }
+
+            if (conditioned is not null)
+            {
+                this.callRelationScratch.Clear();
+                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
+                this.PublishCallRelations();
             }
 
             var result = signature.Components[1];

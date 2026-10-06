@@ -380,7 +380,7 @@ public sealed partial class Binding
             }
 
             this.OpenResultOnlyOrigins(use, function, origins);
-            return this.CheckCallOriginRelations(function, origins, inputs, use, null);
+            return true; // Selected-call clauses are judged at their supplying arguments, never as applicability.
         }
 
         return this.SolveOriginInference(inference, origins, inputs, use, select: true);

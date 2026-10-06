@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<(BoundType Item, BoundCall Context)> functionItemContexts = new();
+    private readonly Dictionary<BoundType, BoundCall> functionItemContexts = new(ReferenceEqualityComparer.Instance);
 
     // A declaration and its bound generic arguments are the complete identity of its zero-sized Item. Its signature is a
     // call contract, not stored environment data; in particular, per-call input Origins do not make the Item borrow anything.
@@ -54,12 +54,9 @@ public sealed partial class Binding
             return null;
         }
 
-        foreach (var (item, context) in this.functionItemContexts)
+        if (this.functionItemContexts.TryGetValue(type, out var context))
         {
-            if (ReferenceEquals(item, type))
-            {
-                return context;
-            }
+            return context;
         }
 
         if (this.ItemType(result, type, function) is not { } boundResult)
@@ -92,7 +89,7 @@ public sealed partial class Binding
             this.typeScratch.Return(own, clearArray: true);
         }
 
-        this.functionItemContexts.Add((type, created));
+        this.functionItemContexts.Add(type, created);
         return created;
     }
 

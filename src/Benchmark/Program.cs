@@ -15,6 +15,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--local-regions")
+        {
+            CompilerPlanMeasurements.Run(regions: true);
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--view-plans")
         {
             CompilerPlanMeasurements.Run(views: true);

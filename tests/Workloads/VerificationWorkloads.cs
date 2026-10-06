@@ -31,6 +31,70 @@ internal static class VerificationWorkloads
 
     internal const string InputDependentValueCall = "struct Box<T>\n    var item: T\n\n    public init(item: T)\n        self.item = item@move\n\n    public func get(self) -> ref/T during self => self.item@ref\nfunc bump(value: uniq/i32) -> uniq/i32 => value\nlet box = Box<i32>.init(item: 5)\nlet get: (ref/Box<i32>) -> ref/i32 = Box<i32>.get\nlet r = get(box@ref)\nvar k: i32 = 1\nlet b = bump\nlet d = b(k@uniq)\nlet e = b(d)\ne@follow = r@follow\nd@follow += 1";
 
+    // Fixed scaling axes shared by functional/allocation checks and opt-in measurements.
+    internal static string CallableRegions(string axis, int count)
+    {
+        var source = new StringBuilder();
+        switch (axis)
+        {
+            case "candidates":
+                source.AppendLine("func select<F>(action: ref/F) -> i32");
+                for (var i = 1; i <= count; i++)
+                {
+                    source.AppendLine($"    F is Callable<([{i} of i32]) -> i32>");
+                }
+
+                source.AppendLine("    return action([42])");
+                source.AppendLine("public func main() => ()");
+                break;
+            case "results":
+                source.AppendLine("let action = func [] (flag: i32)");
+                for (var i = 0; i < count - 1; i++)
+                {
+                    source.AppendLine($"    if flag == {i}\n        return {i}@i32");
+                }
+
+                source.AppendLine($"    return {count - 1}@i32");
+                source.AppendLine("require action(0) == 0 else => $abort(\"result\")");
+                break;
+            case "regions":
+                source.AppendLine("func check(flag: bool) -> i32");
+                for (var i = 0; i < count; i++)
+                {
+                    source.AppendLine($"    var n{i} = {i}\n    var r{i} = n{i}@ref");
+                }
+
+                for (var i = 0; i < count; i++)
+                {
+                    source.AppendLine($"    if flag\n        r{i} = n{(i + 1) % count}@ref");
+                }
+
+                source.AppendLine("    var iteration = 0\n    while iteration < 2");
+                for (var i = 0; i < count; i++)
+                {
+                    source.AppendLine($"        r{i} = n{(i + 2) % count}@ref");
+                }
+
+                source.AppendLine("        iteration += 1\n    var sum = 0");
+                for (var i = 0; i < count; i++)
+                {
+                    source.AppendLine($"    sum += r{i}@follow");
+                }
+
+                for (var i = 0; i < count; i++)
+                {
+                    source.AppendLine($"    n{i} = 42");
+                }
+
+                source.AppendLine($"    return sum\nrequire check(true) == {count * (count - 1) / 2} else => $abort(\"region\")");
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(axis));
+        }
+
+        return source.ToString();
+    }
+
     internal static string FunctionReferenceRanking(bool borrowed)
     {
         const string Source = "func fail(value: i32) -> Never => $abort(\"not called\")\nfunc choose(value: (i32) -> i32) -> i32 => 0\nfunc choose(value: (i32) -> Never) -> i32 => 42\nlet action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nlet result = action(value@move)";

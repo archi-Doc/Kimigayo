@@ -108,6 +108,7 @@ public sealed partial class OwnershipBody
     /// <summary>Gets retained cells in the local borrow dependency table.</summary>
     internal int BorrowDependencyCapacity => this.borrowDependencies.Capacity;
 
+    // Packed table payload only; LocalRegionStorageBytes/LocalRegionIndexCapacity report region flow and target-query storage.
     internal long BorrowStorageBytes => (long)this.borrowDependencies.ByteCapacity + this.retainedBorrowAuthority.ByteCapacity + this.borrowLive.ByteCapacity;
 
     // SPEC 15.6.3: the flow row of each operation kind (SharedEngineTotalityTest checks that none is Unclassified).

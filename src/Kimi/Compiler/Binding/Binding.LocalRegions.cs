@@ -113,7 +113,7 @@ public sealed partial class Binding
                         this.regionWork.Add(current.Operands[i]);
                     }
                 }
-                else if (!IsLocalRegion(current))
+                else if (!IsLocalRegion(current) && current.Kind != OriginKind.Inference)
                 {
                     // A finite Origin keeps its own Loan anchor in addition to constraints reaching it.
                     region.Sources.Add(current);
@@ -363,17 +363,29 @@ public sealed partial class Binding
                 return;
             }
 
-            if (!this.localRegions.TryGetValue(target, out var region))
-            {
-                this.localRegions.Add(target, region = new());
-            }
+            this.RecordRegionBound(source, target, evidence);
+        }
+    }
 
-            if (!region.Parents.Contains(source))
-            {
-                region.Parents.Add(source);
-                region.Values.Add(evidence);
-                this.regionVersion++;
-            }
+    // Also publishes solved initializer aliases: call plans keep their original atoms, while every stored value must
+    // reach the same checked source through them. An alias contributes no independent finite Loan anchor.
+    private void RecordRegionBound(BoundOrigin source, BoundOrigin target, Koto evidence)
+    {
+        if (ReferenceEquals(source, target))
+        {
+            return;
+        }
+
+        if (!this.localRegions.TryGetValue(target, out var region))
+        {
+            this.localRegions.Add(target, region = new());
+        }
+
+        if (!region.Parents.Contains(source))
+        {
+            region.Parents.Add(source);
+            region.Values.Add(evidence);
+            this.regionVersion++;
         }
     }
 
