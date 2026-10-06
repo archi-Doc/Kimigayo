@@ -314,13 +314,13 @@ public sealed partial class OwnershipBody
                 (this.Places[place].Type.Origin is { } origin && this.OriginNamesRoot(origin, root))) ? LoanRequirement.Ref : mode;
     }
 
-    private bool OriginNamesRoot(BoundOrigin origin, int root)
+    private bool OriginNamesRoot(BoundOrigin origin, int root, bool expand = true)
     {
-        if (Binding.IsLocalRegion(origin))
+        if (expand && this.Function.CodeContext.Compilation.Binding.HasRegionBounds(origin))
         {
             foreach (var source in this.Function.CodeContext.Compilation.Binding.LocalRegionSources(origin))
             {
-                if (this.OriginNamesRoot(source, root))
+                if (this.OriginNamesRoot(source, root, false))
                 {
                     return true;
                 }

@@ -11,10 +11,10 @@ internal static class StructStorage
 
     // A constructed Type's stored Field Types are its substitution of the declared ones: the storage an analysis run or an
     // instantiation prepared, and the same substitution on demand otherwise (a generic template whose Semantics cases are
-    // substituted declares Types that no run prepares, SPEC 8.10); a nominal Type's Field Types are the declared ones.
+    // substituted declares Types that no run prepares, SPEC 8.10). Nominal Types with Origin arguments need substitution too.
     internal static BoundType? FieldType(BoundType type, int index)
         => type.StoredFields is { } fields ? fields[index]
-            : type.Kind == BoundTypeKind.Constructed && Declaration(type) is { } declaration ? declaration.CodeContext.Compilation.Binding.StoredType(Field(type, index), type)
+            : (type.Kind == BoundTypeKind.Constructed || type.OriginArguments.Count != 0) && Declaration(type) is { } declaration ? declaration.CodeContext.Compilation.Binding.StoredType(Field(type, index), type)
             : Field(type, index).BoundType;
 
     internal static StructKoto? Declaration(BoundType? type) => IsStruct(type) ? (StructKoto)type!.Symbol!.Declaration : null;

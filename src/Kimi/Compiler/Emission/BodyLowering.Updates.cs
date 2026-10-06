@@ -113,9 +113,12 @@ internal sealed partial class BodyLowering
         var type = reference.Components[0];
         var receiver = Input(body, id, 0);
         var input = Input(body, id, 1);
+        var binding = body.Function.CodeContext.Compilation.Binding;
+        var inputType = swap ? body.Places[operation.Input].Type.Components[0] : body.Places[operation.Input].Type;
         if (reference.Semantics != SemanticsKind.Uniq || !ReferenceTypes.IsStorage(reference) ||
-            !ReferenceEquals(body.Places[operation.Place].Type, exchange || swap ? type : BoundType.Unit) || !ReferenceEquals(ValueType(body, receiver), reference) ||
-            !ReferenceEquals(swap ? body.Places[operation.Input].Type.Components[0] : body.Places[operation.Input].Type, type) ||
+            !binding.FitsVerifiedTypeAt(body.Places[operation.Place].Type, exchange || swap ? type : BoundType.Unit, operation.Source) ||
+            ValueType(body, receiver) is not { } receiverType || !binding.FitsVerifiedTypeAt(receiverType, reference, operation.Source) ||
+            !binding.FitsVerifiedTypeAt(inputType, type, operation.Source) || (swap && !binding.FitsVerifiedTypeAt(type, inputType, operation.Source)) ||
             (swap && body.Places[operation.Input].Type.Semantics != SemanticsKind.Uniq) ||
             (body.IsReachable(id) && (!this.Dominates(receiver, id) ||
                 (body.GetInputState(id, first) & PlaceState.MustInit) == 0 || (body.GetInputState(id, operation.Input) & PlaceState.MustInit) == 0)))

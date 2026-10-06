@@ -19,8 +19,9 @@ public sealed partial class OwnershipBody
     // call's writable argument and the Place it borrows take the stored or passed Place's Loans at the operation, under the
     // storage Type's contract (RetainBorrowAuthority); a reference read from the retaining Place afterwards descends from the
     // retained value (DescendsFrom).
-    private readonly List<(int Referent, int Operation, int Stored, BoundType Storage)> retentions = new();
+    private readonly List<(int Referent, int Operation, int Stored, BoundType Storage, int Read, bool Complete)> retentions = new();
 
+    private int[] retentionStarts = [];
     private PackedAnalysisTable borrowLive = new(1);
     private int[] checkingBorrowHeads = [];
     private PackedAnalysisTable borrowDependencies = new(2);
@@ -508,6 +509,7 @@ public sealed partial class OwnershipBody
                                     ReferenceTypes.IsBorrow(this.Places[addressed].Type.Components[0]) &&
                                     !ReferenceEquals(this.IsExclusiveBorrowInput(root) ? this.Places[root].Type.Components[0] : this.Places[root].Type, this.Places[addressed].Type.Components[0]);
                                 if (!referenceSlot && sourcePlace >= 0 && this.BorrowModeAt(sourcePlace, root, op, this.borrowDependencies[(sourcePlace * count) + root]) != LoanRequirement.None &&
+                                    (sourcePlace == root || this.loanFlowRoot != root || this.LoanCarryingDefinition(sourcePlace, root, op, count) != -1) &&
                                     (value.Kind is not (OwnershipValueKind.PointerStore or OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedUpdate) || sourcePlace == root ||
                                         (ReferenceTypes.IsBorrow(this.Places[sourcePlace].Type) &&
                                             ReferenceEquals(
@@ -660,14 +662,14 @@ public sealed partial class OwnershipBody
             }
         }
 
-        void AddOrigin(int place, BoundOrigin origin, LoanRequirement mode, bool referent = false)
+        void AddOrigin(int place, BoundOrigin origin, LoanRequirement mode, bool referent = false, bool expand = true)
         {
             var rooted = false;
-            if (Binding.IsLocalRegion(origin))
+            if (expand && this.Function.CodeContext.Compilation.Binding.HasRegionBounds(origin))
             {
                 foreach (var source in this.Function.CodeContext.Compilation.Binding.LocalRegionSources(origin))
                 {
-                    AddOrigin(place, source, mode, referent);
+                    AddOrigin(place, source, mode, referent, false);
                 }
 
                 return;
@@ -1619,16 +1621,16 @@ public sealed partial class OwnershipBody
     }
 
     // Whether an input Type names any non-static Origin of a result Type.
-    private bool NamesResultOrigin(BoundType type, BoundType input)
+    private bool NamesResultOrigin(BoundType type, BoundType input, bool includeBounds = false)
     {
-        if (type.Origin is { Kind: not OriginKind.Static } origin && this.NamedOriginRequirement(input, origin) != LoanRequirement.None)
+        if (type.Origin is { Kind: not OriginKind.Static } origin && Names(origin))
         {
             return true;
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (type.OriginArguments[i].Kind != OriginKind.Static && this.NamedOriginRequirement(input, type.OriginArguments[i]) != LoanRequirement.None)
+            if (type.OriginArguments[i].Kind != OriginKind.Static && Names(type.OriginArguments[i]))
             {
                 return true;
             }
@@ -1636,13 +1638,34 @@ public sealed partial class OwnershipBody
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (this.NamesResultOrigin(type.Components[i], input))
+            if (this.NamesResultOrigin(type.Components[i], input, includeBounds))
             {
                 return true;
             }
         }
 
         return false;
+
+        bool Names(BoundOrigin origin)
+        {
+            if (this.NamedOriginRequirement(input, origin) != LoanRequirement.None)
+            {
+                return true;
+            }
+
+            if (includeBounds && this.Function.CodeContext.Compilation.Binding.HasRegionBounds(origin))
+            {
+                foreach (var source in this.Function.CodeContext.Compilation.Binding.LocalRegionSources(origin))
+                {
+                    if (this.NamedOriginRequirement(input, source) != LoanRequirement.None)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
     }
 
     // An operation after which the Place holds a new value, or none: its earlier value, and every dependency of that value,
@@ -1719,8 +1742,10 @@ public sealed partial class OwnershipBody
     private void PrepareRetentions()
     {
         this.retentions.Clear();
+        Grow(ref this.retentionStarts, this.Operations.Count + 1);
         for (var id = 0; id < this.Operations.Count; id++)
         {
+            this.retentionStarts[id] = this.retentions.Count;
             var operation = this.Operations[id];
             if (operation.Kind == OwnershipOperationKind.StorePointer)
             {
@@ -1728,7 +1753,7 @@ public sealed partial class OwnershipBody
                     this.ValueOperands[node.Start] is >= 0 and var pointer && ValuePlaceForBorrow(this.Operations[pointer]) is >= 0 and var holder &&
                     this.Places[holder].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var stored] })
                 {
-                    this.retentions.Add((this.StoredReferent(pointer, holder), id, operation.Place, stored));
+                    AddTargets(pointer, holder, operation.Place, stored, id, id, complete: true);
                 }
 
                 continue;
@@ -1739,9 +1764,19 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
+            if (operation.Input >= 0 && operation.Source is InvocationKoto { BoundValueCall.ReceiverKind: SemanticsKind.Uniq })
+            {
+                var environment = this.Places[operation.Input].Type;
+                for (var argument = id - 1; argument >= 0 && this.Operations[argument] is { Kind: OwnershipOperationKind.CallEntry } incoming &&
+                    ReferenceEquals(incoming.Source, operation.Source); argument--)
+                {
+                    this.retentions.Add((operation.Input, id, incoming.Place, environment, argument, false));
+                }
+            }
+
             for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
             {
-                if (input.Place < 0 || this.Places[input.Place].Type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var storage] } || !this.RetainsInput(storage))
+                if (input.Place < 0 || this.Places[input.Place].Type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var storage] } || !storage.CarriesOrigin)
                 {
                     continue;
                 }
@@ -1753,14 +1788,39 @@ public sealed partial class OwnershipBody
                         continue;
                     }
 
-                    this.retentions.Add((input.Place, id, incoming.Place, storage));
+                    this.retentions.Add((input.Place, id, incoming.Place, storage, argument, false));
+                    AddTargets(entry, input.Place, incoming.Place, storage, id, argument, complete: false);
                     for (var borrow = entry - 1; borrow >= 0; borrow--)
                     {
                         if (this.Operations[borrow] is { Kind: OwnershipOperationKind.Borrow } receiver && receiver.Input == input.Place)
                         {
-                            this.retentions.Add((receiver.Place, id, incoming.Place, storage));
+                            this.retentions.Add((receiver.Place, id, incoming.Place, storage, argument, false));
                         }
                     }
+                }
+            }
+        }
+
+        this.retentionStarts[this.Operations.Count] = this.retentions.Count;
+
+        void AddTargets(int pointer, int holder, int stored, BoundType storage, int operation, int read, bool complete)
+        {
+            var target = this.StoredReferent(pointer, holder);
+            if (target != holder && Binding.FitsStructuralPart(this.Places[target].Type, storage))
+            {
+                this.retentions.Add((target, operation, stored, storage, read, complete));
+                return;
+            }
+
+            this.retentions.Add((holder, operation, stored, storage, read, false));
+            for (var place = 0; place < this.Places.Count; place++)
+            {
+                if (place != holder && this.borrowDependencies[(holder * this.Places.Count) + place] != LoanRequirement.None &&
+                    (Binding.FitsStructuralPart(this.Places[place].Type, storage) ||
+                        (complete && this.borrowDependencies[(holder * this.Places.Count) + place] == LoanRequirement.Uniq && this.Places[place].Type.CarriesOrigin)))
+                {
+                    // Several possible referents: a store adds a possible value, never erases the others' current values.
+                    this.retentions.Add((place, operation, stored, storage, read, false));
                 }
             }
         }
@@ -1772,7 +1832,7 @@ public sealed partial class OwnershipBody
     {
         for (var i = 0; i < this.retentions.Count && this.retentions[i].Operation < before; i++)
         {
-            var (target, at, stored, _) = this.retentions[i];
+            var (target, at, stored, _, _, _) = this.retentions[i];
             if (target == referent)
             {
                 var definition = this.borrowDefinitions[stored] is >= 0 and var only && only < at ? only : this.ProducingValue(stored, at);
@@ -1780,22 +1840,6 @@ public sealed partial class OwnershipBody
                 {
                     return true;
                 }
-            }
-        }
-
-        return false;
-    }
-
-    // SPEC 15.6.3: whether a writable referent of Type `storage` may retain another argument: its complete stored Type names an
-    // exclusive input root's Origin.
-    private bool RetainsInput(BoundType storage)
-    {
-        for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
-        {
-            var root = this.borrowRoots[rootIndex];
-            if (this.IsExclusiveBorrowInput(root) && this.NamedOriginRequirement(storage, this.Places[root].Type.Origin!) != LoanRequirement.None)
-            {
-                return true;
             }
         }
 
@@ -3225,7 +3269,7 @@ public sealed partial class OwnershipBody
 
                 sole = entry;
             }
-            else if (this.NamesResultOrigin(result, type))
+            else if (this.NamesResultOrigin(result, type, includeBounds: true))
             {
                 return -1;
             }
@@ -3246,7 +3290,7 @@ public sealed partial class OwnershipBody
         for (var entry = call - 1; entry > receiver; entry--)
         {
             var input = this.Operations[entry];
-            if (input.Place < 0 || this.NamesResultOrigin(result, this.Places[input.Place].Type))
+            if (input.Place < 0 || this.NamesResultOrigin(result, this.Places[input.Place].Type, includeBounds: true))
             {
                 return true;
             }

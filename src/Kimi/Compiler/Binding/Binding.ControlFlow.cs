@@ -344,8 +344,9 @@ public sealed partial class Binding
                 // A Type-qualified, fully formed container supplies its constructor/Case result without surveying arguments
                 // or evaluating a receiver. Unbound qualifiers and overloaded functions still wait for ordinary binding.
                 var selected = this.Member(member, this.NodeScope(member, scope));
-                var declaring = this.memberSelections.GetValueOrDefault(member).DeclaringType;
-                if (selected?.EnumCase is not null && declaring is not null)
+                var declaring = this.memberSelections.GetValueOrDefault(member).DeclaringType ??
+                    (selected?.Declaration is FunctionKoto { IsConstructor: true } ? member.Left.BoundType : null);
+                if (declaring is not null && (selected?.EnumCase is not null || selected?.Declaration is FunctionKoto { IsConstructor: true }))
                 {
                     if (declaring.Components.Count != (declaring.Symbol?.Schema?.GenericSlots.Count ?? 0) ||
                         declaring.OriginArguments.Count != (declaring.Symbol?.Schema?.Origins.Count ?? 0))

@@ -96,21 +96,21 @@ public class OriginRelationDiagnosticTest
         Assert.All(errors, static x => Assert.DoesNotContain("bound the", x.Advice, StringComparison.Ordinal));
     }
 
-    // SPEC 15.6.5: a chain between two body Origins is Proven by the spec and constrains region inference, but ownership analysis
-    // keeps Loans only through the Origins written in a holder's Type, so accepting it would lose the longer Borrow's Loan (a use
-    // after the Move of `w` was accepted). It is a located limit at the value, never a relation record and never accepted.
+    // Finite region bounds keep the actual Loan through annotations, scope exits and shared views of exclusive inputs.
     [Theory]
-    [InlineData("struct H {s}\n    public let item: ref/string during s\n    public init(item: ref/string during s) => self.item = item\nfunc eat(n: string) -> () => ()\nfunc peek(n: ref/string) -> () => ()\nfunc f() -> ()\n    let v = \"v\"\n    let h = H.init(v@ref)\n    let w = \"w\"\n    let r: ref/string during h.s = w@ref\n    eat(w@move)\n    peek(r)\n")]
-    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\n")]
-    [InlineData("func f() -> ()\n    var x: i32 = 4\n    var y: i32 = 6\n    let r: ref/i32 = x@ref\n    let s: ref/i32 during r = y@ref\n    y = 7\n    Console.writeLine(\"\\(s@follow) \\(r@follow)\")\n")]
+    [InlineData("struct H {s}\n    public let item: ref/string during s\n    public init(item: ref/string during s) => self.item = item\nfunc eat(n: string) -> () => ()\nfunc peek(n: ref/string) -> () => ()\nfunc f() -> ()\n    let v = \"v\"\n    let h = H.init(v@ref)\n    let w = \"w\"\n    let r: ref/string during h.s = w@ref\n    eat(w@move)\n    peek(r)\n", "w")]
+    [InlineData("struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\nfunc f() -> ()\n    let v = 7\n    let h = H.init(v@ref)\n    var keep = h.item\n    if true\n        let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r\n    Console.writeLine(\"\\(keep@follow)\")\n", "let w = 9\n        let r: ref/i32 during h.s = w@ref\n        keep = r")]
+    [InlineData("func f() -> ()\n    var x: i32 = 4\n    var y: i32 = 6\n    let r: ref/i32 = x@ref\n    let s: ref/i32 during r = y@ref\n    y = 7\n    Console.writeLine(\"\\(s@follow) \\(r@follow)\")\n", "y = 7")]
     // A fixed input over a local Borrow also loses the input's Loan: the write through `x` was accepted while `h` lived.
-    [InlineData("func g(x: uniq/i32) -> i32\n    let local: i32 = 1\n    let r = local@ref\n    let h: ref/i32 during r = x@follow@ref\n    x@follow = 5\n    return h@follow\n")]
-    public void AChainBetweenBodyOriginsIsALocatedLimit(string body)
+    [InlineData("func g(x: uniq/i32) -> i32\n    let local: i32 = 1\n    let r = local@ref\n    let h: ref/i32 during r = x@follow@ref\n    x@follow = 5\n    return h@follow\n", "x")]
+    public void AChainBetweenBodyOriginsRetainsTheSourceLoan(string body, string at)
     {
         var source = body + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), error.Code);
-        Assert.EndsWith("@ref", Text(source, error.Span), StringComparison.Ordinal);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        Assert.Equal(at, Text(source, error.Span));
+        Assert.Equal(DiagnosticCategory.Language, error.Category);
+        Assert.Contains(error.Related!, static x => x.Role == "loan");
     }
 
     // SPEC 15.4.4: the local's initializer completes its omitted Origin before a later anonymous header reads it.

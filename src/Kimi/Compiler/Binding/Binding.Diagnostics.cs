@@ -677,7 +677,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.1: the Origin relation that a structurally fitting value leaves at its destination, for phases that judge the fit.
     internal OriginRelationFact? OriginRelationOf(BoundType actual, BoundType expected, Koto at)
-        => ReferenceTypes.StorageMatches(expected, actual) && this.FailedOriginRelation(actual, expected, at, OriginVariance.Covariant, judged: HasLocalRegion(actual) || HasLocalRegion(expected)) is { } relation
+        => ReferenceTypes.StorageMatches(expected, actual) && this.FailedOriginRelation(actual, expected, at, OriginVariance.Covariant) is { } relation
             ? relation with { At = at, Destination = expected } : null;
 
     /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
@@ -1475,7 +1475,7 @@ public sealed partial class Binding
     // `polarity` is the variance of the compared position within the fitted Type, composed as FitsTypeCore and CheckTypeUse compose
     // it (SPEC 15.3.5): a contravariant position names the reverse relation, and an invariant or unused one an `==`, also for every
     // position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-    private OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, int depth = 0, bool judged = false, List<OriginRelationFact>? all = null)
+    private OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, int depth = 0, bool judged = false, List<OriginRelationFact>? all = null, bool verified = false)
     {
         if (depth > 64)
         {
@@ -1483,7 +1483,7 @@ public sealed partial class Binding
         }
 
         OriginRelationFact? first = null;
-        if (actual.Origin is { } outer && expected.Origin is { } required && this.FailedOriginPart(outer, required, expected, use, polarity, judged, all) is { } layer)
+        if (actual.Origin is { } outer && expected.Origin is { } required && this.FailedOriginPart(outer, required, expected, use, polarity, judged, all, verified) is { } layer)
         {
             if (all is null)
             {
@@ -1497,7 +1497,7 @@ public sealed partial class Binding
         for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
         {
             var target = exclusive ? OriginVariance.Invariant : polarity;
-            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, target, depth + 1, judged, all) is { } failed)
+            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, target, depth + 1, judged, all, verified) is { } failed)
             {
                 if (all is null)
                 {
@@ -1511,7 +1511,7 @@ public sealed partial class Binding
         for (var i = 0; i < actual.OriginArguments.Count && i < expected.OriginArguments.Count; i++)
         {
             var variance = ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant);
-            if (this.FailedOriginPart(actual.OriginArguments[i], expected.OriginArguments[i], expected, use, variance, judged, all) is { } slot)
+            if (this.FailedOriginPart(actual.OriginArguments[i], expected.OriginArguments[i], expected, use, variance, judged, all, verified) is { } slot)
             {
                 if (all is null)
                 {
@@ -1527,7 +1527,7 @@ public sealed partial class Binding
             var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
                 : actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2 && i == 0 ? OriginVariance.Contravariant
                 : OriginVariance.Covariant;
-            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), depth + 1, judged, all) is { } argument)
+            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), depth + 1, judged, all, verified) is { } argument)
             {
                 if (all is null)
                 {
@@ -1543,7 +1543,7 @@ public sealed partial class Binding
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a
     // contravariant one, and both, as `==` with `actual` first, at an invariant one.
-    private OriginRelationFact? FailedOriginPart(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, bool judged, List<OriginRelationFact>? all = null)
+    private OriginRelationFact? FailedOriginPart(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, bool judged, List<OriginRelationFact>? all = null, bool verified = false)
     {
         if (ReferenceEquals(actual, expected))
         {
@@ -1552,15 +1552,15 @@ public sealed partial class Binding
 
         if (variance == OriginVariance.Contravariant)
         {
-            return this.OriginPartFails(expected, actual, use, judged) ? this.FailedChain(use, expected, actual, type, judged, all) : null;
+            return Fails(expected, actual) ? this.FailedChain(use, expected, actual, type, judged, all) : null;
         }
 
         if (variance == OriginVariance.Covariant)
         {
-            return this.OriginPartFails(actual, expected, use, judged) ? this.FailedChain(use, actual, expected, type, judged, all) : null;
+            return Fails(actual, expected) ? this.FailedChain(use, actual, expected, type, judged, all) : null;
         }
 
-        if (!this.OriginPartFails(actual, expected, use, judged) && !this.OriginPartFails(expected, actual, use, judged))
+        if (!Fails(actual, expected) && !Fails(expected, actual))
         {
             return null;
         }
@@ -1568,6 +1568,10 @@ public sealed partial class Binding
         OriginRelationFact equality = new(use, actual, expected, true, type, RefutesOriginRelation(actual, expected));
         all?.Add(equality);
         return equality;
+
+        bool Fails(BoundOrigin longer, BoundOrigin shorter) => verified
+            ? !this.VerifiedRegionOutlives(longer, shorter, use)
+            : this.OriginPartFails(longer, shorter, use, judged);
     }
 
     // SPEC 15.3.6, 15.6.1: a meet at the longer end outlives an Origin exactly when each operand does, so an `outlives` relation names

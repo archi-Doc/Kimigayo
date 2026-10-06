@@ -263,14 +263,17 @@ public sealed partial class Binding
             return;
         }
 
-        if (IsLocalRegion(longer) || IsLocalRegion(shorter))
+        // Complete initializer-owned holes before deferring finite constraints to the body graph.
+        var forwardProven = this.ProvesOriginOutlives(longer, shorter, at);
+        var backwardProven = !equality || this.ProvesOriginOutlives(shorter, longer, at);
+        if (!FixedOrigin(longer) || !FixedOrigin(shorter))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, context.Parameter, longer, shorter, Equality: equality));
             return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
         }
 
-        var forward = this.ProvesOriginOutlives(longer, shorter, at) ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at);
-        var backward = !equality || this.ProvesOriginOutlives(shorter, longer, at) ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at);
+        var forward = forwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(longer, shorter, at);
+        var backward = backwardProven ? OriginJudgment.Proven : this.JudgeOriginRelation(shorter, longer, at);
         if (forward is OriginJudgment.Refuted or OriginJudgment.Unknown || backward is OriginJudgment.Refuted or OriginJudgment.Unknown)
         {
             // An equality fails as one `==` record; a fresh Origin or a Type slot fixed by another input relates that input (SPEC 15.6.1,

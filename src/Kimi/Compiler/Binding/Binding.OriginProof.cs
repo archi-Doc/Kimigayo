@@ -15,12 +15,33 @@ public sealed partial class Binding
     internal static bool IsFitObligation(in BindingObligation obligation)
         => obligation.Clause is null && !obligation.WellFormed && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
 
+    // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
+    // static, or a meet of them.
+    internal static bool FixedOrigin(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (!FixedOrigin(origin.Operands[i]))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
+    }
+
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
         {
             // SPEC 15.3.6: an Origin resolved to an open region is that local region; it needs no annotation.
-            return this.OriginAtUse(pending, obligation.Use) is { Kind: not (OriginKind.Inference or OriginKind.Unbound) } or { Open: true };
+            var resolved = this.OriginAtUse(pending, obligation.Use);
+            return resolved.Kind is not (OriginKind.Inference or OriginKind.Unbound) || IsLocalRegion(resolved);
         }
 
         if (obligation.Kind == BindingObligationKind.OriginOutlives && obligation.Longer is { } longer && obligation.Shorter is { } shorter)
@@ -62,17 +83,30 @@ public sealed partial class Binding
         => this.JudgeOriginRelation(longer, shorter, use) is OriginJudgment.Refuted or OriginJudgment.Unknown;
 
     // SPEC 15.6.5: local storage regions carry their source bounds to ownership; a finite-to-local-to-fixed chain is refuted
-    // even in checking code. Fixed contracts still need established premises. Finite relations outside that graph retain their
-    // located implementation boundary until ownership can carry their Loans too.
+    // even in checking code. Fixed contracts still need established premises; finite relations carry their actual Loans
+    // through the same reaching-value graph as inferred local regions.
     internal OriginJudgment JudgeOriginRelation(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        if (IsLocalRegion(longer))
+        return this.HasRegionBounds(longer) ? this.JudgeLocalRegion(longer, shorter, use) : this.JudgeOriginAtoms(longer, shorter, use);
+    }
+
+    private static bool IsWithin(Koto use, Koto declaration)
+    {
+        for (var current = use; current is not null; current = current.Parent)
         {
-            return this.JudgeLocalRegion(longer, shorter, use);
+            if (ReferenceEquals(current, declaration))
+            {
+                return true;
+            }
         }
 
+        return false;
+    }
+
+    private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use)
+    {
         if (IsLocalRegion(shorter))
         {
             return OriginJudgment.Proven;
@@ -90,43 +124,9 @@ public sealed partial class Binding
             return OriginJudgment.Refuted;
         }
 
-        return !FixedOrigin(longer) ? OriginJudgment.Unrepresentable
-            : FixedOrigin(shorter) ? OriginJudgment.Unknown
-            : longer.Kind == OriginKind.Static && shorter.Kind != OriginKind.Anchor ? OriginJudgment.Proven
-            : OriginJudgment.Unrepresentable;
-    }
-
-    // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
-    // static, or a meet of them.
-    private static bool FixedOrigin(BoundOrigin origin)
-    {
-        if (origin.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (!FixedOrigin(origin.Operands[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
-    }
-
-    private static bool IsWithin(Koto use, Koto declaration)
-    {
-        for (var current = use; current is not null; current = current.Parent)
-        {
-            if (ReferenceEquals(current, declaration))
-            {
-                return true;
-            }
-        }
-
-        return false;
+        return longer.Kind == OriginKind.Unbound || shorter.Kind == OriginKind.Unbound ? OriginJudgment.Unrepresentable
+            : FixedOrigin(longer) && FixedOrigin(shorter) ? OriginJudgment.Unknown
+            : OriginJudgment.Proven;
     }
 
     // A local's omitted Origins remain open while its initializer acquires values, whether written in its annotation or
@@ -523,7 +523,7 @@ public sealed partial class Binding
         var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality);
         var resolvedLonger = this.OriginAtUse(relation.Longer, use);
         var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
-        if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter))
+        if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter) || !FixedOrigin(resolvedShorter))
         {
             this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
             return;

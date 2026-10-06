@@ -365,13 +365,18 @@ public class LocalOriginClauseTest
     }
 
     [Theory]
-    // A slot chain between two body Borrows needs region inference: the located limit at the value, never accepted or a Proof record.
-    [InlineData(Holder + "func f() -> i32\n    let v = 1\n    let w = 2\n    let r = w@ref\n    let h0 = H.init(v@ref)\n    let h: H{x} = h0@move\n        origin x.s == r\n    return h.item@follow\n", nameof(DiagnosticCode.UnsupportedOwnership_Kd), "h0@move")]
-    // So is a clause between two body Borrows, at the clause; `h` keeps only `v@ref`'s Loan, so writing `w` is no conflict.
-    [InlineData(Holder + "func f() -> i32\n    let v = 1\n    var w = 2\n    let r = w@ref\n    let h: H{x} = H.init(v@ref)\n        origin x.s outlives r\n    w = 5\n    return h.item@follow\n", nameof(DiagnosticCode.UnsupportedOwnership_Kd), "origin x.s outlives r")]
+    [InlineData("Equality", "let h0 = H.init(v@ref)\n    let h: H{x} = h0@move\n        origin x.s == r")]
+    [InlineData("Bound", "let h: H{x} = H.init(v@ref)\n        origin x.s outlives r\n    w = 5")]
+    public void FiniteLocalClausesKeepOnlyTheValuesActuallyStored(string name, string declaration)
+    {
+        var source = Holder + "func f() -> i32\n    let v = 1\n    var w = 2\n    let r = w@ref\n    " + declaration + "\n    return h.item@follow\nrequire f() == 1 else => $abort(\"finite clause\")";
+        ScalarEmissionTest.EmitFixture("FiniteLocalClause" + name, source, string.Empty);
+    }
+
+    [Theory]
     // A contravariant slot's principal solution is a lower bound outliving every other, which local inference does not choose.
     [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "origin x.s outlives b")]
-    public void AnUnrepresentableLocalRelationIsALocatedLimit(string body, string code, string at)
+    public void AnUnrepresentableContravariantSolutionIsALocatedLimit(string body, string code, string at)
     {
         var source = body + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

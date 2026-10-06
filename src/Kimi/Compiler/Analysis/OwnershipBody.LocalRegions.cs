@@ -22,7 +22,7 @@ public sealed partial class OwnershipBody
         var needed = false;
         for (var p = 0; p < count && !needed; p++)
         {
-            needed = Binding.HasLocalRegion(this.Places[p].Type);
+            needed = this.Function.CodeContext.Compilation.Binding.HasRegionBounds(this.Places[p].Type);
         }
 
         if (!needed)
@@ -107,9 +107,36 @@ public sealed partial class OwnershipBody
             }
 
             var operation = this.Operations[id];
+            var retained = -1;
+            var writes = false;
+            for (var r = this.retentionStarts[id]; r < this.retentionStarts[id + 1]; r++)
+            {
+                var record = this.retentions[r];
+                if (record.Referent == holder && this.TypeKeepsRoot(record.Storage, root))
+                {
+                    var incoming = Source(record.Read, record.Stored);
+                    retained = Combine(retained, incoming);
+                    writes = true;
+                    if (record.Complete)
+                    {
+                        return Transfer(record.Read, record.Stored, slot, this.loanSlots[holder]);
+                    }
+                }
+            }
+
+            if (writes)
+            {
+                return Combine(State(id, slot), retained);
+            }
+
             if (operation.Place == holder && operation.Kind is OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.Read)
             {
                 return State(id, slot); // Computing an address or lending a value does not replace its contents.
+            }
+
+            if (operation.Place == holder && operation.Kind == OwnershipOperationKind.Borrow)
+            {
+                return State(id, slot);
             }
 
             if (operation.Projection >= 0 && this.Projections[operation.Projection].Root == holder)
@@ -182,7 +209,35 @@ public sealed partial class OwnershipBody
 
         int Produced(int id, int holder)
         {
+            var operation = this.Operations[id];
             var value = this.Values[id];
+            if (operation.Kind == OwnershipOperationKind.Produce && id > 0 &&
+                this.Operations[id - 1] is { Kind: OwnershipOperationKind.Call } previous && previous.Place == holder &&
+                ReferenceEquals(previous.Source, operation.Source))
+            {
+                return Source(id, holder);
+            }
+
+            if (operation.Kind == OwnershipOperationKind.Call && value.Kind != OwnershipValueKind.DefaultCall)
+            {
+                if (this.ResultArgument(id) is >= 0 and var sole)
+                {
+                    return Source(sole, ValuePlaceForBorrow(this.Operations[sole]));
+                }
+
+                var result = -1;
+                for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input &&
+                    ReferenceEquals(input.Source, operation.Source); entry--)
+                {
+                    if (input.Place >= 0 && this.NamesResultOrigin(this.Places[holder].Type, this.Places[input.Place].Type, includeBounds: true))
+                    {
+                        result = Combine(result, Source(entry, input.Place));
+                    }
+                }
+
+                return result == -1 && this.FixedResultKeepsRoot(this.Places[holder].Type, root) ? id : result;
+            }
+
             if (FlowOf(value.Kind) == ValueFlow.Entries && this.Places[holder].Type.Kind == BoundTypeKind.Closure)
             {
                 var result = -1;
@@ -364,18 +419,18 @@ public sealed partial class OwnershipBody
         return false;
     }
 
-    private bool OriginKeepsRoot(BoundOrigin origin, int root)
+    private bool OriginKeepsRoot(BoundOrigin origin, int root, bool expand = true)
     {
         if (origin.Kind == OriginKind.Static)
         {
             return false;
         }
 
-        if (Binding.IsLocalRegion(origin))
+        if (expand && this.Function.CodeContext.Compilation.Binding.HasRegionBounds(origin))
         {
             foreach (var source in this.Function.CodeContext.Compilation.Binding.LocalRegionSources(origin))
             {
-                if (this.OriginKeepsRoot(source, root))
+                if (this.OriginKeepsRoot(source, root, false))
                 {
                     return true;
                 }
@@ -401,6 +456,39 @@ public sealed partial class OwnershipBody
         // local storage to inspect; the already established whole-value dependency remains the conservative bound there.
         return this.ProjectionPlace(origin) is not (>= 0 and var place) || place == root ||
             this.borrowDependencies[(place * this.Places.Count) + root] != LoanRequirement.None;
+    }
+
+    // A callable can publish an enclosing input's fixed Origin without taking that input at this invocation.
+    // Result-only inference variables, unlike those contract Origins, create no Loan by themselves.
+    private bool FixedResultKeepsRoot(BoundType type, int root)
+    {
+        if (!type.CarriesOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
+        {
+            return false;
+        }
+
+        if (type.Origin is { } origin && Binding.FixedOrigin(origin) && this.OriginKeepsRoot(origin, root))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (Binding.FixedOrigin(type.OriginArguments[i]) && this.OriginKeepsRoot(type.OriginArguments[i], root))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FixedResultKeepsRoot(type.Components[i], root))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private readonly record struct LoanFlowPart(int Place, int Parent, int Selector, BoundType Type)
