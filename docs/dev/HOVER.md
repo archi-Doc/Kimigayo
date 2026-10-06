@@ -17,6 +17,8 @@ they do not change language guarantees or mark pending work as supported.
   resolution, then encode physical path data separately from URL query/fragment. External mappings establish no neighbor
   placement; conflicting mappings and embedded sources have no physical destination. Resolution performs no I/O.
 - The session's adoption, synchronous comparison/rendering cache and edit-history mapping are the next implementation unit.
+- `HoverRenderer` serializes the documentation profile's tree to Markdown or plaintext. Completed blocks are staged
+  before publication; contract fields remain indivisible. Unsupported syntax is escaped, and links use source placement.
 
 ## Deterministic limits
 
@@ -24,11 +26,11 @@ they do not change language guarantees or mark pending work as supported.
 
 | Resource | Initial limit | Enforcement |
 | --- | ---: | --- |
-| Recursive projection / documentation depth | 64 | Projection implemented; documentation pending |
+| Recursive projection / documentation depth | 64 | Implemented |
 | Work per recursive formatting or request operation | 1,048,576 | Projection implemented; request comparison pending |
 | Total projection identity/index work | 4 × work limit | Implemented |
 | One header/call input and rendered declaration | 65,536 | Implemented; executable bodies excluded from header traversal |
-| Documentation input and response output | 65,536 | Renderer pending |
+| Documentation input and response output | 65,536 | Implemented |
 | Cached targets per document | 1,024 | Session pending |
 | Cached UTF-16 characters per document | 1,048,576 | Session pending |
 | Accepted incremental edits retained | 256 | Session pending |
@@ -47,6 +49,9 @@ regressions must remain unchanged when the optional evidence collector is absent
 `HoverLinkTest` covers admitted schemes, unsupported destinations, root escape, one-time UTF-8 decoding, literal percent/hash
 file names, URL suffixes, exact external placement and dependency-local documentation bases.
 
-Pending: actual Markdown/plaintext outputs and navigation, shared-check adoption/history, bounded cache/reuse checks,
+`HoverRenderingTest` checks independent CommonMark interpretation, plaintext, parameter-item selection, code/newline
+preservation, nested structures, unavailable syntax, interrupted documentation and indivisible mandatory fields.
+
+Pending: client navigation, shared-check adoption/history, bounded cache/reuse checks,
 allocation and throughput measurements for requests, and final whole-solution Session verification. Record measurement
 conditions and evidence paths here when these units are verified.

@@ -14,7 +14,8 @@ associated-Type contract/specification provenance, and retain structural Type/Or
 Effect projection shares existing bound judgments, retaining requirement and Callable premises and declaring contracts;
 Property supplements describe verified operations without asserting use-site writability. Type-parameter Constraints,
 implicit Unit results and specialization documentation roles remain distinct. Recursive header/Type/identity projection
-has deterministic resource guards. Full collection isolation, documentation rendering, general Hover response/adoption
+has deterministic resource guards. The bounded internal renderer preserves parsed Markdown/plaintext structure, isolated
+documentation failures and completed-block truncation (`HoverRenderingTest`). Full collection isolation, general Hover response/adoption
 and responsiveness measurements remain in the H1–H6 track in `docs/dev/PLAN.md`; current limits are in
 [Hover implementation notes](dev/HOVER.md). Existing unsupported language forms (including merged independent requirement
 identities and generic Property requirements) are not made available by Hover.
