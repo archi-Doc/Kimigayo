@@ -6,9 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    private readonly List<int[]> defaultPlaceFrames = new();
     private int[] defaultPlaces = [];
     private FunctionKoto? defaultFunction;
     private int defaultParameter;
+    private int defaultDepth;
 
     private void PrepareDefaults(BoundCall plan, int mark)
     {
@@ -17,36 +19,51 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        if (this.defaultPlaces.Length < target.Parameters.Count)
+        // A nested call evaluates its explicit arguments in the outer context, then prepares its own defaults. Retain the
+        // outer slots until this frame ends, including when an inner argument never completes. Warm calls reuse the buffers.
+        var previousPlaces = this.defaultPlaces;
+        var previousFunction = this.defaultFunction;
+        var previousParameter = this.defaultParameter;
+        var depth = this.defaultDepth;
+        if (depth == this.defaultPlaceFrames.Count)
         {
-            Array.Resize(ref this.defaultPlaces, target.Parameters.Count);
+            this.defaultPlaceFrames.Add([]);
         }
 
-        this.defaultPlaces.AsSpan(0, target.Parameters.Count).Fill(-1);
-        var cursor = mark;
-        var complete = true;
-        if (plan.Receiver is not null)
+        var slots = this.defaultPlaceFrames[depth];
+        if (slots.Length < target.Parameters.Count)
         {
-            var place = this.arguments[cursor++];
-            this.defaultPlaces[plan.ReceiverOperation.ParameterIndex] = place;
-            complete &= place >= 0;
+            Array.Resize(ref slots, target.Parameters.Count);
+            this.defaultPlaceFrames[depth] = slots;
         }
 
-        for (var i = 0; i < plan.ArgumentToParameter.Length; i++)
-        {
-            var place = this.arguments[cursor++];
-            complete &= place >= 0;
-            this.defaultPlaces[plan.ArgumentToParameter[i]] = place;
-        }
-
-        this.defaultFunction = target;
+        this.defaultDepth = depth + 1;
         try
         {
+            this.defaultPlaces = slots;
+            this.defaultFunction = target;
+            slots.AsSpan(0, target.Parameters.Count).Fill(-1);
+            var cursor = mark;
+            var complete = true;
+            if (plan.Receiver is not null)
+            {
+                var place = this.arguments[cursor++];
+                slots[plan.ReceiverOperation.ParameterIndex] = place;
+                complete &= place >= 0;
+            }
+
+            for (var i = 0; i < plan.ArgumentToParameter.Length; i++)
+            {
+                var place = this.arguments[cursor++];
+                complete &= place >= 0;
+                slots[plan.ArgumentToParameter[i]] = place;
+            }
+
             foreach (var omitted in plan.DefaultArguments)
             {
                 this.defaultParameter = omitted.Parameter.Slot;
                 var place = -1;
-                if (!ScalarDefaults.Supports(target, this.defaultParameter))
+                if (this.flow!.DefaultCompletionPending(omitted.Expression) || !ScalarDefaults.Supports(target, this.defaultParameter))
                 {
                     if (!this.DefiniteDefaultMove(target, this.defaultParameter, omitted.Expression))
                     {
@@ -55,8 +72,7 @@ public sealed partial class OwnershipAnalysis
                 }
                 else if (complete)
                 {
-                    // Explicit scalar arguments are already acquired copies. Reads in
-                    // the declaration expression now address those prepared slots.
+                    // The explicit arguments are already acquired; the declaration expression reads those prepared slots.
                     place = this.Argument(omitted.Expression, ArgumentOperationKind.Value);
                 }
 
@@ -67,7 +83,10 @@ public sealed partial class OwnershipAnalysis
         }
         finally
         {
-            this.defaultFunction = null;
+            this.defaultPlaces = previousPlaces;
+            this.defaultFunction = previousFunction;
+            this.defaultParameter = previousParameter;
+            this.defaultDepth = depth;
         }
     }
 

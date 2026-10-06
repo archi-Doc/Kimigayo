@@ -228,11 +228,11 @@ internal static class ScalarDefaults
 
     // SPEC 7.2.3: a default may call an ordinary function (effects included), or format text, with value arguments and temporary
     // shared inspections of supported expressions; its scalar or string result is independent of the prepared slots.
-    // Receivers, exclusive arguments, callable values and nested omitted defaults keep their guards, since
-    // one call prepares one frame of pending slots.
+    // Each call prepares its own frame of pending slots, so nested omitted defaults may temporarily replace the outer context.
+    // Receivers, exclusive arguments and callable values retain their guards.
     private static bool SupportsCall(InvocationKoto invocation, BoundCall call, FunctionKoto function, int parameterIndex)
     {
-        if (invocation.IsValueCall || call.Receiver is not null || !call.DefaultArguments.IsEmpty ||
+        if (invocation.IsValueCall || call.Receiver is not null ||
             call.Target.CompilerFunction is not (CompilerFunctionKind.None or CompilerFunctionKind.TextToString) || call.Target.Declaration is not FunctionKoto { IsAnonymous: false } ||
             call.ArgumentOperations.Length != invocation.ArgumentNodes.Count)
         {

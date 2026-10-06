@@ -217,6 +217,9 @@ public sealed class ControlFlowAnalysis
     // Whether this analysis found an Error of the code at the node; a later phase that meets the same problem rests on it.
     internal bool Reported(Koto node, DiagnosticCode code) => this.reported.Contains((node, code));
 
+    // An omitted default with pending completion cannot be expanded by ownership; the same finite cycle boundary applies.
+    internal bool DefaultCompletionPending(Koto expression) => !this.defaultCompletions.TryGetValue(expression, out var completion) || completion.Pending;
+
     // The edits that remove an Unsafe Block statement from an indented body: delete `unsafe => ` before an inline Body on the same
     // line, or delete the unsafe line and one indentation level of every line of an indented Body. No candidate when the unsafe line
     // holds other text, a Body line lacks a full level of space indentation, or a string literal spans lines (its content would change).
