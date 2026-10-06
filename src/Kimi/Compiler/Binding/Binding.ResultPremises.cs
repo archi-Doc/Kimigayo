@@ -362,50 +362,28 @@ public sealed partial class Binding
         return meet;
     }
 
-    // SPEC 15.6.4 steps 1-3, 15.3.7: a call through a Function Item creates fresh regions for its named callee's per-call inputs, as a
-    // direct call does: each argument's Origin bounds its input, and the callee's declared relations and result premises constrain them, so
-    // a result over several inputs is bounded by every Origin a relation joins to it. `inputs` holds each own input's argument Origin by
-    // position and receives the solution; the declared relations are proven for it, and false means no solution satisfies them.
-    private bool SolveItemCallOrigins(FunctionKoto function, BoundType parameters, Span<BoundOrigin> inputs, Koto use)
+    // A value call instantiates the same nested input/signature Origins and result premises as an ordinary call.
+    // The selected contract supplies structure; Origin relations are checked after solving, at their supplying values.
+    private bool SolveValueCallOrigins(Koto binder, BoundType parameters, ReadOnlySpan<BoundType> actuals, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use)
     {
-        var inference = this.BeginOriginInference(use, function);
-        var origins = this.originScratch.Rent(function.Origins.Count);
-        var inputCount = InputOriginCount(function);
-        var solved = this.originScratch.Rent(inputCount);
-        Array.Clear(origins, 0, function.Origins.Count);
-        Array.Clear(solved, 0, inputCount);
-        try
+        var inference = this.BeginOriginInference(use, binder);
+        for (var i = 0; i < actuals.Length; i++)
         {
-            for (var i = 0; i < inputs.Length; i++)
-            {
-                if (inputs[i] is { } argument && parameters.Components[i].Origin is { Kind: OriginKind.Input } own && ReferenceEquals(own.Binder, function) && (uint)own.Slot < (uint)inputCount)
-                {
-                    inference.Discover(own, 1);
-                    inference.Add(argument, own, false, true);
-                    solved[own.Slot] = argument;
-                }
-            }
+            this.CollectOriginInference(parameters.Components[i], actuals[i], inference);
+        }
 
-            if (!this.SolveCallOriginInference(function, inference, origins, solved, use, null) || !this.CheckCallOriginRelations(function, origins, solved, use, null))
+        if (binder is FunctionKoto function)
+        {
+            if (!this.SolveCallOriginInference(function, inference, origins, inputs, use, null, select: true))
             {
                 return false;
             }
 
-            for (var i = 0; i < inputs.Length; i++)
-            {
-                if (inputs[i] is not null && parameters.Components[i].Origin is { Kind: OriginKind.Input } own && ReferenceEquals(own.Binder, function) && (uint)own.Slot < (uint)inputCount)
-                {
-                    inputs[i] = solved[own.Slot] ?? inputs[i];
-                }
-            }
+            this.OpenResultOnlyOrigins(use, function, origins);
+            return this.CheckCallOriginRelations(function, origins, inputs, use, null);
+        }
 
-            return true;
-        }
-        finally
-        {
-            this.originScratch.Return(origins, clearArray: true);
-            this.originScratch.Return(solved, clearArray: true);
-        }
+        return this.SolveOriginInference(inference, origins, inputs, use, select: true);
     }
 
     // Visits each borrow layer of the callee's result pattern beside the same layer of `result`, the pattern itself or its

@@ -111,31 +111,6 @@ public sealed partial class Binding
         return callee is not null && SignatureOwner(callee) is { } declaration ? declaration : FunctionTypeBinder(signature);
     }
 
-    // Every input Origin the callee binds is the outer Origin of a direct borrowed input at its own position (SPEC 15.6.4); other
-    // inputs mention none of them.
-    private static bool OwnInputsAreDirect(BoundType signature, Koto binder)
-    {
-        var inputs = signature.Components[0];
-        for (var i = 0; i < inputs.Components.Count; i++)
-        {
-            var input = inputs.Components[i];
-            if (input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin: { Kind: OriginKind.Input, Occurrence: null } origin } &&
-                ReferenceEquals(origin.Binder, binder))
-            {
-                if (origin.Slot != i || HasUnsubstitutedOrigin(input.Components[0], binder))
-                {
-                    return false;
-                }
-            }
-            else if (HasUnsubstitutedOrigin(input, binder))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // A result whose Origins are static or fixed Origins of a function that encloses the call: the signature's own written contract,
     // which the callee's body was checked against.
     private static bool FixedInBody(BoundType type, Koto use)
@@ -278,7 +253,7 @@ public sealed partial class Binding
     }
 
     // Whether every Origin of an argument is the parameter's own at that position or static, so the argument needs no relation.
-    private static bool OriginsAsWritten(BoundType actual, BoundType expected)
+    private static bool OriginsAsWritten(BoundType actual, BoundType expected, Koto? own = null)
     {
         if (!SameOrStatic(actual.Origin, expected.Origin) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
@@ -295,7 +270,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (!ReferenceEquals(actual.Components[i], expected.Components[i]) && !OriginsAsWritten(actual.Components[i], expected.Components[i]))
+            if (!ReferenceEquals(actual.Components[i], expected.Components[i]) && !OriginsAsWritten(actual.Components[i], expected.Components[i], own))
             {
                 return false;
             }
@@ -303,7 +278,8 @@ public sealed partial class Binding
 
         return true;
 
-        static bool SameOrStatic(BoundOrigin? actual, BoundOrigin? expected) => ReferenceEquals(actual, expected) || actual?.Kind == OriginKind.Static;
+        bool SameOrStatic(BoundOrigin? actual, BoundOrigin? expected) => ReferenceEquals(actual, expected) || actual?.Kind == OriginKind.Static ||
+            (own is not null && expected is { Kind: OriginKind.Input or OriginKind.Parameter } && ReferenceEquals(expected.Binder, own));
     }
 
     // SPEC 15.6.5: whether every position at which a parameter names a fixed Origin of a function enclosing the call, rather than an
@@ -514,17 +490,12 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        // Fresh direct input Origins and fixed shared capture results retain their complete call contracts. A result over the
+        // Fresh input Origins and fixed shared capture results retain their complete call contracts. A result over the
         // per-call inputs alone takes the arguments' Origins, as an ordinary call's does (SPEC 15.6.4). A per-call input is one
         // bound by the callee's own binder; an input or result written over a fixed Origin of the calling body is fitted as written.
         var ownBinder = CalleeBinder(call.Method.BoundType, signature);
         var inputBinder = (Koto?)null;
         var dependent = false;
-        if (ownBinder is not null && !OwnInputsAreDirect(signature, ownBinder))
-        {
-            return this.Fail(call, BindingFailure.Unsupported);
-        }
-
         if (ownBinder is not null && HasUnsubstitutedOrigin(signature.Components[1], ownBinder))
         {
             inputBinder = ownBinder;
@@ -536,8 +507,12 @@ public sealed partial class Binding
 
         var operations = this.argumentOperationScratch.Rent(count);
         var instantiated = this.RentTypes(count);
-        var argumentOrigins = this.originScratch.Rent(count);
-        Array.Clear(argumentOrigins, 0, count);
+        var inputCount = ownBinder is null ? 0 : InputOriginCount(ownBinder);
+        var originCount = ownBinder is FunctionKoto function ? function.Origins.Count : 0;
+        var argumentOrigins = this.originScratch.Rent(inputCount);
+        var origins = this.originScratch.Rent(originCount);
+        Array.Clear(argumentOrigins, 0, inputCount);
+        Array.Clear(origins, 0, originCount);
         try
         {
             for (var i = 0; i < count; i++)
@@ -566,55 +541,43 @@ public sealed partial class Binding
                         : this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
-                if (parameter.Origin is { Kind: OriginKind.Input } own && ReferenceEquals(own.Binder, ownBinder) && adapted.Origin is { } argumentOrigin)
+                if (!OriginsAsWritten(adapted, parameter, ownBinder) && this.FitsTypeAt(adapted, parameter, source))
                 {
-                    argumentOrigins[i] = argumentOrigin;
-                    parameter = this.WithOrigins(parameter, argumentOrigin, (BoundOrigin[])parameter.OriginArguments);
-                }
-                else if (!OriginsAsWritten(adapted, parameter) && this.FitsTypeAt(adapted, parameter, source))
-                {
-                    // SPEC 15.6.5: a fixed Origin of the calling body contains every later point of it, so an argument that fits it only
-                    // through a premise keeps its Loans for that whole region; ownership does not extend them yet (PLAN G65).
+                    // Fixed enclosing Origins still require retention through their complete regions (PLAN G65).
                     this.Fail(source, BindingFailure.Unsupported);
                     return Complete(call, null);
-                }
-
-                if (!this.CheckTypeUse(adapted, parameter, source))
-                {
-                    return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
                 // ArgumentType includes the already selected expected adaptation. Retain the original syntax
                 // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
                 operations[i] = new(source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i);
-                instantiated[i] = parameter;
+                instantiated[i] = adapted;
             }
 
-            // SPEC 15.6.4 step 3, 15.3.7: a named callee's declared relations and result premises are proven for this call, as for a
-            // direct call; its per-call inputs are then the solution, which each argument outlives.
+            // Collect the complete parameter structure, including nested slots, through the ordinary call solver.
+            // Scratch inputs hold acquired Types until substitution commits the one selected call's contract.
             var conditioned = ownBinder is FunctionKoto { IsAnonymous: false } named && this.HasOriginConditions(named) ? named : null;
-            if (conditioned is not null)
+            if (ownBinder is not null && HasUnsubstitutedInput(signature, ownBinder) && !this.SolveValueCallOrigins(ownBinder, parameters, instantiated.AsSpan(0, count), origins, argumentOrigins, call))
             {
-                if (!this.SolveItemCallOrigins(conditioned, parameters, argumentOrigins.AsSpan(0, count), call))
+                if (conditioned is not null)
                 {
-                    if (conditioned.Origins.Count != 0)
-                    {
-                        return this.Fail(call, BindingFailure.Unsupported); // A signature Origin no value call binds (see below).
-                    }
-
-                    // As at a direct call, an unsatisfiable declared relation leaves its one candidate inapplicable (PLAN G56 U3).
                     (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(conditioned, null, null)];
+                }
+
+                return this.Fail(call, BindingFailure.NoApplicableCandidate);
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                var parameter = ownBinder is null ? parameters.Components[i] :
+                    this.SubstituteStoredOrigins(parameters.Components[i], ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
+                if (!this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!))
+                {
                     return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
-                for (var i = 0; i < count; i++)
-                {
-                    if (argumentOrigins[i] is { } solved && !ReferenceEquals(instantiated[i].Origin, solved))
-                    {
-                        instantiated[i] = this.WithOrigins(instantiated[i], solved, (BoundOrigin[])instantiated[i].OriginArguments);
-                        operations[i] = operations[i] with { ParameterType = instantiated[i] };
-                    }
-                }
+                instantiated[i] = parameter;
+                operations[i] = operations[i] with { ParameterType = parameter };
             }
 
             var result = signature.Components[1];
@@ -631,7 +594,7 @@ public sealed partial class Binding
 
             if (inputBinder is not null)
             {
-                result = this.SubstituteStoredOrigins(result, inputBinder, default, argumentOrigins.AsSpan(0, count));
+                result = this.SubstituteStoredOrigins(result, inputBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
             }
 
             // The receiver Origin of a temporary closure is bound to the closure literal itself, which is no per-call input; only an
@@ -660,6 +623,7 @@ public sealed partial class Binding
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.typeScratch.Return(instantiated, clearArray: true);
             this.originScratch.Return(argumentOrigins, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
         }
     }
 }

@@ -129,13 +129,11 @@ public class CompilerFunctionReferenceTest
         ScalarEmissionTest.EmitFixture("CompilerReferenceDrop", Source, string.Empty, 1, "Hello.kimi:3:13: abort KIMI_E_ABORT: drop\n");
     }
 
-    // U9 connects all nested per-call input Origins, shared with user functions; this is independent of entry generation.
     [Fact]
-    public void NestedInputOriginsKeepTheirExistingLocatedBoundary()
+    public void NestedInputOriginsUseTheSharedCallSolver()
     {
-        var errors = DiagnosticCorpus.Check("let f = Text.validateUtf8\nvar bytes: Array<u8> = [65]\nmatch f(bytes.slice(..))@move\n    .Ok(let view) => require view.length == 1 else => $abort(\"validate\")\n    .Err(_) => $abort(\"utf8\")").Diagnostics;
-        var error = Assert.Single(errors);
-        Assert.Equal(nameof(Kimi.DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+        const string Source = "let f = Text.validateUtf8\nvar bytes: Array<u8> = [65]\nmatch f(bytes.slice(..))@move\n    .Ok(let view) => require view.length == 1 else => $abort(\"validate\")\n    .Err(_) => $abort(\"utf8\")";
+        ScalarEmissionTest.EmitFixture("CompilerReferenceUtf8Nested", Source, string.Empty);
     }
 
     [Fact]
