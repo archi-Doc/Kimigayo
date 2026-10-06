@@ -51,7 +51,7 @@ public sealed class LspEffectHoverTest : IDisposable
         Assert.Contains("Call: f()", text);
         Assert.Contains("Available bound: confined", text);
         Assert.Contains("Available bound: preserves results", text);
-        Assert.Contains("Declared by: apply", text);
+        Assert.Contains("Declared by: App.apply", text);
         Assert.Contains("Premise: F is Callable<() -> i32> effect confined", text);
         Assert.Contains("uniq", text);
         Assert.Equal(5, hover.GetProperty("range").GetProperty("start").GetProperty("line").GetInt32());

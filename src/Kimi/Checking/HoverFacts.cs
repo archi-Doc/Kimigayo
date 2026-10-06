@@ -29,7 +29,10 @@ internal sealed record HoverDeclaration(
     HoverOrigin[] Origins,
     HoverDocumentation[] Documentation,
     string? DocumentationNotice = null,
-    string? Parameter = null);
+    string? Parameter = null,
+    string? Details = null,
+    bool ImplementationNote = false,
+    HoverKey? Identity = null);
 
 internal sealed record HoverInfo(
     HoverDeclaration[] Declarations,

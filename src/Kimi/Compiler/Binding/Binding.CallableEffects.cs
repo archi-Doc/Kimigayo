@@ -177,7 +177,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope)
+    private (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
     {
         var confined = false;
         var preserves = false;
@@ -210,6 +210,7 @@ public sealed partial class Binding
 
                     confined |= effect.Bound == EffectBoundKind.Confined;
                     preserves |= effect.Bound == EffectBoundKind.PreservesResults;
+                    evidence?.Add(new(effect, current.Owner, fact, clause));
                 }
             }
         }

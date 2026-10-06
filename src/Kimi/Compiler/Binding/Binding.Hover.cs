@@ -15,7 +15,7 @@ public sealed partial class Binding
     internal HoverSnapshot CreateHoverSnapshot() => new HoverBuilder(this).Build();
 
     // This builder is local to optional post-check projection. Its dictionaries and all compiler references die together.
-    private sealed class HoverBuilder(Binding binding)
+    private sealed partial class HoverBuilder(Binding binding)
     {
         private readonly Dictionary<Koto, HoverDeclaration> declarations = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<Koto, HoverInfo?> descriptions = new(ReferenceEqualityComparer.Instance);
@@ -28,6 +28,8 @@ public sealed partial class Binding
         private readonly Dictionary<(HoverDeclaration Declaration, BoundType Type, ConstraintProof Copy), HoverInfo> typeDescriptions = new();
         private readonly Dictionary<SourceDocument, Dictionary<SourceSpan, Candidate>> documents = new(ReferenceEqualityComparer.Instance);
         private readonly HashSet<string> syntaxErrorSources = new(SourceIdentity.PathComparer);
+        private readonly List<EffectHover> legacyEffects = [];
+        private readonly HoverBudget budget = new(maximumWork: 4 * HoverLimits.Work);
 
         internal HoverSnapshot Build()
         {
@@ -134,7 +136,7 @@ public sealed partial class Binding
                 result.Add(SourceIdentity.FromPath(document.Key.Path), new(document.Key, entries.ToArray()));
             }
 
-            return new(binding.CreateCallableEffectHovers()) { Documents = result };
+            return new(this.legacyEffects.ToArray()) { Documents = result };
         }
 
         private static Koto Canonical(Koto declaration)
@@ -175,6 +177,7 @@ public sealed partial class Binding
 
         private void Add(SourceDocument source, SourceSpan span, Koto syntax, int priority)
         {
+            this.budget.Charge();
             if (!this.documents.TryGetValue(source, out var entries) || span.Length == 0 || span.End > source.SourceText.Length)
             {
                 return;
@@ -213,15 +216,7 @@ public sealed partial class Binding
             var symbol = ReferenceSymbol(syntax);
             if (syntax is InvocationKoto invocation)
             {
-                if (invocation.BoundCall is { } call)
-                {
-                    var original = call.Target.Declaration is FunctionKoto specialized && binding.GetSpecializationOriginal(specialized) is { } originalFunction
-                        ? originalFunction : call.Target.Declaration;
-                    return new([this.Declaration(original)], this.CallUse(call), TypeIdentity: this.CallIdentity(call));
-                }
-
-                return invocation.BoundValueCall is { } valueCall
-                    ? new([new("Call contract", string.Empty, this.TypeName(valueCall.DeclaredSignature), [], [])], TypeIdentity: this.TypeIdentity(valueCall.Signature)) : null;
+                return this.Call(invocation);
             }
 
             var declaration = IsDeclaration(syntax) ? syntax : symbol?.Declaration;
@@ -238,8 +233,13 @@ public sealed partial class Binding
 
             if (symbol?.Kind is BindingSymbolKind.Function or BindingSymbolKind.Property)
             {
+                if (syntax is not FunctionKoto && declaration is FunctionKoto function)
+                {
+                    declaration = binding.GetSpecializationOriginal(function) ?? function;
+                }
+
                 return symbol.Type is not null && declaration is not null
-                    ? new([this.Declaration(declaration)], syntax is PropertyKoto { TypeKoto: null } ? "Inferred type: " + this.TypeName(symbol.Type) : null, TypeIdentity: this.TypeIdentity(symbol.Type)) : null;
+                    ? new([this.Declaration(declaration)], TypeIdentity: this.TypeIdentity(symbol.Type)) : null;
             }
 
             if (symbol is not null && symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType))
@@ -277,7 +277,13 @@ public sealed partial class Binding
             var scope = binding.ConstraintScope(syntax);
             if (!this.copies.TryGetValue((type, scope), out var copy))
             {
-                copy = scope.Constraints is { Invalid: true } ? ConstraintProof.Error : binding.ProveCopy(type, syntax);
+                var invalid = false;
+                for (var current = scope; current is not null; current = current.Parent)
+                {
+                    invalid |= current.Constraints is { Invalid: true };
+                }
+
+                copy = invalid ? ConstraintProof.Error : binding.ProveCopy(type, syntax);
                 this.copies.Add((type, scope), copy);
             }
 
@@ -319,7 +325,7 @@ public sealed partial class Binding
                 GenericParameterKoto => "Type parameter",
                 _ => "Associated type",
             };
-            var owner = syntax.Parent?.BoundSymbol?.Name ?? syntax.Kotonoha.Name;
+            var owner = Owner(syntax);
             var source = syntax.CodeContext.SourceDocument;
             var generated = syntax is FunctionKoto { IsGenerated: true } ||
                 (syntax.Parent is StructKoto container && ReferenceEquals(container.ImplicitConstructor, syntax));
@@ -377,19 +383,35 @@ public sealed partial class Binding
             if (syntax is GenericParameterKoto parameter && parameter.Parent is { } parent)
             {
                 var parentDeclaration = this.Declaration(parent);
-                result = new(kind, owner, header, origins, parentDeclaration.Documentation, parentDeclaration.DocumentationNotice, parameter.Identifier);
+                result = new(kind, owner, header, origins, parentDeclaration.Documentation, parentDeclaration.DocumentationNotice, parameter.Identifier, this.DeclarationDetails(syntax));
             }
             else
             {
-                result = new(kind, owner, header, origins, documentation.ToArray(), deferred ? "Documentation deferred: syntax errors" : null);
+                result = new(kind, owner, header, origins, documentation.ToArray(), deferred ? "Documentation deferred: syntax errors" : null, Details: this.DeclarationDetails(syntax), ImplementationNote: syntax is FunctionKoto { IsSpecialization: true });
             }
 
+            result = result with { Identity = this.DeclarationIdentity(syntax) };
             this.declarations.Add(syntax, result);
             return result;
         }
 
         private string Project(Koto syntax)
             => syntax.Kotonoha.Url.Length != 0 ? syntax.Kotonoha.Url : binding.compilation.Project.FilePath ?? binding.compilation.Project.Directory;
+
+        private static string Owner(Koto syntax)
+        {
+            var names = new List<string>();
+            for (var parent = syntax.Parent; parent is not null; parent = parent.Parent)
+            {
+                if (parent.BoundSymbol is { Name.Length: > 0 } symbol)
+                {
+                    names.Add(symbol.Name);
+                }
+            }
+
+            names.Reverse();
+            return names.Count == 0 ? syntax.Kotonoha.Name : string.Join('.', names);
+        }
 
         private string CallUse(BoundCall call)
         {
@@ -410,7 +432,7 @@ public sealed partial class Binding
                     }
                     else if (i < call.LengthArguments.Length && call.LengthArguments[i] is { } length)
                     {
-                        text.Append(DiagnosticLengthName(length));
+                        text.Append(DiagnosticLengthName(length, this.budget));
                     }
                 }
             }
@@ -423,6 +445,7 @@ public sealed partial class Binding
             if (!this.typeNames.TryGetValue(type, out var name))
             {
                 name = HoverTypeName(type);
+                this.budget.Charge(name.Length);
                 this.typeNames.Add(type, name);
             }
 
@@ -433,6 +456,7 @@ public sealed partial class Binding
         // Each key's local strings are length-prefixed and tagged, and every binder uses stable source facts.
         private HoverKey TypeIdentity(BoundType? type)
         {
+            using var guard = this.budget.Enter();
             if (type is null)
             {
                 return HoverKey.Missing;
@@ -543,6 +567,7 @@ public sealed partial class Binding
 
         private HoverKey OriginIdentity(BoundOrigin? origin)
         {
+            using var guard = this.budget.Enter();
             if (origin is null)
             {
                 return HoverKey.Missing;
@@ -570,6 +595,7 @@ public sealed partial class Binding
 
         private HoverKey LengthIdentity(BoundLength? length)
         {
+            using var guard = this.budget.Enter();
             if (length is null)
             {
                 return HoverKey.Missing;

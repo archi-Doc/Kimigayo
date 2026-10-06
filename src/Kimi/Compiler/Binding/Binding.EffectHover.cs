@@ -6,33 +6,171 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+#pragma warning disable SA1204 // Projection helpers stay in execution order.
+
 public sealed partial class Binding
 {
-    // SPEC 8.4.10.7: descriptions are captured before the worker releases the compilation; no mutable compiler state
-    // crosses into the language server. Unchecked calls and invalid premises never publish guarantees.
-    internal EffectHover[] CreateCallableEffectHovers()
+    // Compatibility entry point until the session adopts the common token index.
+    internal EffectHover[] CreateCallableEffectHovers() => this.CreateHoverSnapshot().Effects;
+
+    private sealed partial class HoverBuilder
     {
-        List<EffectHover>? results = null;
-        for (var i = 0; i < this.nodes.Count; i++)
+        private HoverInfo? Call(InvocationKoto syntax)
         {
-            if (this.nodes[i] is not InvocationKoto { BoundValueCall: { } call, BindingState: BindingState.Resolved } syntax ||
-                syntax.CodeContext.SourceDocument is not { } document ||
-                document.Path.StartsWith(SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) ||
-                CallableCore(call.ReceiverType) is not { } type || !AbstractTypes.IsAbstract(type))
+            for (var scope = binding.ConstraintScope(syntax); scope is not null; scope = scope.Parent)
             {
-                continue;
+                if (scope.Constraints is { Invalid: true })
+                {
+                    return null;
+                }
             }
 
-            var available = this.AvailableCallableEffects(type, call.DeclaredSignature, call.ReceiverKind, syntax);
-            var text = new StringBuilder();
-            text.Append("Call: ").AppendLine(syntax.ToString());
-            text.Append("Callable: ").Append(DiagnosticTypeName(type)).Append(" is Callable<");
-            if (call.ReceiverKind != SemanticsKind.Ref)
+            HoverInfo info;
+            List<EffectEvidence>? evidence = null;
+            StringBuilder? text = null;
+            if (syntax.BoundCall is { } call)
             {
-                text.Append(call.ReceiverKind == SemanticsKind.Uniq ? "uniq, " : "owner, ");
+                var original = call.Target.Declaration is FunctionKoto specialized && binding.GetSpecializationOriginal(specialized) is { } originalFunction
+                    ? originalFunction : call.Target.Declaration;
+                info = new([this.Declaration(original)], this.CallUse(call), TypeIdentity: this.CallIdentity(call));
+                if (original is FunctionKoto { IsRequirement: true } requirement)
+                {
+                    evidence = [];
+                    text = new();
+                    var available = binding.AvailableEffectBounds(requirement, call.ConformingType, binding.ConstraintScope(syntax), evidence);
+                    if ((available.Confined && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.Confined)) ||
+                        (available.Preserves && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.PreservesResults)))
+                    {
+                        return null; // Incomplete conformance evidence must not become a public guarantee.
+                    }
+
+                    text.Append("Call: ").AppendLine(CallSpelling(syntax));
+                    text.Append("Requirement: ").Append(Owner(requirement)).Append('.').AppendLine(requirement.Name);
+                    WriteBounds(text, available);
+                }
+            }
+            else if (syntax.BoundValueCall is { } valueCall)
+            {
+                info = new(
+                    [new("Call contract", string.Empty, this.TypeName(valueCall.DeclaredSignature), [], [])],
+                    TypeIdentity: new("value call;" + valueCall.ReceiverKind, [this.TypeIdentity(valueCall.Signature), this.TypeIdentity(valueCall.ReceiverType)]));
+                if (CallableCore(valueCall.ReceiverType) is { } type && AbstractTypes.IsAbstract(type))
+                {
+                    evidence = [];
+                    text = new();
+                    var available = binding.AvailableCallableEffects(type, valueCall.DeclaredSignature, valueCall.ReceiverKind, binding.ConstraintScope(syntax), evidence);
+                    text.Append("Call: ").AppendLine(CallSpelling(syntax));
+                    text.Append("Callable: ").Append(this.TypeName(type)).Append(" is Callable<");
+                    if (valueCall.ReceiverKind != SemanticsKind.Ref)
+                    {
+                        text.Append(valueCall.ReceiverKind == SemanticsKind.Uniq ? "uniq, " : "owner, ");
+                    }
+
+                    text.Append(this.TypeName(valueCall.DeclaredSignature)).AppendLine(">");
+                    WriteBounds(text, available);
+                }
+            }
+            else
+            {
+                return null;
             }
 
-            text.Append(DiagnosticTypeName(call.DeclaredSignature)).AppendLine(">");
+            if (text is null || evidence is null)
+            {
+                return info;
+            }
+
+            // Arrival and hash-table enumeration do not determine provenance order. Keep distinct premises even when their text matches.
+            evidence.Sort((a, b) =>
+            {
+                var order = CompareLocation(a.Context, b.Context);
+                if (order == 0)
+                {
+                    order = CompareLocation(a.Bound, b.Bound);
+                }
+
+                if (order == 0)
+                {
+                    var left = a.Premise?.Contract;
+                    var right = b.Premise?.Contract;
+                    order = string.CompareOrdinal(left?.Type is { } leftType ? this.TypeName(leftType) : left?.Name, right?.Type is { } rightType ? this.TypeName(rightType) : right?.Name);
+                }
+
+                return order;
+            });
+            var keys = new List<HoverKey>(evidence.Count + 1) { info.TypeIdentity! };
+            EffectEvidence? previous = null;
+            foreach (var item in evidence)
+            {
+                if (previous == item)
+                {
+                    continue;
+                }
+
+                previous = item;
+                var declaring = (Koto?)DeclaringContract(item.Bound) ?? item.Context;
+                text.Append("Declared by: ").AppendLine(Qualified(declaring));
+                text.Append("Premise: ");
+                if (item.Clause is IsKoto clause && item.Premise?.Kind == ConstraintKind.Callable)
+                {
+                    text.Append(clause.Left).Append(" is ").Append(clause.Right);
+                }
+                else if (item.Premise is { Subject: { } subject, Contract: { } contract })
+                {
+                    text.Append(this.TypeName(subject)).Append(" is ").Append(contract.Type is { } applied ? this.TypeName(applied) : Qualified(contract.Declaration));
+                }
+                else
+                {
+                    text.Append(this.TypeName(item.Conforming!)).Append(" is ").Append(Qualified(item.Contract!.Declaration));
+                }
+
+                text.Append(" effect ").Append(EffectBoundKoto.Spelling(item.Bound.Bound)).Append(" (in ").Append(Qualified(item.Context)).AppendLine(")");
+                keys.Add(new(
+                    "effect;" + item.Bound.Bound,
+                    [this.BinderIdentity(item.Bound), this.BinderIdentity(item.Context), this.BinderIdentity(item.Clause),
+                    this.ConstraintIdentity(item.Premise), this.TypeIdentity(item.Conforming), this.SymbolIdentity(item.Contract)]));
+            }
+
+            var effects = text.ToString().TrimEnd();
+            info = info with { Effects = effects, TypeIdentity = new("effect evidence", keys.ToArray()) };
+            if (syntax.CodeContext.SourceDocument is { } source)
+            {
+                this.legacyEffects.Add(new(SourceIdentity.FromPath(source.Path), source.GetSourceRange(syntax.Span), effects));
+            }
+
+            return info;
+        }
+
+        private static int CompareLocation(Koto a, Koto b)
+        {
+            var result = string.CompareOrdinal(a.Kotonoha.Url, b.Kotonoha.Url);
+            if (result == 0)
+            {
+                result = string.CompareOrdinal(a.CodeContext.SourceDocument?.Path, b.CodeContext.SourceDocument?.Path);
+            }
+
+            return result != 0 ? result : a.Span.Start.CompareTo(b.Span.Start);
+        }
+
+        private static string CallSpelling(InvocationKoto syntax)
+        {
+            if (syntax.Span.Length > HoverLimits.Input)
+            {
+                throw new HoverLimitException("Hover call description input limit exceeded");
+            }
+
+            return syntax.CodeContext.SourceDocument?.SourceText.Substring(syntax.Span.Start, syntax.Span.Length) ?? "selected call";
+        }
+
+        private static string Qualified(Koto declaration)
+        {
+            var owner = Owner(declaration);
+            var name = declaration.BoundSymbol?.Name ?? "the enclosing declaration";
+            return owner.Length == 0 ? name : owner + "." + name;
+        }
+
+        private static void WriteBounds(StringBuilder text, (bool Confined, bool Preserves) available)
+        {
             if (available.Confined)
             {
                 text.AppendLine("Available bound: confined");
@@ -47,44 +185,26 @@ public sealed partial class Binding
             {
                 text.AppendLine("Available bound: none");
             }
-
-            var scope = this.ConstraintScope(syntax);
-            for (var current = scope; current is not null; current = current.Parent)
-            {
-                if (current.Constraints is not { Invalid: false } environment)
-                {
-                    continue;
-                }
-
-                for (var c = 0; c < this.callableEffectClauses.Count; c++)
-                {
-                    var clause = this.callableEffectClauses[c];
-                    if (!ReferenceEquals(clause.Parent, current.Owner) || clause.BoundConstraint is not { Kind: ConstraintKind.Callable } fact ||
-                        !this.AvailableConstraintFact(environment, fact) || !ReceiverCovers(fact.Mask, call.ReceiverKind) ||
-                        !ReferenceEquals(this.ContractType(fact.Subject!, scope), this.ContractType(type, scope)) ||
-                        !ReferenceEquals(this.ContractType(fact.RequiredType!, scope), this.ContractType(call.DeclaredSignature, scope)))
-                    {
-                        continue;
-                    }
-
-                    for (var e = 0; e < clause.EffectBounds.Count; e++)
-                    {
-                        var bound = clause.EffectBounds[e];
-                        if (this.effectBoundRejections?.ContainsKey(bound) == true || IsRecovery(bound, out _))
-                        {
-                            continue;
-                        }
-
-                        text.Append("Declared by: ").AppendLine(current.Owner.BoundSymbol?.Name ?? "the enclosing declaration");
-                        text.Append("Premise: ").Append(clause.Left).Append(" is ").Append(clause.Right)
-                            .Append(" effect ").AppendLine(EffectBoundKoto.Spelling(bound.Bound));
-                    }
-                }
-            }
-
-            (results ??= []).Add(new(SourceIdentity.FromPath(document.Path), document.GetSourceRange(syntax.Span), text.ToString().TrimEnd()));
         }
 
-        return results?.ToArray() ?? [];
+        private HoverKey ConstraintIdentity(BoundConstraint? fact)
+        {
+            using var guard = this.budget.Enter();
+            if (fact is null)
+            {
+                return HoverKey.Missing;
+            }
+
+            if (!this.identities.TryGetValue(fact, out var key))
+            {
+                key = new(
+                    $"constraint;{fact.Kind};{fact.Mask}",
+                    [this.TypeIdentity(fact.Subject), this.TypeIdentity(fact.RequiredType), this.SymbolIdentity(fact.Contract),
+                    this.ConstraintIdentity(fact.Left), this.ConstraintIdentity(fact.Right)]);
+                this.identities.Add(fact, key);
+            }
+
+            return key;
+        }
     }
 }

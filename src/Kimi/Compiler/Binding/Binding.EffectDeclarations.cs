@@ -22,6 +22,8 @@ public sealed partial class Binding
     private Dictionary<EffectBoundKoto, EffectBoundRejection>? effectBoundRejections;
     private EffectSyntaxCompleter? effectSyntax;
 
+    internal readonly record struct EffectEvidence(EffectBoundKoto Bound, Koto Context, BoundConstraint? Premise = null, Koto? Clause = null, BoundType? Conforming = null, BindingSymbol? Contract = null);
+
     /// <summary>SPEC 8.4.10.6: the kind of the first effect of an implementation that violates a bound.</summary>
     internal enum EffectViolation : byte
     {
@@ -146,8 +148,9 @@ public sealed partial class Binding
     /// <param name="requirement">The Requirement Identity.</param>
     /// <param name="conforming">The conforming Type of the call.</param>
     /// <param name="scope">The scope whose premises hold at the call.</param>
+    /// <param name="evidence">Optional complete provenance for an editor projection; ordinary proofs allocate none.</param>
     /// <returns>Whether confined and preserves results are available.</returns>
-    internal (bool Confined, bool Preserves) AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope)
+    internal (bool Confined, bool Preserves) AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, List<EffectEvidence>? evidence = null)
     {
         var bounded = false;
         for (var i = 0; !bounded && i < this.boundedRequirements.Count; i++)
@@ -174,7 +177,7 @@ public sealed partial class Binding
                 if (fact.Kind == ConstraintKind.Contract && ReferenceEquals(fact.Subject, conforming) && fact.Contract?.Declaration.BoundSymbol?.Contract is { HasEffectBounds: true } shape &&
                     this.AvailableConstraintFact(environment, fact))
                 {
-                    Add(shape);
+                    Add(shape, current.Owner, fact);
                 }
             }
         }
@@ -186,20 +189,52 @@ public sealed partial class Binding
             {
                 var entry = this.boundedRequirements[i];
                 if (ReferenceEquals(entry.Requirement.Declaration, requirement) && DeclaringContract(entry.Declaration)?.BoundSymbol is { } contract &&
-                    this.ConformanceByDeclaration(type, contract, out _) is not null)
+                    this.ConformanceByDeclaration(type, contract, out _) is { } conformance)
                 {
                     confined |= entry.Bound == EffectBoundKind.Confined;
                     preserves |= entry.Bound == EffectBoundKind.PreservesResults;
+                    if (evidence is not null)
+                    {
+                        foreach (var path in conformance.Paths)
+                        {
+                            if (path.IsVerified && path.Premises is null)
+                            {
+                                evidence.Add(new(entry.Declaration, type.Declaration, Clause: path.Declaration, Conforming: conforming, Contract: contract));
+                            }
+                        }
+                    }
                 }
             }
         }
 
         return (confined, preserves);
 
-        void Add(BoundContract shape)
+        void Add(BoundContract shape, Koto context, BoundConstraint premise)
         {
             confined |= this.DeclaredEffectBound(shape, requirement, EffectBoundKind.Confined) is not null;
             preserves |= this.DeclaredEffectBound(shape, requirement, EffectBoundKind.PreservesResults) is not null;
+            if (evidence is not null)
+            {
+                Capture(shape);
+                foreach (var ancestor in shape.Ancestors)
+                {
+                    if (ancestor.Declaration.BoundSymbol?.Contract is { } inherited)
+                    {
+                        Capture(inherited);
+                    }
+                }
+            }
+
+            void Capture(BoundContract declaring)
+            {
+                foreach (var entry in declaring.EffectBounds)
+                {
+                    if (ReferenceEquals(entry.Requirement.Declaration, requirement))
+                    {
+                        evidence!.Add(new(entry.Declaration, context, premise));
+                    }
+                }
+            }
         }
     }
 

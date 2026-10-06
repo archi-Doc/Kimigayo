@@ -11,9 +11,13 @@ shared syntax writers project headers without bodies, Property initializers or d
 Detached own-source token indexes now share declaration headers and documentation inputs, query contextual Copy, preserve
 associated-Type contract/specification provenance, and retain structural Type/Origin identities without a compiler graph.
 `HoverProjectionTest` covers these internal projections, source-fragment ordering, release and allocation-free lookup.
-Legacy effect Hover now prints structural Type spelling instead of record debug output. Complete effect/accessor projection,
-full collection/formatting isolation, documentation rendering and general Hover response
-rules remain in the H1–H6 track in `docs/dev/PLAN.md`.
+Effect projection shares existing bound judgments, retaining requirement and Callable premises and declaring contracts;
+Property supplements describe verified operations without asserting use-site writability. Type-parameter Constraints,
+implicit Unit results and specialization documentation roles remain distinct. Recursive header/Type/identity projection
+has deterministic resource guards. Full collection isolation, documentation rendering, general Hover response/adoption
+and responsiveness measurements remain in the H1–H6 track in `docs/dev/PLAN.md`; current limits are in
+[Hover implementation notes](dev/HOVER.md). Existing unsupported language forms (including merged independent requirement
+identities and generic Property requirements) are not made available by Hover.
 
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
 length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotation holes now use written dimensions,

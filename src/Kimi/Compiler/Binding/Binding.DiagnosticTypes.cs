@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using Kimi.Checking;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -31,12 +32,15 @@ public sealed partial class Binding
             return type.Name;
         }
 
+        var budget = complete ? new HoverBudget() : null;
         var text = new StringBuilder();
         Append(type, false);
         return text.ToString();
 
         void Append(BoundType current, bool underBorrow = false)
         {
+            using var guard = budget?.Enter();
+            budget?.Charge(current.Name.Length);
             if (current.Kind == BoundTypeKind.Semantics && current.Components.Count == 1)
             {
                 var mark = complete ? current.Origin is not null : shown is not null && ReferenceEquals(current.Origin, shown);
@@ -50,10 +54,21 @@ public sealed partial class Binding
                 }
 
                 text.Append(current.Semantics.ToText()).Append('/');
+                var group = complete && current.Components[0].Kind == BoundTypeKind.Function;
+                if (group)
+                {
+                    text.Append('(');
+                }
+
                 Append(current.Components[0], true);
+                if (group)
+                {
+                    text.Append(')');
+                }
+
                 if (mark)
                 {
-                    text.Append(" during ").Append(complete ? HoverOriginName(current.Origin!) : shownText);
+                    text.Append(" during ").Append(complete ? HoverOriginName(current.Origin!, budget!) : shownText);
                     if (underBorrow)
                     {
                         text.Append(')');
@@ -69,7 +84,7 @@ public sealed partial class Binding
                 Append(current.Components[0]);
                 if (current.Origin is { } appliedOrigin)
                 {
-                    text.Append(" during ").Append(HoverOriginName(appliedOrigin));
+                    text.Append(" during ").Append(HoverOriginName(appliedOrigin, budget!));
                 }
 
                 return;
@@ -88,7 +103,7 @@ public sealed partial class Binding
                         text.Append(' ');
                     }
 
-                    text.Append(complete ? HoverOriginName(current.OriginArguments[i]) : current.OriginArguments[i].Name);
+                    text.Append(complete ? HoverOriginName(current.OriginArguments[i], budget!) : current.OriginArguments[i].Name);
                 }
 
                 if (current.OriginArguments.Count != 0)
@@ -143,7 +158,7 @@ public sealed partial class Binding
                 text.Append('[');
                 if (current.LengthExpression is { } length)
                 {
-                    AppendDiagnosticLength(text, length);
+                    AppendDiagnosticLength(text, length, budget);
                 }
                 else
                 {
@@ -158,13 +173,20 @@ public sealed partial class Binding
 
             if (current.Kind != BoundTypeKind.Tuple)
             {
-                if (current.Symbol?.LibraryDeclaration is KimiDeclarationId.FromEnd or KimiDeclarationId.Start or KimiDeclarationId.End or
-                    KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange)
+                if (complete && current.Symbol is { Kind: BindingSymbolKind.Type } nominal)
                 {
-                    text.Append("Kimi.");
+                    AppendDeclaration(nominal);
                 }
+                else
+                {
+                    if (current.Symbol?.LibraryDeclaration is KimiDeclarationId.FromEnd or KimiDeclarationId.Start or KimiDeclarationId.End or
+                        KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange)
+                    {
+                        text.Append("Kimi.");
+                    }
 
-                text.Append(current.Name);
+                    text.Append(current.Name);
+                }
             }
 
             if (current.Components.Count != 0 || current.Kind == BoundTypeKind.Tuple)
@@ -180,6 +202,11 @@ public sealed partial class Binding
                     Append(current.Components[i]);
                 }
 
+                if (complete && current.Kind == BoundTypeKind.Tuple && current.Components.Count == 1)
+                {
+                    text.Append(',');
+                }
+
                 text.Append(current.Kind == BoundTypeKind.Tuple ? ')' : '>');
             }
 
@@ -193,7 +220,7 @@ public sealed partial class Binding
                         text.Append(", ");
                     }
 
-                    text.Append(current.Symbol?.Schema?.Origins[i].Name ?? "origin").Append(" = ").Append(HoverOriginName(current.OriginArguments[i]));
+                    text.Append(current.Symbol?.Schema?.Origins[i].Name ?? "origin").Append(" = ").Append(HoverOriginName(current.OriginArguments[i], budget!));
                 }
 
                 text.Append('}');
@@ -201,12 +228,14 @@ public sealed partial class Binding
 
             if (complete && current.Origin is { } ownOrigin)
             {
-                text.Append(" during ").Append(HoverOriginName(ownOrigin));
+                text.Append(" during ").Append(HoverOriginName(ownOrigin, budget!));
             }
         }
 
         void AppendDeclaration(BindingSymbol symbol)
         {
+            using var guard = budget?.Enter();
+            budget?.Charge(symbol.Name.Length);
             // Equal call signatures and short names do not identify equal Item Types. Keep the declaring containers.
             if (symbol.Scope.Owner.BoundSymbol is { Name.Length: > 0 } owner && !ReferenceEquals(owner, symbol) &&
                 owner.Kind is BindingSymbolKind.Container or BindingSymbolKind.Type or BindingSymbolKind.Function)
@@ -219,8 +248,10 @@ public sealed partial class Binding
         }
     }
 
-    private static string HoverOriginName(BoundOrigin origin)
+    private static string HoverOriginName(BoundOrigin origin, HoverBudget budget)
     {
+        using var guard = budget.Enter();
+        budget.Charge(origin.Name.Length);
         if (origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input)
         {
             var display = OriginDisplay(origin, null, typeLevel: true);
@@ -229,7 +260,18 @@ public sealed partial class Binding
 
         if (origin.Kind == OriginKind.Intersection)
         {
-            return "(" + string.Join(" and ", origin.Operands.Select(HoverOriginName)) + ")";
+            var text = new StringBuilder("(");
+            for (var i = 0; i < origin.Operands.Count; i++)
+            {
+                if (i != 0)
+                {
+                    text.Append(" and ");
+                }
+
+                text.Append(HoverOriginName(origin.Operands[i], budget));
+            }
+
+            return text.Append(')').ToString();
         }
 
         var at = origin.Occurrence ?? origin.Binder;
@@ -239,15 +281,16 @@ public sealed partial class Binding
             : $"<{origin.Kind.ToString().ToLowerInvariant()} origin>";
     }
 
-    private static string DiagnosticLengthName(BoundLength length)
+    private static string DiagnosticLengthName(BoundLength length, HoverBudget? budget = null)
     {
         var text = new StringBuilder();
-        AppendDiagnosticLength(text, length);
+        AppendDiagnosticLength(text, length, budget);
         return text.ToString();
     }
 
-    private static void AppendDiagnosticLength(StringBuilder text, BoundLength length)
+    private static void AppendDiagnosticLength(StringBuilder text, BoundLength length, HoverBudget? budget = null)
     {
+        using var guard = budget?.Enter();
         if (length.Parameter is { } parameter)
         {
             text.Append(parameter.Name);
@@ -262,13 +305,13 @@ public sealed partial class Binding
             if (length.Operation is KotoKind.PrefixMinus or KotoKind.PrefixPlus)
             {
                 text.Append(length.Operation == KotoKind.PrefixMinus ? '-' : '+');
-                AppendDiagnosticLength(text, length.Left!);
+                AppendDiagnosticLength(text, length.Left!, budget);
             }
             else
             {
-                AppendDiagnosticLength(text, length.Left!);
+                AppendDiagnosticLength(text, length.Left!, budget);
                 text.Append(length.Operation switch { KotoKind.Plus => " + ", KotoKind.Minus => " - ", KotoKind.Asterisk => " * ", KotoKind.Slash => " / ", _ => " % " });
-                AppendDiagnosticLength(text, length.Right!);
+                AppendDiagnosticLength(text, length.Right!, budget);
             }
 
             text.Append(')');

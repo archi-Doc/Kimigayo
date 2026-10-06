@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -180,6 +181,65 @@ public sealed class HoverProjectionTest
         Assert.False(compilation.Bind().IsComplete);
         var snapshot = compilation.Binding.CreateHoverSnapshot();
         Assert.Equal(ConstraintProof.Error, At(snapshot, text.IndexOf("x: T", StringComparison.Ordinal) + 3).Copy);
+    }
+
+    [Fact]
+    public void RequirementEffectsRetainEveryDeclaringContractAndPremise()
+    {
+        const string text = "contract Reader\n    func read(self: ref/Self) -> i32\ncontract Left: Reader\n    effect Reader.read confined\ncontract Right: Reader\n    effect Reader.read confined\nfunc readBoth<T>(x: ref/T) -> i32\n    T is Left\n    T is Right\n    return x.read()\n";
+        var snapshot = Project(text);
+        var info = At(snapshot, text.LastIndexOf("read()", StringComparison.Ordinal));
+        Assert.Contains("Requirement: Reader.read", info.Effects);
+        Assert.Contains("Available bound: confined", info.Effects);
+        Assert.Contains("Declared by: Left", info.Effects);
+        Assert.Contains("Declared by: Right", info.Effects);
+        Assert.Contains("Premise: T is Left effect confined", info.Effects);
+        Assert.Contains("Premise: T is Right effect confined", info.Effects);
+        Assert.DoesNotContain("Available bound: preserves results", info.Effects);
+    }
+
+    [Fact]
+    public void PropertyOperationsAndImplicitResultsAreExplicit()
+    {
+        const string text = "struct Cell\n    public var count = 0\nfunc value() => 42\n";
+        var snapshot = Project(text);
+        var property = Assert.Single(At(snapshot, text.IndexOf("count", StringComparison.Ordinal)).Declarations);
+        Assert.Equal("Inferred type: i32\nget: public; standard place access\nset: public; standard place access", property.Details?.Replace("\r\n", "\n", StringComparison.Ordinal));
+        var function = Assert.Single(At(snapshot, text.IndexOf("value", StringComparison.Ordinal)).Declarations);
+        Assert.Equal("Implicit result: ()", function.Details);
+    }
+
+    [Fact]
+    public void ParameterSupplementRetainsItsDeclarationConstraints()
+    {
+        const string text = "func copied<T>(x: T) -> T\n    T is Copy\n    return x\n";
+        var parameter = Assert.Single(At(Project(text), text.IndexOf("<T>", StringComparison.Ordinal) + 1).Declarations);
+        Assert.Contains("T is Copy", parameter.Details);
+    }
+
+    [Fact]
+    public void TypeDisplayPreservesGroupingAndBoundsDepthAndRepeatedExpansion()
+    {
+        var integer = new BoundType("i32", BoundTypeKind.Primitive);
+        var tuple = new BoundType(string.Empty, BoundTypeKind.Tuple, components: [integer]);
+        Assert.Equal("(i32,)", Binding.HoverTypeName(tuple));
+        var function = new BoundType(string.Empty, BoundTypeKind.Function, components: [BoundType.Unit, integer]);
+        var reference = new BoundType(string.Empty, BoundTypeKind.Semantics, semantics: SemanticsKind.Ref, components: [function]);
+        Assert.Equal("ref/(() -> i32)", Binding.HoverTypeName(reference));
+        var deep = integer;
+        for (var i = 0; i < 128; i++)
+        {
+            deep = new(string.Empty, BoundTypeKind.Tuple, components: [deep]);
+        }
+
+        Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(deep));
+        var repeated = integer;
+        for (var i = 0; i < 24; i++)
+        {
+            repeated = new(string.Empty, BoundTypeKind.Tuple, components: [repeated, repeated]);
+        }
+
+        Assert.Throws<HoverLimitException>(() => Binding.HoverTypeName(repeated));
     }
 
     private static string Extract(HoverDocumentation documentation)
