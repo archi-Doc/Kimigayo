@@ -107,6 +107,10 @@ public static partial class Parser
             {
                 OriginClauses.Add(owner, ParseOriginRelation(ref reader));
             }
+            else if (owner is IsKoto clause && IsEffectStart(ref reader, specification: true))
+            {
+                clause.AddEffectBound(ParseEffectBound(ref reader));
+            }
             else
             {
                 reader.AddDiagnostic(DiagnosticCode.AttachedOriginRelation_Kd);

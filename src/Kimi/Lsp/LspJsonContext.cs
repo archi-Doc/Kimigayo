@@ -13,6 +13,8 @@ namespace Kimi.Lsp;
 [JsonSerializable(typeof(InitializeResult))]
 [JsonSerializable(typeof(CodeActionParams))]
 [JsonSerializable(typeof(CodeAction[]))]
+[JsonSerializable(typeof(HoverParams))]
+[JsonSerializable(typeof(HoverResult))]
 [JsonSerializable(typeof(PublishDiagnosticsParams))]
 [JsonSerializable(typeof(LogMessageParams))]
 [JsonSerializable(typeof(RegistrationParams))]

@@ -15,6 +15,8 @@ public sealed class BoundValueCall
 
     public BoundType Signature { get; private set; } = null!;
 
+    public BoundType DeclaredSignature { get; private set; } = null!;
+
     public BoundType ReturnType => this.Signature.Components[1];
 
     public SemanticsKind ReceiverKind { get; internal set; } = SemanticsKind.Ref;
@@ -23,10 +25,11 @@ public sealed class BoundValueCall
 
     public ReadOnlySpan<BoundArgumentOperation> Arguments => this.arguments;
 
-    internal void Set(Koto receiver, BoundType signature, ReadOnlySpan<BoundArgumentOperation> arguments)
+    internal void Set(Koto receiver, BoundType signature, ReadOnlySpan<BoundArgumentOperation> arguments, BoundType? declaredSignature = null)
     {
         this.Receiver = receiver;
         this.Signature = signature;
+        this.DeclaredSignature = declaredSignature ?? signature;
         if (this.arguments.Length != arguments.Length)
         {
             this.arguments = new BoundArgumentOperation[arguments.Length];
@@ -638,9 +641,10 @@ public sealed partial class Binding
             }
 
             var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));
+            var declaredSignature = signature;
             signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
             call.ValueCallStorage ??= new();
-            call.ValueCallStorage.Set(call.Method, signature, operations.AsSpan(0, count));
+            call.ValueCallStorage.Set(call.Method, signature, operations.AsSpan(0, count), declaredSignature);
             call.ValueCallStorage.ReceiverKind = receiver;
             call.IsValueCall = true;
             return Complete(call, signature.Components[1]);

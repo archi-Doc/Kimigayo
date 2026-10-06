@@ -715,7 +715,8 @@ public sealed partial class Binding
         {
             this.ReportEffectBound(effect, requirement);
         }
-        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
+        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd &&
+            (this.ReportCallablePremiseFailure(issue.Node, requirement) || this.ReportEffectViolation(issue.Node, requirement, issue.Code)))
         {
             // SPEC 8.4.10.6: reported at the violating effect.
         }

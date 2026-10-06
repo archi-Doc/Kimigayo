@@ -75,7 +75,10 @@ internal static class CheckService
             return new(CheckOutcome.Blocked, false, TestPresence.Unknown, result);
         }
 
-        return new(CheckOutcome.Completed, accepted, mode == CheckMode.Product ? ScanTestPresence(compilation) : TestPresence.Unknown, result);
+        return new(CheckOutcome.Completed, accepted, mode == CheckMode.Product ? ScanTestPresence(compilation) : TestPresence.Unknown, result)
+        {
+            EffectHovers = compilation.Binding.CreateCallableEffectHovers(),
+        };
     }
 
     // SPEC 23.3.3: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.

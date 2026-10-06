@@ -28,7 +28,8 @@ public sealed class LspProtocolTest
         Assert.Equal("utf-16", capabilities.GetProperty("positionEncoding").GetString());
         Assert.True(capabilities.GetProperty("textDocumentSync").GetProperty("openClose").GetBoolean());
         Assert.Equal(2, capabilities.GetProperty("textDocumentSync").GetProperty("change").GetInt32());
-        Assert.Equal(2, capabilities.EnumerateObject().Count());
+        Assert.True(capabilities.GetProperty("hoverProvider").GetBoolean());
+        Assert.Equal(3, capabilities.EnumerateObject().Count());
         Assert.Equal("Kimi Language Server", response.GetProperty("result").GetProperty("serverInfo").GetProperty("name").GetString());
     }
 

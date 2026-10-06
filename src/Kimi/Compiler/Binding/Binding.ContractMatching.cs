@@ -545,6 +545,21 @@ public sealed partial class Binding
                 }
 
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(substituted, premises, self), premises), true);
+                var clause = (IsKoto)implementation.TypeConstraints[i];
+                if (clause.EffectBounds.Count != 0 && substituted.Kind == ConstraintKind.Callable)
+                {
+                    var normalized = this.ContractConstraint(substituted, premises, self);
+                    var receiver = normalized.Mask == SemanticsMask.Ref ? SemanticsKind.Ref : normalized.Mask == SemanticsMask.Uniq ? SemanticsKind.Uniq : SemanticsKind.Owner;
+                    var available = this.AvailableCallableEffects(normalized.Subject!, normalized.RequiredType!, receiver, premises);
+                    for (var e = 0; e < clause.EffectBounds.Count; e++)
+                    {
+                        if (!(clause.EffectBounds[e].Bound == EffectBoundKind.Confined ? available.Confined : available.Preserves))
+                        {
+                            proof = CombineProof(proof, ConstraintProof.Refuted, true);
+                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, clause.EffectBounds[e], requirement));
+                        }
+                    }
+                }
             }
 
             proof = CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path), true);

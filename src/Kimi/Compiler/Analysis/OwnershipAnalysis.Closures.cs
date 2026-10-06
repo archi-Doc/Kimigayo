@@ -209,7 +209,59 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.EndComparisonLoans(depth, call);
+        if (this.instance is null)
+        {
+            this.CallableEffects(call, plan, invoke, result);
+        }
+
         this.comparisonDepth = depth;
         return result;
+    }
+
+    // SPEC 8.4.10.7: abstract input effects use the same regions as requirement calls. The callable value, rather than a
+    // requirement's receiver, identifies earlier calls covered by preserves results. No result borrows its environment.
+    private void CallableEffects(InvocationKoto call, BoundValueCall plan, int invoke, int result)
+    {
+        var type = plan.ReceiverType;
+        if (type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
+        {
+            type = type.Components[0];
+        }
+
+        if (!AbstractTypes.IsAbstract(type))
+        {
+            return;
+        }
+
+        var path = KotoHelper.UnwrapParentheses(plan.Receiver);
+        while (path is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Follow } conversion)
+        {
+            path = KotoHelper.UnwrapParentheses(conversion.Left);
+        }
+
+        var receiver = this.ValueIdentity(path) with { CallablePath = path };
+        var effects = this.body.RequirementEffects ??= new();
+        var bounds = true;
+        var preserves = this.compilation.Binding.AvailableCallableEffects(type, plan.DeclaredSignature, plan.ReceiverKind, call).Preserves;
+        var acquired = plan.ReceiverKind == SemanticsKind.Owner ? type : this.compilation.Binding.Reference(plan.ReceiverKind, type);
+        this.RequirementEffect(call, acquired, type, invoke, receiver, receiver, null, ref bounds, ref preserves);
+        var mark = effects.Count;
+        for (var i = 0; i < plan.Arguments.Length; i++)
+        {
+            var argument = plan.Arguments[i];
+            var input = argument.Source is { } source ? this.ValueIdentity(source) : new(-1, null);
+            this.RequirementEffect(call, argument.ParameterType, type, invoke, input, receiver, null, ref bounds, ref preserves);
+        }
+
+        if (result < 0 || effects.Count == mark || !AbstractTypes.HasAbstractPart(plan.ReturnType) || ReferenceTypes.IndependentResult(plan.ReturnType))
+        {
+            return;
+        }
+
+        var results = this.body.RequirementResults ??= new();
+        for (var i = mark; i < effects.Count; i++)
+        {
+            results.Add(new(invoke, result, effects[i].Region, effects[i].Mode, type, effects[i].Input, receiver));
+        }
     }
 }

@@ -57,6 +57,12 @@ public sealed partial class Binding
 
         /// <summary>A destruction whose effects cannot be classified, treated as a conflict.</summary>
         UnknownDestruction,
+
+        /// <summary>An abstract callable has no premise declaring the required bound.</summary>
+        MissingCallablePremise,
+
+        /// <summary>An erased Function Type keeps no effect bound.</summary>
+        ErasedCallable,
     }
 
     /// <summary>SPEC 8.4.10.5: why the Loans of earlier results were not excluded for a requirement call.</summary>
@@ -100,6 +106,10 @@ public sealed partial class Binding
         Duplicate,
         NoBorrowedReceiver,
         DependentResult,
+        CallableForm,
+        CallablePosition,
+        CallableDuplicate,
+        CallableReceiver,
     }
 
     /// <summary>
@@ -393,6 +403,8 @@ public sealed partial class Binding
         {
             this.EnsureEffectBounds(this.contractShapes[i]);
         }
+
+        this.PrepareCallableEffects();
     }
 
     // A Contract's ancestors are checked first, so a bound already declared above is known (SPEC 8.4.10.1).
@@ -589,7 +601,7 @@ public sealed partial class Binding
             return Complete(effect, null);
         }
 
-        if (DeclaringContract(effect) is null)
+        if (DeclaringContract(effect) is null && effect.Parent is not IsKoto)
         {
             this.RejectEffectBound(effect, new(EffectRejection.OutsideContract));
         }
@@ -614,7 +626,11 @@ public sealed partial class Binding
         {
             EffectRejection.SpecificationInRequirement => ("an effect specification in a requirement", "An effect specification names an inherited requirement and is a Contract item; a requirement's own bound is an effect clause", $"Write effect {spelling} to bound {name} itself"),
             EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds", "Indent the clause under its requirement, or name an inherited requirement as effect Contract.name"),
-            EffectRejection.OutsideContract => ("an effect item outside a Contract", $"Only a Contract declares bounds; {EffectOwner(effect)} accepts no effect item, and an implementation can neither add nor remove one", null),
+            EffectRejection.OutsideContract => ("an effect item outside a Contract or a Callable Constraint", $"Only a Contract or a Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove a requirement's bound", null),
+            EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list", null),
+            EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions", null),
+            EffectRejection.CallableDuplicate => ($"the Callable Constraint already declares {spelling}", "Each effect bound kind appears once in one Callable Constraint", "Remove the repeated effect item"),
+            EffectRejection.CallableReceiver => ("preserves results requires a ref or uniq Callable receiver", "An owner call consumes its acquired callable and accepts no preserves results bound", null),
             EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector", null),
             EffectRejection.NotReference => ($"{selector} is not a reference to {rejection.Symbol!.Name}", $"The Type arguments of {selector} do not form a reference to {rejection.Symbol!.Name}", null),
             EffectRejection.OwnContract => ($"{selector} is this Contract", "A Contract bounds its own requirement with an effect clause in that requirement's Constraint region", "Write the bound as an effect clause in the Constraint region of the requirement"),

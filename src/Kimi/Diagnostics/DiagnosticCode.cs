@@ -33,6 +33,7 @@ public enum DiagnosticCode
     InvalidKimiLibrary_Kd,
     MissingContractImplementation_Kd,
     InvalidEffectBound_Kd,
+    UnsatisfiedEffectBound_Kd,
     IncompatibleContractImplementation_Kd,
     InvalidAssociatedType_Kd,
 

@@ -8,6 +8,45 @@ namespace Kimi.Compiler;
 
 public static partial class Parser
 {
+    // Retain lists even on non-Callable clauses: Binding owns the single InvalidEffectBound diagnostic.
+    internal static void ParseCallableEffects(ref TokenReader reader, IsKoto constraint)
+    {
+        if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+        {
+            return;
+        }
+
+        reader.Advance();
+        while (reader.CanRead)
+        {
+            reader.SkipSeparators();
+            if (reader.TryConsume(TokenKind.EndBlock))
+            {
+                return;
+            }
+
+            if (IsEffectStart(ref reader, specification: true))
+            {
+                var effect = ParseEffectBound(ref reader);
+                constraint.AddEffectBound(effect);
+                constraint.Span = SourceSpan.FromBounds(constraint.Span.Start, effect.Span.End);
+            }
+            else
+            {
+                reader.Expect(SyntaxForm.EffectBound);
+                if (reader.CurrentTokenKind == TokenKind.StartBlock)
+                {
+                    reader.SkipCurrentBlock();
+                }
+                else
+                {
+                    reader.Advance();
+                    reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
+                }
+            }
+        }
+    }
+
     /// <summary>Determines whether the reader stands at an effect item (SPEC 8.4.10.1).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="specification">Whether a Contract selector may follow <c>effect</c>, as among a container's items. A body's

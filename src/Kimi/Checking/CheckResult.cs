@@ -62,6 +62,9 @@ public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresen
     {
     }
 
+    /// <summary>Gets checked effect descriptions for editor requests; these are not diagnostic records.</summary>
+    internal EffectHover[] EffectHovers { get; init; } = [];
+
     /// <summary>Creates the output of a check that an input or its configuration blocked before the check entry ran (SPEC 23.3.3).</summary>
     /// <param name="code">The <c>Input</c> Error that explains it.</param>
     /// <param name="location">The input it concerns, such as the project file, or the default value for none.</param>
