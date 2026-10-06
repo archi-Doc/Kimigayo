@@ -541,11 +541,11 @@ public sealed partial class Binding
             return;
         }
 
-        // SPEC 15.3.6: at a contravariant position the principal solution is a lower bound that outlives every other, which this
-        // inference does not choose, so a clause that bounds such an Origin from below is a located limit, not a relation record.
+        // The solved lower candidate still fails a bound: no principal candidate is proven. The local needs an
+        // annotation, not a feature-limit diagnostic; all clauses depending on the same unsolved local share this cause.
         if (!relation.Equality && InferredEnd(relation.Longer) == OriginVariance.Contravariant)
         {
-            this.Fail(use, BindingFailure.Unsupported);
+            this.FailExplained(ref this.principalOriginFailures, declaration.Owner, BindingFailure.MissingOrigin, (resolvedLonger, resolvedShorter, use));
             return;
         }
 

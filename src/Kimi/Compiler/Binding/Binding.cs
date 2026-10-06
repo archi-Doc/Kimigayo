@@ -777,6 +777,15 @@ public sealed partial class Binding
         {
             // SPEC 8.4.10.6: reported at the violating effect.
         }
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.principalOriginFailures?.TryGetValue(issue.Node, out var principal) == true)
+        {
+            issue.Node.Report(
+                requirement,
+                issue.Code,
+                evidence: [$"neither {OriginDisplay(principal.First, issue.Node)} nor {OriginDisplay(principal.Second, issue.Node)} is proven to outlive the other lower bound"],
+                related: [("relation", principal.Clause, "lower bound of the inferred Origin")],
+                advice: "Write an explicit Origin annotation, or provide a premise proving which lower bound outlives the others");
+        }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
         {
             ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);

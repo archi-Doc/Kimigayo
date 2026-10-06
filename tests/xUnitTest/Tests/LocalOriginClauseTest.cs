@@ -374,13 +374,53 @@ public class LocalOriginClauseTest
     }
 
     [Theory]
-    // A contravariant slot's principal solution is a lower bound outliving every other, which local inference does not choose.
-    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "origin x.s outlives b")]
-    public void AnUnrepresentableContravariantSolutionIsALocatedLimit(string body, string code, string at)
+    [InlineData("Longer", "origin b outlives a", "origin x.s outlives b")]
+    [InlineData("AlreadyLongest", "origin a outlives b", "origin x.s outlives b")]
+    [InlineData("Third", "origin c outlives a\n    origin c outlives b", "origin x.s outlives b\n        origin x.s outlives c")]
+    [InlineData("Reordered", "origin c outlives a\n    origin c outlives b", "origin x.s outlives c\n        origin x.s outlives b")]
+    public void AContravariantLocalSelectsAProvenPrincipalBound(string name, string premises, string clauses)
+    {
+        var argument = name == "Longer" ? "b" : name == "AlreadyLongest" ? "a" : "c";
+        var source = Callback + "func f(a: ref/i32, b: ref/i32, c: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    " + premises +
+            "\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        " + clauses + "\n    return h.call(" + argument + ")\n" +
+            "func read(value: ref/i32) -> i32 => value@follow\nlet n = 1\nrequire f(n@ref, n@ref, n@ref, read) == 1 else => $abort(\"principal\")";
+        ScalarEmissionTest.EmitFixture("ContravariantLocal" + name, source, string.Empty);
+    }
+
+    [Theory]
+    // Incomparable lower bounds have no principal solution; the local declaration needs an annotation.
+    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.MissingOriginBinding_Kd), "let h: C{x} = h0@move")]
+    public void IncomparableContravariantBoundsRequireAnAnnotation(string body, string code, string at)
     {
         var source = body + Main;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        var output = DiagnosticCorpus.Check(source);
+        var error = Assert.Single(output.Diagnostics);
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
+        Assert.Contains(error.Reason!, x => x.Value.Contains("neither", StringComparison.Ordinal));
+        Assert.Contains(error.Reason!, x => x.Value.Contains("outlive", StringComparison.Ordinal));
+        Assert.Contains(error.Related!, x => x.Role == "relation");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(new DiagnosticResult(output.Diagnostics, output.Sources), string.Empty);
+        Assert.Contains("neither a nor b is proven to outlive the other lower bound", console.Text, StringComparison.Ordinal);
+        var identity = SourceIdentity.FromPath(output.Sources[error.Source].Path);
+        var lsp = Assert.Single(WorkspaceCheck.Place(output, [identity], identity, true)[identity]);
+        Assert.Equal((error.Code, error.Display!.Range), (lsp.Code, lsp.Range));
+        Assert.Contains("neither a nor b", lsp.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    [Trait("Purpose", "Allocation")]
+    public void ContravariantBoundSuccessAndFailureReuseStorage(bool proven)
+    {
+        var source = Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n" +
+            (proven ? "    origin b outlives a\n" : string.Empty) +
+            "    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n" + Main;
+        var c = CompilationTestHelper.Parse(source);
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete == proven, iterations: 64, warmupIterations: 32));
+        Assert.True(valid);
     }
 
     // Without an initializer an outlives clause cannot determine the slot (SPEC 15.4.4); its relation rests on that failure and adds

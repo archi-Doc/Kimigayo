@@ -15,6 +15,7 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, OriginDeclaration> initializerOrigins = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
     private OriginRewriteVisitor? originRewriteVisitor;
+    private Dictionary<Koto, (BoundOrigin First, BoundOrigin Second, Koto Clause)>? principalOriginFailures;
 
     private static Koto? OriginOwner(Koto node)
     {
@@ -670,7 +671,7 @@ public sealed partial class Binding
 
         if (declaration.Inferred is { Count: > 0 } inferred)
         {
-            this.MeetLocalUpperBounds(declaration, inferred);
+            this.SolveLocalBounds(declaration, inferred);
         }
 
         declaration.Scope = scope;
@@ -741,7 +742,7 @@ public sealed partial class Binding
 
                 if (declaration.Relations.Count != 0)
                 {
-                    // Only a local's own clauses read the variance (MeetLocalUpperBounds, JudgeDeclaredRelation).
+                    // Local clauses use this composed variance when solving their bounds.
                     var inferred = declaration.Inferred ??= new(ReferenceEqualityComparer.Instance);
                     inferred[pending] = inferred.TryGetValue(pending, out var seen) && seen != polarity ? OriginVariance.Invariant : polarity;
                 }
@@ -749,17 +750,32 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.6, 15.4.4: an omitted Origin at a covariant position of a local's Type is the meet of all its upper bounds, so a clause
-    // `origin y outlives x.s` bounds the inferred x.s together with the initializer, instead of requiring y to outlive the initializer's
-    // Origin. The meet only shrinks, so the passes reach a fixed point independent of clause order.
-    private void MeetLocalUpperBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred)
+    // SPEC 15.3.6, 15.4.4: covariant positions meet upper bounds; contravariant positions select an existing
+    // lower bound proven to outlive the others. Repeated passes propagate dependent slots without inventing unions.
+    private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred)
     {
         for (var pass = 0; pass <= declaration.Relations.Count; pass++)
         {
             var changed = false;
             foreach (var relation in declaration.Relations)
             {
-                if (relation.Equality || !inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
+                if (relation.Equality)
+                {
+                    continue;
+                }
+
+                if (inferred.TryGetValue(relation.Longer, out var lowerVariance) && lowerVariance == OriginVariance.Contravariant &&
+                    declaration.Replacements.TryGetValue(relation.Longer, out var lowerCandidate) && !IsLocalRegion(lowerCandidate))
+                {
+                    var lower = this.ResolveOrigin(relation.Shorter, declaration);
+                    if (!this.ProvesOriginOutlives(lowerCandidate, lower, relation.Syntax) && this.ProvesOriginOutlives(lower, lowerCandidate, relation.Syntax))
+                    {
+                        declaration.Replacements[relation.Longer] = lower;
+                        changed = true;
+                    }
+                }
+
+                if (!inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
                     !declaration.Replacements.TryGetValue(relation.Shorter, out var current))
                 {
                     continue;
