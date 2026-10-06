@@ -223,7 +223,14 @@ public sealed partial class OwnershipAnalysis
             {
                 var advice = issue.Failure == OwnershipFailure.DefaultArgumentAccess ? "Use temporary shared inspection, or create an independent value inside the default" :
                     "Return an independent value or Copy an existing shared reference with external dependencies";
-                issue.Source.Report(requirement, issue.Code, related: issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, advice: advice);
+                var defaultCase = this.CaseFact(issue, out var singleDefaultCase);
+                issue.Source.Report(
+                    requirement,
+                    issue.Code,
+                    note: Note(CaseNote(null, defaultCase, singleDefaultCase)),
+                    evidence: CaseEvidence(issue.Code, null, defaultCase),
+                    related: Locations(this.WithCaseDeclarations(issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, defaultCase)),
+                    advice: advice);
                 continue;
             }
 
@@ -485,9 +492,9 @@ public sealed partial class OwnershipAnalysis
     // SPEC 8.10: a definition whose scope has a resolved pair binder is verified once per Semantics case; any other body once.
     private void Build(FunctionKoto function, int declarationDefault = -1)
     {
-        if (declarationDefault < 0 && this.instance is null && this.ResolveCases(function))
+        if (this.instance is null && this.ResolveCases(function))
         {
-            this.BuildCases(function);
+            this.BuildCases(function, declarationDefault);
         }
         else
         {
@@ -526,7 +533,7 @@ public sealed partial class OwnershipAnalysis
         {
             // One reusable declaration scratch graph, never an executable function
             // body. Its diagnostics are retained before the next default reuses it.
-            this.body = this.defaultBody ??= new();
+            this.body = this.caseBody ?? (this.defaultBody ??= new());
         }
         else if (this.instanceBody is { } instanceBody)
         {

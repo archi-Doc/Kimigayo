@@ -22,10 +22,12 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
+            var escaped = this.Places[result].Type.CarriesOrigin ? this.PreparedLoanInResult(result, root) : -1;
             for (var id = 0; id < this.Operations.Count; id++)
             {
                 var op = this.Operations[id];
-                if (op.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver)
+                // The escaping Reborrow is explained by the result diagnostic below; report any separate mutation as well.
+                if (id == escaped || op.Kind is OwnershipOperationKind.Produce or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver)
                 {
                     continue;
                 }
@@ -48,9 +50,9 @@ public sealed partial class OwnershipBody
                 }
             }
 
-            if (this.Places[result].Type.CarriesOrigin && this.PreparedLoanInResult(result, root) is >= 0 and var loan)
+            if (escaped >= 0)
             {
-                this.ReportIssue(new(this.Operations[loan].Source, OwnershipFailure.DefaultArgumentBorrow, Related: parameter.Source));
+                this.ReportIssue(new(this.Operations[escaped].Source, OwnershipFailure.DefaultArgumentBorrow, Related: parameter.Source));
             }
         }
 

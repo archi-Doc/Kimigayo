@@ -608,10 +608,12 @@
   + Name="DefaultArgumentAccess_Kd"
     Category="Language"
     Message="A default expression cannot modify or exclusively access a preceding prepared argument or its owned contents"
+    Evidence="case:Text"
 
   + Name="DefaultArgumentBorrow_Kd"
     Category="Language"
     Message="A default result cannot retain a new Borrow or Reborrow of a preceding prepared argument"
+    Evidence="case:Text"
 
   + Name="TransferRequired_Kd"
     Category="Language"

@@ -137,11 +137,11 @@ public sealed partial class OwnershipAnalysis
     // Builds every case: the first into the listed body, the others into pooled side bodies; the listed body is verified only when
     // every case is (SPEC 8.10). Its problems are published after the last case, with the cases each was found under, and a problem
     // every case found shows no case (SPEC 23.3.6.4). Beyond the bound, the first case is built and the bound reported (SPEC 23.3.6.1).
-    private void BuildCases(FunctionKoto function)
+    private void BuildCases(FunctionKoto function, int declarationDefault)
     {
         this.caseBodyCount = 0;
         this.caseBit = 1;
-        this.BuildOnce(function, -1);
+        this.BuildOnce(function, declarationDefault);
         var listed = this.body;
         this.caseListed = listed;
         var run = 1;
@@ -162,7 +162,7 @@ public sealed partial class OwnershipAnalysis
                 var side = this.casePool[this.caseBodyCount++];
                 this.caseBit <<= 1;
                 this.caseBody = side;
-                this.BuildOnce(function, -1);
+                this.BuildOnce(function, declarationDefault);
                 this.caseBody = null;
                 listed.IsVerified &= side.IsVerified;
                 run++;
