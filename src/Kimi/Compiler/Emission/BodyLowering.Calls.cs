@@ -99,6 +99,8 @@ internal sealed partial class BodyLowering
 
     internal void ClearFunctionContext()
     {
+        this.matchBody = null;
+        this.matchDefaultContext = -1;
         this.functions = null;
         this.GenericCalls = null;
         this.FormattingCalls = null;
@@ -144,8 +146,8 @@ internal sealed partial class BodyLowering
             return this.LowerArrayConstruction(body, function, constants, directory, id, constructionCall, constructionPlan, out failure);
         }
 
-        var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
-        var original = (operation.Source as InvocationKoto)?.BoundCall;
+        var original = body.CallAt(id);
+        var generic = original is { } bound ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;
         ObjectCall? creation = resolved is not null && this.ObjectCalls is { } objects && objects.TryGetValue(resolved, out var objectCreation) ? objectCreation : null;
@@ -167,7 +169,7 @@ internal sealed partial class BodyLowering
             (!intrinsic && generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
-            !ReferenceEquals(SignatureType(this, ElementAccess.PlaceCallReference(call) ?? call.BoundType), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
+            !ReferenceEquals(body.ConcreteAt(ElementAccess.PlaceCallReference(call) ?? call.BoundType, id), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
             !ReferenceTypes.StorageMatches(intrinsic ? SignatureType(this, plan.ReturnType) : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);

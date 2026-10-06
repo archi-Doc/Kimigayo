@@ -215,14 +215,12 @@ public class FunctionDefaultTest
         Assert.True(error.Repairs is null or { Length: 0 });
     }
 
-    // SPEC 8.4.7.3, 7.2.3: a literal default fits every binding of a PrimitiveInteger T, so it is no mismatch; generic default
-    // execution is outside the subset and stays one located record.
+    // SPEC 8.4.7.3, 7.2.3: a literal default fits every binding of a PrimitiveInteger T and is checked even without an instance.
     [Fact]
     public void GenericLiteralDefaultUnderItsConstraintIsNoMismatch()
     {
         const string Source = "func g<T>(y: T = 0) -> T\n    T is PrimitiveInteger\n    return y\npublic func main() => ()\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedOwnership_Kd), DiagnosticCategory.Unsupported, Source.IndexOf("= 0", StringComparison.Ordinal) + 2, 1), (error.Code, error.Category, error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
     }
 
     // The default Note and Advice reach the console and both language-server placements unchanged, and no default record
@@ -285,17 +283,17 @@ public class FunctionDefaultTest
         Assert.Single(restored.Ownership.Issues, x => x.Failure == OwnershipFailure.TransferRequired);
     }
 
-    // Forms outside the executable subset stay one located unsupported record, with no internal or cascading failure.
+    // Generic defaults are checked in the declaration without requiring any concrete call.
     [Theory]
     [InlineData("func identity<T>(value: T) -> T => value@move\nfunc run<T>(value: T, action: (T) -> T = identity) -> T\n    T is Owned\n    return action(value@move)\n", "identity")]
     [InlineData("func run<T>(v: T, action: (i32) -> i32 = func (x) => x + 1) -> i32\n    T is Owned\n    return action(1)\n", "(x)")]
-    public void UnsupportedFunctionDefaultsStayLocated(string declaration, string text)
+    public void GenericFunctionDefaultsAreCheckedWithoutAnInstance(string declaration, string text)
     {
         var source = declaration + "public func main() => ()\n";
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedOwnership_Kd), text), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+        Assert.Contains(text, source, StringComparison.Ordinal);
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
         var c = MinimalEmissionTest.Analyze(declaration);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Internal);
+        Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
     }
 
     // A compiler-implemented Item has no executable erasure adapter yet; its default stays one located record at check.

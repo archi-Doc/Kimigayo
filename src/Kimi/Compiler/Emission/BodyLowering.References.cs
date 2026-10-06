@@ -170,7 +170,7 @@ internal sealed partial class BodyLowering
         if (source.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter)
         {
             return operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } &&
-                body.SymbolPlaces.TryGetValue(symbol, out var anchor) && anchor == operation.Place;
+                body.TrySymbolPlaceAt(symbol, id, out var anchor) && anchor == operation.Place;
         }
 
         // A transferred or Identity-acquired operand (text@move, text@owner/string) is borrowed through the

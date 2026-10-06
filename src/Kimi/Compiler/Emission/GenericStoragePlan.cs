@@ -122,7 +122,8 @@ internal sealed partial class GenericStoragePlan
             }
 
             if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure) ||
-                !this.PrepareFunctionItems(compilation, module, layouts, body, null, 0, out failure))
+                !this.PrepareFunctionItems(compilation, module, layouts, body, null, 0, out failure) ||
+                !this.PrepareClosures(compilation, module, layouts, body, null, 0, out failure))
             {
                 return false;
             }
@@ -130,7 +131,7 @@ internal sealed partial class GenericStoragePlan
             for (var i = 0; i < body.Operations.Count; i++)
             {
                 var operation = body.Operations[i];
-                if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call })
+                if (operation.Kind != OwnershipOperationKind.Call || body.CallAt(i) is not { } call)
                 {
                     continue;
                 }
@@ -181,7 +182,8 @@ internal sealed partial class GenericStoragePlan
                 continue;
             }
 
-            var item = call is null ? produced : binding.InstantiateStorageType(produced, call);
+            var declared = body.SubstituteDefaultType(produced, body.DefaultContextAt(i));
+            var item = declared is null || call is null ? declared : binding.InstantiateStorageType(declared, call);
             if (item is null || binding.FunctionItemContext(item) is not { } context || !this.templates.TryGetValue(target, out var template))
             {
                 return Fail("Generic Function Item requires a closed substitution and a verified generic body.", out failure);
@@ -190,6 +192,29 @@ internal sealed partial class GenericStoragePlan
             if (!this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
             {
                 return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool PrepareClosures(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? call, int depth, out string? failure)
+    {
+        failure = null;
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            if (body.Values[i].Kind != OwnershipValueKind.Closure ||
+                body.Operations[i].Source is not FunctionKoto { BoundClosure.EnvironmentType: { } environment } closure || !IsGeneric(closure))
+            {
+                continue;
+            }
+
+            var declared = body.SubstituteDefaultType(environment, body.DefaultContextAt(i));
+            var type = declared is null || call is null ? declared : compilation.Binding.InstantiateStorageType(declared, call);
+            if (type?.ClosureContext is not { } context || !this.templates.TryGetValue(closure, out var template) ||
+                !this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
+            {
+                return Fail(failure ?? "Generic closure requires its enclosing concrete substitution.", out failure);
             }
         }
 
@@ -205,7 +230,7 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < body.Operations.Count; i++)
         {
             var operation = body.Operations[i];
-            if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
+            if (operation.Kind == OwnershipOperationKind.Call && body.CallAt(i) is { } call &&
                 (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc) && !calls.Contains(call))
             {
                 calls.Add(call);
@@ -369,23 +394,10 @@ internal sealed partial class GenericStoragePlan
     {
         var binding = compilation.Binding;
         if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1) ||
-            !this.PrepareFunctionItems(compilation, module, layouts, template.Body, call, depth + 1, out failure))
+            !this.PrepareFunctionItems(compilation, module, layouts, template.Body, call, depth + 1, out failure) ||
+            !this.PrepareClosures(compilation, module, layouts, template.Body, call, depth + 1, out failure))
         {
             return false;
-        }
-
-        for (var i = 0; i < template.Body.Operations.Count; i++)
-        {
-            if (template.Body.Values[i].Kind == OwnershipValueKind.Closure &&
-                template.Body.Operations[i].Source is FunctionKoto { BoundClosure.EnvironmentType: { } environment } closure && IsGeneric(closure))
-            {
-                if (binding.InstantiateStorageType(environment, call)?.ClosureContext is not { } context ||
-                    !this.templates.TryGetValue(closure, out var closureTemplate) ||
-                    !this.PrepareEntry(compilation, module, layouts, context, closureTemplate, out _, out failure, depth + 1))
-                {
-                    return Fail(failure ?? "Generic closure requires its enclosing concrete substitution.", out failure);
-                }
-            }
         }
 
         for (var i = 0; i < template.DirectCalls.Length; i++)

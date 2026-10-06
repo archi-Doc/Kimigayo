@@ -14,7 +14,7 @@ public sealed partial class OwnershipAnalysis
         {
             var capture = closure.Captures[i];
             var prepared = this.TryDefaultSlot(capture.Source, out var place);
-            if (prepared ? place < 0 : !this.body.SymbolPlaces.TryGetValue(capture.Source, out place))
+            if (prepared ? place < 0 : !this.body.TrySymbolPlace(capture.Source, this.defaultContext, out place))
             {
                 this.Unsupported(source);
                 return -1;

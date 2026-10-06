@@ -8,6 +8,24 @@ public sealed partial class OwnershipBody
     // A nested default substitutes its own call first, then its enclosing defaults, then the body's case or instance.
     internal List<(int Start, int End, BoundCall Call, int Parent)>? DefaultContexts { get; set; }
 
+    internal Dictionary<(BindingSymbol Symbol, int Context), int>? DefaultSymbolPlaces { get; set; }
+
+    internal bool TrySymbolPlace(BindingSymbol symbol, int context, out int place)
+    {
+        for (; context >= 0; context = this.DefaultContexts![context].Parent)
+        {
+            if (this.DefaultSymbolPlaces is { } locals && locals.TryGetValue((symbol, context), out place))
+            {
+                return true;
+            }
+        }
+
+        return this.SymbolPlaces.TryGetValue(symbol, out place);
+    }
+
+    internal bool TrySymbolPlaceAt(BindingSymbol symbol, int operation, out int place)
+        => this.TrySymbolPlace(symbol, this.DefaultContextAt(operation), out place);
+
     internal int DefaultContextAt(int operation)
     {
         if (this.DefaultContexts is not { Count: > 0 } contexts)
@@ -53,4 +71,17 @@ public sealed partial class OwnershipBody
 
     internal BoundType? ConcreteAt(BoundType? type, int operation)
         => this.Concrete(this.SubstituteDefaultType(type, this.DefaultContextAt(operation)));
+
+    internal BoundCall? CallAt(int operation)
+        => this.SubstituteDefaultCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.DefaultContextAt(operation));
+
+    internal BoundCall? SubstituteDefaultCall(BoundCall? call, int context)
+    {
+        for (; call is not null && context >= 0; context = this.DefaultContexts![context].Parent)
+        {
+            call = this.Function.CodeContext.Compilation.Binding.InstantiateDefaultCall(call, this.DefaultContexts![context].Call);
+        }
+
+        return call;
+    }
 }

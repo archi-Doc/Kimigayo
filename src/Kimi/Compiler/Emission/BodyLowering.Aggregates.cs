@@ -659,7 +659,7 @@ internal sealed partial class BodyLowering
             {
                 var capture = closure.Captures[i];
                 if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Copy or CaptureAcquisition.Bare && !this.BorrowingEntry(capture) && capture.Source is { } source &&
-                    ReferenceEquals(SignatureType(this, capture.Environment.Type), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
+                    ReferenceEquals(body.ConcreteAt(capture.Environment.Type, id), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
                 {
                     return true;
                 }
@@ -668,7 +668,7 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        return ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
+        return ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), place.Type) &&
             operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } && this.IsPreparedArgument(body, id, symbol, place.Id);
     }
 }

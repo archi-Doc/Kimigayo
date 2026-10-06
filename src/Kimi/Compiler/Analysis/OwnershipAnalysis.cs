@@ -730,6 +730,7 @@ public sealed partial class OwnershipAnalysis
         this.AddPlace(new(id, source, type, kind, mutable, acquisition)
         {
             DeferredExecution = kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result ? this.activeDeferred : -1,
+            DefaultContext = this.defaultContext,
         });
         this.body.IsConcrete &= !AbstractTypes.HasAbstractPart(type);
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
@@ -786,7 +787,7 @@ public sealed partial class OwnershipAnalysis
             return slot;
         }
 
-        if (symbol is not null && this.body.SymbolPlaces.TryGetValue(symbol, out var id))
+        if (symbol is not null && this.body.TrySymbolPlace(symbol, this.defaultContext, out var id))
         {
             return id;
         }
@@ -797,6 +798,20 @@ public sealed partial class OwnershipAnalysis
 
     private int LocalPlace(BindingSymbol? symbol, Koto source, BoundType? type, bool mutable, AcquisitionKind? acquisition = null)
     {
+        if (this.defaultContext >= 0 && symbol is not null)
+        {
+            var places = this.body.DefaultSymbolPlaces ??= new();
+            var key = (symbol, this.defaultContext);
+            if (!places.TryGetValue(key, out var local))
+            {
+                local = this.Place(source, type, OwnershipPlaceKind.Local, mutable, acquisition);
+                places.Add(key, local);
+                this.body.SymbolPlaces.TryAdd(symbol, local);
+            }
+
+            return local;
+        }
+
         // Deferred replicas have separate operation/value IDs but nonoverlapping lifetimes
         // of the same lexical binding. Declare resets the shared Place on each execution.
         if (symbol is not null && this.body.SymbolPlaces.TryGetValue(symbol, out var existing))
@@ -1610,6 +1625,17 @@ public sealed partial class OwnershipAnalysis
         {
             this.Unsupported(call);
             return -1;
+        }
+
+        if (this.defaultContext >= 0)
+        {
+            if (this.body.SubstituteDefaultCall(plan, this.defaultContext) is not { } selected)
+            {
+                this.Unsupported(call);
+                return -1;
+            }
+
+            plan = selected;
         }
 
         if (plan.Target.CompilerFunction is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap)

@@ -43,8 +43,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < plan.Positions.Count; i++)
         {
             var position = plan.Positions[i];
-            if ((position.Parent < 0 && position.MatchedType.Kind == BoundTypeKind.Parameter) ||
-                position.Acquisition == PatternAcquisition.Deferred || (position.MatchedType.Kind != BoundTypeKind.Parameter && !this.SupportsType(position.MatchedType)) ||
+            if (position.Acquisition == PatternAcquisition.Deferred || (position.MatchedType.Kind != BoundTypeKind.Parameter && !this.SupportsType(position.MatchedType)) ||
                 (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Borrow or PatternAcquisition.Move or PatternAcquisition.CopyOrMove)))
             {
                 return false;

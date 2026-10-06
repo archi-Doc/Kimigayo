@@ -10,6 +10,23 @@ public sealed partial class Binding
 
     // The intermediate call of a forwarded requirement call, before its witness is resolved into the destination.
     private readonly BoundCall forwardedRequirement = new();
+    private readonly Dictionary<(BoundCall Inner, BoundCall Outer), BoundCall> defaultCalls = new();
+
+    // Defaults are replicated into pending calls. Retain one selected call per declaration and enclosing call context;
+    // unlike a syntax-keyed table, this distinguishes two instantiations of the same default in one caller.
+    internal BoundCall? InstantiateDefaultCall(BoundCall inner, BoundCall outer)
+    {
+        var key = (inner, outer);
+        this.defaultCalls.TryGetValue(key, out var previous);
+        var call = this.InstantiateForwardedCall(inner, outer, previous);
+        if (call is not null)
+        {
+            this.defaultCalls[key] = call;
+        }
+
+        return call;
+    }
+
     // SPEC 8.8.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
     // Retained across binds: a warm rebind reuses each specialization's slot arrays and the sibling lists.

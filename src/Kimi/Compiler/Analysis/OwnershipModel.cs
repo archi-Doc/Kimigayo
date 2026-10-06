@@ -174,6 +174,8 @@ public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type
 {
     // Deferred bodies share syntax, but each expansion has distinct temporary storage.
     internal int DeferredExecution { get; init; } = -1;
+
+    internal int DefaultContext { get; init; } = -1;
 }
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
@@ -381,6 +383,7 @@ public sealed partial class OwnershipBody
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
         this.DefaultContexts?.Clear();
+        this.DefaultSymbolPlaces?.Clear();
         this.EdgeStorage.Clear();
         this.EdgeHeads.Clear();
         this.IncomingEdges.Clear();

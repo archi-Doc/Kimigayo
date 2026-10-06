@@ -62,7 +62,7 @@ internal sealed partial class BodyLowering
                 this.IsPreparedArgument(body, input, source, place);
         }
 
-        return body.SymbolPlaces.TryGetValue(source, out place);
+        return body.TrySymbolPlaceAt(source, input, out place);
     }
 
     // A generic Item enters the instance of its bound arguments, or the explicit specialization selected for them.
@@ -119,7 +119,7 @@ internal sealed partial class BodyLowering
         if (source?.Kind == BoundTypeKind.FunctionItem)
         {
             if (operation.Kind != OwnershipOperationKind.Produce || source.Symbol?.Declaration is not FunctionKoto itemDefinition ||
-                !ReferenceEquals(SignatureType(this, operation.Source.ErasedFunctionType), body.Places[operation.Place].Type) ||
+                !ReferenceEquals(body.ConcreteAt(operation.Source.ErasedFunctionType, id), body.Places[operation.Place].Type) ||
                 operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
                 !operation.Source.CodeContext.Compilation.Binding.ItemContractFits(source, itemSignature, body.Places[operation.Place].Type, operation.Source) ||
                 this.ClosureEntry(source, itemDefinition) is not { CallerLocation: false } itemEntry ||
@@ -134,7 +134,7 @@ internal sealed partial class BodyLowering
 
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
-            !ReferenceEquals(SignatureType(this, operation.Source.ErasedFunctionType), body.Places[operation.Place].Type) ||
+            !ReferenceEquals(body.ConcreteAt(operation.Source.ErasedFunctionType, id), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
             !Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
             this.aggregateLayouts.Get(source) is not { } layout ||
@@ -192,7 +192,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (operation.Source is not FunctionKoto { BoundClosure: { } closure } source ||
             closure.Signature.Kind != BoundTypeKind.Function ||
-            !ReferenceEquals(body.Places[operation.Place].Type, SignatureType(this, closure.EnvironmentType ?? closure.Signature)) || value.Count != closure.Captures.Count ||
+            !ReferenceEquals(body.Places[operation.Place].Type, body.ConcreteAt(closure.EnvironmentType ?? closure.Signature, id)) || value.Count != closure.Captures.Count ||
             this.ClosureEntry(body.Places[operation.Place].Type, source) is not { } callee ||
             (body.IsReachable(id) && (body.GetInputState(id, operation.Place) & PlaceState.MayInit) != 0))
         {
@@ -215,7 +215,7 @@ internal sealed partial class BodyLowering
         }
 
         var patternStart = function.PatternSteps.Count;
-        var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(SignatureType(this, environmentType)!) : null;
+        var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(body.ConcreteAt(environmentType, id)!) : null;
         if (closure.EnvironmentType is not null && environmentLayout is null)
         {
             return Fail("Concrete environment has no storage layout.", out failure);
@@ -235,7 +235,7 @@ internal sealed partial class BodyLowering
                 (uint)input >= (uint)id || body.Operations[input].Kind != (environmentLayout is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Consume) ||
                 (borrowed ? environmentLayout is null || body.Places[place = body.Operations[input].Place].Kind != OwnershipPlaceKind.Temporary
                     : !this.CaptureSourcePlace(body, source, capture.Source, input, out place) || place != body.Operations[input].Place) ||
-                !ReferenceEquals(body.Places[place].Type, SignatureType(this, capture.Environment.Type)) ||
+                !ReferenceEquals(body.Places[place].Type, body.ConcreteAt(capture.Environment.Type, id)) ||
                 (body.IsReachable(id) && (!this.Dominates(input, id) || (body.GetInputState(input, place) & PlaceState.MustInit) == 0)))
             {
                 return Fail("Closure capture requires a checked initialized inline scalar snapshot.", out failure);

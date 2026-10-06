@@ -280,7 +280,7 @@ internal sealed partial class BodyLowering
                     continue;
                 }
 
-                if (binding.BodySymbol?.Type is not { } result || !body.SymbolPlaces.TryGetValue(binding.BodySymbol, out var local) ||
+                if (binding.BodySymbol?.Type is not { } result || !body.TrySymbolPlaceAt(binding.BodySymbol, cursor, out var local) ||
                     (uint)cursor >= (uint)body.Operations.Count || body.Operations[cursor] is not { Kind: OwnershipOperationKind.Declare } declaration || declaration.Place != local ||
                     !ReferenceEquals(body.Places[local].Type, this.Matched(result)))
                 {
@@ -310,7 +310,7 @@ internal sealed partial class BodyLowering
 
         if (pattern.Kind == BoundPatternKind.Binding)
         {
-            if (pattern.BodySymbol is null || !body.SymbolPlaces.TryGetValue(pattern.BodySymbol, out var local) || (uint)cursor >= (uint)body.Operations.Count ||
+            if (pattern.BodySymbol is null || !body.TrySymbolPlaceAt(pattern.BodySymbol, cursor, out var local) || (uint)cursor >= (uint)body.Operations.Count ||
                 body.Operations[cursor].Kind != OwnershipOperationKind.Declare || body.Operations[cursor].Place != local || !ReferenceEquals(body.Places[local].Type, this.Matched(pattern.MatchedType)))
             {
                 return false;
@@ -548,6 +548,8 @@ internal sealed partial class BodyLowering
 
     private bool LowerPatternProjection(OwnershipBody body, EmissionFunction function, int id, out string? failure)
     {
+        this.matchBody = body;
+        this.matchDefaultContext = body.DefaultContextAt(id);
         failure = null;
         var operation = body.Operations[id];
         var armIndex = body.OperationSteps[id];
@@ -568,7 +570,7 @@ internal sealed partial class BodyLowering
         var node = match.Binding.Positions[(int)index];
         var offset = this.PatternOffset(match.Binding, (int)index);
         if (node.Kind != BoundPatternKind.Binding || node.CandidateSymbol is null || !ReferenceEquals(operation.Source.BoundSymbol, node.CandidateSymbol) ||
-            !ReferenceEquals(body.Places[operation.Input].Type, this.Matched(node.CandidateSymbol.Type)) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), this.Matched(node.CandidateSymbol.Type)) ||
+            !ReferenceEquals(body.Places[operation.Input].Type, this.Matched(node.CandidateSymbol.Type)) || !ReferenceEquals(this.Matched(operation.Source.BoundType), this.Matched(node.CandidateSymbol.Type)) ||
             offset < 0 || (body.IsReachable(id) && (body.GetInputState(id, match.Subject) & PlaceState.MustInit) == 0))
         {
             return Fail("Candidate projection has the wrong position or Type.", out failure);

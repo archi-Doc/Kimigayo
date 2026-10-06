@@ -53,16 +53,18 @@ internal static class ScalarDefaults
         return false;
     }
 
-    /// <summary>Gets whether a call delivers a default of this Type to its parameter: a supported result, or an owned closed
-    /// common Function that the default erases (SPEC 7.2.3, 7.6.4).</summary>
+    /// <summary>Gets whether a call can deliver this instance of a universally checked default, including a generic Copy
+    /// parameter instantiated with a borrowed value (SPEC 7.2.3, 7.6.4).</summary>
     /// <param name="type">The parameter Type.</param>
     /// <returns>Whether lowering delivers the default.</returns>
-    internal static bool SupportsDelivered(BoundType? type) => SupportsResult(type) || IsErasedResult(type);
+    internal static bool SupportsDelivered(BoundType? type) => SupportsResult(type) || IsErasedResult(type) || ReferenceTypes.IsBorrow(type) ||
+        (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
 
     /// <summary>Gets whether a default supplies a Scalar, Unit, string or independent aggregate retaining no Loan of a prepared argument.</summary>
     /// <param name="type">The parameter Type.</param>
     /// <returns>Whether the Type is a supported default result.</returns>
-    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || SupportsIndependentAggregate(type);
+    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
+        SupportsIndependentAggregate(type) || (type is not null && AbstractTypes.IsAbstract(type));
 
     /// <summary>Gets whether a default expression may compute or read a value of this Type: a supported result, or a safe
     /// reference to one, such as a binding of a shared Subject (SPEC 15.1.6).</summary>
@@ -99,18 +101,18 @@ internal static class ScalarDefaults
         return true;
     }
 
-    private static bool SupportsIndependentAggregate(BoundType? type) => type is { ContainsParameter: false, CarriesOrigin: false } &&
+    private static bool SupportsIndependentAggregate(BoundType? type) => type is { CarriesOrigin: false } &&
         (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
     private static bool SupportsExpressionType(BoundType? type) => SupportsValue(type) || SupportsResult(type) || ReferenceTypes.IsString(type) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && SupportsExpressionType(type.Components[0]));
 
-    private static bool IsErasedResult(BoundType? type) => type is { Kind: BoundTypeKind.Function, ContainsParameter: false };
+    private static bool IsErasedResult(BoundType? type) => type is { Kind: BoundTypeKind.Function };
 
-    // SPEC 7.2.3, 7.6.4, 14.9.1: a default of a closed common Function Type whose every result source erases a closed Function
+    // SPEC 7.2.3, 7.6.4, 14.9.1: a default of a common Function Type whose every result source erases a Function
     // Item, or an anonymous function whose call is Shared and whose entries Copy preceding parameters. Its environment then holds
     // no Borrow of a prepared slot, so the erased value is independent of the pending call. Selections, `do` bodies and their
-    // transfers deliver such sources; conditions, guards and discarded items stay scalar.
+    // transfers deliver such sources. Generic declarations are checked universally before each call instantiates their storage.
     private static bool SupportsErased(Koto expression, FunctionKoto function, int parameterIndex)
     {
         if (expression.AttributeChain is not null || expression.BindingState != BindingState.Resolved)
@@ -156,10 +158,10 @@ internal static class ScalarDefaults
             // that takes its caller's location, has none to erase.
             return source.BoundSymbol is { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsRequirement: false } item } &&
                 (item.Body ?? item.ExpressionBody) is not null && !KimiLibraryCatalog.RequiresCallerLocation(source.BoundSymbol) &&
-                source.BoundType is { Kind: BoundTypeKind.FunctionItem, ContainsParameter: false };
+                source.BoundType is { Kind: BoundTypeKind.FunctionItem };
         }
 
-        if (literal.RequiresInstantiation || literal.BoundClosure is not { Receiver: SemanticsKind.Ref } closure)
+        if (literal.BoundClosure is not { Receiver: SemanticsKind.Ref } closure)
         {
             return false;
         }
@@ -178,7 +180,7 @@ internal static class ScalarDefaults
 
             if (capture.Environment.CaptureAcquisition != CaptureAcquisition.Copy || capture.Source is not { Kind: BindingSymbolKind.Parameter } parameter ||
                 !ReferenceEquals(parameter.Scope.Owner, function) || parameter.Slot >= parameterIndex ||
-                (!SupportsPatternValue(capture.Environment.Type) && !SupportsIndependentAggregate(capture.Environment.Type) &&
+                (!SupportsPatternValue(capture.Environment.Type) && !SupportsResult(capture.Environment.Type) &&
                     (capture.Environment.Type is not { } type || literal.CodeContext.Compilation.Binding.ProveCopy(type, literal) != ConstraintProof.Refuted)))
             {
                 return false;
@@ -425,7 +427,7 @@ internal static class ScalarDefaults
             if (item is FieldKoto local)
             {
                 if (local.AttributeChain is not null ||
-                    !(SupportsPatternValue(local.BoundType) || SupportsResult(local.BoundType) || IsErasedResult(local.BoundType)) ||
+                    !(SupportsPatternValue(local.BoundType) || SupportsExpressionType(local.BoundType) || IsErasedResult(local.BoundType)) ||
                     (local.InitializerKoto is { } initializer && !SupportsMatchSubject(initializer, function, parameterIndex)))
                 {
                     return false;
@@ -488,7 +490,7 @@ internal static class ScalarDefaults
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } =>
                 ReferenceEquals(symbol.Scope.Owner, function) && symbol.Slot < parameterIndex,
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: FieldKoto local } } =>
-                (SupportsPatternValue(local.BoundType) || SupportsResult(local.BoundType) || IsErasedResult(local.BoundType)) && IsInsideDefault(local, function, parameterIndex),
+                (SupportsPatternValue(local.BoundType) || SupportsExpressionType(local.BoundType) || IsErasedResult(local.BoundType)) && IsInsideDefault(local, function, parameterIndex),
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: SyntaxFormKoto { Akind: KotoKind.BindingPattern } pattern } } local =>
                 SupportsPatternValue(local.BoundType) && IsInsideDefault(pattern, function, parameterIndex),
             MemberAccessKoto field when ElementAccess.BorrowedPathRoot(field) is not null =>

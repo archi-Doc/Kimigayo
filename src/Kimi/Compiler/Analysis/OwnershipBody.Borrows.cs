@@ -728,11 +728,12 @@ public sealed partial class OwnershipBody
                 var own = origin.Kind != OriginKind.Input || ReferenceEquals(origin.Binder, this.Function) || ReferenceEquals(origin.Binder, this.Function.Accessor?.Declaration);
                 foreach (var entry in this.SymbolPlaces)
                 {
+                    var declared = this.TrySymbolPlace(entry.Key, this.Places[place].DefaultContext, out var selected) ? selected : entry.Value;
                     if (own && ReferenceEquals(entry.Key.Declaration, origin.Binder) && (origin.Kind == OriginKind.Input ? entry.Key.Slot == origin.InputIndex : Binding.SymbolOriginSlot(entry.Key) == origin.Slot) &&
                         (origin.Kind != OriginKind.Input || entry.Key.Kind == BindingSymbolKind.Parameter))
                     {
-                        if (origin.Kind == OriginKind.Input && this.Places[entry.Value].Type.Semantics == SemanticsKind.Owner &&
-                            (origin.Occurrence is not null || this.Places[entry.Value].Type.Kind == BoundTypeKind.Slice))
+                        if (origin.Kind == OriginKind.Input && this.Places[declared].Type.Semantics == SemanticsKind.Owner &&
+                            (origin.Occurrence is not null || this.Places[declared].Type.Kind == BoundTypeKind.Slice))
                         {
                             // SPEC 15.2.1, 15.3.1, 4.6.5: the slot of an owned input, such as value.source or a by-value Slice's
                             // source, names the caller's Loan, not the input's storage; a result retaining it depends on no
@@ -740,7 +741,7 @@ public sealed partial class OwnershipBody
                             continue;
                         }
 
-                        Record(entry.Value);
+                        Record(declared);
                     }
                 }
 

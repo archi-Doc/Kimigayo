@@ -124,7 +124,7 @@ internal sealed partial class BodyLowering
         var place = body.Places[operation.Place];
         return ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
             (operation.Source is IdentifierNameKoto { BoundSymbol.Kind: not BindingSymbolKind.PatternCandidate } identifier
-                ? identifier.BoundSymbol is { } symbol && ((body.SymbolPlaces.TryGetValue(symbol, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
+                ? identifier.BoundSymbol is { } symbol && ((body.TrySymbolPlaceAt(symbol, id, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
                 : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
             this.IsElementOwnerStorage(place) &&
             (!body.IsReachable(id) || (body.GetStorageState(id, place.Id) & PlaceState.MustInit) != 0);

@@ -29,10 +29,11 @@ internal sealed partial class BodyLowering
                 // acquired Type; the Type targets of Identity Acquisition keep their supported set. An operand read through its
                 // reference layers (SPEC 13.5.2) supplies the read Type.
                 var left = OperandType(source);
+                var context = (uint)identity.Place < (uint)body.Places.Count ? body.Places[identity.Place].DefaultContext : -1;
                 if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
-                    SignatureType(lowering, source.BoundType) is not { } type ||
+                    body.Concrete(body.SubstituteDefaultType(source.BoundType, context)) is not { } type ||
                     (source.ConversionBinding == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type) && !Binding.IsCopyOperation(source)) ||
-                    !ReferenceEquals(type, SignatureType(lowering, left)) || !ReferenceEquals(type, SignatureType(lowering, source.Right.BoundType)) ||
+                    !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(left, context))) || !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(source.Right.BoundType, context))) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {
                     return false;
@@ -86,7 +87,7 @@ internal sealed partial class BodyLowering
             }
 
             if (value.Kind == OwnershipValueKind.Phi && (!scalar || operation.Kind != OwnershipOperationKind.Branch ||
-                !ReferenceEquals(ValueType(body, id), SignatureType(lowering, operation.Source.BoundType))))
+                !ReferenceEquals(ValueType(body, id), body.ConcreteAt(operation.Source.BoundType, id))))
             {
                 return false;
             }
