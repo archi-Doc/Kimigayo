@@ -371,6 +371,7 @@ public sealed partial class Binding
         // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.2): a call bound inside
         // it, such as a later argument, neither sees nor clears the enclosing call's reference.
         var enclosingRequirementContract = this.activeRequirementContract;
+        var enclosingAcquisition = this.acquisitionFailure;
         this.activeRequirementContract = null;
         try
         {
@@ -379,6 +380,7 @@ public sealed partial class Binding
         finally
         {
             this.activeRequirementContract = enclosingRequirementContract;
+            this.acquisitionFailure = enclosingAcquisition;
         }
     }
 
@@ -643,7 +645,7 @@ public sealed partial class Binding
             Koto? incompleteSignature = null;
             Koto? failedPendingSignature = null;
             Koto? invalidDeclaration = null;
-            this.transferRequired = this.lendingRequired = false;
+            this.acquisitionFailure = null;
             foreach (var candidate in candidates)
             {
                 if (candidate.Declaration is not FunctionKoto function)
@@ -727,7 +729,7 @@ public sealed partial class Binding
             if (applicable == 0)
             {
                 // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
-                var failure = this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.NoApplicableCandidate;
+                var failure = this.acquisitionFailure?.Kind ?? BindingFailure.NoApplicableCandidate;
                 if (failure == BindingFailure.NoApplicableCandidate && call.BindingFailure == BindingFailure.None)
                 {
                     // The candidates that were considered explain the failed selection; recorded only when it fails.
@@ -772,9 +774,9 @@ public sealed partial class Binding
 
                     (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = rejected;
                 }
-                else if (failure != BindingFailure.NoApplicableCandidate && this.acquisitionPlace is { } place)
+                else if (this.acquisitionFailure is { } acquisition)
                 {
-                    return this.FailAcquisition(call, failure, place, this.acquisitionObject, true);
+                    return this.FailAcquisition(call, failure, acquisition.Place, acquisition.Object, true);
                 }
 
                 return this.FailWaitingSelection(call, failure);
@@ -1160,16 +1162,31 @@ public sealed partial class Binding
     {
         var saved = this.invariantSlots;
         var savedEnvironment = this.environmentEvidence;
+        var savedAcquisition = this.acquisitionFailure;
+        this.acquisitionFailure = null;
         this.invariantSlots = 0;
         this.environmentEvidence = false;
         try
         {
-            return this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver);
+            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver);
+            if (result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is { } acquisition)
+            {
+                // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling.
+                if (result == CandidateApplicability.Applicable)
+                {
+                    savedAcquisition = acquisition;
+                }
+
+                return CandidateApplicability.Inapplicable;
+            }
+
+            return result;
         }
         finally
         {
             this.invariantSlots = saved;
             this.environmentEvidence = savedEnvironment;
+            this.acquisitionFailure = savedAcquisition;
         }
     }
 
@@ -1413,7 +1430,7 @@ public sealed partial class Binding
             }
 
             // SPEC 15.6.1: applicability uses the structural part of each fit; its Origin relations are judged after selection.
-            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true) || !this.FitsStructurallyAt(adaptedReceiver, requiredReceiver, call))
+            if (!this.AdaptInput(receiver!, requiredReceiver, receiver!.BoundType!, scope, receiverPath, declaringType, out var adaptedReceiver, out var quality, out var kind, receiver: true, deferAcquisition: true) || !this.FitsStructurallyAt(adaptedReceiver, requiredReceiver, call))
             {
                 if (SharedObjectAuthorityMismatch(receiver.BoundType!, requiredReceiver))
                 {
@@ -1645,7 +1662,7 @@ public sealed partial class Binding
                 BoundType? adaptedType = null;
                 if (argument.BoundType is { } actual)
                 {
-                    if (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind) || !this.FitsStructurallyAt(adapted, type, call))
+                    if (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind, deferAcquisition: true) || !this.FitsStructurallyAt(adapted, type, call))
                     {
                         return CandidateApplicability.Inapplicable;
                     }
@@ -1726,7 +1743,8 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
         }
-        else if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call))
+        else if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call) &&
+            this.ExpectedAdaptation(call, result, this.ContractType(expected, scope), recordPair: false) is null)
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -1828,7 +1846,7 @@ public sealed partial class Binding
             }
 
             pattern = this.ContractType(memberPattern, scope, self);
-            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver))
+            if (!this.AdaptInput(source, pattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver, deferAcquisition: true))
             {
                 return false;
             }
