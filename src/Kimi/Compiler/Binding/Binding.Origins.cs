@@ -446,8 +446,14 @@ public sealed partial class Binding
             return BoundOrigin.Static;
         }
 
-        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier))
+        if (this.OriginCandidate(name, use, scope, out var scalar, out var carrier, out var repeated))
         {
+            if (repeated is not null)
+            {
+                this.RestOnRepeatedSet(use, repeated);
+                return null;
+            }
+
             if (scalar is not null)
             {
                 return scalar;
@@ -488,7 +494,7 @@ public sealed partial class Binding
         }
         else if (syntax is MemberAccessKoto member && member.Left is IdentifierNameKoto input && member.Right is IdentifierNameKoto target)
         {
-            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type))
+            if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated))
             {
                 while (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics))
                 {
@@ -496,16 +502,24 @@ public sealed partial class Binding
                 }
 
                 var schema = type?.Symbol?.Schema;
+                var declared = false;
                 for (var i = 0; schema is not null && i < schema.Origins.Count; i++)
                 {
                     if (schema.Origins[i].Name == target.IdentifierName)
                     {
+                        declared = true;
                         result = type!.Kind == BoundTypeKind.Slice ? type.Origin : i < type.OriginArguments.Count ? type.OriginArguments[i] : null;
                         break;
                     }
                 }
 
-                if (result is not null)
+                if (repeated is not null && (declared || schema is null))
+                {
+                    // The slot of a repeated set is unknown; a slot name its Type does not declare is still its own problem.
+                    this.RestOnRepeatedSet(syntax, repeated);
+                    result = null;
+                }
+                else if (result is not null)
                 {
                     input.BindingState = target.BindingState = BindingState.Resolved;
                     target.BoundOrigin = result;
@@ -546,7 +560,7 @@ public sealed partial class Binding
             }
         }
 
-        if (this.PendingOrigin(use, scope, context, requirement, aggregateSlot) is { } pending)
+        if (this.PendingOrigin(use, scope, context, requirement, aggregateSlot, borrowCondition) is { } pending)
         {
             return pending;
         }
@@ -632,6 +646,12 @@ public sealed partial class Binding
 
                 return BoundOrigin.Static;
             }
+        }
+
+        if (context.CallQualifier)
+        {
+            // SPEC 15.4.4: the call infers the slot; Member reports the qualifier when Binding cannot (RejectedOriginQualifier).
+            return this.OriginAtom(use, OriginKind.Inference, aggregateSlot);
         }
 
         this.Fail(use, BindingFailure.MissingOrigin);

@@ -35,14 +35,14 @@ internal static class ReferenceTypes
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             type.Components[0] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && ReferenceEquals(type.Components[0], BoundType.Unit)) ||
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && (ObjectTypes.IsOwner(type.Components[0]) || ObjectTypes.IsBorrow(type.Components[0]))) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && (ObjectTypes.HandleMode(type.Components[0]) is not null || ObjectTypes.IsBorrow(type.Components[0]))) ||
         // SPEC 8.4.3, 8.1.1: an associated projection, a pair target or a Semantics application stands for a complete Type like a
         // parameter; each instance checks its substitution.
-        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && type.Components[0].Kind is BoundTypeKind.Closure or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && type.Components[0].Kind is BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } && (ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0]))) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
             (type.Components[0].Kind == BoundTypeKind.Parameter ||
-                ((ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0])) && type.Origin is { Kind: OriginKind.Input or OriginKind.Projection or OriginKind.Parameter or OriginKind.Intersection or OriginKind.Static or OriginKind.Anchor })));
+                ((ScalarTypes.Supports(type.Components[0]) || IsPointer(type.Components[0])) && (type.Origin is { Kind: OriginKind.Input or OriginKind.Projection or OriginKind.Parameter or OriginKind.Intersection or OriginKind.Static or OriginKind.Anchor } or { Open: true }))));
 
     internal static bool IsBorrow(BoundType? type) => IsStorage(type) || ObjectTypes.IsBorrow(type);
 
@@ -76,7 +76,8 @@ internal static class ReferenceTypes
             return true;
         }
 
-        if (formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
+        // Primitive Types are singletons distinguished by name only, so two different instances never share storage.
+        if (formal.Kind == BoundTypeKind.Primitive || formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
             formal.Length != actual.Length || !ReferenceEquals(formal.LengthExpression, actual.LengthExpression) ||
             formal.Components.Count != actual.Components.Count)
         {

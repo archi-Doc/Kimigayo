@@ -63,7 +63,7 @@ public sealed partial class Binding
 
     private static bool AccessCovers(BindingSymbol member, BindingSymbol a, BindingSymbol b, ModifierKind? memberAccess = null)
     {
-        for (var current = member; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = member; current is not null; current = EnclosingAccessDeclaration(current))
         {
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
             {
@@ -111,7 +111,7 @@ public sealed partial class Binding
             return !ExternallyVisible(symbol) && ReferenceEquals(owner.CodeContext.Kotonoha, symbol.Declaration.CodeContext.Kotonoha);
         }
 
-        for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
         {
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
             {
@@ -137,7 +137,7 @@ public sealed partial class Binding
 
     private static bool ExternallyVisible(BindingSymbol symbol)
     {
-        for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
         {
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true })
             {
@@ -600,7 +600,9 @@ public sealed partial class Binding
         }
     }
 
-    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    // `known` is the binder of an argument's known call signature (SPEC 10.8): the Origins it quantifies, such as per-call inputs,
+    // lie beyond the call and are no evidence for the callee's own Origins.
+    private void MatchInputOrigins(BoundType pattern, BoundType actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs, Koto? known = null)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
         {
@@ -616,27 +618,32 @@ public sealed partial class Binding
 
         if (pattern.Origin is { } p && actual.Origin is { } a)
         {
-            this.MatchInputOrigin(p, a, binder, origins, inputs);
+            this.MatchInputOrigin(p, a, binder, origins, inputs, known);
         }
 
         for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
-            this.MatchInputOrigin(pattern.OriginArguments[i], actual.OriginArguments[i], binder, origins, inputs);
+            this.MatchInputOrigin(pattern.OriginArguments[i], actual.OriginArguments[i], binder, origins, inputs, known);
         }
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
-            this.MatchInputOrigins(pattern.Components[i], actual.Components[i], binder, origins, inputs);
+            this.MatchInputOrigins(pattern.Components[i], actual.Components[i], binder, origins, inputs, known);
         }
     }
 
-    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs)
+    private void MatchInputOrigin(BoundOrigin pattern, BoundOrigin actual, Koto binder, BoundOrigin[] origins, BoundOrigin[] inputs, Koto? known = null)
     {
+        if (known is not null && QuantifiedBy(actual, known))
+        {
+            return;
+        }
+
         if (pattern.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < pattern.Operands.Count; i++)
             {
-                this.MatchInputOrigin(pattern.Operands[i], actual, binder, origins, inputs);
+                this.MatchInputOrigin(pattern.Operands[i], actual, binder, origins, inputs, known);
             }
         }
         else if (ReferenceEquals(pattern.Binder, binder) && pattern.Kind is OriginKind.Parameter or OriginKind.Input)

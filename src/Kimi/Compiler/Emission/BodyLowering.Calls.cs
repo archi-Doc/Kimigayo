@@ -12,6 +12,22 @@ internal sealed partial class BodyLowering
     private ControlFlowAnalysis? flow;
     private int[] parameterArguments = [];
 
+    // SPEC 7.2.3: reads and borrows in defaults name acquired slots of a pending call. Index calls once, before validating
+    // references or aggregate storage; a default may itself call other functions before the enclosing call enters.
+    private void PrepareCallIndex(OwnershipBody body)
+    {
+        Grow(ref this.elementNextCalls, body.Operations.Count);
+        var nextCall = -1;
+        for (var i = body.Operations.Count - 1; i >= 0; i--)
+        {
+            this.elementNextCalls[i] = nextCall;
+            if (body.Operations[i].Kind == OwnershipOperationKind.Call)
+            {
+                nextCall = i;
+            }
+        }
+    }
+
     private bool ValidateCallArgumentStorage(OwnershipBody body, int entry, int call, out string? failure)
     {
         failure = null;
@@ -81,8 +97,12 @@ internal sealed partial class BodyLowering
 
     internal IReadOnlyDictionary<BoundType, int>? ObjectRuntimeTypes { get; set; }
 
+    internal DefaultGenerationPlan? Defaults { get; set; }
+
     internal void ClearFunctionContext()
     {
+        this.matchBody = null;
+        this.matchDefaultContext = -1;
         this.functions = null;
         this.GenericCalls = null;
         this.FormattingCalls = null;
@@ -90,6 +110,7 @@ internal sealed partial class BodyLowering
         this.ComparisonHelpers = null;
         this.ObjectCalls = null;
         this.ObjectRuntimeTypes = null;
+        this.Defaults = null;
         this.flow = null;
         this.arguments.Clear();
         this.aggregateLayouts.Clear();
@@ -113,26 +134,31 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
-        if (operation.Source is InvocationKoto { BoundValueCall: { } valueCall } invocation)
+        if (body.Values[id].Kind == OwnershipValueKind.DefaultCall)
         {
-            return this.LowerValueCall(body, function, id, invocation, valueCall, out failure);
+            return this.LowerDefaultCall(body, function, id, out failure);
         }
 
-        if (operation.Source is InvocationKoto { BoundCall: { } arrayPlan } arrayCall && KimiLibraryCatalog.IsArrayOperation(arrayPlan.Target.CompilerFunction))
+        var original = body.CallAt(id);
+        if (operation.Source is InvocationKoto { BoundValueCall: { } valueCall } invocation)
+        {
+            return this.LowerValueCall(body, function, constants, directory, id, invocation, valueCall, out failure);
+        }
+
+        if (operation.Source is InvocationKoto arrayCall && original is { } arrayPlan && KimiLibraryCatalog.IsArrayOperation(arrayPlan.Target.CompilerFunction))
         {
             return this.LowerArrayOperation(library, body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
         }
 
-        if (operation.Source is InvocationKoto { BoundCall: { Target.CompilerFunction: CompilerFunctionKind.ArrayWithCapacity } constructionPlan } constructionCall)
+        if (operation.Source is InvocationKoto constructionCall && original is { Target.CompilerFunction: CompilerFunctionKind.ArrayWithCapacity } constructionPlan)
         {
             return this.LowerArrayConstruction(body, function, constants, directory, id, constructionCall, constructionPlan, out failure);
         }
 
-        var generic = operation.Source is InvocationKoto { BoundCall: { } bound } ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
-        var creation = operation.Source is InvocationKoto { BoundCall: { } objectCall } ? this.ObjectCalls?.GetValueOrDefault(objectCall) : null;
-        var original = (operation.Source as InvocationKoto)?.BoundCall;
+        var generic = original is { } bound ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;
+        ObjectCall? creation = resolved is not null && this.ObjectCalls is { } objects && objects.TryGetValue(resolved, out var objectCreation) ? objectCreation : null;
         if (operation.Source is InvocationKoto rawCall && resolved is { } rawPlan && KimiLibraryCatalog.IsRawOperation(rawPlan.Target.CompilerFunction))
         {
             return this.LowerRawOperation(body, function, constants, directory, id, rawCall, rawPlan, out failure);
@@ -145,20 +171,28 @@ internal sealed partial class BodyLowering
 
         var formatting = resolved?.Target.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
         var comparison = resolved?.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare;
-        var intrinsic = formatting || comparison;
+        var clone = resolved?.Target.CompilerFunction == CompilerFunctionKind.Clone;
+        var intrinsic = formatting || comparison || clone;
         if (operation.Source is not InvocationKoto { AttributeChain: null } call || resolved is not { } plan ||
             (!intrinsic && generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
-            !ReferenceEquals(SignatureType(this, ElementAccess.PlaceCallReference(call) ?? call.BoundType), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
+            !ReferenceEquals(body.ConcreteAt(ElementAccess.PlaceCallReference(call) ?? call.BoundType, id), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
             !ReferenceTypes.StorageMatches(intrinsic ? SignatureType(this, plan.ReturnType) : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
         {
             return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
         }
 
-        var runtime = formatting || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
+        var runtime = formatting || clone || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
+        if (clone && (plan.ArgumentOperations.Length != 1 || SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowedHandle ||
+            !ReferenceTypes.StorageMatches(borrowedHandle.Components[0], returnType)))
+        {
+            return Fail("Strong clone requires a shared handle-slot borrow with the same result mode and payload.", out failure);
+        }
+
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
-        var callee = runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
+        var callee = clone ? ObjectTypes.HandleMode(returnType)?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
+            : runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
         if (plan.Target.CompilerFunction == CompilerFunctionKind.WriterWrite && call.Parent is InterpolatedStringKoto { Formatting: { } formattingRoot } &&
             call.ArgumentNodes.Count == 2 && call.ArgumentNodes[1] is StringLiteralKoto && this.EstimateFormatting(formattingRoot).Capacity == 0)
         {
@@ -189,11 +223,11 @@ internal sealed partial class BodyLowering
                 ? new BoundArgumentOperation(omitted.Expression, omitted.Expression.BoundType, omitted.ParameterType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: parameter)
                 : plan.ArgumentOperations[i];
             var sourceArgument = i < 0 ? plan.Receiver! : isDefault ? omitted.Expression : call.ArgumentNodes[i];
-            var parameterType = SignatureType(this, acquisition.ParameterType);
+            var parameterType = body.ConcreteAt(acquisition.ParameterType, id);
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||
                 (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
-                    !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsResult(omitted.ParameterType))) ||
+                    !ReferenceEquals(omitted.Parameter.Scope.Owner, target))) ||
                 acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection or ArgumentOperationKind.ReferenceRead) || acquisition.ParameterIndex != parameter ||
                 !ReferenceTypes.StorageMatches(intrinsic ? parameterType : generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, parameterType) ||
                 (acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) && !ReferenceTypes.IsString(parameterType) && !ReferenceTypes.IsBorrow(parameterType)))
@@ -223,8 +257,10 @@ internal sealed partial class BodyLowering
             var entry = this.arguments[cursor++];
             var place = body.Operations[entry].Place;
             var type = body.Places[place].Type;
+            // SPEC 15.4.4: an instance fits the argument to an Origin this body's local initializer inferred through the substituted bound.
+            var fitted = this.instance is { } instanceCall && acquisition.ParameterType is { } declared ? this.instanceBinding!.InstantiateInferredType(declared, parameterType, instanceCall) : parameterType;
             if (!ReferenceEquals(body.Operations[entry].Source, call) ||
-                (parameterType is not { } required || !call.CodeContext.Compilation.Binding.FitsTypeAt(type, required, call)))
+                (fitted is not { } required || !call.CodeContext.Compilation.Binding.FitsTypeAt(type, required, call)))
             {
                 return Fail("Call entry does not match its argument Type or call.", out failure);
             }
@@ -239,19 +275,20 @@ internal sealed partial class BodyLowering
                 // The instantiated parameter Type was matched against the callee's entry above; a
                 // monomorphized instance forwards its ref/T parameter as the substituted string reference.
                 if (!ReferenceTypes.IsString(parameterType) || !this.ValidateReferenceUse(body, entry, id) ||
-                    !ReferenceEquals(acquisition.Source, sourceArgument) || !ReferenceEquals(acquisition.SourceType, sourceArgument.BoundType))
+                    !ReferenceEquals(acquisition.Source, sourceArgument) || !ReferenceEquals(SignatureType(this, acquisition.SourceType), SignatureType(this, sourceArgument.BoundType)))
                 {
                     return Fail("Reference argument lacks its call-wide Loan or Origin substitution.", out failure);
                 }
 
                 var root = this.referenceRoots[entry];
+                var sourceType = body.ConcreteAt(isDefault && acquisition.SourceType is { } declaredSource ? call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan) : acquisition.SourceType, id);
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, OwnershipAnalysis.BorrowedArgumentSource(sourceArgument))
                     : acquisition.Kind == ArgumentOperationKind.ReferenceRead
                     ? body.Values[root].Kind != OwnershipValueKind.PointerLoad || !ReferenceTypes.IsString(ValueType(body, root))
-                    : (body.Values[root].Kind is not (OwnershipValueKind.Parameter or OwnershipValueKind.Address) && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
-                        !ReferenceEquals(ValueType(body, root), SignatureType(this, acquisition.SourceType)))
+                    : (!isDefault && body.Values[root].Kind is not (OwnershipValueKind.Parameter or OwnershipValueKind.Address) && body.Operations[root].Kind != OwnershipOperationKind.Read) ||
+                        !ReferenceEquals(ValueType(body, root), sourceType))
                 {
                     return Fail("Reference acquisition does not match its source.", out failure);
                 }
@@ -299,6 +336,12 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < callee!.Parameters.Length; i++)
         {
             var physical = callee.Parameters[i];
+            if (creation is { } objectCreationPlan && physical.Kind == AbiParameterKind.Context)
+            {
+                this.callOperands.Add(new(EmissionOperandKind.Integer, objectCreationPlan.Result.Semantics == SemanticsKind.Obj ? 0 : 2));
+                continue;
+            }
+
             if (physical.Kind == AbiParameterKind.Context && physical.Type == "i32" && plan.Target.CompilerFunction is CompilerFunctionKind.WriterWrite or CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat)
             {
                 var kind = this.BuiltinFormatKind(plan);
@@ -364,7 +407,7 @@ internal sealed partial class BodyLowering
             }
 
             var entry = this.parameterArguments[physical.LogicalIndex];
-            var type = formatting ? body.Places[body.Operations[entry].Place].Type : generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
+            var type = formatting || clone ? body.Places[body.Operations[entry].Place].Type : generic?.Parameters[physical.LogicalIndex] ?? creation?.Payload ?? target.Parameters[physical.LogicalIndex].Type.BoundType!;
             if (!this.TryCallArgumentOperand(body, entry, id, type, physical.Kind, out var operand, out failure))
             {
                 return false;

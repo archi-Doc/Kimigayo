@@ -608,7 +608,8 @@ public abstract class Koto
     /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
     /// <param name="span">The part of the located syntax that has no node of its own, such as one capture entry; the location's document is kept.</param>
     /// <param name="relatedSpans">Related syntax without a node of its own, such as an Origin header, in the document of the given node.</param>
-    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null)
+    /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>.</param>
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
     {
         if (this.DiagnosticCollection is not { } collection)
         {
@@ -633,8 +634,15 @@ public abstract class Koto
         }
 
         // A span narrows the location within the located node's document, such as one capture entry of a closure.
-        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations);
+        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
     }
+
+    /// <summary>Locates one edit of a repair candidate in this node's document (SPEC 23.3.6.9).</summary>
+    /// <param name="span">The replaced span; an empty span is an insertion point.</param>
+    /// <param name="text">The replacement text; empty for a deletion.</param>
+    /// <returns>The edit, or the default value when the node records nowhere.</returns>
+    internal DiagnosticEditFact Edit(SourceSpan span, string text)
+        => this.DiagnosticCollection is { } collection ? collection.Edit(span, text, this.CodeContext.SourceDocument) : default;
 
     /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.3.6.4).</summary>
     /// <param name="requirement">The requirement left undecided.</param>

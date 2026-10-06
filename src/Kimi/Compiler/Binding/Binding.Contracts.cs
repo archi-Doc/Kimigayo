@@ -688,7 +688,8 @@ public sealed partial class Binding
             var scope = this.scopes[this.nodes[n]];
             if (scope.Owner is ContractKoto contract)
             {
-                this.AddContractPremises(contract.BoundSymbol!.Contract!, contract.BoundSymbol.Type!, scope);
+                // SPEC 8.4.7.2: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does.
+                this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
             }
 
             this.ExpandScopeContractPremises(scope);
@@ -749,20 +750,30 @@ public sealed partial class Binding
         }
     }
 
+    private bool IsLibraryDeclaration(Koto declaration) => ReferenceEquals(declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
+
     private void ValidateConformances(BindingMode mode, bool final)
     {
         this.contractHeadersReady = true;
         if (final)
         {
+            // Body/header validation may invalidate an earlier declaration-side witness of the sources. The Kimi library's
+            // declarations are valid and fixed (a malformed library fails the pass), so a library conformance proven before the
+            // bodies stays proven, and only an unproven one is judged again.
             foreach (var identity in this.conformances.Values)
             {
-                identity.IsVerified = false;
+                if (!this.IsLibraryDeclaration(identity.Type.Declaration))
+                {
+                    identity.IsVerified = false;
+                }
             }
 
-            // Body/header validation may invalidate an earlier declaration-side witness.
             for (var i = 0; i < this.activeConformancePaths.Count; i++)
             {
-                this.activeConformancePaths[i].IsVerified = false;
+                if (!this.IsLibraryDeclaration(this.activeConformancePaths[i].Declaration))
+                {
+                    this.activeConformancePaths[i].IsVerified = false;
+                }
             }
         }
 

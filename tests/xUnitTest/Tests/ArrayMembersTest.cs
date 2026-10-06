@@ -118,17 +118,23 @@ public class ArrayMembersTest
     // SPEC 4.7.2: a negative capacity Aborts.
     [Fact]
     public void NegativeCapacityAborts()
-        => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARGUMENT: Invalid argument value\n");
+        => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeCapacity", "let bad = Array<i32>.init(capacity: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARG_RANGE: Argument out of range\n");
 
-    // P26 boundary (PLAN G10): the callback members verify in the library, but a function passed to their Callable
-    // parameter is not yet bound; the argument is diagnosed as unsupported instead of generating code. P26 turns this into an execution.
+    // SPEC 4.7.2, 7.6.4: named Function Items satisfy the generic Callable parameters of the source library members.
     [Fact]
-    public void CallbackArgumentsAwaitCallableValues()
+    public void CallbackArgumentsExecuteThroughFunctionItems()
+        => ScalarEmissionTest.EmitFixture("ArrayMembersCallables", Callables, "Callables ok.\n");
+
+    // SPEC 4.7.2, 7.6.1, 10.5: direct anonymous callbacks take their parameter Types from the Callable signature, also with captures and
+    // a Non-Copy element Type.
+    [Fact]
+    public void DirectAnonymousCallbacksExecute()
     {
-        var c = MinimalEmissionTest.Analyze(Callables);
-        Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd && x.Node.ToString() == "isLarge");
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.Library.Kotonoha);
+        const string Source = "var values: Array<i32> = [3, 1, 2, 5, 4]\nvalues.sort(by: func (a, b) => a@follow - b@follow)\nvalues.removeAll(matching: func (v) => v@follow % 2 == 0)\n" +
+            "let limit = 3\nvalues.removeAll(matching: func [limit] (v) => v@follow > limit)\n" +
+            "var names: Array<string> = [\"b\", \"a\", \"c\"]\nnames.sort(by: func (a: ref/string, b: ref/string) -> i32 => if a == b => 0 else if a == \"a\" => -1 else => 1)\n" +
+            "require values.length == 2 and values[0] == 1 and values[1] == 3 and names[0] == \"a\" else => $abort(\"callbacks\")\nConsole.writeLine(\"Anonymous ok.\")";
+        ScalarEmissionTest.EmitFixture("ArrayMembersAnonymousCallables", Source, "Anonymous ok.\n");
     }
 
     [Theory]
@@ -140,5 +146,33 @@ public class ArrayMembersTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Theory]
+    [InlineData("raw/Array<i32>", "length")]
+    [InlineData("raw/Array<i32>", "capacity")]
+    [InlineData("raw/Array<i32>", "isEmpty")]
+    [InlineData("raw/Array<i32>", "indices")]
+    [InlineData("obj/Array<i32>", "length")]
+    [InlineData("raw/[3 of i32]", "length")]
+    public void MetadataIsNotSelectedThroughARawPointerOrObjectHandle(string type, string member)
+    {
+        // SPEC 3.4.1, 12.4.1: selection continues only through safe value references; a raw pointer is never dereferenced
+        // implicitly, so its sequence metadata is not reachable from safe code.
+        var c = MinimalEmissionTest.Analyze($"func f(p: {type}) => p.{member}");
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(Kimi.DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
+        Assert.Equal($"p.{member}", issue.Node.ToString());
+    }
+
+    [Theory]
+    [InlineData("ref/Array<i32>", "length")]
+    [InlineData("uniq/Array<i32>", "capacity")]
+    [InlineData("ref/Array<i32>", "isEmpty")]
+    [InlineData("uniq/Array<i32>", "indices")]
+    public void MetadataIsSelectedThroughASafeReference(string type, string member)
+    {
+        var c = MinimalEmissionTest.Analyze($"func f(p: {type}) => p.{member}");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 }

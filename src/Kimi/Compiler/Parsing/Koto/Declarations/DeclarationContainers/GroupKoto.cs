@@ -114,36 +114,25 @@ public sealed class GroupKoto : DeclarationContainerKoto
     {
         if (Parser.IsCompileTimeSwitchStart(ref reader))
         {
-            var start = reader.CurrentTokenRange.Start;
-            var selection = Parser.ScanCompileTimeSwitch(ref reader);
-            Parser.RejectDirectiveBlockAttributes(ref reader);
-            if (Parser.BeginCompileTimeSwitchArms(ref reader))
+            var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
+            while (arms.TryNextBody(ref reader, out var selected, out var header))
             {
-                for (var arm = 0; Parser.TryNextCompileTimeSwitchArm(ref reader, out var header); arm++)
+                if (selected)
                 {
-                    if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
-                    {
-                        reader.Expect(SyntaxForm.Body);
-                        continue;
-                    }
-
-                    if (arm == selection.Selected)
-                    {
-                        reader.Advance();
-                        this.ParseRootItems(ref reader, ref state);
-                    }
-                    else
-                    {
-                        var owner = this.ExcludedRootOwner(ref reader, ref state);
-                        var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
-                        reader.Advance();
-                        owner.ParseRootItems(ref reader, ref state);
-                        Parser.EndExcludedRegion(ref reader, region);
-                    }
+                    reader.Advance();
+                    this.ParseRootItems(ref reader, ref state);
+                }
+                else
+                {
+                    var owner = this.ExcludedRootOwner(ref reader, ref state);
+                    var region = Parser.BeginExcludedRegion(ref reader, header, header.Start);
+                    reader.Advance();
+                    owner.ParseRootItems(ref reader, ref state);
+                    Parser.EndExcludedRegion(ref reader, region);
                 }
             }
 
-            if (Parser.UnselectedCompileTimeSwitch(ref reader, start, selection) is { } unselected)
+            if (arms.Unselected(ref reader) is { } unselected)
             {
                 this.Kotonoha.AddGeneratedFunctionItem(reader.CodeContext, unselected);
             }
@@ -169,6 +158,8 @@ public sealed class GroupKoto : DeclarationContainerKoto
         var tokenKind = token.Kind;
         if (tokenKind == TokenKind.Alias)
         {
+            // An alias takes no modifier or attribute: the pending ones are taken before its target is read, so none lands there.
+            var context = reader.TakeContext();
             reader.Advance();
             string? aliasName = null;
             if (reader.CurrentTokenKind.IsIdentifierOrContextualKeyword() && reader.PeekKind(1) == TokenKind.EqualsGreaterThan)
@@ -180,14 +171,20 @@ public sealed class GroupKoto : DeclarationContainerKoto
             reader.TryConsume(TokenKind.ColonColon);
             var targetSyntax = Parser.IsBoundContainerReference(ref reader) ? Parser.ParseContainerReference(ref reader) : null;
             var qualifiedName = targetSyntax is null ? KotoHelper.ParseQualifiedNameSegments(ref reader) : [];
+            if (qualifiedName is null)
+            {
+                // A target whose Name failed declares no alias; the declaration is skipped with what it would attach.
+                Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError);
+                return;
+            }
+
             if (state.HasNonAliasDeclaration)
             {
                 reader.Diagnostic.Add(token.Span, DiagnosticCode.TopLevelKeywordAfterCode_Kd);
             }
             else
             {
-                var context = reader.TakeContext();
-                if (context.ModifierKind != default || context.AttributeKoto is not null)
+                if (context.ModifierKind.Judged() != default || context.AttributeKoto is not null)
                 {
                     reader.Unexpected(SyntaxForm.Decoration, token.Span);
                 }
@@ -205,6 +202,13 @@ public sealed class GroupKoto : DeclarationContainerKoto
         {
             reader.Advance();
             var name = KotoHelper.ValidateAndGetNamespace(ref reader);
+            if (name.IsEmpty)
+            {
+                // A root group whose Name failed merges with no other; it is skipped with its body.
+                Parser.OmitDeclaration(ref reader, reader.Diagnostic.LastError);
+                return;
+            }
+
             var context = reader.TakeContext();
             var groupKoto = this.GetOrAddDeclarationContainer(name, TokenKind.Group, context, token.Span, codeContext: reader.CodeContext);
             reader.Document(groupKoto, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), context.AttributeKoto);

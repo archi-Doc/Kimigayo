@@ -23,8 +23,26 @@ public class DependentDictionaryLiteralTest(ITestOutputHelper output)
     [InlineData("Exclusive", "var value = 0\nvar entries = [1: value@uniq]\nmatch entries.remove(1)\n    .Some((let key, let item)) => item@follow = 42\n    .None => $abort(\"missing\")\nrequire value == 42 else => $abort(\"exclusive\")")]
     [InlineData("MovedExclusive", "func run(value: uniq/i32 during a)\n    var entries = [1: value@move]\n    match entries.remove(1)\n        .Some((let key, let item)) => item@follow = 42\n        .None => $abort(\"missing\")\nvar value = 0\nrun(value@uniq)\nrequire value == 42 else => $abort(\"moved\")")]
     [InlineData("Tuple", "let value = 42\nlet entries = [1: (value@ref, \"ok\")]\nrequire entries[1].0 == 42 else => $abort(\"tuple\")")]
+    [InlineData("RemovedWhileLive", "var value = 0\nvar entries = [1: value@uniq]\nmatch entries.remove(1)\n    .Some((let key, let item)) => item@follow = 42\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")\nrequire value == 42 else => $abort(\"removed\")")]
+    [InlineData("MovedRemovedWhileLive", "func run(value: uniq/i32 during a)\n    var entries = [1: value@move]\n    match entries.remove(1)\n        .Some((let key, let item)) => item@follow = 42\n        .None => $abort(\"missing\")\n    require entries.length == 0 else => $abort(\"length\")\nvar value = 0\nrun(value@uniq)\nrequire value == 42 else => $abort(\"moved\")")]
+    [InlineData("RemovedAcrossCalls", "var value = 0\nvar entries = [1: value@uniq]\nmatch entries.remove(1)\n    .Some((let key, let item))\n        require entries.length == 0 else => $abort(\"length\")\n        let again = entries.remove(1)\n        item@follow = 42\n    .None => $abort(\"missing\")\nrequire value == 42 else => $abort(\"removed\")")]
     public void BorrowedEntriesUseTheOrdinaryStoragePath(string name, string source)
         => ScalarEmissionTest.EmitFixture("DependentDictionaryLiteral" + name, source, string.Empty);
+
+    [Theory]
+    [InlineData("var value = 0\nvar entries = [1: value@uniq]\nmatch entries.remove(1)\n    .Some((let key, let item))\n        value = 5\n        item@follow = 42\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")")]
+    [InlineData("var value = 0\nvar entries = [1: value@uniq]\nmatch entries.remove(1)\n    .Some((let key, let item))\n        item@follow = 42\n        value = 5\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")")]
+    [InlineData("func run(first: uniq/i32 during a, second: uniq/i32 during a)\n    var entries = [1: first@move]\n    match entries.insertOrReplace(1, second@move)\n        .Some(let item) => item@follow = 42\n        .None => $abort(\"missing\")\n    require entries.length == 1 else => $abort(\"length\")")]
+    public void ARemovedReferenceDescendsOnlyFromTheSoleInputNamingItsOrigins(string source)
+    {
+        // `remove` returns `Option<(K, V)>` with Origins of the receiver's Type only, so the item descends from
+        // `entries` and keeps its Loan on `value`; `insertOrReplace` may return its `value: V` argument instead, and an input
+        // other than the receiver that names those Origins prevents the descent (SPEC 15.6.3).
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+    }
 
     [Theory]
     [InlineData("var value = 42\nlet entries = [1: value@ref]\nvalue = 99\nrequire entries[1] == 42 else => $abort(\"value\")")]

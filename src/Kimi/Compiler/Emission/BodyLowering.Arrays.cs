@@ -335,19 +335,26 @@ internal sealed partial class BodyLowering
             return this.LowerDictionaryPlacement(body, function, constants, directory, id, call, plan, out failure);
         }
 
-        if (kind is CompilerFunctionKind.StorageReserveDictionary or CompilerFunctionKind.StorageShrinkDictionary)
+        if (kind is CompilerFunctionKind.StorageTryAllocateBytes or CompilerFunctionKind.StorageTransferBytes)
         {
-            return this.LowerDictionaryCapacity(body, function, constants, directory, id, call, plan, out failure);
+            return this.LowerStorageBytes(body, function, id, call, plan, out failure);
         }
 
-        if (kind == CompilerFunctionKind.StorageMissingDictionaryKey)
+        if (kind is CompilerFunctionKind.StorageMissingDictionaryKey or CompilerFunctionKind.StorageArgumentOutOfRange or CompilerFunctionKind.StorageCountOverflow or CompilerFunctionKind.StorageAllocationSizeExceeded)
         {
             if (!function.Abi.CallerLocation || plan.ArgumentOperations.Length != 0 || plan.Receiver is not null || !ReferenceEquals(plan.ReturnType, BoundType.Never))
             {
-                return Fail("Missing Dictionary key failure requires the standard entry's forwarded caller location.", out failure);
+                return Fail("A standard precondition failure requires its entry's forwarded caller location.", out failure);
             }
 
-            function.AddCall(id, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, WindowsLowering.MissingKeyReason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
+            var reason = kind switch
+            {
+                CompilerFunctionKind.StorageMissingDictionaryKey => WindowsLowering.MissingKeyReason,
+                CompilerFunctionKind.StorageCountOverflow => WindowsLowering.IntegerOverflowReason,
+                CompilerFunctionKind.StorageAllocationSizeExceeded => WindowsLowering.AllocationSizeReason,
+                _ => WindowsLowering.ArgumentRangeReason,
+            };
+            function.AddCall(id, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, reason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
             function.Add(EmissionOpcode.Unreachable, id);
             return true;
         }
@@ -454,7 +461,7 @@ internal sealed partial class BodyLowering
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto { IsConstructor: true } target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             call.ArgumentNodes.Count != 1 || plan.ArgumentOperations.Length != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            SignatureType(this, call.BoundType) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
+            body.ConcreteAt(call.BoundType, id) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
         {
             return Fail("Array construction has an unsupported argument plan or element Type.", out failure);
         }

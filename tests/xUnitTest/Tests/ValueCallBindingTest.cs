@@ -53,6 +53,19 @@ public class ValueCallBindingTest
         Assert.Empty(output.ToString());
     }
 
+    [Theory]
+    [InlineData("var count: i32 = 0\nvar next = func [var count] (value: i32) -> i32\n    count = count + 1\n    return value + count\nlet r = next<i32>(1)")]
+    [InlineData("let text = \"a\"\nlet once = func [text@move] (value: i32) -> i32 => value\nlet r = once<i32>(1)")]
+    public void ExplicitTypeArgumentsOnAClosureCallSelectNothing(string source)
+    {
+        // A function value has no Type parameters (SPEC 7.6, 12.4.2); an exclusive or consuming closure receiver is not read
+        // before the generic application is rejected.
+        var c = MinimalEmissionTest.Analyze(source);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(Kimi.DiagnosticCode.NoApplicableOverload_Kd, issue.Code);
+        Assert.IsType<InvocationKoto>(issue.Node);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ReloadAndWarmBindingRetainValuePlan()

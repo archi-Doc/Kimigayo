@@ -43,22 +43,22 @@
   + Name="Syntax.CloseParenthesis"
     Description="the grouping is closed"
     Phrase="')'"
-    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+    Advice="Close the grouping where its content ends; content that continues on the next line is indented one more level for each open delimiter."
 
   + Name="Syntax.CloseBracket"
     Description="the grouping is closed"
     Phrase="']'"
-    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+    Advice="Close the grouping where its content ends; content that continues on the next line is indented one more level for each open delimiter."
 
   + Name="Syntax.CloseBrace"
     Description="the grouping is closed"
     Phrase="'}'"
-    Advice="Close the grouping that is still open; a grouping cannot continue past the end of its line."
+    Advice="Close the grouping where its content ends; content that continues on the next line is indented one more level for each open delimiter."
 
   + Name="Syntax.CloseAngleBracket"
     Description="the Type argument list is closed"
     Phrase="'>'"
-    Advice="Close the Type argument list that is still open."
+    Advice="Close the Type argument list where its arguments end; arguments that continue on the next line are indented one more level for each open delimiter."
 
   + Name="Syntax.UnmatchedCloser"
     Description="every closing delimiter closes an open grouping"
@@ -117,7 +117,7 @@
   + Name="Syntax.OpenModifier"
     Description="the open modifier precedes a struct"
     Phrase="'open' modifier"
-    Advice="'open' applies only to a struct (SPEC 6.2.2)."
+    Advice="'open' applies only to a struct and immediately precedes 'struct' (SPEC 6.2.2)."
 
   + Name="Syntax.Decoration"
     Description="the declaration takes no modifier or attribute"
@@ -168,6 +168,16 @@
     Description="no extension declaration is written"
     Phrase="extension declaration"
     Advice="Extension declarations are not introduced (SPEC Appendix D); declare the members in the container itself."
+
+  + Name="Syntax.ContainerDeclaration"
+    Description="a Container is declared where Containers nest"
+    Phrase="Container declaration"
+    Advice="Containers nest only at the project root and in groups and structs; declare it there."
+
+  + Name="Syntax.CompileTimeDirective"
+    Description="a compile-time directive selects whole items"
+    Phrase="compile-time directive"
+    Advice="#if, #switch and #case select whole items such as declarations, statements and members (SPEC 19.1); select the item that contains this syntax instead."
 
   + Name="Syntax.AssociatedTypeDeclaration"
     Description="an associate declaration stands in a Contract"
@@ -267,6 +277,11 @@
     Description="the Constraint prefix leads the body and names a generic parameter"
     Phrase="Constraint prefix"
     Advice="A body begins with its Constraint prefix, whose subject is a generic parameter of the declaration (SPEC 7.4); parenthesize a runtime 'is' test."
+
+  + Name="Syntax.PlaceResultSuffix"
+    Description="a Place result takes no '?'"
+    Phrase="'?' after a Place result"
+    Advice="A Place is never optional; a Place that stores an Option is written place ref/(T?)."
 
   + Name="Syntax.SemanticsShorthandSuffix"
     Description="a Semantics shorthand takes no '?'"
@@ -396,12 +411,12 @@
   + Name="Syntax.AmpersandAmpersand"
     Description="logical conjunction is written 'and', not '&&'"
     Phrase="'&&'"
-    Advice="If '&&' is meant as logical conjunction, write 'and'; Kimigayo defines no '&&' operator (SPEC 13.8)."
+    Advice="Kimigayo defines no '&&' operator (SPEC 13.8)."
 
   + Name="Syntax.BarBar"
     Description="logical disjunction is written 'or', not '||'"
     Phrase="'||'"
-    Advice="If '||' is meant as logical disjunction, write 'or'; Kimigayo defines no '||' operator (SPEC 13.8)."
+    Advice="Kimigayo defines no '||' operator (SPEC 13.8)."
 
   + Name="Syntax.MatchArms"
     Description="the match arm list follows its header"
@@ -558,11 +573,38 @@
   + Name="Binding.ReceiverShapeMismatch"
     Description="the functions of one Name share a receiver shape"
 
+  + Name="Binding.AccessorReceiverShape"
+    Description="the accessor receiver has the shape of its operation"
+
+  + Name="Binding.ParameterShapeMismatch"
+    Description="the functions of one Name acquire corresponding parameters of overlapping Types in one mode"
+
+  + Name="Binding.UnboundTypeArgument"
+    Description="every required Type parameter of a referenced or selected function is bound by explicit Type arguments or evidence"
+
+  + Name="Binding.BoundMethodValue"
+    Description="a method is referenced as a value only through its Type, as an unbound reference"
+
+  + Name="Binding.OriginRelation"
+    Description="the Origin relation of a fit holds"
+
+  + Name="Binding.OriginContract"
+    Description="the implementation's Origin contract admits every call of the required one"
+
   + Name="Binding.BareOwningShorthand"
     Description="the owning shorthand names a Type"
 
   + Name="Binding.NonCopyOperand"
     Description="the @copy operand is proven Copy"
+
+  + Name="Binding.NonNumericOperand"
+    Description="the operand of an arithmetic, bitwise, shift, sign, increment or decrement operator is numeric"
+
+  + Name="Binding.NonIntegerOperand"
+    Description="the operand of %, a bitwise or shift operator, increment or decrement is an integer or wrapping integer"
+
+  + Name="Binding.InvalidShiftCount"
+    Description="the count of a shift is an integer Type"
 
   + Name="Binding.InvalidWrapConversion"
     Description="the @wrap operand and target are integer or wrapping integer Types"
@@ -572,6 +614,9 @@
 
   + Name="Binding.GenericBitConversion"
     Description="the @bits operand and target Types are fixed"
+
+  + Name="Binding.ProtectedPlacement"
+    Description="a protected access form modifies a member of a struct"
 
   + Name="Binding.MissingSpecializationTarget"
     Description="a generic function matches the specialization"
@@ -587,9 +632,6 @@
 
   + Name="Binding.NotIndexable"
     Description="the receiver can be indexed by the key"
-
-  + Name="Binding.AcquisitionRequired"
-    Description="the acquisition of a Place argument is written where candidates disagree"
 
   + Name="Binding.InvalidEffectBound"
     Description="the effect item declares a bound of its Contract"
@@ -621,6 +663,12 @@
   + Name="Ownership.DefaultArgumentMove"
     Description="the default expression does not move a prepared argument"
 
+  + Name="Ownership.DefaultArgumentAccess"
+    Description="the default expression only shares prepared arguments temporarily"
+
+  + Name="Ownership.DefaultArgumentBorrow"
+    Description="the default result retains no new loan of a prepared argument"
+
   + Name="Ownership.Internal"
     Description="the analysis keeps its invariants"
 
@@ -641,6 +689,9 @@
 
   + Name="Ownership.StorageLimit"
     Description="ownership analysis storage stays within its resource limit"
+
+  + Name="Ownership.CaseLimit"
+    Description="the Semantics cases of the definition stay within the implementation bound"
 
   + Name="Emission"
     Description="generation succeeds"

@@ -12,7 +12,7 @@ public class LiteralExpressionTest
 {
     private const string Fitting =
         "func widen(value: i64) -> i64 => value\nfunc pick(value: u8) -> u8 => value\n" +
-        "func take(value: i32) -> string => \"value\"\nfunc take(value: ref/i32) -> string => \"borrow\"\n" +
+        "func take(value: i32) -> string => \"value\"\nfunc take(value: ref/i64) -> string => \"borrow\"\n" +
         "let x: i64 = 7\n" +
         "require widen(2 * 5) == 10 and widen(-(3) + 1) == -2 else => $abort(\"candidate\")\n" +
         "require pick(200 + 55) == 255 and pick(1 << 7) == 128 else => $abort(\"u8\")\n" +

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
+using System.Text;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -8,186 +10,320 @@ namespace Kimi.Compiler;
 
 internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi, int TypeToken, int[] BaseTokens);
 
-internal sealed record ObjectCall(BoundType Payload, BoundType Result, ObjectCreation Physical);
+internal readonly record struct ObjectCall(BoundType Payload, BoundType Result, ObjectCreation Physical);
 
 internal sealed class ObjectGenerationPlan
 {
+    private static readonly Dictionary<SemanticsKind, string> SemanticsNames = Enum.GetValues<SemanticsKind>().ToDictionary(static x => x, static x => x.ToString());
+    private static readonly Dictionary<BoundTypeKind, string> KindNames = Enum.GetValues<BoundTypeKind>().ToDictionary(static x => x, static x => x.ToString());
     private readonly Dictionary<BoundCall, ObjectCall> calls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundType, int> runtimeTypes = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, int> identities = new(StringComparer.Ordinal);
+    private readonly Dictionary<BoundType, string> typeKeys = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, ObjectCreation> entries = new(StringComparer.Ordinal);
+    private readonly List<int> bases = new();
+    private readonly StringBuilder keyBuffer = new();
+    private readonly List<string> keyTexts = new();
+    private readonly List<(int Drop, ObjectCreation Entry)> physical = new();
+    private int preparedEntries;
 
     internal IReadOnlyDictionary<BoundCall, ObjectCall> Calls => this.calls;
 
     internal IReadOnlyDictionary<BoundType, int> RuntimeTypes => this.runtimeTypes;
 
+    internal bool PrepareDefault(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, GenericStoragePlan.CallEntry entry, out string? failure)
+    {
+        failure = null;
+        var body = entry.Template.Body;
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            if (body.Operations[i].Source is IsKoto { BoundRuntimeTest: { } test })
+            {
+                this.RegisterType(compilation, body.ConcreteAt(test.TargetType, i)!);
+                module.NeedsObjectRuntime = true;
+            }
+
+            if (body.CallAt(i)?.Target.CompilerFunction == CompilerFunctionKind.Clone)
+            {
+                module.NeedsObjectRuntime = true;
+            }
+        }
+
+        for (var i = 0; entry.ConcreteCalls is { } calls && i < calls.Length; i++)
+        {
+            if (!this.AddCall(compilation, module, layouts, calls[i], out failure))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     internal void Clear()
     {
         this.calls.Clear();
         this.runtimeTypes.Clear();
+        this.identities.Clear();
+        this.typeKeys.Clear();
+        this.entries.Clear();
+        this.bases.Clear();
+        this.preparedEntries = 0;
     }
 
-    internal bool Prepare(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, out string? failure)
+    internal void Complete()
+    {
+        this.physical.RemoveRange(this.entries.Count, this.physical.Count - this.entries.Count);
+        this.keyTexts.RemoveRange(this.typeKeys.Count, this.keyTexts.Count - this.typeKeys.Count);
+    }
+
+    internal bool Prepare(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, GenericStoragePlan generics, out string? failure)
     {
         this.Clear();
         failure = null;
-        var hasObjects = false;
-        for (var b = 0; b < compilation.Ownership.Bodies.Count && !hasObjects; b++)
+        for (var b = 0; b < compilation.Ownership.Bodies.Count; b++)
         {
-            var operations = compilation.Ownership.Bodies[b].Operations;
-            for (var i = 0; i < operations.Count; i++)
+            var body = compilation.Ownership.Bodies[b];
+            for (var i = 0; i < body.Operations.Count; i++)
             {
-                if ((operations[i].Kind == OwnershipOperationKind.Call && operations[i].Source is InvocationKoto { BoundCall: { } call } &&
-                    ReferenceEquals(call.Target, compilation.Library.MakeObj)) || operations[i].Source is IsKoto { BoundRuntimeTest: not null })
-                {
-                    hasObjects = true;
-                    break;
-                }
-            }
-        }
-
-        if (!hasObjects)
-        {
-            return true;
-        }
-
-        var definitions = new SortedDictionary<string, (BoundType Type, ValueLowering Value, string? Drop, bool Copy)>(StringComparer.Ordinal);
-        var requests = new List<(BoundCall Call, BoundType Type, string Key)>();
-        var identities = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        var typeKeys = new Dictionary<BoundType, string>(ReferenceEqualityComparer.Instance);
-        foreach (var body in compilation.Ownership.Bodies)
-        {
-            foreach (var operation in body.Operations)
-            {
+                var operation = body.Operations[i];
                 if (operation.Source is IsKoto { BoundRuntimeTest: { } test })
                 {
-                    RegisterType(test.TargetType);
+                    this.RegisterType(compilation, test.TargetType);
+                    module.NeedsObjectRuntime = true;
                 }
 
-                if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call } ||
-                    !ReferenceEquals(call.Target, compilation.Library.MakeObj))
+                if (operation.Kind != OwnershipOperationKind.Call || body.CallAt(i) is not { } call ||
+                    call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone))
                 {
                     continue;
                 }
 
-                if (GenericStoragePlan.IsGeneric(body.Function) || call.TypeArguments.Length != 1 || call.TypeArguments[0] is not { } payload ||
-                    !ObjectTypes.IsOwner(call.ReturnType) || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
-                    call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) ||
-                    !ReferenceEquals(call.ArgumentOperations[0].ParameterType, payload) ||
-                    FunctionAbi.GetValue(payload, layouts) is not { } value || value.Layout.Alignment > 16 || value.Layout.Stride != value.Layout.Size)
+                module.NeedsObjectRuntime = true;
+                if (!GenericStoragePlan.IsGeneric(body.Function) && !this.AddCall(compilation, module, layouts, call, out failure))
                 {
-                    failure = "Object creation requires a checked concrete payload acquisition and supported layout.";
                     return false;
                 }
+            }
+        }
 
-                var copy = compilation.Binding.ProveCopy(payload, operation.Source);
-                if (copy is not (ConstraintProof.Proven or ConstraintProof.Refuted))
+        return this.PrepareInstances(compilation, module, layouts, generics, out failure);
+    }
+
+    // Append each concrete entry once, including entries discovered by destruction. Existing factory and Type IDs never
+    // change after a body has used them. The generic planner's bounded destructor queue closes this dependency graph.
+    internal bool PrepareInstances(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, GenericStoragePlan generics, out string? failure)
+    {
+        failure = null;
+        while (this.preparedEntries < generics.Entries.Count)
+        {
+            var entry = generics.Entries[this.preparedEntries++];
+            if (entry.Selected is not null)
+            {
+                continue;
+            }
+
+            var parent = generics.ExpansionParent;
+            generics.ExpansionParent = entry;
+            try
+            {
+                for (var i = 0; entry.ConcreteCalls is { } concrete && i < concrete.Length; i++)
                 {
-                    failure = "Object payload acquisition lacks a concrete Copy/Move proof.";
-                    return false;
+                    if (!this.AddCall(compilation, module, layouts, concrete[i], out failure))
+                    {
+                        return false;
+                    }
                 }
-
-                var aggregate = layouts.Get(payload);
-                var drop = ReferenceEquals(payload, BoundType.String) ? "__kimi_destroy_string" :
-                    aggregate?.NeedsDestruction == true ? "__kimi_drop_aggregate" + aggregate.Id : null;
-                var key = Key(payload, compilation.Project.Directory);
-                RegisterType(payload);
-                definitions.TryAdd(key, (payload, value, drop, copy == ConstraintProof.Proven));
-                requests.Add((call, payload, key));
             }
-        }
-
-        var keys = identities.Keys.ToArray();
-        for (var i = 0; i < keys.Length; i++)
-        {
-            identities[keys[i]] = i + 1;
-        }
-
-        foreach (var pair in typeKeys)
-        {
-            this.runtimeTypes.Add(pair.Key, identities[pair.Value]);
-        }
-
-        module.NeedsObjectRuntime = true;
-        var entries = new Dictionary<string, ObjectCreation>(StringComparer.Ordinal);
-        foreach (var pair in definitions)
-        {
-            var value = pair.Value.Value;
-            var parameters = new List<AbiParameter> { new("ptr", "ret", AbiParameterKind.ResultSlot) };
-            if (value.Layout.Size != 0)
+            finally
             {
-                parameters.Add(new(value.ArgumentType!, "a0", SlotTypes.IsResult(pair.Value.Type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value, 0));
+                generics.ExpansionParent = parent;
             }
-
-            parameters.Add(new("ptr", "location", AbiParameterKind.Location));
-            parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
-            var id = module.Objects.Count;
-            var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray(), resultSlot: true);
-            var bases = new List<int>();
-            for (var parent = Base(pair.Value.Type); parent is not null; parent = Base(parent))
-            {
-                bases.Add(this.runtimeTypes[parent]);
-            }
-
-            var entry = new ObjectCreation(id, module.Constants.Intern(pair.Key, LlvmConstantKind.Text), value, pair.Value.Drop, pair.Value.Copy, abi, identities[pair.Key], bases.ToArray());
-            module.Objects.Add(entry);
-            entries.Add(pair.Key, entry);
-        }
-
-        foreach (var request in requests)
-        {
-            this.calls.Add(request.Call, new(request.Type, request.Call.ReturnType, entries[request.Key]));
         }
 
         return true;
-
-        BoundType? Base(BoundType type) => type.Symbol?.Declaration is StructKoto { Bases.Count: 1 } structure ? compilation.Binding.StoredType(structure.Bases[0], type) : null;
-
-        void RegisterType(BoundType type)
-        {
-            if (typeKeys.ContainsKey(type))
-            {
-                return;
-            }
-
-            var key = Key(type, compilation.Project.Directory);
-            typeKeys.Add(type, key);
-            identities.TryAdd(key, 0);
-            if (Base(type) is { } parent)
-            {
-                RegisterType(parent);
-            }
-        }
     }
 
-    private static string Key(BoundType type, string directory)
+    private static BoundType? Base(Compilation compilation, BoundType type)
+        => type.Symbol?.Declaration is StructKoto { Bases.Count: 1 } structure ? compilation.Binding.StoredType(structure.Bases[0], type) : null;
+
+    private static void WriteKey(StringBuilder output, BoundType type, string directory)
     {
-        var identity = type.Name;
+        output.Append(SemanticsNames[type.Semantics]).Append(':').Append(KindNames[type.Kind]).Append(':');
         if (type.Symbol is { } symbol)
         {
-            var names = new List<string>();
-            for (var node = symbol.Declaration; node is not null; node = node.Parent)
+            var module = symbol.Declaration.CodeContext.Kotonoha;
+            if (ReferenceEquals(module, module.Compilation.Kotonoha))
             {
-                if (node is DeclarationContainerKoto container)
-                {
-                    names.Add(container.Name);
-                }
+                output.Append(module.Compilation.Project.ProjectFile.PackageId).Append('@').Append(module.Compilation.Project.ProjectFile.PackageVersion);
             }
 
-            names.Reverse();
-            var module = symbol.Declaration.CodeContext.Kotonoha;
-            var package = ReferenceEquals(module, module.Compilation.Kotonoha)
-                ? module.Compilation.Project.ProjectFile.PackageId + "@" + module.Compilation.Project.ProjectFile.PackageVersion : string.Empty;
             // Imported module names already contain the resolved dependency key.
-            identity = package + ":" + module.Name + ":" + string.Join("/", names) + ":" + symbol.Name;
+            output.Append(':').Append(module.Name).Append(':');
+            WriteContainers(output, symbol.Declaration);
+            output.Append(':').Append(symbol.Name);
             if (type.Kind == BoundTypeKind.Closure)
             {
                 var path = symbol.Declaration.CodeContext.SourceDocument?.Path ?? string.Empty;
                 path = Path.IsPathRooted(path) ? Path.GetRelativePath(directory, path) : path;
-                identity += ":" + path.Replace('\\', '/') + ":" + symbol.Declaration.Span.Start.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                output.Append(':').Append(path.Replace('\\', '/')).Append(':').Append(symbol.Declaration.Span.Start);
             }
+        }
+        else
+        {
+            output.Append(type.Name);
         }
 
         // Origins carry static dependencies, never Runtime Type Identity.
-        return type.Semantics + ":" + type.Kind + ":" + identity + ":" + type.Length.ToString(System.Globalization.CultureInfo.InvariantCulture) +
-            "<" + string.Join(",", type.Components.Select(x => Key(x, directory))) + ">";
+        output.Append(':').Append(type.Length).Append('<');
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (i != 0)
+            {
+                output.Append(',');
+            }
+
+            WriteKey(output, type.Components[i], directory);
+        }
+
+        output.Append('>');
+    }
+
+    private static bool WriteContainers(StringBuilder output, Koto? node)
+    {
+        if (node is null)
+        {
+            return false;
+        }
+
+        var written = WriteContainers(output, node.Parent);
+        if (node is DeclarationContainerKoto container)
+        {
+            if (written)
+            {
+                output.Append('/');
+            }
+
+            output.Append(container.Name);
+            return true;
+        }
+
+        return written;
+    }
+
+    private bool AddCall(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, out string? failure)
+    {
+        failure = null;
+        if (call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc) || this.calls.ContainsKey(call))
+        {
+            return true;
+        }
+
+        if (call.TypeArguments.Length != 1 || call.TypeArguments[0] is not { } payload ||
+            ObjectTypes.HandleMode(call.ReturnType) is null || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
+            call.ReturnType.Semantics != call.Target.CompilerFunction switch { CompilerFunctionKind.MakeObj => SemanticsKind.Obj, CompilerFunctionKind.MakeRc => SemanticsKind.Rc, _ => SemanticsKind.Arc } ||
+            call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0] is not { Kind: ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead, Source: { } source } argument ||
+            !ReferenceEquals(argument.ParameterType, payload) ||
+            FunctionAbi.GetValue(payload, layouts) is not { } value || value.Layout.Alignment > 16 || value.Layout.Stride != value.Layout.Size)
+        {
+            failure = "Object creation requires a checked concrete payload acquisition and supported layout.";
+            return false;
+        }
+
+        var copy = compilation.Binding.ProveCopy(payload, source);
+        if (copy is not (ConstraintProof.Proven or ConstraintProof.Refuted))
+        {
+            failure = "Object payload acquisition lacks a concrete Copy/Move proof.";
+            return false;
+        }
+
+        this.RegisterType(compilation, payload);
+        var key = this.typeKeys[payload];
+        if (!this.entries.TryGetValue(key, out var entry))
+        {
+            var aggregate = layouts.Get(payload);
+            var drop = ReferenceEquals(payload, BoundType.String) ? -2 : aggregate?.NeedsDestruction == true ? aggregate.Id : -1;
+            var id = module.Objects.Count;
+            this.bases.Clear();
+            for (var parent = Base(compilation, payload); parent is not null; parent = Base(compilation, parent))
+            {
+                this.bases.Add(this.runtimeTypes[parent]);
+            }
+
+            var typeKey = module.Constants.Intern(key, LlvmConstantKind.Text);
+            var token = this.runtimeTypes[payload];
+            var parameterKind = SlotTypes.IsResult(payload) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
+            entry = id < this.physical.Count ? this.physical[id].Entry : null;
+            // Recompute every semantic decision; retain only matching syntax-free physical records.
+            if (entry is null || entry.TypeKey != typeKey || entry.TypeToken != token || entry.Payload != value || entry.Copy != (copy == ConstraintProof.Proven) ||
+                !entry.BaseTokens.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(this.bases)) || this.physical[id].Drop != drop ||
+                (value.Layout.Size != 0 && entry.Abi.Parameters[1].Kind != parameterKind))
+            {
+                var parameters = new List<AbiParameter> { new("ptr", "ret", AbiParameterKind.ResultSlot) };
+                if (value.Layout.Size != 0)
+                {
+                    parameters.Add(new(value.ArgumentType!, "a0", parameterKind, 0));
+                }
+
+                parameters.Add(new("i64", "controlValue", AbiParameterKind.Context));
+                parameters.Add(new("ptr", "location", AbiParameterKind.Location));
+                parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
+                var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray(), resultSlot: true);
+                var destroy = drop == -1 ? null : drop == -2 ? "__kimi_destroy_string" : "__kimi_drop_aggregate" + drop;
+                entry = new(id, typeKey, value, destroy, copy == ConstraintProof.Proven, abi, token, this.bases.ToArray());
+                if (id == this.physical.Count)
+                {
+                    this.physical.Add((drop, entry));
+                }
+                else
+                {
+                    this.physical[id] = (drop, entry);
+                }
+            }
+
+            module.Objects.Add(entry);
+            this.entries.Add(key, entry);
+        }
+
+        module.NeedsObjectRuntime = true;
+        this.calls.Add(call, new(payload, call.ReturnType, entry));
+        return true;
+    }
+
+    private void RegisterType(Compilation compilation, BoundType type)
+    {
+        if (this.typeKeys.ContainsKey(type))
+        {
+            return;
+        }
+
+        this.keyBuffer.Clear();
+        WriteKey(this.keyBuffer, type, compilation.Project.Directory);
+        var ordinal = this.typeKeys.Count;
+        var key = ordinal < this.keyTexts.Count ? this.keyTexts[ordinal] : null;
+        if (key is null || !this.keyBuffer.Equals(key.AsSpan()))
+        {
+            key = this.keyBuffer.ToString();
+            if (ordinal == this.keyTexts.Count)
+            {
+                this.keyTexts.Add(key);
+            }
+            else
+            {
+                this.keyTexts[ordinal] = key;
+            }
+        }
+
+        this.typeKeys.Add(type, key);
+        if (!this.identities.TryGetValue(key, out var token))
+        {
+            this.identities.Add(key, token = this.identities.Count + 1);
+        }
+
+        this.runtimeTypes.Add(type, token);
+        if (Base(compilation, type) is { } parent)
+        {
+            this.RegisterType(compilation, parent);
+        }
     }
 }

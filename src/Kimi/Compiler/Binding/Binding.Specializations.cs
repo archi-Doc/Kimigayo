@@ -10,6 +10,23 @@ public sealed partial class Binding
 
     // The intermediate call of a forwarded requirement call, before its witness is resolved into the destination.
     private readonly BoundCall forwardedRequirement = new();
+    private readonly Dictionary<(BoundCall Inner, BoundCall Outer), BoundCall> defaultCalls = new();
+
+    // Defaults are replicated into pending calls. Retain one selected call per declaration and enclosing call context;
+    // unlike a syntax-keyed table, this distinguishes two instantiations of the same default in one caller.
+    internal BoundCall? InstantiateDefaultCall(BoundCall inner, BoundCall outer)
+    {
+        var key = (inner, outer);
+        this.defaultCalls.TryGetValue(key, out var previous);
+        var call = this.InstantiateForwardedCall(inner, outer, previous);
+        if (call is not null)
+        {
+            this.defaultCalls[key] = call;
+        }
+
+        return call;
+    }
+
     // SPEC 8.8.3: selection is keyed by the original; each original lists its verified specializations.
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> specializationsByOriginal = new(ReferenceEqualityComparer.Instance);
     // Retained across binds: a warm rebind reuses each specialization's slot arrays and the sibling lists.
@@ -64,6 +81,7 @@ public sealed partial class Binding
         var origins = this.originScratch.Rent(inner.Origins.Length);
         var inputs = this.originScratch.Rent(inner.InputOrigins.Length);
         var defaults = this.defaultArgumentScratch.Rent(inner.DefaultArguments.Length);
+        var operations = this.argumentOperationScratch.Rent(inner.ArgumentOperations.Length);
         try
         {
             for (var i = 0; i < inner.TypeArguments.Length; i++)
@@ -102,22 +120,44 @@ public sealed partial class Binding
 
             Origins(inner.Origins, origins);
             Origins(inner.InputOrigins, inputs);
+            for (var i = 0; i < inner.ArgumentOperations.Length; i++)
+            {
+                if (!Operation(inner.ArgumentOperations[i], out operations[i]))
+                {
+                    return null;
+                }
+            }
+
+            if (!Operation(inner.ReceiverOperation, out var receiver))
+            {
+                return null;
+            }
 
             // A requirement call is resolved from an intermediate call into the destination, so the two never share storage.
             var requirement = inner.Target.Declaration is FunctionKoto { IsRequirement: true };
             var call = requirement ? this.forwardedRequirement : destination ?? new BoundCall();
-            call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: inner.ArgumentOperations, receiverOperation: inner.ReceiverOperation, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
+            call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: operations.AsSpan(0, inner.ArgumentOperations.Length), receiverOperation: receiver, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
             call.TupleOperator = inner.TupleOperator;
             call.RequirementContract = inner.RequirementContract;
             return requirement ? this.InstantiateRequirementCall(call, outer, destination) : call;
         }
         finally
         {
+            this.argumentOperationScratch.Return(operations, clearArray: true);
             this.defaultArgumentScratch.Return(defaults, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
             this.lengthScratch.Return(lengths, clearArray: true);
             this.typeScratch.Return(types, clearArray: true);
+        }
+
+        bool Operation(BoundArgumentOperation original, out BoundArgumentOperation concrete)
+        {
+            // Keep the source/Loan anchor and selected acquisition; close both Types under the same context as the result.
+            var source = original.SourceType is { } sourceType ? this.InstantiateStorageType(sourceType, outer) : null;
+            var parameter = original.ParameterType is { } parameterType ? this.InstantiateStorageType(parameterType, outer) : null;
+            concrete = original with { SourceType = source, ParameterType = parameter };
+            return (original.SourceType is null || source is not null) && (original.ParameterType is null || parameter is not null);
         }
 
         void Origins(ReadOnlySpan<BoundOrigin> source, Span<BoundOrigin> values)

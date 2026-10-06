@@ -21,6 +21,20 @@ public class DynamicArrayIndexTest
             Operations,
             string.Empty);
 
+    // SPEC 3.5: a bare read of a Non-Copy element reports TransferRequired_Kd and still yields the typed element, so the return
+    // that receives it reports nothing of its own, and an independent initialization error stays visible.
+    [Theory]
+    [InlineData("ref/Array<string>")]
+    [InlineData("ref/[2 of string]")]
+    public void ARejectedElementReadKeepsIndependentErrors(string type)
+    {
+        var source = "func read(values: " + type + ") -> string\n    var number: i32\n    let copy = number\n    return values[0]\npublic func main() => ()\n";
+        var records = DiagnosticCorpus.Check(source).Diagnostics.OrderBy(static x => x.Span!.Value.Start).ToArray();
+        Assert.Equal(["UninitializedPlace_Kd", "TransferRequired_Kd"], records.Select(static x => x.Code));
+        Assert.Equal("number", source.Substring(records[0].Span!.Value.Start, records[0].Span!.Value.Length));
+        Assert.Equal("values[0]", source.Substring(records[1].Span!.Value.Start, records[1].Span!.Value.Length));
+    }
+
     [Fact]
     public void IndexOperationsTransferNonCopyElements()
         => ScalarEmissionTest.EmitFixture(

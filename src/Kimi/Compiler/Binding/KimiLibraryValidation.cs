@@ -26,13 +26,15 @@ public sealed partial class KimiLibrary
             var state = KimiDeclarationState.Missing;
             if (entry.Symbol is { } symbol)
             {
-                var matches = ReferenceEquals(FindDeclaration((DeclarationContainerKoto)symbol.Scope.Owner, entry.Name, symbol.Kind == BindingSymbolKind.Function, rule.Overload), symbol.Declaration) &&
+                var matches = (rule.Owner is null || ReferenceEquals(FindDeclaration(this.Kotonoha.RootKoto, rule.Owner, false), symbol.Scope.Owner)) &&
+                    ReferenceEquals(FindDeclaration((DeclarationContainerKoto)symbol.Scope.Owner, entry.Name, symbol.Kind == BindingSymbolKind.Function, rule.Overload), symbol.Declaration) &&
                     (rule.Intrinsic != IntrinsicKind.None ? this.Valid(symbol, rule.Intrinsic) : entry.Id switch
                     {
                         KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidUpdate(symbol, entry.Id),
                         KimiDeclarationId.WriteLine => this.ValidWriteLine(),
                         KimiDeclarationId.TestTempDirectory => this.ValidTempDirectory(symbol),
-                        KimiDeclarationId.MakeObj => this.ValidMakeObj(),
+                        KimiDeclarationId.MakeObj or KimiDeclarationId.MakeRc or KimiDeclarationId.MakeArc => this.ValidObjectFactory(symbol, entry.Id),
+                        KimiDeclarationId.Clone => this.ValidStrongClone(symbol),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.LendingIterator => this.ValidLendingIterator(symbol),
                         KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable => this.ValidBorrowingIterable(symbol, entry.Id == KimiDeclarationId.UniqIterable),
@@ -61,11 +63,12 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
                         KimiDeclarationId.StorageOwnFixed => this.ValidFixedOwningOperation(symbol),
                         KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
-                        KimiDeclarationId.StorageMissingDictionaryKey => this.ValidMissingDictionaryKey(symbol),
+                        KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded => this.ValidStorageAbort(symbol, rule),
+                        KimiDeclarationId.StorageTryAllocateBytes or KimiDeclarationId.StorageTransferBytes => this.ValidStorageBytes(symbol, entry.Id),
                         KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
                         >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
                         KimiDeclarationId.Loan => this.ValidLoan(symbol),
-                        KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary => this.ValidDictionaryCapacity(symbol, entry.Id),
+                        _ when rule.SourceFunction => symbol.CompilerFunction == CompilerFunctionKind.None && symbol.Declaration is FunctionKoto { IsRequirement: false, IsGenerated: false, IsSpecialization: false } ordinary && (ordinary.Body is not null || ordinary.ExpressionBody is not null),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
                     });
@@ -107,7 +110,7 @@ public sealed partial class KimiLibrary
             var matches = ReferenceEquals(symbol.Declaration.BoundSymbol, symbol) && symbol.Declaration.BindingState == BindingState.Resolved &&
                 this.ValidBoundStorageOperation(symbol, entry.Id) && this.ValidBoundCollectionOperation(symbol, entry.Id) && ValidBoundPrimitive(symbol, entry.Id) &&
                 this.ValidBoundFormattingLayout(symbol, entry.Id) && this.ValidBoundFormattingSignature(symbol, entry.Id, KimiLibraryCatalog.Entries[i].Container) &&
-                this.ValidBoundRecordLayout(symbol, entry.Id);
+                this.ValidBoundRecordLayout(symbol, entry.Id) && ValidBoundStrongClone(symbol, entry.Id);
             if (matches && entry.Id == KimiDeclarationId.LendingIterator)
             {
                 matches = this.ValidBoundLendingIterator(symbol);
@@ -631,7 +634,7 @@ public sealed partial class KimiLibrary
         var (name, semantics, source, result, lent) = id switch
         {
             KimiDeclarationId.StorageBorrowDictionary => ("borrowStorage", SemanticsKind.Ref, "Dictionary", "DictionaryRefRemainder", SemanticsKind.Owner),
-            KimiDeclarationId.StorageBorrowDictionaryExclusive => ("borrowStorage", SemanticsKind.Uniq, "Dictionary", "DictionaryUniqRemainder", SemanticsKind.Owner),
+            KimiDeclarationId.StorageBorrowDictionaryExclusive => ("borrowStorageUniq", SemanticsKind.Uniq, "Dictionary", "DictionaryUniqRemainder", SemanticsKind.Owner),
             KimiDeclarationId.StorageOwnDictionary => ("ownStorage", SemanticsKind.Owner, "Dictionary", "DictionaryOwnedRemainder", SemanticsKind.Owner),
             KimiDeclarationId.StorageKeyAt => ("keyAt", SemanticsKind.Raw, "u8", "K", SemanticsKind.Raw),
             _ => ("valueAt", SemanticsKind.Raw, "u8", "V", SemanticsKind.Raw),
@@ -668,14 +671,14 @@ public sealed partial class KimiLibrary
             BareName(remainder.Identifier, result) && BareName(resultKey, "K") && BareName(resultValue, "V");
     }
 
-    // SPEC 22.1.2.5: borrowStorage over ref/[N of E] or uniq/[N of E] during a returns the contiguous RefRemainder<E> or
-    // UniqRemainder<E> during a; the compiler implements it.
+    // SPEC 22.1.2.5: borrowStorage over ref/[N of E] during a, or borrowStorageUniq over uniq/[N of E] during a, returns the
+    // contiguous RefRemainder<E> or UniqRemainder<E> during a; the compiler implements it.
     private bool ValidFixedStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
         var exclusive = id == KimiDeclarationId.StorageBorrowFixedExclusive;
         return symbol.CompilerFunction == KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function &&
-            symbol.Declaration is FunctionKoto { Name: "borrowStorage", AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0, Modifier: ModifierKind.Internal } function &&
-            ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
+            symbol.Declaration is FunctionKoto { AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0, Modifier: ModifierKind.Internal } function &&
+            function.Name == (exclusive ? "borrowStorageUniq" : "borrowStorage") && ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
             function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }, LengthParameterKoto] &&
             function.Parameters is [{ InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { OriginName: "a", Type: FixedArrayTypeKoto array } input }] &&
             input.SemanticsKind == (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) && BareName(array.ElementType, "E") && BareName(array.Length, "N") &&
@@ -709,7 +712,7 @@ public sealed partial class KimiLibrary
         var (name, parameterName, semantics, argument) = id switch
         {
             KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
-            KimiDeclarationId.StorageBorrowExclusive => ("borrowStorage", "value", SemanticsKind.Uniq, "Array"),
+            KimiDeclarationId.StorageBorrowExclusive => ("borrowStorageUniq", "value", SemanticsKind.Uniq, "Array"),
             _ => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
         };
         if (symbol.CompilerFunction != kind ||
@@ -874,16 +877,6 @@ public sealed partial class KimiLibrary
 
         return true;
     }
-
-    private bool ValidMakeObj()
-        => this.MakeObj.CompilerFunction == CompilerFunctionKind.MakeObj && ReferenceEquals(this.MakeObj.Scope, this.IntrinsicsScope) &&
-        ReferenceEquals(this.MakeObj.Declaration.Parent, this.Intrinsics) &&
-        this.MakeObj.Declaration is FunctionKoto { Name: "makeObj", NameBoundaryIndex: -1, Modifier: ModifierKind.Public, AttributeChain: null, GenericArguments.Count: 1, Parameters.Count: 1, Origins.Count: 0, TypeConstraints.Count: 1, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false } f &&
-        f.GenericArguments[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
-        f.TypeConstraints[0] is IsKoto { Left: { } constrained, Right: { } required } && BareName(constrained, "T") && BareName(required, "ObjectPayload") && // SPEC 13.5.8
-
-        f.Parameters[0] is { InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null } p &&
-        BareName(p.Type, "T") && f.ReturnType is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: { } inner } && BareName(inner, "T");
 
     private bool Valid(BindingSymbol symbol, IntrinsicKind kind)
         => symbol.Intrinsic == kind && ReferenceEquals(symbol.Scope, this.Scope) &&

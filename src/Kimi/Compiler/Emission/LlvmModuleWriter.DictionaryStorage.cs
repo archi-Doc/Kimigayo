@@ -8,13 +8,11 @@ internal static partial class LlvmModuleWriter
     private static void WriteDictionaryStorage(EmissionModule module, TextWriter output)
     {
         if (module.DictionaryAppendSlot is null ||
-            module.DictionaryInitialize is not { } initialize || module.DictionaryClearLinks is null ||
-            module.DictionaryAppend is null || module.DictionaryReserveStorage is null)
+            module.DictionaryInitialize is not { } initialize || module.DictionaryClearLinks is null)
         {
             throw new InvalidOperationException("Dictionary storage sources were not compiled.");
         }
 
-        WriteDictionaryCapacity(module, output, append: true);
         output.Write(WindowsLowering.DictionaryInit.GetDefinition(false));
         output.Write("entry:\n  call void @");
         output.Write(initialize.Name);

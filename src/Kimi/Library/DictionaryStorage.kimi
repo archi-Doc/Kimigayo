@@ -1,5 +1,5 @@
-// Private ordered-storage algorithms. The compiler supplies allocation and typed
-// acquisition/destruction; this source owns slot links and free-slot reuse.
+// Private ordered-storage algorithms. The compiler supplies typed acquisition/destruction and the private located
+// primitives; this source owns capacity decisions, slot links and free-slot reuse.
 group DictionaryStorage
     // Private physical records shared with the backend; not a public collection ABI.
     #Layout("C")
@@ -16,12 +16,6 @@ group DictionaryStorage
     struct Links
         public var previous: isize
         public var next: isize
-
-    // Private callback ABI codes; the platform adapter supplies the original operation's location and Abort code.
-    group CapacityFailure
-        public let argument: i32 = 0
-        public let countOverflow: i32 = 1
-        public let sizeLimit: i32 = 2
 
     internal func clearEntries<K, V>(value: uniq/Dictionary<K, V>)
         K is Equatable
@@ -42,37 +36,43 @@ group DictionaryStorage
             unlink(layout.0@raw/Handle, layout.1, link)
             return .Some(((*Storage.keyAt<K, V>(slot))@move, (*Storage.valueAt<K, V>(slot))@move))
 
-    unsafe func reserve(
-        handle: raw/Handle, stride: isize, additional: isize, maximumSize: isize,
-        allocate: (isize) -> raw/u8, release: (raw/u8) -> (),
-        transfer: (raw/u8, raw/u8, isize) -> (), fail: (i32) -> ()
-    ) -> isize
+    // The capacity operations carry the standard operation's caller location to every failure they detect (SPEC 22.5.1).
+    internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)
+        K is Equatable
+        unsafe
+            let layout = Storage.dictionaryStorage(value)
+            _ = reserve(layout.0@raw/Handle, layout.1, additional)
+
+    internal func shrinkEntries<K, V>(value: uniq/Dictionary<K, V>)
+        K is Equatable
+        unsafe
+            let layout = Storage.dictionaryStorage(value)
+            shrinkToFit(layout.0@raw/Handle, layout.1)
+
+    unsafe func reserve(handle: raw/Handle, stride: isize, additional: isize) -> isize
         unsafe
             if additional < 0
-                fail(CapacityFailure.argument)
-                return 0
+                Storage.argumentOutOfRange()
+            // The bound is the largest isize of the windows-x64 profile, written as i64 so that the source stays
+            // target-independent; the conversions are exact there.
+            let maximumSize: i64 = 9223372036854775807
             let length = (*handle).length
-            if additional > maximumSize - length
-                fail(CapacityFailure.countOverflow)
-                return 0
+            if additional@i64 > maximumSize - length@i64
+                Storage.countOverflow()
             let minimum = length + additional
-            grow(handle, stride, minimum, maximumSize, allocate@move, release@move, transfer@move, fail@move)
+            grow(handle, stride, minimum)
             return minimum
 
-    unsafe func grow(
-        handle: raw/Handle, stride: isize, minimum: isize, maximumSize: isize,
-        allocate: (isize) -> raw/u8, release: (raw/u8) -> (),
-        transfer: (raw/u8, raw/u8, isize) -> (), fail: (i32) -> ()
-    )
+    unsafe func grow(handle: raw/Handle, stride: isize, minimum: isize)
         unsafe
             let capacity = (*handle).capacity
             if capacity >= minimum
                 return
             // Every entry has links, even when K and V have zero size: stride is positive.
-            let maximum = maximumSize / stride
+            let maximumSize: i64 = 9223372036854775807
+            let maximum = (maximumSize / stride@i64)@isize
             if minimum > maximum
-                fail(CapacityFailure.sizeLimit)
-                return
+                Storage.allocationSizeExceeded()
             // Optional geometric rounding must never reject a representable minimum.
             var target = maximum
             if capacity <= maximum / 2
@@ -83,22 +83,19 @@ group DictionaryStorage
                 target = minimum
             if target > maximum
                 target = maximum
-            let memory = allocate(target * stride)
+            // The allocator aligns every block to 16 bytes (SPEC 22.5.2), which covers the entry layout.
+            let memory = Raw.allocate<u8>(target * stride)
             let buffer = (*handle).buffer
             let used = (*handle).used
             if used != 0
-                transfer(memory, buffer, used * stride)
-            release(buffer)
+                Storage.transferBytes(memory, buffer, used * stride)
+            Raw.release(buffer)
             (*handle).buffer = memory
             (*handle).capacity = target
 
-    unsafe func append(
-        handle: raw/Handle, stride: isize, maximumSize: isize,
-        allocate: (isize) -> raw/u8, release: (raw/u8) -> (),
-        transfer: (raw/u8, raw/u8, isize) -> (), fail: (i32) -> ()
-    ) -> raw/u8
+    unsafe func append(handle: raw/Handle, stride: isize) -> raw/u8
         unsafe
-            let needed = reserve(handle, stride, 1, maximumSize, allocate@move, release@move, transfer@move, fail@move)
+            let needed = reserve(handle, stride, 1)
             return appendSlot(handle, stride, needed)
 
     // Literal construction checks before evaluating the corresponding value.
@@ -107,25 +104,25 @@ group DictionaryStorage
         if link != 0
             duplicate()
 
-    unsafe func shrinkToFit(handle: raw/Handle, stride: isize, allocate: (isize) -> raw/u8, release: (raw/u8) -> (), transfer: (raw/u8, raw/u8, isize) -> ())
+    unsafe func shrinkToFit(handle: raw/Handle, stride: isize)
         unsafe
             let length = (*handle).length
             if (*handle).capacity <= length
                 return
             if length == 0
-                release((*handle).buffer)
+                Raw.release((*handle).buffer)
                 initialize(handle)
                 return
-            // Existing capacity guarantees that length * stride is representable.
-            let memory = allocate(length * stride)
+            // Existing capacity guarantees that length * stride is representable; failure keeps the storage.
+            let memory = Storage.tryAllocateBytes(length * stride)
             if memory == null
                 return
-            let old = compact(handle, memory, stride, transfer@move)
-            release(old)
+            let old = compact(handle, memory, stride)
+            Raw.release(old)
 
     // The caller allocates memory before calling; failure leaves the old handle
     // intact. Transfer does not acquire or destroy entries or call user code.
-    unsafe func compact(handle: raw/Handle, memory: raw/u8, stride: isize, transfer: (raw/u8, raw/u8, isize) -> ()) -> raw/u8
+    unsafe func compact(handle: raw/Handle, memory: raw/u8, stride: isize) -> raw/u8
         unsafe
             let buffer = (*handle).buffer
             let length = (*handle).length
@@ -135,7 +132,7 @@ group DictionaryStorage
                 let slot = buffer + (link - 1) * stride
                 let next = (*(slot@raw/Links)).next
                 let destination = memory + position * stride
-                transfer(destination, slot, stride)
+                Storage.transferBytes(destination, slot, stride)
                 let links = destination@raw/Links
                 (*links).previous = position
                 position += 1

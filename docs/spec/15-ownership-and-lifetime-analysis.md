@@ -328,7 +328,7 @@ Intersections are renormalized after substitution or a change of proof evidence,
 func empty() -> ref/string during static
 ```
 
-A shared borrow from `static` has no non-static lifetime dependency and must satisfy the [static-source rules](11-properties.md#1132-static-storage). A new safe borrow of mutable static storage has a finite Origin. Safe code cannot derive `uniq/T during static` from longevity alone, because an exclusive borrow also requires a unique Loan anchor; in safe code, an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static`. A borrow of a raw Place is not a safe derivation: it has a fresh anchor and an Origin without an upper bound (§5.2.2).
+A shared borrow from `static` has no non-static lifetime dependency and must satisfy the [static-source rules](11-properties.md#1132-static-storage). A new safe borrow of mutable static storage has a finite Origin (§15.6.5). Safe code cannot derive `uniq/T during static` from longevity alone, because an exclusive borrow also requires a unique Loan anchor; in safe code, an abstract Origin whose Loan requirement is `uniq` cannot be bound to `static`. A borrow of a raw Place is not a safe derivation: it has a fresh anchor and an Origin without an upper bound (§5.2.2).
 
 `static` describes an Origin. `Owned` expresses independence from non-static lifetime dependencies; it is neither ownership Semantics nor permission to allocate storage:
 
@@ -346,6 +346,8 @@ A callable Type contributes every fixed Origin in its complete Type: a Function 
 Established outlives facts are used: `a outlives static` proves `a` equal to `static`, the maximum Origin. An unbound or unproven abstract Origin yields Unknown, not a proof of `not Owned`; required evidence is resolved by the ordinary deadline. A generic definition proves Owned for its own Type parameters and abstract Origins only from its declared Constraints and bounds (§8.10); the proof cannot wait for instantiation. Empty containers and unselected Cases do not weaken this Type-level check: `raw/(ref/i32 during local)`, and a wrapper with that non-static Type argument, cannot prove Owned even if no safe-borrow Field is visible. Traversing a pointee Type neither dereferences a pointer nor creates a Loan; unsafe implementations must still expose their actual lifetime dependencies and uphold pointer validity.
 
 This revision requires Owned for static storage, concrete payload erasure into base or runtime-Contract views, common Function Type environment erasure, cyclic-factory payloads (§13.5.8) and explicitly declared Owned Constraints. A lifetime-hiding library API states that requirement explicitly; the compiler does not infer an "indefinite retention" capability from a private body. Ordinary storage and concrete object allocation impose no blanket Owned requirement. Owned never discharges acquisition, Loan, destruction-order, unsafe or concurrency checks.
+
+**Owned failures.** A failed Owned proof is a Constraint failure (§8.7), never a Type mismatch or an Origin relation failure (§15.6.1): a Refuted proof is reported as `UnsatisfiedConstraint_Kd`, and a proof still Unknown at its deadline as `UnprovenConstraint_Kd`. The Owned condition of a common Function Type conversion (§7.6.4) is reported the same way. The Reason names the failing Origin and the member of the enumeration above through which it enters OwnedOrigins, as §23.3.6.5 specifies.
 
 ## 15.3. Origin schemas, names and relations
 
@@ -473,7 +475,7 @@ A complete Type has an established contract, including its Origin bindings and q
 
 - **Undeclared storage Origin.** A name in storage that matches no declaration of any role is `MissingOriginBinding_Kd`, the code that reports an unresolved name in a local annotation. The primary location is the name; no record for the same cause is added at the Type name or the whole Field. The Reason states that the name is declared neither in the Type's header nor as a visible enclosing Origin, and that own slots are declared only in the header. The related location is the header, or the Type name when there is none. The Advice gives two conditional repairs: if an existing slot or enclosing Origin was intended, replace the name, which leaves the slot declaration unchanged; if a new slot was intended, add the name to the header, which changes the public API and rebinds any member signature that uses the same spelling as a universal Origin (§15.3.4).
 - **Other roles.** A name that matches a declaration of another role, such as a Field-local set used as a scalar or a misspelled set projection, keeps the role error of §15.3.1 and §15.3.4. `during self` in storage is not an undeclared name; it is reported under the rule that `self` creates no self-borrowing storage contract (§11.3).
-- **Absent slots at uses.** A projection of a slot that the Type does not declare, such as after a slot is renamed or removed, is reported once per projection at the slot name, with the header as the related location, a Note listing the declared slots and Advice suggesting a declared name. Problems derived from it, such as an unbound result slot or a mismatch between identically spelled Types, are not reported as independent problems (§23.3.6.4).
+- **Absent slots at uses.** A projection of a slot that the Type does not declare, such as after a slot is renamed or removed, is reported once per projection at the slot name, with the header as the related location, a Note listing the declared slots and Advice suggesting a declared name. Problems derived from it, such as an unbound result slot or an Origin relation (§15.6.1) between identically spelled Types that cannot be judged, are not reported as independent problems (§23.3.6.4).
 
 ```kimi
 public struct View<T> {source}
@@ -533,18 +535,18 @@ Lookup searches lexical scopes from the inside out and stops at the first scope 
 
 A new Origin or set name cannot hide a visible Origin, set or competing parameter or local name. Duplicate set declarations are errors; mutually invisible Field-local names may be reused. Ordinary value-to-value shadowing is unchanged. Signature and schema names are collected before resolution, independent of input, Field or file enumeration order; Field-local sets are not hoisted, and executable visibility and capture boundaries do not change. Member bindings are rechecked when an enclosing schema changes.
 
-**Nested signatures.** Function Types, Callable and anonymous functions introduce no new named scalar Origins; they keep their limited per-call direct-input quantification and their own result omission rules. A set name inside a Function Type or Callable belongs to the declaration containing that Type expression. Each nested aggregate input slot must be fixed by a complete Type or by an expression over existing outer Origins; an upper bound alone cannot leave a free per-call aggregate slot.
+**Nested signatures.** Function Types, Callable and anonymous functions introduce no new named scalar Origins; they keep their limited per-call direct-input quantification and their own result omission rules. A set name inside a Function Type or Callable belongs to the declaration containing that Type expression. Each nested aggregate input slot must be fixed by a complete Type or by an expression over existing outer Origins; an upper bound alone cannot leave a free per-call aggregate slot. In the written Type of a local declaration with an initializer (§15.4.4) and in the parameter Types of an anonymous function, an omitted Origin of such a slot, or of a borrow layer nested in an input, is instead an inference variable of the enclosing body, never per call: the declaration or the anonymous-function expression fixes it once, it is solved with the body's local regions (§15.3.6, §15.6.1), and every call's argument fits that one Origin. Signatures, Callable Constraints, Fields, static storage and locals without an initializer still fix it explicitly.
 
 ```kimi
 func useView<T>(x: View<T>, callback: (View<T>{c}) -> ())
     origin c.source == x.source
 ```
 
-`c.source` is fixed by the outer call, not selected again for each callback invocation. Callable permits this fixed set naming but gains no written direct-borrow Origin annotations. A nested result first keeps its fixed bindings and then uses its own signature's result elision: `(ref/T) -> View<T>` can inherit the inner per-call input. An unused set label does not change that contract. Inner per-call Origins cannot be projected or captured outside their binder; slots referenced by outer clauses must instead be completed with fixed outer Origin expressions. This boundary applies at every nesting level. Anonymous whole-result inference, expected Types and captures keep their existing rules.
+`c.source` is fixed by the outer call, not selected again for each callback invocation. Callable permits this fixed set naming but writes no borrow annotation on any layer of its parameters or its result (§8.6). A nested result first keeps its fixed bindings and then uses its own signature's result elision: `(ref/T) -> View<T>` can inherit the inner per-call input. An unused set label does not change that contract. Inner per-call Origins cannot be projected or captured outside their binder; slots referenced by outer clauses must instead be completed with fixed outer Origin expressions. This boundary applies at every nesting level. Anonymous whole-result inference, expected Types and captures keep their existing rules.
 
 ### 15.3.5. Variance, Loan requirements and Phantom Origins
 
-Origin relations are not value conversions. The complete-Type variance rules apply: `ref/T during o` is covariant in `o` and `T`; `uniq/T during o` is covariant in `o` and invariant in `T`; `raw/T` is invariant in `T`, because a raw pointer does not distinguish reads from writes; function parameters reverse polarity and results preserve it. Mutable storage follows its representation's invariance requirements. Declaration variance is inferred from all occurrences, and recursive Types are solved to a fixed point; there are no explicit variance annotations. These rules add no ordinary inheritance upcast or callable value operation.
+Origin relations are not value conversions. The complete-Type variance rules apply. Every safe borrow is covariant in its outer Origin. `uniq`, `obj`, `objuniq` and `raw` are invariant in their target: an exclusive borrow writes through an alias whose Type stays fixed, a writable object handle writes a payload whose Dynamic Type keeps the bindings certified at erasure (§15.8.1) even where its View Target does not show them, and a raw pointer does not distinguish reads from writes. Every other Semantics is covariant in its target, as an owned `T` is: owned contents are written only through their owning path, whose Type is exact, and `ref`, `objref`, `rc` and `arc` grant no mutation (§15.6.2). In declaration variance a pair layer counts as covariant, because a pair argument is a complete Type compared under its own Semantics wherever two arguments meet; in a generic body a relation between pair layers must hold for every admitted Semantics (§8.1.2), so the target of a pair layer is invariant when an invariant Semantics is admitted and covariant otherwise. Function parameters reverse polarity and results preserve it. Mutability does not change variance: a Type declared in Kimigayo derives it from the Types of its storage. Declaration variance is inferred from all occurrences, and recursive Types are solved to a fixed point; there are no explicit variance annotations. These rules add no ordinary inheritance upcast or callable value operation.
 
 Slots keep inferred Loan requirements `none < ref < uniq`: a shared borrow use requires `ref`, an exclusive use requires `uniq`, and multiple or nested uses propagate the stronger requirement. The requirement identifies the caller-side Loan that must be retained; it neither grants a Loan nor changes structural Copy classification. Actual Place, authority, anchor and Reborrow identities are kept across acquisition, storage, calls, results and destruction. Equal or shortened Origins never merge distinct Loans or manufacture exclusive access.
 
@@ -564,7 +566,7 @@ public struct Window<T> {source}                // Covariant in T.
     let length: isize
 ```
 
-A view that is covariant in `T` keeps its address as `raw/()`, expresses the element dependency with `Loan<ref/T during source>`, and converts with `data@raw/T` just before an access. A Type declared in Kimigayo takes its slot properties from its storage alone. Only `Slice<T>`, a compiler-managed representation without stored Fields, keeps compiler metadata for them (§22.1).
+A view that is covariant in `T` keeps its address as `raw/()`, expresses the element dependency with `Loan<ref/T during source>`, and converts with `data@raw/T` just before an access. A Type declared in Kimigayo takes its slot properties from its storage alone. A compiler-managed Type without stored Fields takes them from its own rule: `Slice<T>` from its compiler metadata (§22.1), `Array<T>` from its elements (§4.5), and `Loan<T>` and `Weak<S>` (§3.2.2) by being analyzed as storing their argument.
 
 ### 15.3.6. Limited Origin inference
 
@@ -577,7 +579,7 @@ Temporary inference variables are placed only at unresolved positions; fixed Ori
 | Contravariant | A lower bound proven to outlive every other lower bound. Do not invent unions of incomparable bounds. |
 | Mixed or cyclic | A representable, unique principal solution modulo proven Origin equivalence. |
 
-A principal solution is the most general permitted solution under variance and fitting. Multiple shorter regions do not make a covariant meet ambiguous. Each candidate is substituted into every condition, including internal dependencies and Loans. If no principal solution is expressible, or only incomparable candidates remain, an explicit annotation is required.
+A principal solution is the most general permitted solution under variance and fitting. Multiple shorter regions do not make a covariant meet ambiguous. Each candidate is substituted into every condition, including internal dependencies and Loans. If no principal solution is expressible, or only incomparable candidates remain, an explicit annotation is required. In an executable body, a variable that has no bound of the kind its row uses, such as the result-only Origin of a callee instantiated at a call whose result initializes an unannotated local (§15.6.4), is instead a local region (§15.6), solved after selection with the body's other local regions by its uses and its remaining bounds; it needs no annotation and is never replaced by `static`. This requirement is judged after selection and never makes a candidate inapplicable (§15.6.1). Its failure is `MissingOriginBinding_Kd` at the expression or declaration whose inferred Type holds the Origin; the Reason states whether only a per-call Origin would satisfy the bounds (§10.8) or which candidates remain without a proof that one outlives the others, displayed under §23.3.6.5. The Origin relations that need the unsolved Origin are derived (§23.3.6.4).
 
 The solver uses equality substitution, reflexivity, transitivity and the meet laws, and keeps composite expression nodes: `a and b outlives c` decomposes into two requirements, whereas `x outlives a and b` decomposes into neither atomic edges nor a disjunction. Identical normalized premises and consequences of the permitted rules are usable. The solver neither enumerates arbitrary regions nor requires general theorem proving. An unknown proof remains distinct from a contradiction; unresolved obligations are errors at the existing finalization deadline unless §8.10 explicitly permits deferral.
 
@@ -633,6 +635,7 @@ Aliases, grouping and redundant owner prefixes are normalized first. These rules
 | Static storage | Require Owned and §11.3.2's static-source rules. Omitted shared borrows and `none`/`ref` aggregate slots default to `static`; exclusive layers or `uniq` requirements are rejected. |
 | Accessor or specialization | Inherit the complete stored/original contract first; complete only remaining positions. Getter results use the actual getter receiver. |
 | Adaptation Target | Infer from the operand, operation and constraints, not signature result elision (§13.5.1). |
+| Runtime test or checked-cast target | Target completion (§13.6.2); no Origin is written. |
 
 Ordinary input completion recurses through Type arguments, Tuple and array elements and borrow targets, not through Fields, already complete Types or another callable boundary. Distinct inputs, occurrences and slots remain independent; nested borrow layers gain no new omission permission. Constructors keep the containing Type's result contract; parameters do not automatically correspond to Fields. Original pair WholeTypes `s/T` keep their bindings; a reconstructed `s/U` keeps conditional safe-borrow slots under §8.1.2. Function Types, Callable and anonymous functions keep the boundaries of §15.3.4.
 
@@ -697,7 +700,7 @@ Ordinary storage, including Arrays, Dictionaries, Tuples, fixed arrays, structs,
 
 An exclusive borrow requires both a valid Origin and a unique Loan anchor: an Origin proves longevity but not uniqueness.
 
-The following independent member signatures are declared inside `View<T> {source}`, with bodies omitted. A shared borrow may be returned from a stored Origin:
+The following independent member signatures are declared inside `View<T> {source}`, with bodies omitted. A shared borrow reached through a stored shared reference may be returned from a stored Origin; one reached through a stored exclusive reference is bounded by `self` instead (§15.6.3):
 
 ```kimi
 struct View<T> {source}
@@ -735,6 +738,7 @@ Function bodies are lowered to a control-flow graph. A **program point** is a po
 
 ```text
 place := local
+       | static-key
        | place '.' FieldIdentity
        | place '.base' BaseIdentity
        | place '.' TupleIndex
@@ -742,7 +746,7 @@ place := local
        | place '[' _ ']'
 ```
 
-These projections describe direct Field and lowered storage Places. Base and Field identities preserve inherited paths; no ordinary base-reference conversion is implied. Custom, computed and required accessors are function boundaries instead (Chapter 11).
+These projections describe direct Field and lowered storage Places. A `static-key` root is a static storage key (§22.2.4). Base and Field identities preserve inherited paths; no ordinary base-reference conversion is implied. Custom, computed and required accessors are function boundaries instead (Chapter 11).
 
 A **region** is a set of program points. Local regions are inferred, Origins in signatures introduce universal regions, and `static` is the maximum region.
 
@@ -767,13 +771,32 @@ Type checking generates these constraints:
 
 | Constraint      | Rule                                                         |
 | --------------- | ------------------------------------------------------------ |
-| Subtyping       | Assignment and argument passing require `type(value) <: type(destination)`. |
+| Subtyping       | Assignment and argument passing require `type(value) <: type(destination)`, whose Origin part yields Origin relations (below). |
 | Liveness        | If a value containing `o` may be used after `P`, then `P` belongs to `region(o)`. |
 | Outlives        | `a outlives b` requires `region(a) ⊇ region(b)`.             |
 | Well-formedness | Every Origin in `T` observable through `ref/T during o` or `uniq/T during o` must outlive `o`. |
 | Calls           | Origin arguments and result Loan requirements are instantiated as described in §15.6.4. |
 
 The well-formedness rule prevents borrowed contents from expiring before the outer borrow.
+
+**Origin relations.** A value fit `type(value) <: type(destination)`, at a position of §10.2 or for a Place result (§7.1.1), has two parts:
+
+- Its **structural part** is the identity and subtype proof of §3.8 with all Origin bindings treated as equal. Only its failure is a Type mismatch. A fit whose structural part fails yields no Origin relation; that relation is a nested part the failed check skips (§23.3.6.4).
+- Once the structural part holds, the Origin shortening and variance row of §3.8 yields an Origin relation at each relevant position: `outlives` at covariant and contravariant positions and `==` at invariant ones.
+
+Declared relations (§15.3.3), relations substituted at a call (§15.6.4 step 3) and well-formedness relations are Origin relations too; the static-storage rule of §11.3.2 is a fit to `static`, not a separate kind. All of them are one requirement, the required **Origin relation**, and never a Type mismatch. Applicability (§10.1 steps 5 and 6) and expected-result filtering (§10.3) use only the structural part, and the Origin relations of the selected candidate are judged after selection under §15.6.5. Local regions are solved after selection (§15.4.4), and no overloads differ only by Origins (§9.1), so the Origin relations of a fit never change a selection.
+
+The following remain separate requirements that share only the Origin display of §23.3.6.5: comparisons of whole contracts, namely Contract implementation matching (§8.4.5), specialization (§8.8), and Callable compatibility and common Function Type conversion (§10.7) compared under §15.3.7; Constraints whose proof involves Origins, namely `Owned` (§15.2.3), Callable and Type identity (§8.7), which still take part in applicability (§10.1); the unique Loan anchor of an exclusive borrow (§15.2.3); and inference without a principal solution, which requires an annotation and, like the Origin relations, is judged after selection (§15.3.6).
+
+The Origin part of a comparison of whole contracts is judged under §15.3.7 once its structural part holds: every Origin other than the implementation's instantiable call Origins is a rigid symbol, and each relation is proven from the premises alone, never by region inference, so the part is Proven or Unknown and never Refuted. Except in the proof of a Callable Constraint, which reports the Constraint codes of §8.7, an Unknown part is `UnprovenOriginContract_Kd` (Error, `Proof`), once per failing position: the position of the compared contracts whose comparison introduced the shorter end. The record is located at the implementation's Type occurrence or `origin` clause at that position (the conforming function or the specialization), or at the converted value. The corresponding part of the required contract is a related location with the role `requirement`, a conformance's `Self is` clause one with the role `conformance`, and the converted function's corresponding occurrence one with the role `declaration`.
+
+**Reporting.** A Refuted Origin relation is reported as `UnsatisfiedOriginRelation_Kd` (Error, `Language`), and one still Unknown at the deadline of §15.3.6 as `UnprovenOriginRelation_Kd` (Error, `Proof`), whose record states that the relation is not proven, never that it is false. The Reason facts of both codes and their Origin display follow §23.3.6.5.
+
+- **Identity.** A problem is identified by its primary location, the source of the relation and the relation's longer end. The source is the position in the destination Type for a fit, the clause for a declared relation and the Type occurrence for well-formedness. Every failed chain (§15.6.5) is reported, not only the first.
+- **Location.** The primary location is the expression that supplies the longer Origin in the relation that introduced the shorter end, such as the value that does not fit or the argument that supplies the longer side of a substituted relation. At a call, a fresh Origin (§15.6.4) that an equality, at an invariant position or from a substituted `==` clause, makes equal to a fixed Origin is that Origin (§15.3.6); when equalities make it equal to several fixed Origins, it is the one supplied first, taking arguments in order and then clauses, and each later equality relates its own fixed Origin to that one. The argument whose fit then meets it is the value that does not fit, and the argument or clause that made the equality is a related location with the role `relation`. Without such an expression, it is the syntax that requires the relation: a clause or a Type occurrence. When a borrow of a temporary must outlive a fixed Origin, as when that borrow is returned, the record that §10.2 requires, naming the expired temporary and the use, is this record, with the temporary shown as a `borrow` end (§23.3.6.5); a later use within the body is the Loan conflict at the temporary's destruction (§15.6.5).
+- **Order.** Records at one primary location are ordered by relation source (the outer borrow layer, then the Semantics target, then slots in header order, then Type arguments in order, applied recursively), then by the source position of the longer end (§23.3.6.6).
+- **No cascade.** A failed relation adds no constraint to later region inference; Loan, destruction and result checks proceed without it, so it causes no Loan conflict or result mismatch of its own. Conflicts caused by other uses remain independent problems. A relation that cannot be judged because a prerequisite failed is a derived problem (§23.3.6.4), as after an absent slot (§15.3.2). A failed Origin relation is never such a prerequisite: every chain is judged from the contract's premises alone, and the well-formedness and clauses that the body must establish, such as those of a local's Type (§15.3.3), are obligations, never premises. A failed well-formedness of a destination Type and a failed fit into that Type are therefore independent problems.
+- **Advice.** Advice is conditional prose, never a repair candidate, because an Origin repair needs a choice the facts do not settle (§23.3.6.9). For an Unknown relation whose ends are universal Origins, their projections or a meet of them, it suggests adding `origin longer outlives shorter` with both ends as displayed, which changes the public contract, or bounding the result by the longer end; a meet at the shorter end, such as `(a and b)`, stays whole, since §15.3.6 decomposes it into neither atomic requirements nor a disjunction. When the shorter end is `static`, it suggests binding the longer end to `static` where that Origin is introduced, such as `x: ref/i32 during static`, instead of `origin x outlives static`, which proves only that equality (§15.2.3); it makes no such suggestion when the longer end's Loan requirement is `uniq`, since such an Origin cannot be bound to `static` (§15.2.3). When an end is a Closure's call receiver, which no clause or annotation names (§15.8.2), it instead suggests omitting the result annotation, so that the inferred result keeps the receiver dependency, returning a Copied or owned value, or, for a Reborrow through a captured exclusive reference, capturing a shared reference (§7.6.2). For an end displayed as `omitted`, it first suggests naming a set on that Type occurrence (§15.3.1); for an implicitly introduced name, it also shows similar visible names. When the shorter end is a result Origin completed by §15.4.3, a Note explains the omitted-input boundary that §15.4.3 requires. A Refuted relation is not repaired by an annotation: for a body-local Origin, the Advice suggests moving an owned value or borrowing from an input; for mutable static storage, direct access, an input-bounded result, a scoped callback or immutable static storage (§11.3.2, §15.9).
 
 ### 15.6.2. Place overlap and conflicts
 
@@ -782,12 +805,14 @@ Two Places overlap when an operation on one may affect the other. Static Place a
 | Places | Result |
 | --- | --- |
 | Identical Places, or a Place and an inline subpart | Overlap |
-| Independent local roots and their inline parts | Disjoint |
+| Distinct roots and their inline parts | Disjoint |
 | Distinct inline stored fields, Tuple elements or different constant fixed-array indices of one aggregate, and their subparts | Disjoint |
 | Referents of simultaneously live valid `uniq`/`objuniq` borrows with distinct Loan anchors | Disjoint by exclusivity |
 | Other followed references | Follow Loan provenance and apply these rules |
 | The fresh anchor of a raw Place borrow (§5.2.2) and a Place not derived from it | Not compared; the absence of overlap is an unsafe obligation (§5.2.1) |
 | Anything not decided above | Non-overlap unproven; operations requiring a proof are rejected |
+
+A static storage key (§22.2.4) is a root like a local or an owned temporary, and every path to one key is that one root. Keys of different Field declarations are distinct. Two keys of one Field declaration are distinct only when both are closed after normalization and Origin erasure and are unequal; otherwise their non-overlap is unproven.
 
 Inline parts exclude pointer and reference referents. Distinct shared-reference or raw-pointer variables alone do not prove independence. Constant fixed-array indices follow only the [ConstantIndexExpression rule](#1513-move-paths-and-partial-move) and compare decoded in-range literal values; runtime index comparisons such as `i != j`, integer proofs and optimizer results establish no disjointness. Array-derived Slices keep the whole-array Loan footprint through reslicing, splitting and empty views under the [Slice lifetime rules](04-arrays-indexing-and-slices.md#465-slice-storage-lifetime-and-permissions). Simultaneous exclusive borrows may be used only through their valid access paths, and Reborrowing still suspends conflicting parent access.
 
@@ -805,9 +830,13 @@ Each operation is checked against every active Loan on an overlapping Place:
 
 This permits shared aliasing or mutation, never both at once.
 
+**Shared access grants no mutation.** A Place is written, Moved, exclusively borrowed or destroyed only through a direct path or an exclusive reference (§3.4), or by raw access within its authority (§5.2.1). Past a shared layer (`ref`, `objref`, `rc` or `arc`) only reads and shared borrows are reached, in effect summaries (§15.6.4) and requirement-call effects (§8.4.10.4) as well. Reference counts and Weak tables are management state, not Places. Variance (§15.3.5), handle destruction (§16.3.3) and receiver preservation (§12.4.4.2) rest on this rule and on single-thread execution (§22.2.3). Tasks on one thread keep all three unchanged, because tasks interleave only at task calls and reach each other's state only through the routes of [§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls); a design that adds interior mutability or threads (Appendix D.2) must revisit all three.
+
+Destroying an object handle destroys the handle Place (§16.3.3).
+
 ### 15.6.3. Reborrowing and region splitting
 
-Borrowing through an exclusive borrow creates a child Loan anchored on the referent Place, with a region contained in the parent's Origin. While the child is live, the parent Loan stays live but access through the parent reference is suspended; overlapping access is rejected by the normal conflict rules. The child does not depend on the lifetime of the variable that holds the parent reference, so a Reborrow of a parameter may be returned or stored like a copied reference.
+Borrowing through an exclusive borrow creates a child Loan anchored on the referent Place, with a region contained in the parent's Origin. While the child is live, the parent Loan stays live but access through the parent reference is suspended; overlapping access is rejected by the normal conflict rules. The child does not depend on the lifetime of the variable that holds the parent reference, so a Reborrow of a parameter may be returned or stored like a copied reference. It does depend on how that variable is reached: counting the parent first and then each safe borrow through which it is reached, such as a receiver (§15.5) or a Closure's call receiver (§15.8.2), the child, shared or exclusive, is contained in the Origin of each of them up to and including the first shared layer (§15.6.2), because a later access through a borrow it were detached from could conflict with it. A shared Borrow through a shared reference is thus contained only in that reference's Origin, as its Copy would be, and a shared Reborrow through `ref/(uniq/T)` stays within the outer Loan (§3.3.6). A Borrow of a raw Place keeps the Origin of §5.2.2.
 
 ```kimi
 func bump(n: uniq/i32)
@@ -819,7 +848,7 @@ bump(v@uniq)
 
 Each call's temporary exclusive borrow ends before the next call starts.
 
-**Region splitting** derives several child Loans from one parent Loan by the same mechanism, so each child's validity depends on the parent Loan and the owner. Exclusive children and the remainder of the parent region must be proven pairwise non-overlapping; shared children may overlap. Non-overlap is proven by the structural rules of §15.6.2 or rests on the unsafe promise of a `uniq` borrow of a raw Place (§5.2.2). A Reborrow through a split child is a child of that child: it stays within the child's region, so it conflicts with the remainder and with sibling children no more than the child itself does, while children derived from the same child follow the normal conflict rules among themselves. A value descends from the Iterator or remainder it was split from when a call returns it with Origins of that receiver's Type only, as `next` does. An ordinary Slice Loan is never split automatically, and neither general integer proofs nor a runtime Loan ledger is required.
+**Region splitting** derives several child Loans from one parent Loan by the same mechanism, so each child's validity depends on the parent Loan and the owner. Exclusive children and the remainder of the parent region must be proven pairwise non-overlapping; shared children may overlap. Non-overlap is proven by the structural rules of §15.6.2 or rests on the unsafe promise of a `uniq` borrow of a raw Place (§5.2.2). A Reborrow through a split child is a child of that child: it stays within the child's region, so it conflicts with the remainder and with sibling children no more than the child itself does, while children derived from the same child follow the normal conflict rules among themselves. A value descends from the Iterator or remainder it was split from when a call returns it with Origins of that receiver's Type only and no other input's Type names them, as `next` does. An ordinary Slice Loan is never split automatically, and neither general integer proofs nor a runtime Loan ledger is required.
 
 A split target must be valid initialized Storage with correct bounds, placement and provenance. The remainder's capabilities are updated before a child is published, and capabilities over an already published part are never regenerated from the remainder. Zero-sized parts are distinguished by logical position, not by address. A Dictionary separates one entry and then lends the key and the value with different modes; exclusive access to a key, which fixes the entry's identity, is never published. Destroying an iterator or a remainder handle does not end published child Loans. While a published child is needed, conflicting reads, writes, reallocation, Move or destruction of the original collection are rejected. Internal dependencies of elements and external effects are checked separately from non-overlap.
 
@@ -832,10 +861,10 @@ A split target must be valid initialized Storage with correct bounds, placement 
 For a call, the compiler:
 
 1. creates fresh regions for the callee's abstract Origins;
-2. instantiates the parameter Types and checks argument subtyping;
-3. proves the substituted declared outlives bounds against the caller's facts (§15.3), rather than assuming them;
+2. instantiates the parameter Types and checks argument subtyping; a pair slot bound to an abstract pair whole keeps that whole's Origins for the callee's original `s/T`, and the conditional slot of a callee application `s/U` is bound to the outer-Origin slot of the argument occurrence, as for any direct input (§8.1.2), never to the whole's outer Origin;
+3. proves the substituted declared outlives bounds and the intrinsic well-formedness of the result Type, a premise of the callee's definition (§15.3.7), against the caller's facts (§15.3), rather than assuming them;
 4. instantiates the return Type;
-5. recursively collects its Origin dependencies and Loan requirements;
+5. recursively collects its Origin dependencies and Loan requirements; a result that names a borrowed input's Origin, such as a receiver's, including a Closure's call receiver (§7.6.3), also depends on every Origin observable in that input's referent Type, which outlives it by well-formedness (§15.6.1), so the Loans held inside the referent stay active while the result lives;
 6. creates the required caller-side Loans and keeps them active for the corresponding result regions.
 
 This applies to direct borrow results and to nested aggregate results:
@@ -850,22 +879,75 @@ While the returned `Pair` is live, shared Loans on both `a` and `b` remain activ
 
 Receiver and argument protection begins when the Borrow or Reborrow is formed, in evaluation order. Eligible exclusive borrows start with the call reservation of §15.6.7; other Loans are active immediately. After activation, call protection lasts through the entire call, including callee cleanup, not merely until the callee's last use, and extends for dependent results. Intrinsics and collection methods follow the same rules. These checks supply the call-wide attribute proof of §21.5.5.
 
-**Static call effects.** Each callable's summary lists the static Field identities it may access and its read, shared or exclusive borrow, write, replacement and destruction effects, including those of callees, defaults, lazy initialization and cleanup. The summary is compared with active caller Loans by the normal overlap rules. Borrowed results keep Field anchors and dependency paths: borrows of immutable sources may be `static`, whereas borrows of mutable sources keep a finite Origin under §11.3.2. Static allocation never permits replacing or destroying a borrowed current value.
+**Static call effects.** Each callable's summary lists the static storage keys (§22.2.4) it may access and its read, shared or exclusive borrow, write, replacement and destruction effects, including those of callees, defaults, lazy initialization and cleanup. The summary is compared with active caller Loans by the normal overlap rules, and a conflict is the Language Error `ComparisonLoanConflict_Kd` at the call. Borrowed results keep Field anchors and dependency paths: borrows of immutable sources may be `static`, whereas borrows of mutable sources keep a finite Origin (§15.6.5) under §11.3.2. Static allocation never permits replacing or destroying a borrowed current value.
 
-Summaries distinguish first-access initialization effects from ordinary accesses. A live Loan anchored to a Field proves that the Field has completed initialization, so its initializer need not be counted again; it proves nothing about an unrelated Field that the callee accesses first. If a result may derive from several static Fields, every possible anchor is kept, whatever runtime branch is taken.
+Summaries distinguish first-access initialization effects from ordinary accesses. A direct static access in a body has the same first-access initialization effects and is checked against active Loans like a call. A live Loan anchored to a Field proves that the Field has completed initialization, so its initializer need not be counted again; it proves nothing about an unrelated Field that the callee accesses first. If a result may derive from several static Fields, every possible anchor is kept, whatever runtime branch is taken.
 
-For example, if `let view = State.text@ref` borrows a mutable static string Field, `view` has a finite Origin, and `State.reset()` is rejected while `view` has a later use if `reset` may replace that Field; a shared Loan still permits read-only calls. The whole call is summarized conservatively, and favorable runtime branches need no special analysis. Recursive fixed points are computed before acceptance. Separately compiled and indirect calls use published validated summaries, or treat unknown effects as conflicting with every potentially affected active static Loan; clients need not inspect private bodies. Generic and erased requirement calls derive their effects from the available effect bounds (§8.4.10.4). Immutable anchors are kept for shutdown dependencies even after erasure, while borrows of mutable sources cannot cross an Owned boundary. FFI validity and aliasing obligations still apply.
+For example, if `let view = State.text@ref` borrows a mutable static string Field, `view` has a finite Origin, and `State.reset()` is rejected while `view` has a later use if `reset` may replace that Field; a shared Loan still permits read-only calls. The whole call is summarized conservatively, and favorable runtime branches need no special analysis. Recursive fixed points are computed before acceptance. Separately compiled and indirect calls use published validated summaries, or treat unknown effects as conflicting with every potentially affected active static Loan; clients need not inspect private bodies. Generic and erased requirement calls derive their effects from the available effect bounds (§8.4.10.4). A task call is additionally compared as having unknown environment effects against every potentially affected static Loan, whatever its summary or bounds ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)); such a conflict carries the Reason of §24.5. Borrows of mutable sources cannot cross an Owned boundary. FFI validity and aliasing obligations still apply.
 
-These static and capture anchors are kept when [receiver-preservation effects](12-expressions.md#12442-effect-verification) are composed, even when `self` is not an explicit argument; one call may affect multiple roots. Published summaries and their dependencies follow §18.3 and §21.3.4.
+These static and capture anchors are kept when [receiver-preservation effects](12-expressions.md#12442-effect-verification) are composed, even when `self` is not an explicit argument; one call may affect multiple roots, and which roots it affects follows §12.4.4.2. Published summaries and their dependencies follow §18.3 and §21.3.4.
 
 ### 15.6.5. Universal regions
 
-Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a local region cannot be widened to satisfy a universal return Origin:
+Every Origin in a function signature is universally quantified. The implementation must work for every legal caller instantiation, so a body-local Origin cannot be widened to satisfy a universal return Origin:
 
 ```kimi
 func bad(x: ref/i32) -> ref/i32 during x
     let local: i32 = 1
-    return local@ref // Error: the local cannot satisfy the universal Origin x.
+    let r = local@ref
+    return r
+    // Error: the borrow local@ref cannot outlive x (UnsatisfiedOriginRelation_Kd at r; related location local@ref).
+    // Destroying local reports no Loan conflict.
+```
+
+**Judging Origin relations.** An Origin relation (§15.6.1) is judged Proven, Refuted or Unknown (§8.7). Origins are of three kinds:
+
+- A **fixed Origin** is fixed by the body's contract: a universal Origin of the signature, a parameter or receiver Origin, a projection of one of them, or `static`. In a Closure body, the fixed Origins of its captures and its per-call Origins (§15.8.2) are fixed Origins too. A fixed Origin contains every point of the body.
+- A **finite Origin** is the Origin of a Borrow with an upper bound: its region is inferred from uses but cannot exceed the bound. Every Borrow with a finite Origin, explicit or implicit, has its own, even when several such Borrows share a Place or a Loan anchor, so each is the longer end of its own chains (§15.6.1).
+  - A **body-local Origin** is the Origin of a Borrow whose Loan anchor lies in a root that is a local, parameter or temporary of the body; its bound is the body. The borrowed Place is that root or a Place reached from it by Field, element or owning-layer projections, never through a borrow or a raw pointer (§15.6). Implicit Borrows, at an expected borrow Type (§10.2) or of a receiver (§7.3), and the Borrows of capture entries (§7.6.2) are included. A Closure body treats its environment bindings as Fields of its hidden receiver (§15.8.2), so a Borrow of them through a borrowed receiver is not body-local, whereas one in a consuming call is.
+  - A new Borrow of mutable static storage (§11.3.2) has a finite Origin bounded by the body and by results bounded by a borrowed input; for such a result, the Field anchor stays in the effect summary (§15.6.4).
+  - A Borrow of a raw Place has an Origin without an upper bound (§5.2.2, §15.2.3), which is not finite.
+- An **inferred region** is any other local Origin, such as a slot of an unannotated local's Type (§15.4.4).
+
+The relations judged are those of every fit, declared relation and Type occurrence that the body checks, including unreachable result sources (§14.9) and code checked under a type-checking continuation (§14.10.3). Judging uses neither liveness nor reachability, so a body-local Origin that reaches a fixed Origin only along a path that never completes, as in a `return local@ref` after an endless `loop`, is still Refuted. Relations connect transitively through inferred regions and finite Origins, and each connected chain is judged:
+
+- **Refuted:** a chain that requires a finite Origin to outlive a fixed Origin outside its bound, such as a body-local Origin outliving an Origin beyond the body, or a new Borrow of mutable static storage outliving `static` or reaching a parameter Origin by a path other than a result. This is the only rule that refutes an Origin relation.
+- **Proven:** a chain between two fixed Origins that the solver of §15.3.6 derives from its premises: declared relations, well-formedness, the maximality of `static`, reflexivity, transitivity and the meet laws. A chain that has a finite Origin or an inferred region at one end and is not Refuted is also Proven, and it constrains region inference.
+- **Unknown:** a chain between two fixed Origins that the solver cannot derive. It fails unless it becomes Proven by the deadline of §15.3.6.
+
+The shorter end of a chain that can fail is therefore always a fixed Origin. Relations between finite Origins or between inferred regions never fail as Origin relations; a use beyond a local Place's lifetime is still reported as a Loan conflict at its destruction or Move (§15.6.2, §15.6.6).
+
+```kimi
+group State
+    public var count: i32 = 0
+
+func pinned() -> ref/i32 during static
+    return State.count@ref
+    // Error: the borrow State.count@ref cannot outlive static (UnsatisfiedOriginRelation_Kd).
+
+func current(anchor: ref/i32) -> ref/i32 during anchor
+    return State.count@ref // Valid: a result bounded by a borrowed input (§11.3.2).
+
+func store(anchor: ref/i32, target: uniq/(ref/i32 during anchor))
+    target@follow = State.count@ref
+    // Error: the borrow State.count@ref reaches anchor outside a result (UnsatisfiedOriginRelation_Kd).
+```
+
+Between fixed Origins, an underivable relation is Unknown, not false:
+
+```kimi
+struct Holder {a}
+    public let item: ref/i32 during a
+
+    public init(item: ref/i32 during a) => self.item = item
+
+func pick(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p
+    return p.item@ref // Error: p.a is not proven to outlive q (UnprovenOriginRelation_Kd, Proof).
+    // Advice: add origin p.a outlives q, which changes the contract, or bound the inner result by p.a.
+
+func pickRelated(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p
+    origin p.a outlives q
+    return p.item@ref // Valid: the premise proves that p.a outlives q.
 ```
 
 ### 15.6.6. Destruction lifetime checking
@@ -992,8 +1074,15 @@ struct Game
 `swap` requires its two targets to be proven disjoint by the structural rules of [Place overlap](#1562-place-overlap-and-conflicts). An unproven relationship is rejected, even when runtime comparisons or optimization suggest separation.
 
 ```kimi
+group Registry
+    public var first: i32 = 1
+    public var second: i32 = 2
+
 func swapValues<T>(a: uniq/T, b: uniq/T)
     Kimi.Intrinsics.swap(a, b) // Valid live exclusive inputs establish distinct anchors.
+
+func swapStatics()
+    Kimi.Intrinsics.swap(Registry.first@uniq, Registry.second@uniq) // Valid: distinct static storage keys.
 ```
 
 ### 15.7.3. Storage update dependencies
@@ -1004,7 +1093,7 @@ The operation's exclusive Loan and its parent chain are preserved. An update tha
 
 Updating a complete object payload preserves the object's Identity, allocation, Dynamic Type, descriptor, header and ownership mode. Payload destruction is not final object release: counts are not altered, the enclosing object's lifecycle state does not change, and its storage is not freed. Nested owning handles still follow ordinary destruction. The special receiver, reentry, view and resurrection rules apply during content destruction, and an empty or destroying payload is never exposed through an ordinary view. Final release destroys the *current* payload once and frees the object. An exchanged old value carries a separate destruction obligation.
 
-Facts and projections about the old contents, including `let` fields, are invalidated, while valid storage access and object Identity and Dynamic Type refinements are preserved (§14.10.1). Handle replacement follows its own rules. Unsafe code and optimization obey the same distinction between dependency and allocation lifetime, and raw pointers cannot substitute for Loan evidence.
+Facts and projections about the old contents, including `let` fields, are invalidated, while valid storage access and object Identity and Dynamic Type refinements are preserved (§14.10.1). Handle replacement writes the handle Place and destroys its old value as §16.3.3 specifies. Unsafe code and optimization obey the same distinction between dependency and allocation lifetime, and raw pointers cannot substitute for Loan evidence.
 
 ## 15.8. Captured and erased dependencies
 
@@ -1018,7 +1107,7 @@ Dog stores a local ref       -> non-Owned     -> initial erasure rejected
 objref/Animal during local     -> borrow remains local even when payload is Owned
 ```
 
-This is not a blanket `static` Origin requirement on object handles or exact concrete views; same-target operations keep the existing lifetime rules. An erased view certifies that the check succeeded, and later upcasts and casts inherit that certification without runtime Origin queries. Only proof-covered fixed Origin bindings may be supplied as `static` in a checked cast (§13.6.2); per-call callable Origins and the handle's outer Origin are not reconstructed. Existing borrowed-field Types remain valid; hiding their non-static dependencies needs a later existential-view design (§15.9).
+This is not a blanket `static` Origin requirement on object handles or exact concrete views; same-target operations keep the existing lifetime rules. An erased view certifies that the check succeeded, and later upcasts and casts inherit that certification without runtime Origin queries. Only proof-covered fixed Origin bindings may be supplied as `static` in the Target completion of runtime tests and checked casts (§13.6.2); per-call callable Origins and the handle's outer Origin are not reconstructed. The proof stays valid for the object's lifetime: `obj` and `objuniq` are invariant in their View Target and the other object handles grant no mutation (§15.3.5), so no view writes a shorter binding into the payload. Existing borrowed-field Types remain valid; hiding their non-static dependencies needs a later existential-view design (§15.9).
 
 ### 15.8.2. Closure dependencies and call results
 
@@ -1029,12 +1118,12 @@ A Closure's captured dependencies are distinct from each call's receiver and res
 | Result source | Contract |
 | --- | --- |
 | Borrow of environment-owned data | Depends on the current Closure receiver borrow |
-| Copy of a captured external shared reference | Keeps its external Origin |
-| Reborrow of a captured exclusive reference | Also depends on the current exclusive call Loan |
+| Copy of a captured external shared reference, or a shared Borrow through it | Keeps its external Origin |
+| Shared or exclusive Reborrow of a captured exclusive reference | Keeps that reference's external Origin and Loans and, in a Shared or Exclusive call, also depends on the current call receiver borrow (§15.6.3) |
 | External reference value moved out by a Consuming call | Transfers that reference's external Origin and capability |
 | Borrowed argument | Follows the input/result Origin contract |
 
-When the whole result Type is omitted and inferred from the body, its Origin and Loan dependencies are inferred too. An explicit result annotation or a fixed expected signature keeps the ordinary result-Origin elision: the hidden environment receiver is not a source-level `self` or a directly written borrow parameter.
+When the whole result Type is omitted and inferred from the body, its Origin and Loan dependencies are inferred too. An explicit result annotation or a [fixed expected call signature](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization) keeps the ordinary result-Origin elision: the hidden environment receiver is not a source-level `self` or a directly written borrow parameter, and no Origin expression names it. Origin names in the parameter and result annotations resolve among the parameters and in the enclosing scopes (§15.3.4), never to environment bindings: `during view` names the outer binding `view`, whose Origin a Copied or moved reference capture keeps and a Reborrowed one lies within (§15.6.3), and the name of an outer value without an outer borrow Origin is invalid (§15.2.1). An annotated result therefore never depends on the receiver; a result that does is written without an annotation.
 
 ```kimi
 let text = makeText()
@@ -1049,7 +1138,7 @@ let invalid = func [other@move] () -> ref/string => other@ref
 // Error: annotated omitted result Origin is static, not the environment borrow.
 ```
 
-Multiple results are joined under normal result validation, keeping all possible Loan dependencies when an Origin meet is taken. Invariant mismatches, cycles and unexpressible dependencies are rejected rather than weakened. A repeatable exclusive result keeps its call Loan until the needed uses end, which prevents conflicting reentry. No result may outlive call-local storage or borrow an environment consumed by that call; moving an external reference value out is different and may be valid.
+Multiple results are joined under normal result validation, keeping all possible Loan dependencies when an Origin meet is taken. Invariant mismatches, cycles and unexpressible dependencies are rejected rather than weakened. A repeatable exclusive result keeps its call Loan until the needed uses end, which prevents conflicting reentry. No result may outlive call-local storage or borrow an environment consumed by that call; moving an external reference value out is different and may be valid. Such a borrow is body-local (§15.6.5), and the Origin of a whole result inferred from the body lies beyond the body and is displayed as the Closure's call result (§23.3.6.5), so the relation is Refuted and reported as for an annotated result (§15.6.1): `UnsatisfiedOriginRelation_Kd` at the returned value, with the borrow as the longer end, and the destruction of that storage reports no Loan conflict.
 
 The internal call contract is preserved for concrete generic use, and callers never inspect bodies to rediscover lifetimes. Common Function Types and Callable constraints may return input-dependent borrows but cannot expose results that depend on the hidden receiver (§8.6).
 
@@ -1068,7 +1157,6 @@ This revision does not define:
 - abstract Origin parameters owned by Contracts themselves; static Contracts may inherit outer Origins under §6.1.3, associated Types may declare Origin parameters under §8.4.3, and the [Property getter receiver and result contracts](11-properties.md#1122-computed-properties) introduce no Contract-level Origin parameters;
 - existential object views that hide non-static payload dependencies;
 - general higher-ranked Origins beyond the direct-input quantification of Callable constraints and the per-call `step` of `LendingIterator.next` and of other Origin-parameterized associated Types (§8.4.3.1);
-- Origin expressions naming static Places, such as a function result bounded by a mutable static Field; use direct access, an input-bounded result (§11.3.2), a scoped callback or immutable static storage instead;
-- cancellation cleanup guarantees.
+- Origin expressions naming static Places, such as a function result bounded by a mutable static Field; use direct access, an input-bounded result (§11.3.2), a scoped callback or immutable static storage instead.
 
 These features require extensions of the [ownership and Origin rules](#15-ownership-and-lifetime-analysis) and must not be inferred from this revision.

@@ -19,9 +19,11 @@ public sealed partial class Binding
         }
 
         var receiver = this.BindNode(source.Left, scope);
-        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver) || receiver is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Array }] })
+        // SPEC 3.4.1, 4.6.1, 12.4.1: metadata shares access through a safe value reference to the sequence; a raw pointer or
+        // an object handle is not followed.
+        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver))
         {
-            receiver = receiver!.Components[0]; // SPEC 4.6.1: metadata shares access through a reference to the sequence.
+            receiver = receiver!.Components[0];
         }
 
         var utf8 = FormattingTypes.IsUtf8Slice(receiver);
@@ -96,11 +98,11 @@ public sealed partial class Binding
 
         var sharedTuple = layers != 0;
         var result = this.BeginResult(source, scope, BoundType.Unit);
-        var duplicate = false;
+        Koto? duplicate = null;
         for (var i = 0; i < source.Bindings.Count; i++)
         {
             var name = source.Bindings[i];
-            duplicate |= name.BoundSymbol!.Next is not null;
+            duplicate ??= name.BoundSymbol!.Next is not null ? name : null;
             var slot = source.IsTupleBinding && tuple?.Kind == BoundTypeKind.Tuple && i < tuple.Components.Count ? tuple.Components[i] : element;
             if (sharedTuple && slot is not null)
             {
@@ -118,9 +120,10 @@ public sealed partial class Binding
         }
 
         this.BindNode(source.Body, scope);
-        if (duplicate)
+        if (duplicate is not null)
         {
-            return this.Fail(source, BindingFailure.Duplicate);
+            // The repeated name reports the duplicate at the later binding (SPEC 23.3.6.4); the loop rests on it.
+            return this.CompleteDependent(source, duplicate);
         }
 
         if (iterable is null)

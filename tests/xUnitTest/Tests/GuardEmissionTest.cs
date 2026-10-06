@@ -77,22 +77,17 @@ public class GuardEmissionTest
     public void WarmAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Fixtures.First().Data.Item2);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                valid &= c.Ownership.Analyze().IsVerified;
+                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(valid);
+        Assert.Equal(0, allocated);
     }
 
     [Theory]
@@ -168,20 +163,10 @@ public class GuardEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("match 1\n    let n if n == 1 => ()\n    _ => ()");
         var candidate = c.Ownership.Bodies[0].Matches[0].Binding.Positions[0].CandidateSymbol;
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var valid = true;
-        for (var i = 0; i < 100; i++)
-        {
-            valid &= c.Bind().IsComplete;
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var allocated = AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete, iterations: 100, warmupIterations: 100);
         Assert.True(valid);
+        Assert.Equal(0, allocated);
         c.Ownership.Analyze();
         Assert.Same(candidate, c.Ownership.Bodies[0].Matches[0].Binding.Positions[0].CandidateSymbol);
     }

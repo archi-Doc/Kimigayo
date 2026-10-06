@@ -242,7 +242,6 @@ public sealed partial class Binding
             this.InferResultExpected(match, scope, resultContext);
         }
 
-        plan.ExpectedType = resultContext.Expected;
         this.CalculateMatchCoverage(plan, subject);
 
         var pendingBody = false;
@@ -301,8 +300,7 @@ public sealed partial class Binding
             return this.Fail(match, BindingFailure.Unsupported, true);
         }
 
-        plan.ResultType = this.FinishResult(match, resultContext);
-        return plan.ResultType;
+        return this.FinishResult(match, resultContext);
     }
 
     // SPEC 15.1.6 subject rule: the Subject is acquired as written, except that a bare Place is borrowed in place: a
@@ -650,7 +648,7 @@ public sealed partial class Binding
                     {
                         if (plan.Arms[earlier].Syntax.Guard is null && ContainsPattern(plan, plan.Arms[earlier].Pattern, plan.Arms[later].Pattern))
                         {
-                            this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, plan.Arms[earlier].Syntax.Pattern, earlier));
+                            this.patternWarnings.Add(new(plan.Arms[later].Syntax.Pattern, earlier));
                             break;
                         }
                     }

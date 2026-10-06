@@ -34,6 +34,21 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
             var actual = result.Diagnostics[i];
             Assert.Equal(expected.Code, actual.Code);
             Assert.Equal(expected.At is null && expected.After is null ? null : expected.Location.Resolve(syntaxCase.Source), actual.Span);
+
+            // SPEC 23.3.6.9: the candidates the record offers, as kinds and located edits; a record without an expectation offers none.
+            var repairs = actual.Repairs ?? [];
+            Assert.Equal((expected.Repairs ?? []).Length, repairs.Length);
+            for (var j = 0; j < repairs.Length; j++)
+            {
+                Assert.Equal(expected.Repairs![j].Kind, repairs[j].Kind);
+                Assert.Equal(expected.Repairs[j].Edits.Length, repairs[j].Edits.Length);
+                for (var k = 0; k < repairs[j].Edits.Length; k++)
+                {
+                    Assert.Equal(expected.Repairs[j].Edits[k].Location.Resolve(syntaxCase.Source), repairs[j].Edits[k].Span);
+                    Assert.Equal(expected.Repairs[j].Edits[k].Text, repairs[j].Edits[k].Text);
+                }
+            }
+
             if (expected.Form is null)
             {
                 continue;
@@ -107,6 +122,18 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
             Assert.Contains(error.Advice!, sent.Message, StringComparison.Ordinal);
         }
+    }
+
+    // SPEC 23.3.6.8, 23.3.6.9: the command renders a syntax record's candidate with the edit that supplies its separators.
+    [Fact]
+    public void CliShowsTheReplacementCandidate()
+    {
+        var check = DiagnosticCorpus.Check(DiagnosticCorpus.Syntax("and-symbol-adjacent").Source);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(new DiagnosticResult(check.Diagnostics, check.Sources), string.Empty);
+        output.WriteLine(console.Text);
+        Assert.Contains("Repair: Replace '&&' with 'and'\n = ", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Program.kimi:3:14: replace '&&' with ' and '\n", console.Text, StringComparison.Ordinal);
     }
 
     // DIAGNOSTICS.md §4.3: a fallthrough or a discarded tail reached only through a body the parser supplied rests on the body's

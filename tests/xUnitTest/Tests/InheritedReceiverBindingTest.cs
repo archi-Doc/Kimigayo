@@ -186,15 +186,17 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void AdaptationAdvantagesAcrossSourceArgumentsAreIncomparable()
     {
-        // SPEC 7.3: the receiver shape is common to the group, so only the explicit arguments are compared.
-        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: uniq/Self, x: ref/i32, y: uniq/i32) -> i32 => 1\n    public func f(self: uniq/Self, x: uniq/i32, y: ref/i32) -> i32 => 2\nfunc use(s: uniq/S, x: uniq/i32, y: uniq/i32) -> i32 => s.f(x, y)");
+        // SPEC 7.3: the receiver shape is common to the group, so only the explicit arguments are compared. SPEC 7.3.1: the
+        // positions keep one mode each where the Types overlap, so the two-layer inputs decide the classes (Reborrow against one
+        // shared reference through two layers) at the disjoint positions.
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: uniq/Self, x: ref/i32, y: uniq/(uniq/i64 during a)) -> i32 => 1\n    public func f(self: uniq/Self, x: uniq/(uniq/i32 during a), y: ref/i64) -> i32 => 2\nfunc use(s: uniq/S, x: uniq/(uniq/i32 during a), y: uniq/(uniq/i64 during a)) -> i32 => s.f(x, y)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, Call(c)) && x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
     [Theory]
     [InlineData("struct S\n    public func f<U>(self: uniq/Self, x: U) -> i32 => 1\n    public func f(self: ref/Self, x: i32) -> i32 => 2")]
-    [InlineData("struct S\n    public func f(self: uniq/Self, x: ref/i32) -> i32 => 1\n    public func f(self: ref/Self, x: uniq/i32) -> i32 => 2")]
+    [InlineData("struct S\n    public func f(self: uniq/Self, x: ref/i32) -> i32 => 1\n    public func f(self: ref/Self, x: uniq/i64) -> i32 => 2")]
     [InlineData("struct S\n    public func f(self) -> i32 => 1\n    public func f(self: Self, x: i32) -> i32 => x")]
     public void FunctionsOfOneNameShareOneReceiverShape(string source)
     {
@@ -299,7 +301,8 @@ public class InheritedReceiverBindingTest
     [Fact]
     public void NamedArgumentsAreComparedBySourcePosition()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: ref/Self, a: i32, b: uniq/i32) -> i32 => 1\n    public func f(self: ref/Self, b: ref/i32, a: i32) -> i32 => 2\nfunc use(s: ref/S, x: uniq/i32) -> i32 => s.f(b: x, a: 1)");
+        // SPEC 7.3.1: the positions and the names keep one mode each where the Types overlap, so the second declaration's Types are disjoint.
+        var c = CompilationTestHelper.ParseSuccess("struct S\n    public func f(self: ref/Self, a: i32, b: uniq/i32) -> i32 => 1\n    public func f(self: ref/Self, b: ref/i64, a: i64) -> i32 => 2\nfunc use(s: ref/S, x: uniq/i32) -> i32 => s.f(b: x, a: 1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(2, Call(c).BoundCall!.ArgumentToParameter[0]);
         Assert.Equal(ArgumentAdaptation.SameSemanticsReborrow, Call(c).BoundCall!.ArgumentOperations[0].Adaptation);

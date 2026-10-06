@@ -415,12 +415,18 @@ public class ContractBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
+    // SPEC 15.3.6: a requirement's result-only Origin never escapes as the requirement's abstract binder; at the call it is a local
+    // region of that call.
     [Fact]
     public void ResultOnlyOriginsCannotEscapeAsUnsubstitutedRequirementBinders()
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f() -> ref/i32 during a\nfunc call<T>()\n    T is C\n    T.f()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        Assert.NotNull(call.BoundCall);
+        var origin = call.BoundType!.Origin!;
+        Assert.Equal((OriginKind.Inference, true), (origin.Kind, origin.Open));
+        Assert.Same(call, origin.Binder);
     }
 
     [Fact]

@@ -1,0 +1,47 @@
+{
+  "comments": {
+    "lineComment": "//",
+    "blockComment": ["/*", "*/"]
+  },
+  "brackets": [
+    ["(", ")"],
+    ["[", "]"],
+    ["{", "}"]
+  ],
+  "autoClosingPairs": [
+    { "open": "(", "close": ")" },
+    { "open": "[", "close": "]" },
+    { "open": "{", "close": "}" },
+    { "open": "\"", "close": "\"", "notIn": ["string", "comment"] },
+    { "open": "'", "close": "'", "notIn": ["string", "comment"] },
+    { "open": "/*", "close": " */", "notIn": ["string"] }
+  ],
+  "surroundingPairs": [
+    ["(", ")"],
+    ["[", "]"],
+    ["{", "}"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "folding": {
+    "offSide": true
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*///(?!/)",
+      "action": { "indent": "none", "appendText": "/// " }
+    },
+    {
+      "beforeText": "^\\s*(?:#[A-Za-z]\\w*(?:\\([^)]*\\))?\\s+)*(?:(?:public|internal|private|protected|open|static|unsafe|specialize)\\s+)*(?:func|struct|enum|contract|group|rootgroup|if|else|for|while|loop|match|defer|unsafe|#if|#switch|#case)\\b(?!.*=>).*$",
+      "action": { "indent": "indent" }
+    },
+    {
+      "beforeText": "^(?!\\s*//).*(?:=|\\breturn)\\s+(?:if|match|loop)\\b(?!.*=>).*$",
+      "action": { "indent": "indent" }
+    },
+    {
+      "beforeText": "^(?!\\s*//).*\\bdo\\s*$",
+      "action": { "indent": "indent" }
+    }
+  ]
+}

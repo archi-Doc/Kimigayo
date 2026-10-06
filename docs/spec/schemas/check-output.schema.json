@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kimigayo.dev/schemas/check-output.schema.json",
+  "title": "kimi check output (kimi.check/1)",
+  "description": "The JSON document that `kimi check <project> --Format json` writes (SPEC 23.3.6.8): one check unit's outcome, acceptance, source table and diagnostic records with their repair candidates (SPEC 23.3.6.2, 23.3.6.9).",
+  "type": "object",
+  "required": ["schema", "compiler", "unit", "outcome", "accepted", "testPresence", "sources", "diagnostics"],
+  "additionalProperties": false,
+  "properties": {
+    "schema": { "const": "kimi.check/1" },
+    "compiler": { "type": "string", "description": "The compiler build identity." },
+    "unit": {
+      "type": "object",
+      "required": ["project", "target", "mode", "debug"],
+      "additionalProperties": false,
+      "properties": {
+        "project": { "type": "string", "description": "The project file, or the implicit source." },
+        "target": { "type": "string" },
+        "mode": { "enum": ["Product", "Test"] },
+        "debug": { "type": "boolean" }
+      }
+    },
+    "outcome": { "enum": ["Completed", "Blocked", "Faulted"] },
+    "accepted": { "type": "boolean" },
+    "testPresence": { "enum": ["Yes", "No", "Unknown"] },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "isInput"],
+        "additionalProperties": false,
+        "properties": {
+          "path": { "type": "string" },
+          "isInput": { "type": "boolean" },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$", "description": "The hash of the recorded input's bytes, present for an input that could be read." }
+        }
+      }
+    },
+    "diagnostics": { "type": "array", "items": { "$ref": "#/$defs/diagnostic" } }
+  },
+  "$defs": {
+    "span": {
+      "type": "object",
+      "required": ["start", "length"],
+      "additionalProperties": false,
+      "properties": { "start": { "type": "integer", "minimum": 0 }, "length": { "type": "integer", "minimum": 0 } }
+    },
+    "position": {
+      "type": "object",
+      "required": ["line", "character"],
+      "additionalProperties": false,
+      "properties": { "line": { "type": "integer", "minimum": 0 }, "character": { "type": "integer", "minimum": 0 } }
+    },
+    "range": {
+      "type": "object",
+      "required": ["start", "end"],
+      "additionalProperties": false,
+      "properties": { "start": { "$ref": "#/$defs/position" }, "end": { "$ref": "#/$defs/position" } }
+    },
+    "value": {
+      "type": "object",
+      "required": ["name", "kind", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" },
+        "kind": { "enum": ["Number", "Enumeration", "Boolean", "Text", "Requirement", "Origin"] },
+        "value": { "type": "string" },
+        "origin": { "enum": ["expression", "borrow", "omitted", "closure"], "description": "The kind of an Origin display (SPEC 23.3.6.5); present exactly when kind is Origin, whose value is the display's bounded string." },
+        "elided": { "type": "boolean" }
+      },
+      "if": { "properties": { "kind": { "const": "Origin" } } },
+      "then": { "required": ["origin"] },
+      "else": { "not": { "required": ["origin"] } }
+    },
+    "related": {
+      "type": "object",
+      "required": ["role", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "role": { "type": "string" },
+        "source": { "type": "integer", "minimum": -1 },
+        "span": { "$ref": "#/$defs/span" },
+        "range": { "$ref": "#/$defs/range" },
+        "label": { "type": "string" }
+      }
+    },
+    "omission": {
+      "type": "object",
+      "required": ["part", "count"],
+      "additionalProperties": false,
+      "properties": { "part": { "type": "string" }, "count": { "type": "integer", "minimum": 1 } }
+    },
+    "excerptLine": {
+      "type": "object",
+      "required": ["line", "text", "start", "length"],
+      "additionalProperties": false,
+      "properties": {
+        "line": { "type": "integer", "minimum": 1 },
+        "text": { "type": "string" },
+        "start": { "type": "integer", "minimum": 0 },
+        "length": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "display": {
+      "type": "object",
+      "required": ["excerpt"],
+      "additionalProperties": false,
+      "properties": { "range": { "$ref": "#/$defs/range" }, "excerpt": { "type": "array", "items": { "$ref": "#/$defs/excerptLine" } } }
+    },
+    "edit": {
+      "type": "object",
+      "required": ["source", "span", "text"],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "type": "integer", "minimum": 0, "description": "The source table index of a recorded input." },
+        "span": { "$ref": "#/$defs/span" },
+        "range": { "$ref": "#/$defs/range" },
+        "text": { "type": "string", "description": "The replacement text; empty for a deletion." },
+        "replaced": { "type": "string", "description": "The bounded text the span covers, for display; absent for an insertion." }
+      }
+    },
+    "requiredCondition": {
+      "type": "object",
+      "required": ["condition", "phrase"],
+      "additionalProperties": false,
+      "properties": {
+        "condition": { "$ref": "#/$defs/condition" },
+        "phrase": { "type": "string" }
+      }
+    },
+    "condition": { "enum": ["Take", "ExclusiveAccess", "UsageLegality", "Structure", "Selection"] },
+    "repair": {
+      "type": "object",
+      "required": ["kind", "title", "edits", "verified", "required"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["Repair.Transfer", "Repair.Borrow", "Repair.BorrowExclusively", "Repair.RemoveUnsafe", "Repair.ReplaceToken", "Repair.InsertToken", "Repair.PropagateFailure", "Repair.ExplicitDiscard", "Repair.Qualify"]
+        },
+        "title": { "type": "string" },
+        "facts": { "type": "array", "items": { "$ref": "#/$defs/value" } },
+        "edits": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/edit" } },
+        "verified": { "type": "array", "items": { "$ref": "#/$defs/condition" } },
+        "required": { "type": "array", "items": { "$ref": "#/$defs/requiredCondition" } }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": ["code", "severity", "category", "message", "source"],
+      "additionalProperties": false,
+      "properties": {
+        "code": { "type": "string" },
+        "severity": { "enum": ["Error", "Warning", "Information", "Hint"] },
+        "category": { "enum": ["Language", "Proof", "Unsupported", "Input", "Resource", "Internal"] },
+        "message": { "type": "string" },
+        "source": { "type": "integer", "minimum": -1 },
+        "span": { "$ref": "#/$defs/span" },
+        "label": { "type": "string" },
+        "reason": { "type": "array", "items": { "$ref": "#/$defs/value" } },
+        "related": { "type": "array", "items": { "$ref": "#/$defs/related" } },
+        "note": { "type": "string" },
+        "advice": { "type": "string" },
+        "omissions": { "type": "array", "items": { "$ref": "#/$defs/omission" } },
+        "display": { "$ref": "#/$defs/display" },
+        "repairs": { "type": "array", "items": { "$ref": "#/$defs/repair" } }
+      }
+    }
+  }
+}

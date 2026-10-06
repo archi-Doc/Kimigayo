@@ -26,6 +26,7 @@ public sealed partial class Binding
             result = this.ContractType(result, this.ConstraintScope(call.Target.Declaration));
         }
 
+        result = result is null ? null : this.CloseClosureTypes(result, call);
         return result is not null && this.PrepareInstantiatedStorage(result, 0) ? result : null;
     }
 

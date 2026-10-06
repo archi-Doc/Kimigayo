@@ -3,6 +3,7 @@
 using System.Text.Json;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 
 namespace Kimi.Lsp;
 
@@ -26,6 +27,7 @@ internal sealed class LspSession : IDisposable
     private readonly Dictionary<UnitKey, UnitState> units = new();
     private readonly Dictionary<SourceIdentity, HashSet<UnitKey>> contributors = new();
     private readonly Dictionary<SourceIdentity, (LspDiagnostic[] Payload, int? Version)> sent = new();
+    private readonly Dictionary<SourceIdentity, LspRepair[]> repairs = new();
     private readonly List<(UnitKey Key, LspDiagnostic[] Payload)> contributions = [];
     private readonly List<LspDiagnostic[]> orderedContributions = [];
     private readonly HashSet<SourceIdentity> changedReports = [];
@@ -39,6 +41,7 @@ internal sealed class LspSession : IDisposable
     private bool shutdownRequested;
     private bool watchSupported;
     private bool relatedInformationSupported;
+    private bool codeActionsSupported;
     private long? eligibleAt;
     private long checkBase = -1;
     private int nextRequestId;
@@ -196,6 +199,45 @@ internal sealed class LspSession : IDisposable
         where T : class
         => message.ParamsError is { } error ? throw new JsonException(error) : (T?)message.Params;
 
+    // SPEC 23.4.8: two non-empty ranges intersect as half-open ranges; a point lies within a range with the end included; two points are equal.
+    private static bool Matches(SourceRange sent, SourceRange requested)
+    {
+        var sentEmpty = sent.Start.CompareTo(sent.End) == 0;
+        var requestedEmpty = requested.Start.CompareTo(requested.End) == 0;
+        if (!sentEmpty && !requestedEmpty)
+        {
+            return sent.Start.CompareTo(requested.End) < 0 && requested.Start.CompareTo(sent.End) < 0;
+        }
+
+        if (sentEmpty && requestedEmpty)
+        {
+            return sent.Start.CompareTo(requested.Start) == 0;
+        }
+
+        var (point, range) = sentEmpty ? (sent.Start, requested) : (requested.Start, sent);
+        return range.Start.CompareTo(point) <= 0 && point.CompareTo(range.End) <= 0;
+    }
+
+    // The candidates two contributors agree on, in the first contributor's order; null when none.
+    private static LspRepair[]? Agree(LspRepair[]? agreed, LspRepair[]? other)
+    {
+        if (agreed is null || other is null)
+        {
+            return null;
+        }
+
+        List<LspRepair>? kept = null;
+        foreach (var candidate in agreed)
+        {
+            if (Array.IndexOf(other, candidate) >= 0)
+            {
+                (kept ??= []).Add(candidate);
+            }
+        }
+
+        return kept?.ToArray();
+    }
+
     private void OnMessage(LspMessage message, long now)
     {
         if (message.Method is null)
@@ -286,6 +328,9 @@ internal sealed class LspSession : IDisposable
                 case LspMethods.DidChangeWatchedFiles:
                     this.OnWatchedFiles(Read<DidChangeWatchedFilesParams>(message), now);
                     break;
+                case LspMethods.CodeAction:
+                    this.OnCodeAction(message);
+                    break;
                 default:
                     if (isRequest)
                     {
@@ -320,10 +365,18 @@ internal sealed class LspSession : IDisposable
         this.settings = LspSettings.Parse(parameters?.InitializationOptions, x => this.Log(2, x));
         this.watchSupported = parameters?.Capabilities?.Workspace?.DidChangeWatchedFiles?.DynamicRegistration == true;
         this.relatedInformationSupported = parameters?.Capabilities?.TextDocument?.PublishDiagnostics?.RelatedInformation == true;
+
+        // SPEC 23.4.8: code actions need code action literals and versioned document changes, both optional client features.
+        this.codeActionsSupported = parameters?.Capabilities?.TextDocument?.CodeAction?.CodeActionLiteralSupport is not null &&
+            parameters.Capabilities?.Workspace?.WorkspaceEdit?.DocumentChanges == true;
         this.initialized = true;
         var result = new InitializeResult
         {
-            Capabilities = new() { TextDocumentSync = new() { OpenClose = true, Change = 2 } },
+            Capabilities = new()
+            {
+                TextDocumentSync = new() { OpenClose = true, Change = 2 },
+                CodeActionProvider = this.codeActionsSupported ? new() { CodeActionKinds = ["quickfix"] } : null,
+            },
             ServerInfo = new() { Name = "Kimi Language Server", Version = CompilerRelease.Version },
         };
         this.sender.Result(message.Id, result, LspJsonContext.Default.InitializeResult);
@@ -436,6 +489,52 @@ internal sealed class LspSession : IDisposable
         this.documentsByUri.Remove(document.Uri);
         document.Text.Dispose();
         this.OpenCloseEvent(now, false, document.Identity);
+    }
+
+    // SPEC 23.4.8: answered from the diagnostics last sent for the URI, without a check and without reading context.diagnostics.
+    // Candidates are returned only while every contributor's result is valid; an edited, reopened or desynchronized document has
+    // no candidates until the next adoption restores them.
+    private void OnCodeAction(LspMessage message)
+    {
+        var parameters = Read<CodeActionParams>(message);
+        List<CodeAction>? actions = null;
+        if (this.codeActionsSupported && parameters is not null && this.FindOpen(parameters.TextDocument?.Uri) is { } document &&
+            (parameters.Context?.Only is not { } only || Array.IndexOf(only, "quickfix") >= 0) &&
+            this.ContributorsValid(document.Identity) && this.repairs.TryGetValue(document.Identity, out var candidates))
+        {
+            foreach (var candidate in candidates)
+            {
+                if (Matches(candidate.Diagnostic.Range, parameters.Range))
+                {
+                    (actions ??= []).Add(new()
+                    {
+                        Title = candidate.Title,
+                        Diagnostics = [candidate.Diagnostic],
+                        Edit = new() { DocumentChanges = [new() { TextDocument = new() { Uri = document.Uri, Version = document.Version }, Edits = candidate.Edits }] },
+                    });
+                }
+            }
+        }
+
+        this.sender.Result(message.Id, actions?.ToArray() ?? [], LspJsonContext.Default.CodeActionArray);
+    }
+
+    private bool ContributorsValid(SourceIdentity uri)
+    {
+        if (!this.contributors.TryGetValue(uri, out var set) || set.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var key in set)
+        {
+            if (this.units.GetValueOrDefault(key)?.Result is not { Valid: true })
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private void OnWatchedFiles(DidChangeWatchedFilesParams? parameters, long now)
@@ -758,6 +857,8 @@ internal sealed class LspSession : IDisposable
             var contributions = this.contributions;
             contributions.Clear();
             var ready = true;
+            LspRepair[]? agreed = null;
+            var first = true;
             if (this.contributors.TryGetValue(uri, out var set))
             {
                 foreach (var key in set)
@@ -772,12 +873,27 @@ internal sealed class LspSession : IDisposable
                     {
                         contributions.Add((key, contribution));
                     }
+
+                    // SPEC 23.4.8: a candidate of the URI is one that every contributor sends with equal values.
+                    var candidates = result.Repairs.GetValueOrDefault(uri);
+                    agreed = first ? candidates : Agree(agreed, candidates);
+                    first = false;
                 }
             }
 
             if (!ready)
             {
+                this.repairs.Remove(uri);
                 continue;
+            }
+
+            if (agreed is { Length: > 0 })
+            {
+                this.repairs[uri] = agreed;
+            }
+            else
+            {
+                this.repairs.Remove(uri);
             }
 
             LspDiagnostic[] payload = [];

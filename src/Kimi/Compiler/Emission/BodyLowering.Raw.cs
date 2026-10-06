@@ -76,14 +76,17 @@ internal sealed partial class BodyLowering
             return true;
         }
 
+        // SPEC 22.5.1: inside a helper that carries a standard operation's caller context, allocation and release failures
+        // report that operation, never the helper's own position.
+        var location = -1;
         if (!this.ScalarArrayArgument(body, id, 0, kind == CompilerFunctionKind.RawAllocate ? BoundType.ISize : pointer, out var input) ||
-            !this.TryGetLocation(call, directory, constants, out var location))
+            (!function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location)))
         {
             return Fail("Raw storage operation argument or location is unavailable at the call.", out failure);
         }
 
-        var place = new EmissionOperand(EmissionOperandKind.ConstantAddress, location);
-        var length = new EmissionOperand(EmissionOperandKind.ConstantLength, location);
+        var place = function.Abi.CallerLocation ? new EmissionOperand(EmissionOperandKind.CallerLocation, 0) : new EmissionOperand(EmissionOperandKind.ConstantAddress, location);
+        var length = function.Abi.CallerLocation ? new EmissionOperand(EmissionOperandKind.CallerLocationLength, 0) : new EmissionOperand(EmissionOperandKind.ConstantLength, location);
         if (kind == CompilerFunctionKind.RawAllocate)
         {
             function.AddCall(id, WindowsLowering.RawAllocate, [input, new(EmissionOperandKind.Integer, element.Stride), place, length]);

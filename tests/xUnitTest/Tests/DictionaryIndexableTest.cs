@@ -17,6 +17,55 @@ public class DictionaryIndexableTest
         ScalarEmissionTest.WriteFixture("DictionaryIndexableSubscript", CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
+    // SPEC 4.6, 4.6.9: a Dictionary takes a key of its key Type, so a range literal is a Range key, not a slice; only the
+    // concrete sequences read a range as a slice.
+    [Fact]
+    public void ARangeLiteralIsAKeyOfARangeKeyedDictionary()
+    {
+        const string Source = """
+            var spans: Dictionary<Range<i32, i32>, string> = [1..2: "a"]
+            let key: Range<i32, i32> = 1..2
+            Console.writeLine(spans[key])
+            spans[1..2] = "b"
+            Console.writeLine(spans[1..2])
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryIndexableRangeKey", Source, "a\nb\n");
+    }
+
+    [Fact]
+    public void ARangeLiteralSelectsAUserRangeIndexable()
+    {
+        const string Source = """
+            struct Spans
+                Self is Indexable<Range<i32, i32>>
+                associate Element is i32
+                var value: i32
+                public init(value: i32) => self.value = value
+                public func index(self, key: ref/Range<i32, i32>) -> place ref/i32 during self => self.value
+            let spans = Spans.init(7)
+            let key: Range<i32, i32> = 1..2
+            require spans[key] == 7 and spans[1..2] == 7 else => $abort("range key")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("DictionaryIndexableUserRangeKey", Source, "ok\n");
+    }
+
+    [Fact]
+    public void AReplacedKeyRebuildsTheSynthesizedIndexCall()
+    {
+        // The synthesized index call is cached per index expression; after an edit replaces the key it must name the new key,
+        // which is bound once, instead of the detached old one.
+        const string Prefix = "var values = [1: 42, 2: 43]\nlet k: i32 = 1\nlet j: i32 = 2\n";
+        var c = MinimalEmissionTest.Analyze(Prefix + "let r = values[k]");
+        var index = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.IndexKoto>().Single();
+        Assert.NotNull(c.Binding.IndexerCall(index, false));
+        var replacement = KotoTree.Walk(MinimalEmissionTest.Analyze(Prefix + "let r = values[j]").Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.IndexKoto>().Single().Right;
+        Assert.True(KotoHelper.Replace(index, index.Right, replacement));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Same(replacement, c.Binding.IndexerCall(index, false)!.ArgumentNodes[0]);
+        Assert.Equal(BindingState.Resolved, replacement.BindingState);
+    }
+
     [Fact]
     public void DirectEntriesPreserveStoredKeysAndSourceLoans()
     {

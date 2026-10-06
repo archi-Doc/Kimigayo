@@ -217,16 +217,26 @@ public sealed partial class Binding
         {
             var subject = proposition.Subject!;
             var closure = subject.Kind == BoundTypeKind.Closure ? (subject.Symbol?.Declaration as FunctionKoto)?.BoundClosure : null;
-            var signature = closure?.Signature ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
+            var signature = (closure is null ? null : this.ClosureSignature(subject)) ?? this.FunctionItemSignature(subject) ?? (subject.Kind == BoundTypeKind.Function ? subject : null);
             if (signature is null)
             {
                 return DependentType(subject) ? ConstraintProof.Unknown : ConstraintProof.Refuted;
             }
 
             var receiver = closure?.Receiver ?? SemanticsKind.Ref;
-            return CallableSignatureFits(signature, proposition.RequiredType!) &&
-                (receiver == SemanticsKind.Ref || proposition.Mask == SemanticsMask.Owner || (receiver == SemanticsKind.Uniq && proposition.Mask == SemanticsMask.Uniq))
-                ? ConstraintProof.Proven : ConstraintProof.Refuted;
+            if (!this.permitClosureReceivers && !CallableReceiverFits(receiver, proposition.Mask))
+            {
+                return ConstraintProof.Refuted;
+            }
+
+            // SPEC 15.6.1, 8.7: once the structural part of the whole-contract comparison holds, its Origin part is Proven or Unknown,
+            // never Refuted (CallableOriginFailure explains it). A required signature over an open region is decided by the per-call
+            // stand-in instead (SPEC 15.3.6, PerCallCallables). A Function Item's Origin conditions, its clauses and result premises, are
+            // proven from the required contract and belong to that Origin part (SPEC 15.3.7).
+            return (subject.Kind == BoundTypeKind.FunctionItem ? this.ItemContractFits(subject, signature, proposition.RequiredType!, scope.Owner)
+                : CallableSignatureFits(signature, proposition.RequiredType!, SignatureOwner(subject))) ? ConstraintProof.Proven
+                : ReferenceTypes.StorageMatches(proposition.RequiredType, signature) && !HasOpenOrigin(proposition.RequiredType!) ? ConstraintProof.Unknown
+                : ConstraintProof.Refuted;
         }
 
         if (proposition.Kind == ConstraintKind.Semantics)
@@ -323,7 +333,13 @@ public sealed partial class Binding
                     for (var j = 0; j < container.ConstraintNodes.Count; j++)
                     {
                         var clause = container.ConstraintNodes[j];
-                        if (this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
+                        if (IsRecovery(clause, out _))
+                        {
+                            // The parser reported a part of the clause; its parts are not judged again, and the clause rests on the Error.
+                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+                            this.Fail(clause, BindingFailure.InvalidConstraint);
+                        }
+                        else if (this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[container]);
                         }
@@ -361,12 +377,14 @@ public sealed partial class Binding
     private bool ContainsProjection(Koto node, BindingScope scope)
         => node is MemberAccessKoto ? this.TypeName(node, scope, false) is null : (node is UnaryKoto unary && this.ContainsProjection(unary.Operand, scope)) || (node is BinaryKoto binary && (this.ContainsProjection(binary.Left, scope) || this.ContainsProjection(binary.Right, scope)));
 
-    private bool ValidateConstraintEnvironments()
+    // A later run judges the source environments only: the Kimi library's environments are fixed and valid, and the first run
+    // already judged them.
+    private bool ValidateConstraintEnvironments(bool sourcesOnly = false)
     {
         var changed = false;
         foreach (var scope in this.scopes.Values)
         {
-            if (scope.Constraints is not { } environment)
+            if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
             {
                 continue;
             }
@@ -496,6 +514,12 @@ public sealed partial class Binding
                         if (target.Intrinsic == IntrinsicKind.Callable)
                         {
                             result = this.BindCallableRequirement(node, subject, scope, target);
+                            if (result.Kind == ConstraintKind.Error && this.FailedSignaturePart(node) is { } part)
+                            {
+                                // SPEC 23.3.6.4: a Callable signature that failed for a part of its own syntax rests on that part.
+                                (this.constraintDiagnosticCauses ??= new(ReferenceEqualityComparer.Instance))[node] = part;
+                            }
+
                             break;
                         }
 
@@ -685,7 +709,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(components[i], type.Components[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression) : type;
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext) : type;
         }
         finally
         {
@@ -693,16 +717,16 @@ public sealed partial class Binding
         }
     }
 
-    private BoundConstraint SubstituteConstraint(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default)
+    private BoundConstraint SubstituteConstraint(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false)
     {
         if (constraint.Kind == ConstraintKind.Not)
         {
-            return this.NegateConstraint(this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths));
+            return this.NegateConstraint(this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths, incomplete));
         }
 
         if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
         {
-            return this.InternConstraint(new(constraint.Kind, left: this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths), right: this.SubstituteConstraint(constraint.Right!, binder, arguments, lengths)));
+            return this.InternConstraint(new(constraint.Kind, left: this.SubstituteConstraint(constraint.Left!, binder, arguments, lengths, incomplete), right: this.SubstituteConstraint(constraint.Right!, binder, arguments, lengths, incomplete)));
         }
 
         if (constraint.Subject is null)
@@ -718,10 +742,12 @@ public sealed partial class Binding
             contract = this.BoundContractReference(substituted);
         }
 
-        return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
+        return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(incomplete ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));
     }
 
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)
+    // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
+    // it contributes Proven, so only the clauses that can be judged decide.
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false)
     {
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
@@ -745,7 +771,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths);
+            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths, incomplete);
             if (declaringType?.Symbol?.Declaration is { } owner)
             {
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
@@ -753,10 +779,41 @@ public sealed partial class Binding
 
             // Associated identities also need normalization for calls without a receiver.
             var proof = this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope);
+            if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
+            {
+                proof = ConstraintProof.Proven;
+            }
+
             result = CombineProof(result, bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof, true);
         }
 
         return result;
+    }
+
+    // SPEC 10.5, 8.7: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
+    // neither applicability nor negation even while a waiting argument is still open.
+    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self, BoundType? declaringType, ReadOnlySpan<BoundLength?> lengths)
+    {
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            if (clauses[i] is not IsKoto { BoundConstraint: { HasUnresolved: false } bound })
+            {
+                continue;
+            }
+
+            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths, true);
+            if (declaringType?.Symbol?.Declaration is { } owner)
+            {
+                substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
+            }
+
+            if (!substituted.HasUnresolved && this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope) == ConstraintProof.Unknown)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private bool HasUnresolvedConstraintSyntax(Koto node, BindingScope scope)

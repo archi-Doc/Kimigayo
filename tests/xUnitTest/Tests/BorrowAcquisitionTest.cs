@@ -41,11 +41,11 @@ public class BorrowAcquisitionTest
     // list names the capture; an Exclusive call of a let closure names the callee.
     [Theory]
     [InlineData("var number: i32 = 1\nlet r = number@uniq\nvar bump = func [r@uniq] () => r@follow@follow += 1\nbump()", "InvalidAssignment_Kd", "r@uniq", "r cannot be written", "slot of the let binding r", "Declare the binding with var")]
-    [InlineData("let text = \"owned\"\nlet keep = func [text] () => ()\nkeep()", "TransferRequired_Kd", "text", "text cannot be read as a Copy value", "let text = text", "text@move")]
+    [InlineData("let text = \"owned\"\nlet keep = func [text] () => ()\nkeep()", "TransferRequired_Kd", "text", "text cannot be read as a Copy value", "let text = text", null)]
     [InlineData("var number: i32 = 1\nlet r = number@uniq\nlet bump = func [r] () => r@follow += 1\nbump()", "InvalidAssignment_Kd", "bump", "bump cannot be written", "Exclusive", "var to call it")]
     [InlineData("var number: i32 = 1\nlet r = number@uniq\nvar bump = func () => r@follow += 1\nbump()", "TransferRequired_Kd", "func () => r@follow += 1", "r cannot be read as a Copy value", "omitted capture list", "[r] to Reborrow")]
     [InlineData("let text = \"owned\"\nlet keep = func () => Console.writeLine(text)\nkeep()", "TransferRequired_Kd", "func () => Console.writeLine(text)", "text cannot be read as a Copy value", "omitted capture list", "[text@move]")]
-    public void ExplainsRejectedCaptures(string source, string code, string text, string label, string note, string advice)
+    public void ExplainsRejectedCaptures(string source, string code, string text, string label, string note, string? advice)
     {
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
@@ -55,7 +55,33 @@ public class BorrowAcquisitionTest
         Assert.Equal(text, error.Text);
         Assert.Equal(label, error.Label);
         Assert.Contains(note, error.Note);
-        Assert.Contains(advice, error.Advice);
+        if (advice is null)
+        {
+            // SPEC 23.3.6.9: a bare entry offers the transfer and the borrow as candidates at the entry, and no Advice repeats them.
+            Assert.Null(error.Advice);
+            Assert.Equal(["Repair.Transfer", "Repair.Borrow"], error.Repairs!.Select(static x => x.Kind));
+            Assert.Contains("[text@move]", UnnecessaryUnsafeBlockTest.Apply(source, error.Repairs![0].Edits), StringComparison.Ordinal);
+            Assert.Contains("[text@ref]", UnnecessaryUnsafeBlockTest.Apply(source, error.Repairs[1].Edits), StringComparison.Ordinal);
+            Assert.Equal([Kimi.Diagnostics.RepairCondition.Take], error.Repairs[0].Verified);
+            Assert.Empty(error.Repairs[1].Verified);
+        }
+        else
+        {
+            Assert.Contains(advice, error.Advice);
+        }
+    }
+
+    [Fact]
+    public void ACaptureEntryExplainsOnlyItsOwnFailure()
+    {
+        // The closure already failed for its duplicate parameter, so the rejected entry records nothing: the duplicate is not
+        // reported at the capture entry as if it were the entry's problem.
+        const string Source = "let n: i32 = 1\nlet f = func [n@uniq] (a: i32, a: i32) -> i32 => a";
+        var c = MinimalEmissionTest.Analyze(Source);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), error.Code);
+        Assert.NotEqual("n@uniq", error.Text);
     }
 
     [Theory]

@@ -22,24 +22,6 @@ public sealed partial class Binding
         return syntax is TypeSemanticsKoto { Type: not null, HasOrigin: true, IsTransparentWrapper: false };
     }
 
-    private static bool ContainsOrigin(BoundType type, BoundOrigin origin)
-    {
-        if (ReferenceEquals(type.Origin, origin))
-        {
-            return true;
-        }
-
-        foreach (var component in type.Components)
-        {
-            if (ContainsOrigin(component, origin))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.3.2: the struct or enum whose storage (an instance Field Type, an enum payload or a base) writes this Origin name;
     // null for any other position, such as an accessor signature or an attached relation.
     private static DeclarationContainerKoto? StorageOriginType(Koto use)
@@ -105,6 +87,154 @@ public sealed partial class Binding
         return offset < 0 ? type.Span : new(type.Span.Start + keyword + offset, type.Name.Length);
     }
 
+    // SPEC 10.6, 15.3.6: a reference slot that only per-call Origins of the fixed expected call signature S would satisfy, at the
+    // reference. The Reason names the slot and the parameters of S, the Note shows S, the declaration and the written parameters of S
+    // are related, and the Advice wraps the reference in an anonymous function, whose every call binds the slot, when that call infers
+    // every slot. No candidate is offered.
+    private static void ReportPerCallSlot(Koto use, PerCallSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var slot = fact.Declaration.GenericArguments[fact.Slot].Identifier;
+        var inputs = fact.Signature.Components[0].Components;
+        var count = System.Numerics.BitOperations.PopCount(fact.Parameters);
+        var related = new (string Role, Koto At, string? Label)[count + 1];
+        related[0] = ("declaration", fact.Declaration, null);
+        var relatedCount = 1;
+        var builder = default(IndentedStringBuilder);
+        try
+        {
+            // The ordinals of the parameters, as "1st" or "1st and 2nd", and each with its Type for the Note.
+            var shown = 0;
+            for (var i = 0; i < inputs.Count && i < 64; i++)
+            {
+                if ((fact.Parameters & (1UL << i)) == 0)
+                {
+                    continue;
+                }
+
+                builder.Append(shown == 0 ? string.Empty : shown == count - 1 ? " and " : ", ");
+                builder.Append(Ordinal(i + 1));
+                shown++;
+                if (OmittedInput(inputs[i].Origin!) is { } written)
+                {
+                    related[relatedCount++] = ("parameter", written, null);
+                }
+            }
+
+            var ordinals = builder.ToString();
+            builder.Clear();
+            shown = 0;
+            for (var i = 0; i < inputs.Count && i < 64; i++)
+            {
+                if ((fact.Parameters & (1UL << i)) != 0)
+                {
+                    builder.Append(shown == 0 ? string.Empty : shown == count - 1 ? " and " : ", ");
+                    builder.Append(Ordinal(i + 1));
+                    builder.Append(" parameter ");
+                    builder.Append(DiagnosticText.Bound(DiagnosticTypeName(inputs[i]), 48).Text);
+                    shown++;
+                }
+            }
+
+            var shownParameters = builder.ToString();
+            var note = $"The fixed expected call signature {DiagnosticText.Bound(DiagnosticTypeName(fact.Signature)).Text} binds the Origin{(count == 1 ? string.Empty : "s")} of its " +
+                $"{shownParameters} at each call, and a per-call Origin never becomes part of a bound Type argument (SPEC 10.5, 15.3.6)";
+            var evidence = count == 1 ? $"only the {ordinals} parameter's per-call Origin would satisfy Type parameter '{slot}'"
+                : $"only the per-call Origins of the {ordinals} parameters would satisfy Type parameter '{slot}'";
+            if (fact.Moves is not { } moves)
+            {
+                // A slot that only written Type arguments bind would leave the wrapper's call unsolved, so no wrapper is advised.
+                use.Report(requirement, code, note: note, evidence: [evidence], related: related.AsSpan(0, relatedCount).ToArray());
+                return;
+            }
+
+            // The anonymous function takes the declaration's parameters by their names, renaming one that the reference itself names or
+            // that cannot be written, and passes each as the declaration takes it, a by-value parameter that is not Copy with @move. The
+            // call infers the slots, so written Type arguments are dropped; one candidate remains for the name.
+            var callee = KotoHelper.UnwrapParentheses(use) is GenericsKoto { Identifier: { } name } ? name : KotoHelper.UnwrapParentheses(use);
+            var parameters = fact.Declaration.Parameters;
+            var names = new string?[parameters.Count];
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                names[i] = parameters[i].InternalName is { Length: > 0 } written && written != "_" && written != "self" && !Names(callee, written, 0) && Array.IndexOf(names, written, 0, i) < 0
+                    ? written : null;
+            }
+
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (names[i] is null)
+                {
+                    var candidate = $"p{i + 1}";
+                    for (var k = 2; Names(callee, candidate, 0) || Array.IndexOf(names, candidate) >= 0; k++)
+                    {
+                        candidate = $"p{i + 1}_{k}";
+                    }
+
+                    names[i] = candidate;
+                }
+            }
+
+            builder.Clear();
+            builder.Append("Wrap the reference in an anonymous function that calls it, so that each call binds ");
+            builder.Append(slot);
+            builder.Append(", as in func (");
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                builder.Append(i == 0 ? string.Empty : ", ");
+                builder.Append(names[i]!);
+            }
+
+            builder.Append(") => ");
+            callee.WriteTo(ref builder);
+            builder.Append('(');
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                builder.Append(i == 0 ? string.Empty : ", ");
+                if (!fact.Declaration.AllowsPositionalArgument(i))
+                {
+                    builder.Append(parameters[i].ExternalName);
+                    builder.Append(": ");
+                }
+
+                builder.Append(names[i]!);
+                if ((moves & (1UL << i)) != 0)
+                {
+                    builder.Append("@move");
+                }
+            }
+
+            builder.Append(')');
+            use.Report(requirement, code, note: note, evidence: [evidence], advice: builder.ToString(), related: related.AsSpan(0, relatedCount).ToArray());
+        }
+        finally
+        {
+            builder.Dispose();
+        }
+
+        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+
+        // Whether the reference's syntax names the identifier, which a parameter of that name would shadow.
+        static bool Names(Koto node, string name, int depth)
+        {
+            if (node is IdentifierNameKoto identifier && identifier.IdentifierName == name)
+            {
+                return true;
+            }
+
+            if (depth < 32)
+            {
+                foreach (var child in node.ChildNodes)
+                {
+                    if (Names(child, name, depth + 1))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+    }
+
     // Run only while publishing failures. These checks neither bind new names nor
     // change a syntax decision, and require no state on successful uses.
     private string? BorrowOriginHint(Koto node)
@@ -129,7 +259,7 @@ public sealed partial class Binding
             return "An Origin intersection requires parentheses: 'during (a and b)'. Here 'and' separates constraint requirements.";
         }
 
-        if (node.BindingFailure == BindingFailure.TypeMismatch)
+        if (node.BindingFailure is BindingFailure.TypeMismatch or BindingFailure.OriginRelation)
         {
             var returned = node as ReturnKoto ?? node.Parent as ReturnKoto;
             var function = returned is not null ? KotoHelper.ResolveTransferTarget(returned) as FunctionKoto : node.Parent as FunctionKoto;
@@ -227,7 +357,7 @@ public sealed partial class Binding
     // returned values without the intended contract; those failures rest on the projection, not on independent causes.
     private bool RestsOnAbsentSlot(Koto node)
     {
-        if (this.absentSlotFunctions is not { Count: > 0 } functions || node.BindingFailure is not (BindingFailure.MissingOrigin or BindingFailure.TypeMismatch))
+        if (this.absentSlotFunctions is not { Count: > 0 } functions || node.BindingFailure is not (BindingFailure.MissingOrigin or BindingFailure.TypeMismatch or BindingFailure.OriginRelation))
         {
             return false;
         }
@@ -238,9 +368,11 @@ public sealed partial class Binding
         {
             if (current is FunctionKoto function)
             {
-                // A returned value is affected only where it differs from the result in its bindings, not in its Type.
+                // A returned value is affected only where it differs from the result in its bindings, not in its Type; an Origin
+                // relation differs in its Origins only by construction.
                 if (!functions.TryGetValue(function, out var projection) ||
                     !(node.BindingFailure == BindingFailure.MissingOrigin ? inResult
+                        : node.BindingFailure == BindingFailure.OriginRelation ? returned
                         : returned && this.mismatches?.TryGetValue(node, out var mismatch) == true && mismatch.Actual is BoundType { Symbol: { } actual } &&
                             mismatch.Expected is BoundType { Symbol: var expected } && ReferenceEquals(actual, expected)))
                 {

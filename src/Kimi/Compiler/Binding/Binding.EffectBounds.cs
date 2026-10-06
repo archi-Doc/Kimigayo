@@ -683,16 +683,32 @@ public sealed partial class Binding
             // Reading through ref/uniq/T also reads through each inner reference.
             while (this.valid)
             {
+                if (TryPairLayer(layer, out var whole, out var target))
+                {
+                    // SPEC 8.1.1, 8.4.10: in the admitted borrow cases a pair layer is a borrow within its outer-Origin slot; an
+                    // application without a slot may be a borrow of any Loan.
+                    if ((binding.AdmittedSemantics(whole, binding.ConstraintScope(use)) & SemanticsMask.Borrow) != 0)
+                    {
+                        if (binding.OuterOrigin(layer) is { } slot)
+                        {
+                            this.AccessOrigin(slot, mode, use);
+                        }
+                        else
+                        {
+                            this.Violate(EffectViolation.UnclassifiedAccess, use);
+                        }
+                    }
+
+                    layer = target;
+                    continue;
+                }
+
                 if (layer.Origin is { } origin)
                 {
                     this.AccessOrigin(origin, mode, use);
                 }
-                else if (layer.Kind == BoundTypeKind.SemanticsApplication)
-                {
-                    this.Violate(EffectViolation.UnclassifiedAccess, use); // A pair layer without an Origin may be a borrow of any Loan.
-                }
 
-                if (layer is not { Kind: BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication, Components.Count: 1 })
+                if (layer is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
                 {
                     return;
                 }
@@ -925,14 +941,14 @@ public sealed partial class Binding
         private bool Allows(CompilerFunctionKind kind) => kind switch
         {
             CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 => !this.confined,
-            CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or
+            CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
                 >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                 CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
                 CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
                 CompilerFunctionKind.StorageOwn or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageShrinkDictionary or
+                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageTransferBytes or
                 >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice => true, // SPEC 5.6: an allocation and raw accesses.
             _ => false,
         };
@@ -1487,7 +1503,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (ObjectTypes.IsOwner(type))
+            if (ObjectTypes.HandleMode(type) is not null)
             {
                 // An open view can hide any more-derived destructor, which has no complete effect bound.
                 if (binding.ProveSealed(type.Components[0], use) == ConstraintProof.Proven)

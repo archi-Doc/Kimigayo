@@ -229,7 +229,7 @@ size_failure:
   call void @__kimi_abort(i32 {{reason_size}}, ptr %location, i64 %location_length, i64 -2)
   unreachable
 argument_failure:
-  call void @__kimi_abort(i32 {{reason_argument}}, ptr %location, i64 %location_length, i64 -2)
+  call void @__kimi_abort(i32 {{reason_argument_range}}, ptr %location, i64 %location_length, i64 -2)
   unreachable
 }
 

@@ -21,7 +21,7 @@ public sealed partial class Binding
         }
 
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
-        if (exclusive && actual.Semantics is not (SemanticsKind.Obj or SemanticsKind.ObjUniq))
+        if (exclusive && actual.Semantics != SemanticsKind.ObjUniq && ObjectTypes.HandleMode(actual) is not { PayloadAuthority: LoanRequirement.Uniq })
         {
             return false;
         }

@@ -10,7 +10,7 @@ namespace Kimi.Compiler;
 #pragma warning disable SA1402 // Physical aggregate descriptors and their reusable pool.
 
 /// <summary>A syntax-free aggregate representation. Fields remain in logical acquisition/destruction order.</summary>
-internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, bool ObjectHandle = false, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null, string? GenericDestructor = null)
+internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, ObjectHandleMode? ObjectHandle = null, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null, string? GenericDestructor = null, int? ObjectPayloadDrop = null)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 }
@@ -29,8 +29,12 @@ internal sealed class AggregateLayoutPool
     private readonly Dictionary<FunctionKoto, int> destructors = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, AggregateLayout> collectionFields = new(StringComparer.Ordinal);
     private readonly List<AggregateLayout> usedCollectionFields = new();
+    private readonly Dictionary<(ObjectHandleMode Mode, int Drop), AggregateLayout> sealedObjectHandles = new();
+    private readonly HashSet<BoundType> activeLayouts = new(ReferenceEqualityComparer.Instance);
     private AggregateLayout? functionHandle;
     private AggregateLayout? objectHandle;
+    private AggregateLayout? rcHandle;
+    private AggregateLayout? arcHandle;
 
     /// <summary>Gets or sets the source of the element-specific drop helper that stored collection destruction calls; it
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
@@ -38,6 +42,9 @@ internal sealed class AggregateLayoutPool
 
     /// <summary>Gets or sets the reservation of a concrete generic destructor entry, before its body is lowered.</summary>
     internal Func<BoundType, string?>? InstantiateDestructor { get; set; }
+
+    /// <summary>Gets or sets the current semantic proof of a complete Sealed object target.</summary>
+    internal Func<BoundType, bool>? IsSealedObjectTarget { get; set; }
 
     /// <summary>Gets the stored collection layouts of the current body, whose destructors release the buffers.</summary>
     internal List<AggregateLayout> UsedCollectionFields => this.usedCollectionFields;
@@ -64,6 +71,54 @@ internal sealed class AggregateLayoutPool
         => type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary ? this.CollectionField(type, 0) : this.Get(type, 0);
 
     private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
+
+    // IMPL 21.2.2: Sealed identifies the complete payload, but a direct call also needs its concrete cleanup.
+    // Recursive handle edges retain dynamic cleanup; they do not expand an inline layout indefinitely.
+    private AggregateLayout? SealedObjectHandle(BoundType payload, ObjectHandleMode mode, int depth)
+    {
+        if (depth >= DepthLimit || this.activeLayouts.Contains(payload) || this.IsSealedObjectTarget?.Invoke(payload) != true)
+        {
+            return null;
+        }
+
+        var drop = -1;
+        if (ReferenceEquals(payload, BoundType.String))
+        {
+            drop = -2;
+        }
+        else
+        {
+            var layout = payload.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary
+                ? this.CollectionField(payload, depth + 1) : this.Get(payload, depth + 1);
+            if (layout is not null)
+            {
+                drop = layout.NeedsDestruction ? layout.Id : -1;
+            }
+            else if (WindowsLowering.GetValue(payload) is null)
+            {
+                // A recursive payload can meet an enum/aggregate currently being laid out. This optional
+                // optimization must not cache that temporary refusal as a failed independent payload layout.
+                foreach (var entry in this.resolved)
+                {
+                    if (entry.Value is null && !this.activeLayouts.Contains(entry.Key))
+                    {
+                        this.resolved.Remove(entry.Key);
+                    }
+                }
+
+                return null;
+            }
+        }
+
+        if (!this.sealedObjectHandles.TryGetValue((mode, drop), out var handle))
+        {
+            handle = new(this.pool.Count, new(new("[8 x i8]", 8, 8, 8, ReadOnlyMemory<int>.Empty), "[8 x i8]", "ptr"), [], [], 0, false, true, ObjectHandle: mode, ObjectPayloadDrop: drop);
+            this.pool.Add(handle);
+            this.sealedObjectHandles.Add((mode, drop), handle);
+        }
+
+        return handle;
+    }
 
     // A stored collection: its handle layout, destroyed through the element-specific drop helper.
     private AggregateLayout? CollectionField(BoundType array, int depth)
@@ -102,6 +157,23 @@ internal sealed class AggregateLayoutPool
             return existing;
         }
 
+        if (!this.activeLayouts.Add(type))
+        {
+            return null;
+        }
+
+        try
+        {
+            return this.GetCore(type, depth);
+        }
+        finally
+        {
+            this.activeLayouts.Remove(type);
+        }
+    }
+
+    private AggregateLayout? GetCore(BoundType type, int depth)
+    {
         if (EnumStorage.IsEnum(type))
         {
             return this.GetEnum(type, depth);
@@ -118,15 +190,41 @@ internal sealed class AggregateLayoutPool
             return this.resolved[type] = this.functionHandle;
         }
 
-        if (ObjectTypes.IsOwner(type))
+        if (ObjectTypes.HandleMode(type) is { } mode)
         {
-            if (this.objectHandle is null)
+            if (this.SealedObjectHandle(type.Components[0], mode, depth) is { } sealedHandle)
             {
-                this.objectHandle = new(this.pool.Count, new(new("[8 x i8]", 8, 8, 8, ReadOnlyMemory<int>.Empty), "[8 x i8]", "ptr"), [], [], 0, false, true, ObjectHandle: true);
-                this.pool.Add(this.objectHandle);
+                return this.resolved[type] = sealedHandle;
             }
 
-            return this.resolved[type] = this.objectHandle;
+            var handle = mode.Counting switch
+            {
+                ObjectCountingStep.None => this.objectHandle,
+                ObjectCountingStep.NonAtomic => this.rcHandle,
+                ObjectCountingStep.Atomic => this.arcHandle,
+                _ => throw new InvalidOperationException("Unknown object counting step."),
+            };
+            if (handle is null)
+            {
+                handle = new(this.pool.Count, new(new("[8 x i8]", 8, 8, 8, ReadOnlyMemory<int>.Empty), "[8 x i8]", "ptr"), [], [], 0, false, true, ObjectHandle: mode);
+                this.pool.Add(handle);
+                switch (mode.Counting)
+                {
+                    case ObjectCountingStep.None:
+                        this.objectHandle = handle;
+                        break;
+                    case ObjectCountingStep.NonAtomic:
+                        this.rcHandle = handle;
+                        break;
+                    case ObjectCountingStep.Atomic:
+                        this.arcHandle = handle;
+                        break;
+                    default:
+                        throw new InvalidOperationException("Unknown object counting step.");
+                }
+            }
+
+            return this.resolved[type] = handle;
         }
 
         var structure = StructStorage.IsStruct(type);
@@ -149,7 +247,7 @@ internal sealed class AggregateLayoutPool
 
         // SPEC 4.6.8, 4.7.4: a Slice is {buffer, length}; an Array handle is {buffer, length, capacity}.
         var sequence = type.Kind is BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
-        if ((!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure)) ||
+        if ((!structure && !sequence && type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure or BoundTypeKind.FunctionItem)) ||
             type.Semantics != SemanticsKind.Owner || (!sequence && type.Origin is not null) || (!structure && type.OriginArguments.Count != 0) ||
             (type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || type.Components.Count != 1)))
         {
@@ -169,7 +267,9 @@ internal sealed class AggregateLayoutPool
 
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
-        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) : type.Components.Count;
+        // A Function Item's Components are its bound generic arguments, not stored fields.
+        var fieldCount = sequence ? (type.Kind == BoundTypeKind.Dictionary ? 7 : type.Kind == BoundTypeKind.Array ? 3 : 2) : structure ? StructStorage.Count(type) :
+            type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count;
         var count = array ? (int)type.Length : fieldCount;
         if (cLayout && (fieldCount == 0 || StructStorage.Declaration(type) is not { Bases.Count: 0 } declaration || (declaration.Modifier & ModifierKind.Open) != 0))
         {
@@ -227,7 +327,7 @@ internal sealed class AggregateLayoutPool
             destroy &= (!array || count != 0) && !(structure && type.Symbol?.LibraryDeclaration == KimiDeclarationId.InlineStorage);
             foreach (var candidate in this.pool)
             {
-                if (candidate.FunctionHandle || candidate.ObjectHandle || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout) || candidate.NeedsDestruction != destroy)
+                if (candidate.FunctionHandle || candidate.ObjectHandle is not null || candidate.Cases is not null || candidate.CLayout != cLayout || candidate.IsArray != array || candidate.Count != count || candidate.Fields.Length != fieldCount || candidate.Destructor != destructor || candidate.GenericDestructor != genericDestructor || !ReferenceEquals(candidate.Base, baseLayout) || candidate.NeedsDestruction != destroy)
                 {
                     continue;
                 }

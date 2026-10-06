@@ -14,7 +14,8 @@ and [STATUS.md](STATUS.md) for compiler support. A specification rule is not a c
 - Bodies use an indented block or `=> expression` on the header's ending line. No body colon or braces.
   Use delimiters for multiline expressions. Executable bodies cannot be empty: write `()` for no work.
 - `//` comments; non-nesting `/* ... */`; `///` documentation. Strings use `"text \(expression)"`,
-  chars use `'A'`; `"""raw text"""` has no escapes or interpolation.
+  chars use `'A'`; `"""raw text"""` has no escapes or interpolation. Interpolation is the one way to join
+  strings: `string` has no `+` or `+=`.
 - Choose top-level executable items in exactly one file **or** root-level `public func main() -> ()`.
   Libraries have neither executable top-level items nor automatic startup.
 - Kimi's direct members are open by default: `Array`, `Option`, `Console`, etc.; use `Console.writeLine(text)`.
@@ -157,7 +158,8 @@ func duplicate<T>(value: T) -> (T, T)
   Use separate shared/exclusive names. Groups contain static members; there is no `static` modifier.
 - Stored Properties use `let`/`var`, optionally `get` and narrowed `private set`.
   `computed p: T` requires `get() -> T`; optional `set(value: U) -> ()` may take a different Type.
-  Omitted instance accessor receivers are shared for get, exclusive for set. Custom getters return values.
+  Instance accessor receivers are always shared for get and exclusive for set; a written receiver can only add
+  an Origin. Updates and consumption are functions. Custom getters return values.
 - Enums declare `Name` or `Name(T, U)` Cases. Construct `Outcome<i32>.Value(1)` or `.Value(1)` with a known
   expected enum Type. Payload-free Cases have no parentheses. Enums have no stored/computed Properties.
 - `<T>` binds a complete Type, including references. `<s/T>` binds one argument, split into Semantics `s`
@@ -243,7 +245,7 @@ struct View<T> {source}
 
 ## 9. Callbacks and less common features
 
-- Closure: `func [captures] (x: T) -> U => expression`. Without a fixed expected signature, annotate inputs.
+- Closure: `func [captures] (x: T) -> U => expression`. Without a fixed expected call signature, annotate inputs.
   Omitted captures are Copy-only; `[]` forbids captures. An explicit entry `x`, `x@move`, `x@ref` or `x@uniq`,
   optionally with `var`, initializes the environment binding as `let x = x` or `let x = x@op` would, so `x@ref`
   borrows the outer slot. Captures execute at creation. Named nested functions cannot capture.

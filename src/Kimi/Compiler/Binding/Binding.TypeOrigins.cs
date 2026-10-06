@@ -6,8 +6,53 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
+    internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
+    {
+        if (Contains(type.Origin, origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (Contains(type.OriginArguments[i], origin))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (ContainsOrigin(type.Components[i], origin))
+            {
+                return true;
+            }
+        }
+
+        return false;
+
+        static bool Contains(BoundOrigin? expression, BoundOrigin atom)
+        {
+            if (ReferenceEquals(expression, atom))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < (expression?.Operands.Count ?? 0); i++)
+            {
+                if (Contains(expression!.Operands[i], atom))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
-        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression);
+        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext);
 
     private BoundType SelfType(BindingSymbol symbol)
     {
@@ -284,7 +329,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            var sign = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
+            var sign = IsInvariantLayer(type, this) ? 0 : type.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (type.Kind == BoundTypeKind.Constructed && declared is { } target && i < target.GenericSlots.Count)
             {
                 var variance = target.GenericSlots[i].OriginVariance;

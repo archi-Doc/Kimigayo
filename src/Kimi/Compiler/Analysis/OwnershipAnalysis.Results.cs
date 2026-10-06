@@ -33,8 +33,8 @@ public sealed partial class OwnershipAnalysis
     private int ResultPlace(Koto source)
     {
         var stored = SlotTypes.IsResult(this.Concrete(source.BoundType)); // An instance stores a substituted owned result.
-        var place = stored && this.body.SlotResultPlaces.TryGetValue(source, out var shared) ? shared : this.Temporary(source, false);
-        if (stored)
+        var place = stored && this.defaultContext < 0 && this.body.SlotResultPlaces.TryGetValue(source, out var shared) ? shared : this.Temporary(source, false);
+        if (stored && this.defaultContext < 0)
         {
             this.body.SlotResultPlaces[source] = place;
         }
@@ -49,8 +49,16 @@ public sealed partial class OwnershipAnalysis
         return place;
     }
 
-    private int WriteResult(Koto source, int place, int input)
+    private int WriteResult(Koto source, int place, int input, int reported = -1)
     {
+        if (input < 0 && reported >= 0 && this.body.IssueStorage.Count > reported)
+        {
+            // The result expression's analysis already reported why it has no value; the result is initialized here, so its
+            // delivery is not reported again as an uninitialized result at the signature.
+            this.Emit(OwnershipOperationKind.Produce, source, place);
+            return -1;
+        }
+
         var write = input >= 0 || ReferenceEquals(this.body.Places[place].Type, BoundType.Unit) ? this.Emit(OwnershipOperationKind.Write, source, place, input) : -1;
         if (write >= 0 && SlotTypes.IsResult(this.body.Places[place].Type) && this.resultDeclarations[place] >= 0)
         {
@@ -62,7 +70,11 @@ public sealed partial class OwnershipAnalysis
 
     private void Deliver(Koto source, int secured)
     {
-        this.CheckConstruction(source);
+        if (this.body.DefaultParameter < 0)
+        {
+            this.CheckConstruction(source);
+        }
+
         var value = secured >= 0 && ScalarResult(this.body.Places[this.resultPlace].Type) && this.body.Values[secured].Kind == OwnershipValueKind.Alias ? this.body.ValueOperands[this.body.Values[secured].Start] : -1;
         var delivery = this.Emit(OwnershipOperationKind.Deliver, source, this.resultPlace);
         this.body.Deliveries.Add(new(delivery, value, secured));

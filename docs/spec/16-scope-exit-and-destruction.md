@@ -6,7 +6,7 @@
 
 ## 16.1. Deferred blocks
 
-A **Deferred Block** registers cleanup when execution reaches `defer`. Registration evaluates none of its body, arguments, conditions or initializers. It uses the common Body forms and has no expression result; the use or discarding of body expressions follows §14.2.
+A **Deferred Block** registers cleanup when execution reaches `defer`. Registration evaluates none of its body, arguments, conditions or initializers. It uses the common Body forms and has no expression result; the use or discarding of body expressions follows §14.2. A Deferred Block cannot pass its function's task, so it never suspends ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing)); a function expression inside it has its own Function Boundary (§16.1.1).
 
 A registration belongs to its directly containing executable body scope: a function, branch, arm, current iteration, `do`, `unsafe`, `require` failure body or executing `defer` body. Unreached registrations do not run, and each iteration registers and cleans up independently. Registrations cannot be cancelled or invoked manually.
 
@@ -175,7 +175,7 @@ A Deferred Block's registration is consumed when its execution starts, and each 
 
 A pending transfer or result is delivered only after all required cleanup completes normally. Nonterminating cleanup prevents the remaining cleanup and delivery; general termination proofs are not required.
 
-Forced process termination and undefined behavior provide no cleanup guarantee. Abort skips or abandons cleanup under [Abort Termination](17-failure-handling.md#173-abort-termination). This specification provides no cleanup guarantee for cancellation; if cancellation is ever introduced, it needs separate common rules for Deferred Blocks, destruction and secured results.
+Forced process termination and undefined behavior provide no cleanup guarantee. Abort skips or abandons cleanup under [Abort Termination](17-failure-handling.md#173-abort-termination). Cleanup neither suspends nor observes cancellation ([§24.2.2](24-suspension-and-asynchronous-tasks.md#2422-passing), [§22.1.3.4](22-core-execution-and-foreign-functions.md#22134-cancellation)); Deferred Blocks, destruction and secured results follow §16.2 unchanged under cancellation, which adds no completion kind.
 
 ## 16.3. Aggregate destruction and drop
 
@@ -256,6 +256,8 @@ Cleanup: c, then a
 ### 16.3.3. Ownership, object release, and reentry
 
 `owner/T` is destroyed as exactly `T`. For `obj/T`, the object is destroyed and then its original storage released if required. Destroying `rc/T` or `arc/T` releases one strong reference; exactly the release that reaches zero performs object destruction and storage release, including under atomic `arc` ownership.
+
+**Handle destruction and Loans.** Destroying an object handle (`obj`, `rc` or `arc`) at scope exit, replacement, temporary expiry, discard or Field cleanup destroys that handle Place, which is compared with active Loans by §15.6.2. Storage owned through the object, its payload and everything the payload owns, including through nested handles, is never a target of that destruction or of an effect summary containing it: every Borrow into such storage keeps a Loan on a handle through which it was reached (§13.5.5.1), either the destroyed handle, where the conflict is reported, or another strong handle, which keeps its object alive. Because any `rc`/`arc` release may be final, it observes what destroying the complete payload observes (§15.6.6) and contributes that cleanup's effects on other storage, such as static Fields, to the enclosing summary (§15.6.4). A callee that destroys an owned handle parameter contributes the same effects.
 
 Destruction uses the actual owned Type's complete derived-to-base cleanup, including automatic fields and bases and user `drop`. Base views keep that dynamic identity and the single destruction responsibility. Original storage is released by its original mechanism, never through an adjusted view pointer with a base size. No delayed garbage-collection finalizer or finalizer thread is implied.
 

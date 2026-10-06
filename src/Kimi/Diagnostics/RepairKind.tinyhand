@@ -1,0 +1,37 @@
+// The catalog of repair candidate kinds (SPEC 23.3.6.9), one entry per RepairKind in catalog order. Title is a template over
+// the candidate's facts ({0}, {1}, ...); Facts names each fact as name:Kind like a code's Arguments, and a candidate supplies all
+// of them; Conditions lists the relevant conditions (Take, ExclusiveAccess, UsageLegality, Structure) that a recorder judges
+// verified or required, withholding the candidate when one is refuted. A consistency test keeps this table equal to RepairKind.
+
+  + Name="Repair.Transfer"
+    Title="Append @move to transfer {0} to {1}"
+    Facts="place:Text,target:Text"
+    Conditions="Take,UsageLegality"
+
+  + Name="Repair.Borrow"
+    Title="Append @ref to borrow {0} for {1}"
+    Facts="place:Text,target:Text"
+    Conditions="UsageLegality"
+
+  + Name="Repair.BorrowExclusively"
+    Title="Append {1} to borrow {0} exclusively"
+    Facts="place:Text,spelling:Text"
+    Conditions="ExclusiveAccess,UsageLegality"
+
+  + Name="Repair.RemoveUnsafe"
+    Title="Remove unsafe and keep its statements"
+    Conditions="Structure"
+
+  + Name="Repair.ReplaceToken"
+    Title="Replace '{0}' with '{1}'"
+    Facts="found:Text,replacement:Text"
+
+  + Name="Repair.InsertToken"
+    Title="Insert '{0}'"
+    Facts="token:Text"
+
+  + Name="Repair.PropagateFailure"
+    Title="Propagate the failure with try and discard the success value"
+
+  + Name="Repair.ExplicitDiscard"
+    Title="Discard the result explicitly with _ ="

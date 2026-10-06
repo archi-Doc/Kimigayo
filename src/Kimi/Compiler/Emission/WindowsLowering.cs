@@ -17,6 +17,7 @@ internal enum AbiParameterKind : byte
     Value,
     OwnedSlot,
     SharedReference,
+    PreparedSlot,
     ResultSlot,
     Location,
     LocationLength,
@@ -57,6 +58,8 @@ internal static partial class WindowsLowering
     // SPEC 22.4-22.5.5: writeLine borrows its string handle and releases nothing.
     internal static readonly FunctionAbi WriteLine = new("__kimi_write_line", Unit.ComputationType, [new(StringReference.ArgumentType!, "text", AbiParameterKind.SharedReference, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi DestroyString = new("__kimi_destroy_string", Unit.ComputationType, OwnedStringParameters);
+    internal static readonly FunctionAbi CloneRc = new("__kimi_clone_rc", "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "value", AbiParameterKind.Value, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "length", AbiParameterKind.LocationLength)], resultSlot: true);
+    internal static readonly FunctionAbi CloneArc = new("__kimi_clone_arc", "void", CloneRc.Parameters, resultSlot: true);
 
     // SPEC 4.7.4: an Array handle is {buffer, length, capacity}; construction zeroes it and destruction releases its buffer.
     internal static readonly AbiParameter[] ArrayHandleParameters = [new("ptr", "handle", AbiParameterKind.OwnedSlot, 0), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)];
@@ -69,9 +72,12 @@ internal static partial class WindowsLowering
     // SPEC 4.7.4, 4.7.7: capacity routines move element bytes by stride and run no user code; the writer emits them only for modules that use Arrays.
     internal static readonly FunctionAbi ArrayGrow = new("__kimi_array_grow", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "minimum"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
     internal static readonly FunctionAbi ArrayReserve = new("__kimi_array_reserve", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("i64", "additional"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi DictionaryReserve = new("__kimi_dictionary_reserve", Unit.ComputationType, ArrayReserve.Parameters);
     internal static readonly FunctionAbi ArrayShrink = new("__kimi_array_shrink", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
-    internal static readonly FunctionAbi DictionaryShrink = new("__kimi_dictionary_shrink", Unit.ComputationType, ArrayShrink.Parameters);
+
+    // SPEC 22.1.2.5: the private nullable Alloc and byte copy behind Kimi.Storage; the writer emits them only for modules whose
+    // bodies call them.
+    internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes")]);
+    internal static readonly FunctionAbi TransferBytes = new("__kimi_transfer_bytes", Unit.ComputationType, [new("ptr", "destination"), new("ptr", "source"), new("i64", "size")]);
     internal static readonly FunctionAbi AbortMessage = new("__kimi_abort_message", Unit.ComputationType, OwnedStringParameters, noReturn: true);
     internal static readonly FunctionAbi TestTempDirectory = new("__kimi_test_temp", "void", [new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true);
 

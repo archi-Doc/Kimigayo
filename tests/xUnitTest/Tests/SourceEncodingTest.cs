@@ -55,7 +55,7 @@ public class SourceEncodingTest
     }
 
     [Fact]
-    public async Task ProjectBuildReportsInvalidUtf8FileAsAnError()
+    public void ProjectBuildReportsInvalidUtf8FileAsAnError()
     {
         var compilation = Compilation.CreateForTest();
         var path = Path.Combine(Path.GetTempPath(), $"kimi-char-{Guid.NewGuid():N}.kimi");
@@ -63,11 +63,12 @@ public class SourceEncodingTest
         {
             File.WriteAllBytes(path, [0x2F, 0x2F, 0x20, 0xED, 0xA0, 0x80]);
             compilation.Project.AddKimiFile(path);
-            // Each compilation owns its diagnostics; read the check's own compilation.
-            var context = new CheckContext(CheckInputSource.Disk);
-            Assert.False(await compilation.Project.Check(context, TestContext.Current.CancellationToken));
-            var diagnostic = Assert.Single(TestDiagnostics.Of(context.Compilation!, path));
+            // SPEC 23.3.3: an input that could not be established blocks the check entry with its own Input Error.
+            var output = CheckService.Run(compilation.Project, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+            Assert.Equal(CheckOutcome.Blocked, output.Outcome);
+            var diagnostic = Assert.Single(output.Diagnostics);
             Assert.Equal(nameof(DiagnosticCode.InvalidSourceEncoding_Kd), diagnostic.Code);
+            Assert.Equal(path, output.Sources[diagnostic.Source].Path);
         }
         finally
         {
@@ -97,9 +98,9 @@ public class SourceEncodingTest
             compilation.Project.AddKimiFile(path);
             Assert.False(await compilation.Project.Check(TestContext.Current.CancellationToken));
             File.WriteAllText(path, "let value = '😀'");
-            var context = new CheckContext(CheckInputSource.Disk);
-            Assert.True(await compilation.Project.Check(context, TestContext.Current.CancellationToken));
-            Assert.Empty(TestDiagnostics.Of(context.Compilation!, path));
+            var output = CheckService.Run(compilation.Project, WindowsProfile.Target, CheckMode.Product, false, CheckInputSource.Disk, TestContext.Current.CancellationToken);
+            Assert.True(output.Accepted);
+            Assert.Empty(output.Diagnostics);
         }
         finally
         {

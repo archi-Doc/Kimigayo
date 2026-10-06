@@ -145,6 +145,8 @@ public enum OwnershipFailure : byte
     ExpansionLimit,
     ComparisonLoanConflict,
     DefaultArgumentMove,
+    DefaultArgumentAccess,
+    DefaultArgumentBorrow,
     Internal,
 
     // SPEC 15.1.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
@@ -165,12 +167,17 @@ public enum OwnershipFailure : byte
     CallEffectConflict,
 
     StorageLimit,
+
+    // SPEC 8.10, 23.3.6.1: the Semantics cases of a definition exceed the implementation bound (OwnershipAnalysis.CaseBound).
+    CaseLimit,
 }
 
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
 {
     // Deferred bodies share syntax, but each expansion has distinct temporary storage.
     internal int DeferredExecution { get; init; } = -1;
+
+    internal int DefaultContext { get; init; } = -1;
 }
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
@@ -207,12 +214,17 @@ public readonly record struct OwnershipMatchArmPlan(int Match, int Pattern, int 
     int GuardEntry = -1, int GuardBranch = -1, int BodyEntry = -1, int GuardValue = -1, int GuardCleanupStart = -1, int GuardLoan = -1);
 
 /// <summary>A reserved input: its lending point and the invocation it prepares (SPEC 15.6.7).</summary>
-public readonly record struct OwnershipLending(Koto Input, InvocationKoto Call);
+public readonly record struct OwnershipLending(Koto Input, Koto Call);
 
 // Input is the record's own reserved input; ConflictingReservation is the earlier reservation the operation conflicts with.
+// Destroyed names the borrowed Place a destruction ends while a live value keeps its Loan (empty for a Place without a name, such
+// as DestroyedTemporary); Borrow is the Borrow that created the Loan, with BorrowCapture its capture entry when it is a closure's
+// (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found under, one bit per case of the function's
+// enumeration (SPEC 8.10, 23.3.6.4); empty outside a case run and once every case found the problem.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
-    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null)
+    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null,
+    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -220,16 +232,22 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
         OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
         OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
-        OwnershipFailure.ComparisonLoanConflict => this.Activation ? DiagnosticCode.CallActivationConflict_Kd :
+        OwnershipFailure.ComparisonLoanConflict => this.Activation ? (this.Source is InvocationKoto ? DiagnosticCode.CallActivationConflict_Kd : DiagnosticCode.PlacementActivationConflict_Kd) :
             this.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
         OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
+        OwnershipFailure.DefaultArgumentAccess => DiagnosticCode.DefaultArgumentAccess_Kd,
+        OwnershipFailure.DefaultArgumentBorrow => DiagnosticCode.DefaultArgumentBorrow_Kd,
         OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-        OwnershipFailure.UnprovenOrigin => DiagnosticCode.UnprovenConstraint_Kd,
+        OwnershipFailure.UnprovenOrigin => this.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter }
+            ? Binding.RefutesOriginRelation(longer, shorter) ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd
+            : DiagnosticCode.UnprovenConstraint_Kd,
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
+        OwnershipFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
+        OwnershipFailure.Unsupported when this.OperationType is not null => DiagnosticCode.UnsupportedIntegerOperation_Kd,
         _ => DiagnosticCode.UnsupportedOwnership_Kd,
     };
 }
@@ -288,7 +306,10 @@ public sealed partial class OwnershipBody
     internal ulong[] BlockStates = [];
     internal ulong[] Scratch = [];
 #pragma warning restore SA1401
-    private readonly HashSet<(Koto Source, OwnershipFailure Failure)> reportedIssues = new();
+    private readonly Dictionary<(Koto Source, OwnershipFailure Failure), int> reportedIssues = new();
+    private PairCase[] caseStorage = [];
+    private int caseCount;
+    private ulong caseBit;
 
     public FunctionKoto Function { get; internal set; } = null!;
 
@@ -318,10 +339,15 @@ public sealed partial class OwnershipBody
 
     public bool IsConcrete { get; internal set; }
 
+    internal int DefaultParameter { get; set; } = -1;
+
+    internal int ParameterCount => this.DefaultParameter >= 0 ? this.DefaultParameter : this.Function.Parameters.Count;
+
+    internal BoundType? DeclaredResultType => this.DefaultParameter >= 0 ? this.Function.Parameters[this.DefaultParameter].Type.BoundType : this.Function.BoundSymbol?.Type;
+
     internal List<OwnershipIdentity>? Identities { get; set; }
 
     /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.9).</summary>
-    internal List<(int Place, int Root)>? ConditionalReborrows { get; set; }
 
     /// <summary>Gets or sets the derived effects of the definition's generic requirement calls on their abstract inputs (SPEC 8.4.10.4).</summary>
     internal List<OwnershipRequirementEffect>? RequirementEffects { get; set; }
@@ -337,22 +363,40 @@ public sealed partial class OwnershipBody
 
     internal Binding? InstanceBinding { get; set; }
 
+    /// <summary>Gets the Semantics case this definition run analyzes (SPEC 8.10); empty outside a case run.</summary>
+    internal ReadOnlyMemory<PairCase> Cases => this.caseStorage.AsMemory(0, this.caseCount);
+
     public bool IsReachable(int operation) => this.Reachable[operation];
 
-    // A declared Type as this body's plan sees it; an instance plan sees its closed substitution.
-    internal BoundType? Concrete(BoundType? type) => type is null || this.Instance is null ? type : this.InstanceBinding!.InstantiateStorageType(type, this.Instance);
+    // A declared Type as this body's plan sees it: a case run sees its case Types and an instance plan its closed substitution.
+    internal BoundType? Concrete(BoundType? type)
+        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
+        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
 
-    // An instance plan carries its substitution from the start, so every phase that reads a declared Type through Concrete,
-    // from building and solving to lowering, sees the closed Type.
-    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding)
+    // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
+    // Concrete, from building and solving to lowering, sees the substituted Type.
+    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.Function = function;
+        this.DefaultParameter = -1;
         this.Instance = instance;
-        this.InstanceBinding = instance is null ? null : instanceBinding;
+        this.caseBit = caseBit;
+        if (this.caseStorage.Length < cases.Length)
+        {
+            this.caseStorage = new PairCase[Math.Max(cases.Length, 4)];
+        }
+
+        cases.CopyTo(this.caseStorage);
+        this.caseCount = cases.Length;
+        this.InstanceBinding = instance is null && cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
+        this.DefaultContexts?.Clear();
+        this.DefaultSymbolPlaces?.Clear();
+        this.DefaultEvaluations?.Clear();
+        this.DefaultInputs?.Clear();
         this.EdgeStorage.Clear();
         this.EdgeHeads.Clear();
         this.IncomingEdges.Clear();
@@ -360,7 +404,6 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.Sequences.Clear();
         this.Identities?.Clear();
-        this.ConditionalReborrows?.Clear();
         this.RequirementEffects?.Clear();
         this.RequirementResults?.Clear();
         this.Anchors?.Clear();
@@ -403,11 +446,38 @@ public sealed partial class OwnershipBody
         this.SymbolPlaces.Clear();
     }
 
+    // SPEC 8.10, 23.3.6.4: a problem of a Semantics case run carries its case; one problem found by several cases of this body's
+    // function is one record whose cases merge (MergeIssue).
     internal void ReportIssue(OwnershipIssue issue)
     {
-        if (this.reportedIssues.Add((issue.Source, issue.Failure)))
+        if (this.reportedIssues.TryAdd((issue.Source, issue.Failure), this.IssueStorage.Count))
         {
-            this.IssueStorage.Add(issue);
+            this.IssueStorage.Add(this.caseBit == 0 ? issue : issue with { Cases = this.caseBit });
+        }
+    }
+
+    // A side case body's problem merges into this listed body: a problem already found gains the cases, a new one is added.
+    internal void MergeIssue(in OwnershipIssue issue)
+    {
+        if (this.reportedIssues.TryGetValue((issue.Source, issue.Failure), out var index))
+        {
+            this.IssueStorage[index] = this.IssueStorage[index] with { Cases = this.IssueStorage[index].Cases | issue.Cases };
+            return;
+        }
+
+        this.reportedIssues.Add((issue.Source, issue.Failure), this.IssueStorage.Count);
+        this.IssueStorage.Add(issue);
+    }
+
+    // SPEC 23.3.6.4: after the last case, a problem found under every case of `all` shows no case.
+    internal void DropUniversalCases(ulong all)
+    {
+        for (var i = 0; i < this.IssueStorage.Count; i++)
+        {
+            if (this.IssueStorage[i].Cases == all)
+            {
+                this.IssueStorage[i] = this.IssueStorage[i] with { Cases = 0 };
+            }
         }
     }
 
@@ -461,6 +531,8 @@ internal enum OwnershipValueKind : byte
     Constant,
     Parameter,
     Call,
+    DefaultCall,
+    DefaultRead,
     Alias,
     Convert,
     Unary,
@@ -551,9 +623,9 @@ internal readonly record struct OwnershipResultWrite(int Operation, int Declare)
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
 // Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
 // and final ProjectElement for an exclusive write.
-internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, InvocationKoto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
+internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int Parent, int Depth, LoanRequirement Mode = LoanRequirement.Ref, Koto? Call = null, int Guard = -1, bool Access = false, int Projection = -1, InvocationKoto? Callable = null, int Reservation = -1);
 
-internal readonly record struct OwnershipCallReservation(InvocationKoto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1);
+internal readonly record struct OwnershipCallReservation(Koto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1, int Loaded = -1, int Argument = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
 

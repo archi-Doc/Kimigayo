@@ -28,6 +28,18 @@ public readonly record struct Token
     public readonly bool IsMissing; // 1
 
     /// <summary>
+    /// Indicates whether this <c>&lt;</c> opens Type arguments or parameters: the tokenizer found its matching <c>&gt;</c> under the
+    /// layout rules (SPEC 2.2.1, 12.4.2). The parser reads a <c>&lt;</c> in an expression as Type arguments only when this holds.
+    /// </summary>
+    public readonly bool OpensTypeArguments; // 1
+
+    /// <summary>
+    /// Indicates whether this closer closes no open grouping: the lexer reported it (SPEC 2.2.1), and recovery inside a delimited
+    /// list skips it as it skips any other token, while elsewhere it ends an expression as a closer does.
+    /// </summary>
+    public readonly bool ClosesNothing; // 1
+
+    /// <summary>
     /// The token span in the source document.
     /// </summary>
     public readonly SourceSpan Span; // 8
@@ -41,11 +53,6 @@ public readonly record struct Token
     /// Gets the token length in characters.
     /// </summary>
     public int Length => this.Span.Length;
-
-    /// <summary>
-    /// Gets a value indicating whether the token has a valid kind.
-    /// </summary>
-    public bool IsValid => this.Kind != TokenKind.Invalid;
 
     /// <summary>
     /// Initializes a new instance of the <see cref="Token"/> struct.
@@ -92,6 +99,20 @@ public readonly record struct Token
         this.IsMissing = isMissing;
     }
 
+    private Token(int start, bool opensTypeArguments)
+    {
+        this.Kind = TokenKind.LessThan;
+        this.Span = new(start, 1);
+        this.OpensTypeArguments = opensTypeArguments;
+    }
+
+    private Token(TokenKind closer, int start)
+    {
+        this.Kind = closer;
+        this.Span = new(start, 1);
+        this.ClosesNothing = true;
+    }
+
     /// <summary>
     /// Returns the token kind as a display string.
     /// </summary>
@@ -100,4 +121,18 @@ public readonly record struct Token
     {
         return $"({this.Kind.ToString()})";
     }
+
+    /// <summary>Creates a <c>&lt;</c> token.</summary>
+    /// <param name="start">The absolute source offset.</param>
+    /// <param name="opensTypeArguments">Whether it opens Type arguments or parameters (<see cref="OpensTypeArguments"/>).</param>
+    /// <returns>The token.</returns>
+    internal static Token LessThan(int start, bool opensTypeArguments)
+        => new(start, opensTypeArguments);
+
+    /// <summary>Creates a closer that closes no open grouping (<see cref="ClosesNothing"/>).</summary>
+    /// <param name="closer">The closer's kind.</param>
+    /// <param name="start">The absolute source offset.</param>
+    /// <returns>The token.</returns>
+    internal static Token UnmatchedCloser(TokenKind closer, int start)
+        => new(closer, start);
 }

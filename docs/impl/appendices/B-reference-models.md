@@ -58,7 +58,7 @@ One possible borrow-checking sequence follows. Type checking uses the Structural
 3. Generate Origin and well-formedness constraints.
 4. Instantiate call-site Origins and propagate result Loan requirements.
 5. Solve region constraints to a fixed point.
-6. Reject local-to-universal region flows.
+6. Judge Origin relations (§15.6.5): a chain that carries a finite Origin past its bound is Refuted, an underivable chain between fixed Origins is Unknown, and a failed relation adds no region constraint (§15.6.1).
 7. Compute active Loans and check overlap conflicts.
 8. Check reborrows and destructor observations.
 ```

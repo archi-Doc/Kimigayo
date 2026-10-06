@@ -12,8 +12,11 @@ internal static class MatchTypes
     // struct with a user destructor. Complete payload Types retain the Loans verified by ownership analysis.
     internal static bool SupportsOwnedPatternValue(BoundType type, Dictionary<BoundType, bool> cache)
     {
+        // Complete handles move without decomposing their pointees. Their prepared layout selects destruction:
+        // common Function values use their operations table; object handles use their static ownership mode.
         if (ScalarTypes.Supports(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) ||
-            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind == BoundTypeKind.Slice)
+            ObjectTypes.HandleMode(type) is not null ||
+            ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.FunctionItem)
         {
             return true;
         }

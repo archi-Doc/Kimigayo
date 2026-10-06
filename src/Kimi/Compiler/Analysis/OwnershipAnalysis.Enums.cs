@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
     // length zero or of a zero-sized element. Call only after SupportsType accepted the Type (no inline cycles).
     private static bool IsZeroSized(BoundType type)
     {
-        if (ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never))
+        if (ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.Never) || type.Kind == BoundTypeKind.FunctionItem)
         {
             return true;
         }
@@ -93,6 +93,17 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
+        var handle = ObjectTypes.HandleMode(type);
+        if (handle is null && ReferenceTypes.IsReference(type))
+        {
+            handle = ObjectTypes.HandleMode(type.Components[0]);
+        }
+
+        if (handle is not null)
+        {
+            return true;
+        }
+
         if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
         {
             this.CollectLibraryBody(this.compilation.Library.DictionaryAppendSlot);
@@ -100,17 +111,16 @@ public sealed partial class OwnershipAnalysis
             this.CollectLibraryBody(this.compilation.Library.DictionaryClearLinks);
             this.CollectLibraryBody(this.compilation.Library.DictionaryFind);
             this.CollectLibraryBody(this.compilation.Library.DictionaryClear);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryShrink);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryReserveStorage);
+            // The typed placement helper calls append by name; reserve and shrinkToFit are reached through ordinary calls.
             this.CollectLibraryBody(this.compilation.Library.DictionaryAppend);
         }
 
-        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type) || ObjectTypes.IsOwner(type))
+        if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type))
         {
             return true;
         }
 
-        if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        if (type.Kind is BoundTypeKind.Slice or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
         {
             return true;
         }
@@ -221,10 +231,10 @@ public sealed partial class OwnershipAnalysis
 
     private void CheckAcquisition(int place, AcquisitionKind? acquisition)
     {
-        // An instance resolves a committed CopyOrMove to its substitution's exact effect, and a transfer (@move)
+        // A case or an instance resolves a committed CopyOrMove to its substitution's exact effect, and a transfer (@move)
         // moves a Copy or Copy-unproven Place (SPEC 13.5.3).
         if (place >= 0 && acquisition is { } expected && this.body.PlaceStorage[place].Acquisition is var actual && actual != expected &&
-            !(this.instance is not null && expected == AcquisitionKind.CopyOrMove && actual is AcquisitionKind.Copy or AcquisitionKind.Move) &&
+            !(this.Substituting && expected == AcquisitionKind.CopyOrMove && actual is AcquisitionKind.Copy or AcquisitionKind.Move) &&
             !(expected == AcquisitionKind.Move && actual is AcquisitionKind.Copy or AcquisitionKind.CopyOrMove))
         {
             throw new InvalidOperationException("Committed payload acquisition disagrees with its source Place.");
@@ -299,6 +309,8 @@ public sealed partial class OwnershipAnalysis
 
         var plan = this.body.ConstructionStorage.Count;
         this.body.ConstructionStorage.Add(new(output, null, start, elements.Count));
+        // Placed exclusive references are reserved until the literal completes, as the arguments of a call are.
+        var loanDepth = this.comparisonDepth++;
         var completes = true;
         for (var i = 0; i < elements.Count; i++)
         {
@@ -309,17 +321,24 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            var reservationMark = this.body.CallReservations.Count;
+            this.ReservePlacedReference(source, elements[i], start + i, value);
+            this.ActivateCallReservations(source, reservationMark);
             this.Emit(OwnershipOperationKind.PayloadPlacement, elements[i], start + i, value);
             this.RegisterTemporary(start + i);
         }
 
         if (!completes)
         {
+            this.EndComparisonLoans(loanDepth, source);
+            this.comparisonDepth = loanDepth;
             return -1;
         }
 
         var complete = this.Emit(OwnershipOperationKind.CompleteConstruction, source, output);
         this.body.OperationSteps[complete] = plan;
+        this.EndComparisonLoans(loanDepth, source);
+        this.comparisonDepth = loanDepth;
         return this.RegisterTemporary(output);
     }
 }

@@ -19,7 +19,7 @@ public struct Dictionary<K, V>
 
     /// Publishes the matching value Place for exclusive access; keys remain shared during lookup.
     public func indexUniq(self: uniq/Self, key: ref/K) -> place uniq/V during self
-        var state = Storage.borrowStorage(self)
+        var state = Storage.borrowStorageUniq(self)
         loop
             match Storage.splitFirst(state@uniq)
                 .Some((let storedKey, let value))
@@ -29,11 +29,11 @@ public struct Dictionary<K, V>
     /// Secures capacity for `additional` more entries without touching the stored entries; a negative or unrepresentable
     /// amount Aborts at the caller.
     public func reserve(self: uniq/Self, additional: isize)
-        Storage.reserveEntries(self, additional)
+        DictionaryStorage.reserveEntries(self, additional)
 
     /// Releases unused capacity, compacting the live entries in insertion order; an allocation failure keeps the storage.
     public func shrinkToFit(self: uniq/Self)
-        Storage.shrinkEntries(self)
+        DictionaryStorage.shrinkEntries(self)
 
     /// Appends the pair when no equal key is stored; otherwise returns both inputs unchanged as `Err`.
     public func tryInsert(self: uniq/Self, key: K, value: V) -> Result<(), (K, V)>
@@ -84,7 +84,7 @@ public struct Dictionary<K, V>
 
     /// Starts an exclusive enumeration in insertion order: keys stay shared and each value is lent exclusively once.
     public func iterateUniq(self: uniq/Self during source) -> DictionaryUniqIterator<K, V> during source
-        return DictionaryUniqIterator<K, V>.init(Storage.borrowStorage(self))
+        return DictionaryUniqIterator<K, V>.init(Storage.borrowStorageUniq(self))
 
     /// Starts an owning enumeration: each entry is transferred out once as (key, value), and the unreturned entries are
     /// destroyed with the iterator in reverse insertion order, each value before its key (SPEC 4.7.6).

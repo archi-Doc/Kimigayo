@@ -108,7 +108,7 @@ public struct FromEnd<T>
     public func resolve(self: Self, length: isize) -> isize
         match self.tryResolve(length)
             .Some(let position) => return position
-            .None => $abort("Position out of range")
+            .None => Kimi.Storage.argumentOutOfRange()
 
     /// Writes `^` followed by the offset.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -136,7 +136,7 @@ public struct Start
     ///
     /// - abort: `length < 0`.
     public func resolve(self: Self, length: isize) -> isize
-        require length >= 0 else => $abort("Position out of range")
+        require length >= 0 else => Kimi.Storage.argumentOutOfRange()
         return 0
 
     /// Writes nothing: the boundary that range syntax omits.
@@ -164,7 +164,7 @@ public struct End
     ///
     /// - abort: `length < 0`.
     public func resolve(self: Self, length: isize) -> isize
-        require length >= 0 else => $abort("Position out of range")
+        require length >= 0 else => Kimi.Storage.argumentOutOfRange()
         return length
 
     /// Writes nothing: the boundary that range syntax omits.
@@ -211,7 +211,7 @@ public struct Range<S, E>
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
             .Some(let resolved) => return resolved
-            .None => $abort("Range out of range")
+            .None => Kimi.Storage.argumentOutOfRange()
 
     /// Writes the start, `..` and the end, each boundary in its own representation: `1..^1`, `2..`.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -285,7 +285,7 @@ public struct ClosedRange<S, E>
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
             .Some(let resolved) => return resolved
-            .None => $abort("Range out of range")
+            .None => Kimi.Storage.argumentOutOfRange()
 
     /// Writes the start, `..=` and the end, each boundary in its own representation: `1..=3`, `..=^1`.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>
@@ -338,7 +338,7 @@ public struct RangeIterator<T>
     ///
     /// - abort: `start > end`.
     internal func starting(start: T, end: T) -> RangeIterator<T>
-        require start <= end else => $abort("Reversed range")
+        require start <= end else => Kimi.Storage.argumentOutOfRange()
         return RangeIterator<T>.init(start, end)
 
     /// Starts at `start` of a validated half-open interval, which is never reversed.
@@ -373,7 +373,7 @@ public struct ClosedRangeIterator<T>
     ///
     /// - abort: `start > end`.
     internal func starting(start: T, end: T) -> ClosedRangeIterator<T>
-        require start <= end else => $abort("Reversed closed range")
+        require start <= end else => Kimi.Storage.argumentOutOfRange()
         if ClosedRangeIterator<T>.isMaximum(end) => return ClosedRangeIterator<T>.init(start, end, true)
         return ClosedRangeIterator<T>.init(start, end + 1, false)
 
@@ -500,7 +500,7 @@ public struct ResolvedRange
     public func resolve(self: Self, length: isize) -> ResolvedRange
         match self.tryResolve(length)
             .Some(let resolved) => return resolved
-            .None => $abort("Range out of range")
+            .None => Kimi.Storage.argumentOutOfRange()
 
     /// Writes `start..end`, as the Range<isize, isize> with the same boundaries is written.
     public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull>

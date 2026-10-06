@@ -39,6 +39,49 @@ public class ElementUpdateEmissionTest
     public void UpdatesExecute(string name, string source)
         => ScalarEmissionTest.EmitFixture("ElementUpdate" + name, source, "ok\n");
 
+    // SPEC 8.4.7.3, 13.7: a generic integer is numeric in every instance, so a compound update of one through an Array element,
+    // a followed reference or a fixed-array element verifies in the definition, as through a local or a borrowed Field, and each
+    // instance updates its concrete Scalar.
+    [Fact]
+    public void GenericIntegerUpdatesThroughBorrowsExecute()
+    {
+        const string Source = """
+            func bumpElement<T>(values: uniq/Array<T>, i: isize)
+                T is PrimitiveInteger
+                values[i] += 1
+            func bumpReferent<T>(value: uniq/T)
+                T is PrimitiveInteger
+                value@follow += 2
+            func bumpFixed<T>(values: uniq/[2 of T])
+                T is PrimitiveInteger
+                values[1] *= 3
+            var values: Array<i32> = [1, 2]
+            bumpElement(values@uniq, 1)
+            var small: u8 = 250
+            bumpReferent(small@uniq)
+            var fixed: [2 of i64] = [1, 2]
+            bumpFixed(fixed@uniq)
+            require values[1] == 3 and small == 252 and fixed[1] == 6 else => $abort("bump")
+            Console.writeLine("ok")
+            """;
+        ScalarEmissionTest.EmitFixture("ElementUpdateGenericInteger", Source, "ok\n");
+    }
+
+    // SPEC 13.3: a string destination has no compound update, through a raw pointer or as a local; Binding rejects it before
+    // any update plan, so neither the analysis nor emission sees it.
+    [Theory]
+    [InlineData("func append(p: raw/string)\n    unsafe => *p += \"x\"")]
+    [InlineData("func append()\n    var s = \"a\"\n    s += \"b\"")]
+    public void AStringCompoundUpdateIsRejectedAtBinding(string function)
+    {
+        var c = MinimalEmissionTest.Analyze(function + "\npublic func main() => ()");
+        Assert.False(c.Binding.Result.IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(Kimi.DiagnosticCode.NonNumericOperand_Kd, issue.Code);
+        Assert.Contains("+=", issue.Node.ToString(), StringComparison.Ordinal);
+        Assert.Empty(c.Ownership.Issues);
+    }
+
     [Theory]
     [InlineData("i8")]
     [InlineData("u8")]

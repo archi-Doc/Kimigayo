@@ -50,6 +50,8 @@ internal sealed partial class GenericStoragePlan
 
     internal Dictionary<BoundCall, CallEntry> Calls => this.calls; // The concrete type enumerates without allocation.
 
+    internal IReadOnlyList<CallEntry> Entries => this.entries;
+
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
 
     internal CallEntry? ExpansionParent { get; set; }
@@ -58,7 +60,7 @@ internal sealed partial class GenericStoragePlan
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
-        => !function.IsSpecialization && (function.GenericArguments.Count != 0 || function.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 });
+        => function.RequiresInstantiation;
 
     internal void Clear()
     {
@@ -103,7 +105,7 @@ internal sealed partial class GenericStoragePlan
                 continue;
             }
 
-            if (!body.IsVerified || body.Function.IsAnonymous || body.Function.AttributeChain is not null)
+            if (!body.IsVerified || (body.Function.IsAnonymous && body.Function.BoundClosure is null) || body.Function.AttributeChain is not null)
             {
                 return Fail("Generic generation requires a verified ordinary definition without captures or declaration attributes.", out failure);
             }
@@ -119,7 +121,9 @@ internal sealed partial class GenericStoragePlan
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }
 
-            if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure))
+            if (!this.PrepareDictionaryConstructions(compilation, module, layouts, body, null, out failure) ||
+                !this.PrepareFunctionItems(compilation, module, layouts, body, null, 0, out failure) ||
+                !this.PrepareClosures(compilation, module, layouts, body, null, 0, out failure))
             {
                 return false;
             }
@@ -127,7 +131,7 @@ internal sealed partial class GenericStoragePlan
             for (var i = 0; i < body.Operations.Count; i++)
             {
                 var operation = body.Operations[i];
-                if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call })
+                if (operation.Kind != OwnershipOperationKind.Call || body.CallAt(i) is not { } call)
                 {
                     continue;
                 }
@@ -152,6 +156,21 @@ internal sealed partial class GenericStoragePlan
         return true;
     }
 
+    // Evaluators use the same dependency preparation and concrete call map as ordinary generic entries, but have their own
+    // result and prefix signature and never select the enclosing function's specialization as their implementation.
+    internal bool PrepareDefault(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, DefaultGenerationPlan.Entry evaluator, out string? failure)
+    {
+        var template = this.GetTemplate(body, evaluator.Context?.Template);
+        var previous = evaluator.Context;
+        var context = previous is not null && ReferenceEquals(previous.Template, template) ? previous :
+            new CallEntry(template, evaluator.Abi, null, evaluator.Parameters, evaluator.Result, evaluator.Call.DeclaringType, evaluator.Call.TypeArguments.ToArray(), evaluator.Call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+            {
+                ConcreteCalls = new BoundCall[template.DirectCalls.Length],
+            };
+        evaluator.Context = context;
+        return this.PrepareEntryDependencies(compilation, module, layouts, evaluator.Call, template, context, 0, out failure);
+    }
+
     private static bool Fail(string reason, out string? failure)
     {
         failure = reason;
@@ -161,23 +180,80 @@ internal sealed partial class GenericStoragePlan
     private static bool IsFormattingCallback(BoundCall call)
         => Binding.HasFormattingCallback(call);
 
+    // SPEC 7.6.4: a generic Function Item is called and erased through the instance of its bound arguments. Its entry is
+    // requested where the Item is produced, under the producing body's own substitution.
+    private bool PrepareFunctionItems(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? call, int depth, out string? failure)
+    {
+        failure = null;
+        var binding = compilation.Binding;
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            var operation = body.Operations[i];
+            // The declared Type, not the Place Type: a generic template's first Semantics case substitutes its pair layers (SPEC 8.10).
+            if (operation.Kind != OwnershipOperationKind.Produce || operation.Place < 0 ||
+                operation.Source.BoundType is not { Kind: BoundTypeKind.FunctionItem, Components.Count: > 0 } produced ||
+                produced.Symbol?.Declaration is not FunctionKoto target)
+            {
+                continue;
+            }
+
+            var declared = body.SubstituteDefaultType(produced, body.DefaultContextAt(i));
+            var item = declared is null || call is null ? declared : binding.InstantiateStorageType(declared, call);
+            if (item is null || binding.FunctionItemContext(item) is not { } context || !this.templates.TryGetValue(target, out var template))
+            {
+                return Fail("Generic Function Item requires a closed substitution and a verified generic body.", out failure);
+            }
+
+            if (!this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private bool PrepareClosures(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? call, int depth, out string? failure)
+    {
+        failure = null;
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            if (body.Values[i].Kind != OwnershipValueKind.Closure ||
+                body.Operations[i].Source is not FunctionKoto { BoundClosure.EnvironmentType: { } environment } closure || !IsGeneric(closure))
+            {
+                continue;
+            }
+
+            var declared = body.SubstituteDefaultType(environment, body.DefaultContextAt(i));
+            var type = declared is null || call is null ? declared : compilation.Binding.InstantiateStorageType(declared, call);
+            if (type?.ClosureContext is not { } context || !this.templates.TryGetValue(closure, out var template) ||
+                !this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
+            {
+                return Fail(failure ?? "Generic closure requires its enclosing concrete substitution.", out failure);
+            }
+        }
+
+        return true;
+    }
+
     // The template records the calls its instances forward; each instance resolves them under its substitution. The previous
     // emission's template is reused when its body and forwarded calls are unchanged.
-    private Template GetTemplate(OwnershipBody body)
+    private Template GetTemplate(OwnershipBody body, Template? prior = null)
     {
         var calls = this.directScratch;
         calls.Clear();
         for (var i = 0; i < body.Operations.Count; i++)
         {
             var operation = body.Operations[i];
-            if (operation.Kind == OwnershipOperationKind.Call && operation.Source is InvocationKoto { BoundCall: { } call } &&
-                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) && !calls.Contains(call))
+            if (operation.Kind == OwnershipOperationKind.Call && body.CallAt(i) is { } call &&
+                (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc) && !calls.Contains(call))
             {
                 calls.Add(call);
             }
         }
 
-        return this.previousTemplates.TryGetValue(body.Function, out var previous) && ReferenceEquals(previous.Body, body) &&
+        var previous = prior ?? this.previousTemplates.GetValueOrDefault(body.Function);
+        return previous is not null && ReferenceEquals(previous.Body, body) &&
             previous.DirectCalls.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(calls)) ? previous : new(body, calls.ToArray());
     }
 
@@ -270,10 +346,12 @@ internal sealed partial class GenericStoragePlan
             parameters[i] = type;
         }
 
+        // SPEC 15.3.7, IMPL 21.3: the open regions of a call site's slot solutions are Origin differences alone and never select
+        // another instance.
         foreach (var existing in this.calls.Values)
         {
-            if (ReferenceEquals(existing.Template, template) && ReferenceEquals(existing.Result, result) &&
-                existing.Parameters.AsSpan().SequenceEqual((ReadOnlySpan<BoundType>)parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && existing.Arguments.AsSpan().SequenceEqual(call.TypeArguments) && existing.Lengths.AsSpan().SequenceEqual(call.LengthArguments))
+            if (ReferenceEquals(existing.Template, template) && Binding.SameModuloOpenOrigins(existing.Result, result) &&
+                Binding.SameModuloOpenOrigins(existing.Parameters, parameters) && ReferenceEquals(existing.DeclaringType, call.DeclaringType) && Binding.SameModuloOpenOrigins(existing.Arguments, call.TypeArguments) && existing.Lengths.AsSpan().SequenceEqual(call.LengthArguments))
             {
                 entry = existing;
                 this.calls.Add(call, entry);
@@ -291,7 +369,7 @@ internal sealed partial class GenericStoragePlan
         }
 
         this.entryCounts[function] = count + 1;
-        var selected = binding.SelectSpecialization(call);
+        var selected = function.IsAnonymous ? null : binding.SelectSpecialization(call);
         var selectedAbi = selected is null ? null : this.functions!.GetValueOrDefault(selected);
         if (selected is not null && selectedAbi is null)
         {
@@ -301,7 +379,7 @@ internal sealed partial class GenericStoragePlan
         // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
         var name = this.destructorNames.TryGetValue(call, out var reserved) ? reserved : this.EntryName(this.entryNames++);
         entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
-            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol)), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol), function.IsAnonymous), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
                 ConcreteCalls = new BoundCall[template.DirectCalls.Length],
             };
@@ -331,7 +409,9 @@ internal sealed partial class GenericStoragePlan
     private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, CallEntry entry, int depth, out string? failure)
     {
         var binding = compilation.Binding;
-        if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1))
+        if (!this.PrepareDictionaryConstructions(compilation, module, layouts, template.Body, call, out failure, depth + 1) ||
+            !this.PrepareFunctionItems(compilation, module, layouts, template.Body, call, depth + 1, out failure) ||
+            !this.PrepareClosures(compilation, module, layouts, template.Body, call, depth + 1, out failure))
         {
             return false;
         }
@@ -467,7 +547,7 @@ internal sealed partial class GenericStoragePlan
             if (ReferenceEquals(previous.Abi.Name, name) && ReferenceEquals(previous.Template, template) && ReferenceEquals(previous.Result, result) &&
                 ReferenceEquals(previous.Selected, selected) && ReferenceEquals(previous.DeclaringType, call.DeclaringType) &&
                 previous.Parameters.AsSpan().SequenceEqual(parameters) && previous.Arguments.AsSpan().SequenceEqual(call.TypeArguments) &&
-                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(template.Body.Function.BoundSymbol)))
+                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(template.Body.Function.BoundSymbol), template.Body.Function.IsAnonymous))
             {
                 return previous;
             }

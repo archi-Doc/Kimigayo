@@ -25,6 +25,18 @@ public enum DiagnosticValueKind : byte
 
     /// <summary>A requirement by its stable name, such as <c>Syntax.Expression</c>; a message displays its phrase.</summary>
     Requirement,
+
+    /// <summary>An Origin display (SPEC 23.3.6.5): its bounded string, with its display kind in <see cref="DiagnosticValue.Origin"/>.</summary>
+    Origin,
+}
+
+/// <summary>An Origin as a Reason names it (SPEC 23.3.6.5): a display kind and a bounded string.</summary>
+/// <param name="Kind">The display kind: <c>expression</c>, <c>borrow</c>, <c>omitted</c> or <c>closure</c>.</param>
+/// <param name="Text">The display string, such as <c>x</c>, <c>(a and b)</c>, <c>local@ref</c> or <c>call receiver</c>.</param>
+public readonly record struct DiagnosticOrigin(string Kind, string Text)
+{
+    /// <inheritdoc/>
+    public override string ToString() => this.Text;
 }
 
 /// <summary>One typed fact of a record's Reason (SPEC 23.3.6.2).</summary>
@@ -32,7 +44,8 @@ public enum DiagnosticValueKind : byte
 /// <param name="Kind">The kind of value.</param>
 /// <param name="Value">The exact value, or the bounded display text.</param>
 /// <param name="Elided">Whether a bounded display value omits part of its text.</param>
-public readonly record struct DiagnosticValue(string Name, DiagnosticValueKind Kind, string Value, bool Elided = false)
+/// <param name="Origin">The display kind of an Origin value (SPEC 23.3.6.5); present exactly when <paramref name="Kind"/> is Origin.</param>
+public readonly record struct DiagnosticValue(string Name, DiagnosticValueKind Kind, string Value, bool Elided = false, string? Origin = null)
 {
     /// <summary>Creates an enumeration value.</summary>
     /// <typeparam name="T">The enumeration.</typeparam>
@@ -132,12 +145,15 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
     /// <summary>Gets the presentation data.</summary>
     public DiagnosticDisplay? Display { get; init; }
 
+    /// <summary>Gets the repair candidates (SPEC 23.3.6.9): alternative structured edits that resolve the problem, in catalog order then position.</summary>
+    public RepairCandidate[]? Repairs { get; init; }
+
     public bool Equals(CheckDiagnostic? other)
         => other is not null && this.Code == other.Code && this.Severity == other.Severity && this.Category == other.Category &&
             this.Message == other.Message && this.Source == other.Source && this.Span == other.Span && this.Label == other.Label &&
             this.Note == other.Note && this.Advice == other.Advice && Equals(this.Display, other.Display) &&
             (this.Reason ?? []).AsSpan().SequenceEqual(other.Reason ?? []) && (this.Related ?? []).AsSpan().SequenceEqual(other.Related ?? []) &&
-            (this.Omissions ?? []).AsSpan().SequenceEqual(other.Omissions ?? []);
+            (this.Omissions ?? []).AsSpan().SequenceEqual(other.Omissions ?? []) && (this.Repairs ?? []).AsSpan().SequenceEqual(other.Repairs ?? []);
 
     public override int GetHashCode()
         => HashCode.Combine(this.Code, this.Source, this.Span, this.Message);

@@ -154,6 +154,18 @@ public class PairAnnotationBindingTest
         Assert.Same(f.BoundSymbol!.Schema!.Origins[0].Origin, pointerTarget.Origin);
     }
 
+    [Fact]
+    public void ATautologicalClauseDoesNotChangeAnOmittedPairOrigin()
+    {
+        // SPEC 15.4.1: a function with Origin clauses completes its omitted slots in their pending order, as it would without the
+        // clauses; the Semantics condition of the pair result once fell away there, leaving the result without an Origin.
+        var plain = Parse("func g<s/T>(x: s/i32) -> s/i32 => x");
+        var clause = Parse("func g<s/T>(x: s/i32) -> s/i32\n    origin static outlives static\n    return x");
+        Assert.True(plain.Bind().IsComplete, Describe(plain));
+        Assert.True(clause.Bind().IsComplete, Describe(clause));
+        Assert.Equal(Function(plain).BoundSymbol!.Type!.Origin?.Kind, Function(clause).BoundSymbol!.Type!.Origin?.Kind);
+    }
+
     private static Compilation Reload(Compilation c)
     {
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);

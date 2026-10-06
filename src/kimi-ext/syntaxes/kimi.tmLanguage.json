@@ -1,0 +1,368 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Kimi",
+  "scopeName": "source.kimi",
+  "fileTypes": ["kimi"],
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#directives" },
+    { "include": "#strings" },
+    { "include": "#characters" },
+    { "include": "#contextual" },
+    { "include": "#declarations" },
+    { "include": "#keywords" },
+    { "include": "#numbers" },
+    { "include": "#explicit-operations" },
+    { "include": "#semantics" },
+    { "include": "#composition-root" },
+    { "include": "#case-references" },
+    { "include": "#types" },
+    { "include": "#function-calls" },
+    { "include": "#operators" },
+    { "include": "#punctuation" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        {
+          "begin": "^( *)(///)(?!/)",
+          "beginCaptures": { "2": { "name": "punctuation.definition.comment.kimi" } },
+          "end": "$",
+          "name": "comment.line.documentation.kimi",
+          "patterns": [
+            { "match": "(`+)(?:(?!\\1).)+?\\1", "name": "markup.inline.raw.string.kimi" }
+          ]
+        },
+        {
+          "begin": "//",
+          "beginCaptures": { "0": { "name": "punctuation.definition.comment.kimi" } },
+          "end": "$",
+          "name": "comment.line.double-slash.kimi"
+        },
+        {
+          "begin": "/\\*",
+          "beginCaptures": { "0": { "name": "punctuation.definition.comment.begin.kimi" } },
+          "end": "\\*/",
+          "endCaptures": { "0": { "name": "punctuation.definition.comment.end.kimi" } },
+          "name": "comment.block.kimi"
+        }
+      ]
+    },
+    "directives": {
+      "patterns": [
+        {
+          "match": "(#)(if|switch|case)\\b",
+          "name": "keyword.control.directive.kimi",
+          "captures": { "1": { "name": "punctuation.definition.directive.kimi" } }
+        },
+        {
+          "match": "(#)([\\p{Lu}\\p{Lt}]\\w*)",
+          "name": "meta.attribute.kimi",
+          "captures": {
+            "1": { "name": "punctuation.definition.attribute.kimi" },
+            "2": { "name": "entity.other.attribute-name.kimi" }
+          }
+        }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "begin": "(\"{3,})",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.kimi" } },
+          "end": "\\1(?!\")",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.kimi" } },
+          "name": "string.quoted.raw.kimi"
+        },
+        {
+          "begin": "\"",
+          "beginCaptures": { "0": { "name": "punctuation.definition.string.begin.kimi" } },
+          "end": "\"",
+          "endCaptures": { "0": { "name": "punctuation.definition.string.end.kimi" } },
+          "name": "string.quoted.double.kimi",
+          "patterns": [
+            { "include": "#interpolation" },
+            { "include": "#escapes" }
+          ]
+        }
+      ]
+    },
+    "interpolation": {
+      "begin": "\\\\\\(",
+      "beginCaptures": { "0": { "name": "punctuation.section.embedded.begin.kimi" } },
+      "end": "\\)",
+      "endCaptures": { "0": { "name": "punctuation.section.embedded.end.kimi" } },
+      "name": "meta.embedded.line.kimi",
+      "contentName": "source.kimi",
+      "patterns": [
+        { "include": "#parenthesized" },
+        { "include": "$self" }
+      ]
+    },
+    "parenthesized": {
+      "begin": "\\(",
+      "beginCaptures": { "0": { "name": "punctuation.section.parens.begin.kimi" } },
+      "end": "\\)",
+      "endCaptures": { "0": { "name": "punctuation.section.parens.end.kimi" } },
+      "patterns": [
+        { "include": "#parenthesized" },
+        { "include": "$self" }
+      ]
+    },
+    "escapes": {
+      "patterns": [
+        { "match": "\\\\(?:[0\\\\etnr\"']|u\\([0-9A-Fa-f]{1,6}\\))", "name": "constant.character.escape.kimi" },
+        { "match": "\\\\(?:u\\([^)'\"]*\\)?|.?)", "name": "invalid.illegal.escape.kimi" }
+      ]
+    },
+    "characters": {
+      "begin": "'",
+      "beginCaptures": { "0": { "name": "punctuation.definition.char.begin.kimi" } },
+      "end": "'|$",
+      "endCaptures": { "0": { "name": "punctuation.definition.char.end.kimi" } },
+      "name": "string.quoted.single.kimi",
+      "patterns": [
+        { "include": "#escapes" }
+      ]
+    },
+    "contextual": {
+      "patterns": [
+        {
+          "match": "\\b(for)\\b(.*?)\\b(in)\\b",
+          "captures": {
+            "1": { "name": "keyword.control.kimi" },
+            "2": { "patterns": [{ "include": "$self" }] },
+            "3": { "name": "keyword.control.in.kimi" }
+          }
+        },
+        {
+          "match": "\\b(label)\\s+([\\p{L}\\p{Nl}_]\\w*)\\s*(:)(?!:)",
+          "captures": {
+            "1": { "name": "keyword.control.label.kimi" },
+            "2": { "name": "entity.name.label.kimi" },
+            "3": { "name": "punctuation.separator.label.kimi" }
+          }
+        },
+        {
+          "match": "\\b(exit|continue|yield)\\s+(to)\\s+([\\p{L}\\p{Nl}_]\\w*)",
+          "captures": {
+            "1": { "name": "keyword.control.kimi" },
+            "2": { "name": "keyword.control.to.kimi" },
+            "3": { "name": "entity.name.label.kimi" }
+          }
+        },
+        {
+          "match": "(?<=\\[)([^\\[\\]]*?\\s)(of)(?=\\s)",
+          "captures": {
+            "1": { "patterns": [{ "include": "$self" }] },
+            "2": { "name": "keyword.other.of.kimi" }
+          }
+        },
+        {
+          "match": "(?<=[<,])(\\s*)(length)(?=\\s+[\\p{L}\\p{Nl}_])",
+          "captures": { "2": { "name": "storage.modifier.length.kimi" } }
+        },
+        {
+          "match": "(?<![\\w.])(during|outlives)\\s+(static)\\b",
+          "captures": {
+            "1": { "name": "keyword.other.origin.kimi" },
+            "2": { "name": "keyword.other.origin.static.kimi" }
+          }
+        },
+        {
+          "match": "(?<![\\w.])(during|outlives)(?=\\s+[\\p{L}\\p{Nl}_])",
+          "name": "keyword.other.origin.kimi"
+        },
+        {
+          "match": "^\\s*(origin)(?=\\s+[\\p{L}\\p{Nl}_])",
+          "captures": { "1": { "name": "keyword.other.origin.kimi" } }
+        },
+        {
+          "match": "(?<![\\w.])(when)(?=\\s+[\\p{L}\\p{Nl}_])",
+          "name": "keyword.other.when.kimi"
+        },
+        {
+          "match": "(?<![\\w.])(place)(?=\\s+(?:ref|uniq)/)",
+          "name": "storage.modifier.place.kimi"
+        },
+        {
+          "match": "(?<![\\w.])(specialize)(?=\\s+func\\b)",
+          "name": "storage.modifier.specialize.kimi"
+        },
+        {
+          "match": "(?<![\\w.])(static)(?=\\s+(?:let|var|func|unsafe|specialize)\\b)",
+          "name": "storage.modifier.static.kimi"
+        },
+        {
+          "match": "(?<![\\w.])(unsafe)(?=\\s+func\\b)",
+          "name": "storage.modifier.unsafe.kimi"
+        },
+        {
+          "match": "(?:^|(?<==>))\\s*(unsafe)(?=\\s*(?:=>|//|/\\*|$))",
+          "captures": { "1": { "name": "storage.modifier.unsafe.kimi" } }
+        },
+        {
+          "match": "^(\\s*)((?:(?:public|internal|private|protected|open)\\s+)*)(get|set|has)\\b(?=\\s*(?:=>|//|$|\\((?:\\s*\\)|\\s*[\\p{L}\\p{Nl}_]\\w*\\s*:)))",
+          "captures": {
+            "2": { "patterns": [{ "include": "#keywords" }] },
+            "3": { "name": "storage.type.accessor.kimi" }
+          }
+        },
+        {
+          "match": "^\\s*(associate)(?=\\s+[\\p{L}\\p{Nl}_])",
+          "captures": { "1": { "name": "storage.type.associate.kimi" } }
+        },
+        {
+          "match": "(?<=\\bis )(valueborrow|objectborrow|value|object|borrow|owning|reference)\\b",
+          "name": "storage.modifier.semantics.category.kimi"
+        }
+      ]
+    },
+    "declarations": {
+      "patterns": [
+        {
+          "match": "\\b(func)\\s+([\\p{L}\\p{Nl}_]\\w*)",
+          "captures": {
+            "1": { "name": "storage.type.function.kimi" },
+            "2": { "name": "entity.name.function.kimi" }
+          }
+        },
+        {
+          "match": "(?<![\\w.])(struct|enum|contract|group|rootgroup|extension)\\s+([\\p{L}\\p{Nl}_]\\w*)",
+          "captures": {
+            "1": { "name": "storage.type.declaration.kimi" },
+            "2": { "name": "entity.name.type.kimi" }
+          }
+        },
+        {
+          "match": "(?<![\\w.])(alias)\\s+([\\p{L}\\p{Nl}_]\\w*)(?=\\s*=>)",
+          "captures": {
+            "1": { "name": "storage.type.alias.kimi" },
+            "2": { "name": "entity.name.type.alias.kimi" }
+          }
+        },
+        {
+          "match": "(?<![\\w.])(alias)(?=\\s+(?:::)?[\\p{L}\\p{Nl}_])",
+          "name": "storage.type.alias.kimi"
+        },
+        {
+          "match": "(?<![\\w.])(computed|property)\\s+([\\p{L}\\p{Nl}_]\\w*)(?=\\s*:)",
+          "captures": {
+            "1": { "name": "storage.type.property.kimi" },
+            "2": { "name": "variable.other.property.kimi" }
+          }
+        }
+      ]
+    },
+    "keywords": {
+      "patterns": [
+        { "match": "\\bfunc\\b", "name": "storage.type.function.kimi" },
+        { "match": "\\b(?:let|var)\\b", "name": "storage.type.binding.kimi" },
+        { "match": "\\b(?:if|else|case|for|while|loop|do|match|return|exit|continue|yield|try|require|defer|switch)\\b", "name": "keyword.control.kimi" },
+        { "match": "\\b(?:and|or|not)\\b", "name": "keyword.operator.expression.logical.kimi" },
+        { "match": "\\b(?:is|as)\\b", "name": "keyword.operator.expression.kimi" },
+        { "match": "\\b(?:true|false)\\b", "name": "constant.language.boolean.kimi" },
+        { "match": "\\bnull\\b", "name": "constant.language.null.kimi" },
+        { "match": "\\b(?:public|internal|private|protected|open)\\b", "name": "storage.modifier.access.kimi" },
+        { "match": "\\b(?:Self|self)\\b", "name": "variable.language.self.kimi" },
+        { "match": "\\b(?:init|drop|base)\\b", "name": "keyword.other.construction.kimi" },
+        { "match": "\\b_\\b", "name": "variable.language.wildcard.kimi" },
+        { "match": "\\b(?:isize|usize|i8|i16|i32|i64|i128|u8|u16|u32|u64|u128|f32|f64|bool|char|string)\\b", "name": "support.type.primitive.kimi" }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        { "match": "\\b0[xX]_*[0-9A-Fa-f][0-9A-Fa-f_]*\\b", "name": "constant.numeric.hex.kimi" },
+        { "match": "\\b0[oO]_*[0-7][0-7_]*\\b", "name": "constant.numeric.octal.kimi" },
+        { "match": "\\b0[bB]_*[01][01_]*\\b", "name": "constant.numeric.binary.kimi" },
+        { "match": "(?<=[^.]\\.)[0-9]+\\b", "name": "constant.numeric.integer.tuple-index.kimi" },
+        { "match": "\\b[0-9][0-9_]*(?:\\.[0-9][0-9_]*)?(?:[eE][+-]?[0-9][0-9_]*)?\\b", "name": "constant.numeric.decimal.kimi" }
+      ]
+    },
+    "explicit-operations": {
+      "patterns": [
+        {
+          "match": "(@)(move|copy|follow|raw)\\b(?!/)",
+          "captures": {
+            "1": { "name": "keyword.operator.explicit.kimi" },
+            "2": { "name": "keyword.operator.expression.explicit.kimi" }
+          }
+        },
+        {
+          "match": "(@)(wrap|bits)(?=<)",
+          "captures": {
+            "1": { "name": "keyword.operator.explicit.kimi" },
+            "2": { "name": "keyword.operator.expression.explicit.kimi" }
+          }
+        },
+        {
+          "match": "(@)(owner|ref|uniq|obj|rc|arc|objref|objuniq)\\b(?!/)",
+          "captures": {
+            "1": { "name": "keyword.operator.explicit.kimi" },
+            "2": { "name": "storage.modifier.semantics.kimi" }
+          }
+        },
+        { "match": "@", "name": "keyword.operator.explicit.kimi" }
+      ]
+    },
+    "semantics": {
+      "match": "(?<![\\w.])(owner|ref|uniq|obj|rc|arc|objref|objuniq|raw)(/)(?![/*])",
+      "captures": {
+        "1": { "name": "storage.modifier.semantics.kimi" },
+        "2": { "name": "punctuation.separator.semantics.kimi" }
+      }
+    },
+    "composition-root": {
+      "match": "(\\$)([\\p{L}\\p{Nl}_]\\w*)",
+      "name": "support.function.builtin.kimi",
+      "captures": { "1": { "name": "punctuation.definition.builtin.kimi" } }
+    },
+    "case-references": {
+      "match": "(?<![\\w)\\]>.\"'])(\\.)([\\p{Lu}\\p{Lt}]\\w*)",
+      "captures": {
+        "1": { "name": "punctuation.accessor.kimi" },
+        "2": { "name": "variable.other.enummember.kimi" }
+      }
+    },
+    "types": {
+      "match": "\\b[\\p{Lu}\\p{Lt}]\\w*",
+      "name": "entity.name.type.kimi"
+    },
+    "function-calls": {
+      "match": "\\b([\\p{Ll}\\p{Lm}\\p{Lo}\\p{Nl}_]\\w*)(?=(?:<[^<>()]*(?:<[^<>()]*>[^<>()]*)*>)?\\()",
+      "captures": { "1": { "name": "entity.name.function.call.kimi" } }
+    },
+    "operators": {
+      "patterns": [
+        { "match": ";|&&|\\|\\|", "name": "invalid.illegal.unavailable.kimi" },
+        { "match": "->|=>", "name": "keyword.operator.arrow.kimi" },
+        { "match": "\\.\\.=?", "name": "keyword.operator.range.kimi" },
+        { "match": "<<=|>>=|&=|\\|=|\\^=", "name": "keyword.operator.assignment.compound.bitwise.kimi" },
+        { "match": "\\+=|-=|\\*=|/=|%=", "name": "keyword.operator.assignment.compound.kimi" },
+        { "match": "==|!=|<=|>=", "name": "keyword.operator.comparison.kimi" },
+        { "match": "<<|>>", "name": "keyword.operator.bitwise.shift.kimi" },
+        { "match": "\\+\\+|--", "name": "keyword.operator.increment.kimi" },
+        { "match": "=", "name": "keyword.operator.assignment.kimi" },
+        { "match": "<|>", "name": "keyword.operator.comparison.kimi" },
+        { "match": "[&|^]", "name": "keyword.operator.bitwise.kimi" },
+        { "match": "[+\\-*/%]", "name": "keyword.operator.arithmetic.kimi" },
+        { "match": "\\?", "name": "keyword.operator.optional.kimi" },
+        { "match": "!", "name": "punctuation.separator.parameters.kimi" }
+      ]
+    },
+    "punctuation": {
+      "patterns": [
+        { "match": "::", "name": "punctuation.accessor.root.kimi" },
+        { "match": "\\.", "name": "punctuation.accessor.kimi" },
+        { "match": ",", "name": "punctuation.separator.comma.kimi" },
+        { "match": ":", "name": "punctuation.separator.colon.kimi" },
+        { "match": "\\(", "name": "punctuation.section.parens.begin.kimi" },
+        { "match": "\\)", "name": "punctuation.section.parens.end.kimi" },
+        { "match": "\\[", "name": "punctuation.section.brackets.begin.kimi" },
+        { "match": "\\]", "name": "punctuation.section.brackets.end.kimi" },
+        { "match": "\\{", "name": "punctuation.section.braces.begin.kimi" },
+        { "match": "\\}", "name": "punctuation.section.braces.end.kimi" }
+      ]
+    }
+  }
+}

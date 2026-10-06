@@ -108,7 +108,7 @@ public class IntegerRangeTest
             "let r = 3..1\nConsole.writeLine(\"constructed\")\nfor i in r\n    Console.writeLine(\"body\")",
             "constructed\n",
             1,
-            LibrarySource.Location("Core.kimi", "$abort(\"Reversed range\")") + ": abort KIMI_E_ABORT: Reversed range\n");
+            "Hello.kimi:3:1: abort KIMI_E_ARG_RANGE: Argument out of range\n");
 
     [Fact]
     public void ReversedClosedIterationAbortsWhenItStarts()
@@ -117,7 +117,7 @@ public class IntegerRangeTest
             "let r = 3..=2\nConsole.writeLine(\"constructed\")\nfor i in r\n    Console.writeLine(\"body\")",
             "constructed\n",
             1,
-            LibrarySource.Location("Core.kimi", "$abort(\"Reversed closed range\")") + ": abort KIMI_E_ABORT: Reversed closed range\n");
+            "Hello.kimi:3:1: abort KIMI_E_ARG_RANGE: Argument out of range\n");
 
     [Theory]
     [InlineData("Reversed", "values[2..1]")]

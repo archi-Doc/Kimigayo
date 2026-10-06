@@ -149,9 +149,21 @@ internal static partial class LlvmModuleWriter
 
         Name(output, "define internal void @__kimi_drop_aggregate", aggregate.Id);
         output.Write("(ptr %slot, ptr %location, i64 %length) #0 {\nentry:\n");
-        if (aggregate.ObjectHandle)
+        if (aggregate.ObjectHandle is { } objectHandle)
         {
-            output.Write("  call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n");
+            if (aggregate.ObjectPayloadDrop is { } payloadDrop)
+            {
+                WriteSealedObjectDrop(output, objectHandle, payloadDrop);
+                output.Write("  ret void\n}\n");
+                return;
+            }
+
+            output.Write(objectHandle.Counting switch
+            {
+                ObjectCountingStep.NonAtomic => "  call void @__kimi_drop_rc(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n",
+                ObjectCountingStep.Atomic => "  call void @__kimi_drop_arc(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n",
+                _ => "  call void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length)\n  ret void\n}\n",
+            });
             return;
         }
 

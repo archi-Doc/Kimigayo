@@ -25,7 +25,7 @@ public class FixedStorageTest
                         .None => exit
                 return total
             public func bump(values: uniq/[3 of i32])
-                var state = Storage.borrowStorage(values)
+                var state = Storage.borrowStorageUniq(values)
                 loop
                     match Storage.splitFirst(state@uniq)
                         .Some(let item) => item@follow += 10

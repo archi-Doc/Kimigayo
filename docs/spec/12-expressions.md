@@ -120,8 +120,8 @@ choose(10)     // Error: both candidates fit.
 choose(2 * 5)  // Error: a literal-only expression fits both in the same way.
 
 func take(range: Range<i32, i32>) -> () => ()
-func take(range: ref/Range<i32, i32>) -> () => ()
-take(0..3)     // The value candidate; the other needs a borrow of a temporary.
+func take(range: ref/Range<i64, i64>) -> () => ()
+take(0..3)     // The value candidate; the other also fits the literals but needs a borrow of a temporary.
 
 let x: i64 = 7
 let s: Range<i64, i64> = 0..3
@@ -161,7 +161,7 @@ let message = "first = \(values[0])"
 
 An interpolated literal produces an owning `string`. Each embedded expression fits the shared input of `Utf8Writer.write` under §10.2 and requires `Utf8Format` for the selected referent Type. Borrow Types do not forward conformance. The [formatting profile](utf8-formatting.md#5-interpolation-and-internal-adapters) defines evaluation, temporary lifetime, failure, representations and capacity planning. No intermediate owning string per value is required, and a bare Place is not Moved.
 
-`$tryWrite(writer, literal)` writes directly to an existing adapter, stopping at its first failure without evaluating later substitutions. Its immediate exclusive borrow, literal-only second operand and control-flow boundaries are defined in [the profile](utf8-formatting.md#53-short-circuiting-trywrite). String concatenation (§13.3) still accepts only string operands.
+`$tryWrite(writer, literal)` writes directly to an existing adapter, stopping at its first failure without evaluating later substitutions. Its immediate exclusive borrow, literal-only second operand and control-flow boundaries are defined in [the profile](utf8-formatting.md#53-short-circuiting-trywrite). `string` has no `+` ([§13.3](13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators)): an interpolated literal is the one form that joins strings.
 
 ### 12.3.4. Dictionary construction and duplicate keys
 
@@ -214,9 +214,9 @@ let first = pair.0
 
 ### 12.4.2. Invocation and generic application
 
-`callee(arg1, arg2)` invokes a function, method or function value. Zero arguments and a trailing comma are allowed. `callee<T, U>(args)` applies explicit Type arguments before the call.
+`callee(arg1, arg2)` invokes a function, method or function value. Zero arguments and a trailing comma are allowed. A task call writes the task argument first, as in `callee(task; arg1)` or `callee(task;)` ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)). `callee<T, U>(args)` applies explicit Type arguments before the call.
 
-Argument mapping, Type adaptation, expected-result filtering, candidate comparison and final usage checks follow [overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference). Named arguments use `name: expression`; name and value omission follow [§7.2](07-functions-and-callable-values.md#72-parameters-and-defaults). Function values keep positional-only calling, and unsafe calls keep their [additional restrictions](07-functions-and-callable-values.md#75-unsafe-functions). Explicit function Type arguments must provide the entire required list.
+Argument mapping, Type adaptation, expected-result filtering, candidate comparison and final usage checks follow [overload resolution](10-overload-resolution-and-inference.md#10-overload-resolution-and-inference). Named arguments use `name: expression`; name and value omission follow [§7.2](07-functions-and-callable-values.md#72-parameters-and-defaults). Function values keep positional-only calling for the arguments after any task argument, and unsafe calls keep their [additional restrictions](07-functions-and-callable-values.md#75-unsafe-functions). Explicit function Type arguments must provide the entire required list.
 
 In an expression, a `<` that introduces Type arguments must be adjacent to the target name and have a matching `>`. Thus `f<T>(x)` applies Type arguments while `a < b` compares values. Nested Type arguments may split `>>` into two closing delimiters. Spaces around comparison operators avoid ambiguity.
 
@@ -249,7 +249,7 @@ NotProven means the absence of a common proof, not a refutation for every bindin
 
 #### 12.4.4.2. Effect verification
 
-Completeness evidence is kept separately from storage relations. A payload follow does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal `ref`/`uniq` parameter alone does not prove caller storage completeness: callee effects are composed at each actual storage target, and unknown-call, unsafe and specialization checks are preserved.
+Completeness evidence is kept separately from storage relations. A payload follow does not turn Whole into Part or Separate. A legal complete-target update or borrow return is not itself a preservation failure. A formal `uniq` parameter alone does not prove caller storage completeness: callee effects are composed at each actual storage target, and unknown-call, unsafe and specialization checks are preserved. A `ref` input has only read and shared-borrow effects (§15.6.2).
 
 Verification uses resolved operations and acquisition plans before optimization. Under the declaration's Signature, Constraints and conditional premises, every admitted Type/Origin binding is verified using §8.7–§8.10, without inferring hidden caller Constraints from a body. The abstract rules below determine the public result independently of analysis precision, optimization and processing order; representations and worklist algorithms are implementation choices.
 
@@ -263,7 +263,7 @@ Summaries keep operation kinds and their relation to receiver and input roots, c
 | Escape of unrestricted exclusive access to a protected receiver or base | Violation unless it is a legal complete-target borrow; includes results, stores, callee paths and all dependencies |
 | Borrowed result | Root/alias correspondence is kept; return Origins, Loans and authority are verified |
 | Separate operation | No violation against the root from which separation is proven |
-| MayAlias, or unverified unsafe/indirect effects that may violate receiver preservation | Unproven effect on every potentially affected root |
+| MayAlias with receiver storage, or unsafe access in the operation's own body that may reach it | Unproven effect on the receiver |
 | Calls, custom accessors, defaults, cleanup | Published root effects are mapped and composed through actual arguments, captures and static anchors |
 | Branches and loops | Union of all Type-checked paths; only environment-excluded syntax is omitted, not paths removed by runtime reasoning or optimization |
 
@@ -271,9 +271,13 @@ Composing base-only paths yields Base; a storage-element edge yields Part. A Fie
 
 A callee's whole-value replacement mapped onto a caller's Part is not replacement of the whole caller receiver, but the actual target's restrictions are kept: Part classification cannot erase a base-subobject use check. Defined completeness-preserving Replacement and Exchange are summarized as such, rather than counting their internal lowering transfers as separate illegal MoveOuts. Operation summaries are retained instead of simply propagating a callee's NotProven bit.
 
+**Potentially affected roots.** At every call the receiver's Loan is active for the whole call (§15.6.4), so an operation on the receiver's storage through any other path, such as another argument, a capture, a static anchor or a callee with unknown effects, is rejected at that call (§15.6.2, §15.6.4) or is undefined behavior for raw access (§5.2.1). Receiver preservation therefore considers only operations reached through the receiver: its path, the Places and references derived from it, and the callees given such access. Through a `ref/Self` receiver only reads and shared borrows are reached (§15.6.2), so an operation with a `ref/Self` receiver, including every custom or computed `get` and every shared standard witness bridge (§11.4.2), is Proven exactly when its declaration is valid.
+
+**Exclusive input bound.** A callee affects its inputs at most as §8.4.10.4 rule 1 permits, and its results keep the dependencies its signature states. For receiver preservation, everything it does to an exclusive input is at most one completeness-preserving Replacement of the input's actual target, because borrowed referents offer no Take (§15.1.5) and unsafe code bears the same obligation (§5.2.3). A callee without a computed or validated summary, such as a bodiless compiler-owned declaration or an indirect or generic-requirement call, contributes exactly this bound, and unproven or unsafe effects inside a callee's body contribute at most it. `Kimi.Intrinsics.replace` and `exchange` are such a Replacement and `swap` an Exchange of both targets (§15.7). The bound mapped onto a receiver Part preserves the receiver; mapped onto its Whole or Base it is a violation.
+
 For same-build calls, direct effects are propagated over the finite domain of declaration schemas and roots to the least union fixed point, including recursion and the implementation families of §12.4.4.3. Concrete Types are not enumerated, and specializations are not removed on the basis of a particular call. Recursion alone is not an unproven effect, and an unfinished empty summary is not a proof; a verified empty summary is valid.
 
-Separately compiled, indirect and generic-requirement calls use validated public summaries or requirement effect bounds (§8.4.10). Without an optional effect guarantee, unproven effects propagate to the potentially affected roots; private bodies are not inspected, and possible implementations are not enumerated. Missing mandatory artifact data is an artifact error, not a missing optional guarantee. Receiverless helpers may publish input-root summaries without an ObjectCallCompatible status.
+Separately compiled, indirect and generic-requirement calls use validated public summaries or requirement effect bounds (§8.4.10). Without such a summary they contribute the exclusive input bound; private bodies are not inspected, and possible implementations are not enumerated. Missing mandatory artifact data is an artifact error, not a missing summary. Receiverless helpers may publish input-root summaries without an ObjectCallCompatible status.
 
 An implementation succeeds only when normal semantic checking completes and no admitted binding has a receiver violation or unproven effect. Pending call and conformance obligations remain explicit until resolved. The effect fixed point does not prove a circular conformance declaration; the normal proof deadlines and errors still apply.
 

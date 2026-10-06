@@ -63,6 +63,7 @@ public enum BoundTypeKind : byte
     Closure,
     Array,
     Dictionary,
+    FunctionItem,
 }
 
 /// <summary>How an explicit capture entry initializes its environment binding, as <c>let x = x</c> or <c>let x = x@op</c> would (SPEC 7.6.2).</summary>
@@ -77,12 +78,37 @@ internal enum CaptureAcquisition : byte
     /// <summary>A bare entry of a binding storing <c>uniq/T</c> or <c>objuniq/T</c>: a Reborrow in the same Semantics.</summary>
     Reborrow,
 
+    /// <summary>A bare entry of a binding storing a pair layer whose every admitted case Copies or Reborrows (SPEC 8.9): each case
+    /// run and instance acquires it as the binding's case Type does, a Reborrow for an exclusive reference and a Copy otherwise
+    /// (SPEC 8.10).</summary>
+    Bare,
+
     /// <summary><c>x@ref</c>: a shared borrow of the outer binding's slot.</summary>
     SharedSlotBorrow,
 
     /// <summary><c>x@uniq</c>: an exclusive borrow of the outer binding's slot.</summary>
     ExclusiveSlotBorrow,
 }
+
+/// <summary>A pair binder in scope of a body with its admitted set (SPEC 8.7); it is resolved into Semantics cases (SPEC 8.10) when
+/// the admitted set lies within the Semantics for which the specification defines an operation per case.</summary>
+/// <param name="Target">The pair's SemanticsTarget symbol, whose <c>WholeType</c> is <c>W</c>.</param>
+/// <param name="Admitted">The admitted Semantics of the binder.</param>
+internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask Admitted)
+{
+    /// <summary>The Semantics with an operation per case: pair layers exist only for sets within <c>value or valueborrow</c>
+    /// (SPEC 13.5.5.1), and conditional plans only for Copy cases in owner, ref, objref or raw with exclusive cases in uniq or
+    /// objuniq (SPEC 8.9); a binder admitting obj, rc or arc admits no such operation and stays symbolic, as a Type parameter does.</summary>
+    internal const SemanticsMask Resolvable = SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.ObjectBorrow | SemanticsMask.Raw;
+
+    /// <summary>Gets a value indicating whether the binder is analyzed once per admitted Semantics.</summary>
+    internal bool Resolved => this.Admitted != SemanticsMask.None && (this.Admitted & ~Resolvable) == 0;
+}
+
+/// <summary>One Semantics case of a pair binder (SPEC 8.10): the Semantics its whole Type takes.</summary>
+/// <param name="Target">The pair's SemanticsTarget symbol.</param>
+/// <param name="Semantics">The admitted Semantics of this case.</param>
+internal readonly record struct PairCase(BindingSymbol Target, SemanticsKind Semantics);
 
 internal enum BindingFailure : byte
 {
@@ -145,15 +171,43 @@ internal enum BindingFailure : byte
     // SPEC 7.3: one receiver shape per function group fixed by member lookup.
     ReceiverShapeMismatch,
 
+    // SPEC 11.2: an accessor receiver has the shape of its operation, ref/Self for an instance get and uniq/Self for an instance set.
+    AccessorReceiverShape,
+
+    // SPEC 7.3.1: the functions of one Name acquire corresponding parameters of overlapping Types in one mode.
+    ParameterShapeMismatch,
+
+    // SPEC 10.5: a reference without a fixed expected call signature needs every Type parameter bound explicitly.
+    UnboundTypeArgument,
+
+    // SPEC 7.3: value.method without invocation forms no bound-method value.
+    BoundMethodValue,
+
+    // SPEC 15.6.1: a fit whose structural part holds and whose Origin part is Refuted or not proven.
+    OriginRelation,
+
+    // SPEC 10.7, 15.6.1: a common Function conversion whose signatures match structurally and whose Origin contract is not proven.
+    OriginContract,
+
     // SPEC 13.5.3: a bare owning shorthand is not an operation, and @copy requires a proven-Copy operand.
     BareOwningShorthand,
     NonCopyOperand,
+
+    // SPEC 13.2, 13.3: an arithmetic, bitwise, shift, sign, increment or decrement operand is numeric; bool, Unit, char and
+    // string have no such operators. %, the bitwise and shift operators, increment and decrement also need an integer or
+    // wrapping integer operand, and a shift count an integer Type.
+    NonNumericOperand,
+    NonIntegerOperand,
+    InvalidShiftCount,
 
     // SPEC 13.5.4.3-4: @wrap converts integer and wrapping integer values only; @bits pairs a floating-point Type with a
     // same-width integer Type and needs both Types fixed.
     InvalidWrapConversion,
     InvalidBitConversion,
     GenericBitConversion,
+
+    // SPEC 9.3: the protected access forms apply only to members of a struct and their accessors.
+    ProtectedPlacement,
     MissingSpecializationTarget,
     SpecializationInputMismatch,
     DuplicateDictionaryKey,
@@ -163,9 +217,6 @@ internal enum BindingFailure : byte
 
     // SPEC 4.6.9: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
     NotIndexable,
-
-    // SPEC 10.2.2: candidates disagree on acquiring a bare Place argument by value or by a new shared borrow.
-    AcquisitionRequired,
 
     // SPEC 8.4.10.1, 8.4.10.6: an effect item that declares no bound of its Contract.
     InvalidEffectBound,
@@ -262,6 +313,7 @@ public sealed record BoundType : ControlFlowType
     private readonly bool carriesOrigin;
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
+    private readonly bool containsPairLayer;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null)
         : base(name)
@@ -281,16 +333,19 @@ public sealed record BoundType : ControlFlowType
         var found = origin is not null || originArguments is { Length: > 0 };
         var slot = found || kind == BoundTypeKind.Parameter;
         var parameter = kind == BoundTypeKind.Parameter;
+        var pair = (kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget) || kind == BoundTypeKind.SemanticsApplication;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
+            pair |= components[i].containsPairLayer;
         }
 
         this.carriesOrigin = found;
         this.carriesOriginOrSlot = slot;
         this.containsParameter = parameter;
+        this.containsPairLayer = pair;
     }
 
     // SPEC 3.1.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
@@ -375,6 +430,9 @@ public sealed record BoundType : ControlFlowType
     /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
+    // A generic closure keeps the enclosing substitution even when none of its slots occupy capture storage.
+    internal BoundCall? ClosureContext { get; init; }
+
     // Refilled by ownership preparation after each final bind; excluded from Type identity.
     internal BoundType[]? StoredFields { get; set; }
 
@@ -395,6 +453,10 @@ public sealed record BoundType : ControlFlowType
     /// <summary>Gets a value indicating whether this subtree contains a Type parameter, which a Type-identity premise
     /// may substitute (SPEC 8.3).</summary>
     internal bool ContainsParameter => this.containsParameter;
+
+    /// <summary>Gets a value indicating whether this subtree contains a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, an
+    /// annotated occurrence of it or an application <c>s/U</c>; a Semantics case substitutes only such Types (SPEC 8.10).</summary>
+    internal bool ContainsPairLayer => this.containsPairLayer;
 
     // Only an unsigned integer Type rejects unary minus; a wrapping integer Type has it for every argument (SPEC 13.3).
     internal bool IsUnsignedInteger => this.numeric == NumericCategory.Unsigned && !this.IsWrappingInteger;
@@ -480,6 +542,19 @@ internal sealed class BindingScope(Koto owner)
     }
 }
 
+/// <summary>How a check judged a repair condition from its own facts (SPEC 23.3.6.9); a refuted condition withholds the candidate.</summary>
+public enum AcquisitionJudgment : byte
+{
+    /// <summary>The condition is established.</summary>
+    Verified,
+
+    /// <summary>The condition cannot be decided without analyzing the edited input.</summary>
+    Required,
+
+    /// <summary>The condition does not hold.</summary>
+    Refuted,
+}
+
 /// <summary>A final unresolved or invalid node, retaining its original source context.</summary>
 public readonly record struct BindingIssue(Koto Node, DiagnosticCode Code)
 {
@@ -496,3 +571,44 @@ public readonly record struct BindingResult(BindingMode Mode, int ResolvedCount,
 /// <summary>A validated <c>#LibraryImport</c> declaration: its external symbol and the supply kind that
 /// selects dllimport (<c>import</c>) or a direct static reference (SPEC 20.8.2.1, 22.3).</summary>
 internal readonly record struct LibraryImport(FunctionKoto Function, string Library, string Symbol, string Kind);
+
+/// <summary>An Origin relation that a fit leaves unproven (SPEC 15.6.1): <c>Longer outlives Shorter</c>, or <c>==</c> at an invariant
+/// position, at the value that supplies the longer end; <c>Refuted</c> when the longer end is a body-local finite Origin.</summary>
+// SPEC 15.6.5: the judgment of an Origin relation that the solver may not prove.
+internal enum OriginJudgment : byte
+{
+    Proven,
+    Refuted,
+    Unknown,
+    Unrepresentable,
+}
+
+// SPEC 10.5: why a single generic function reference's slots did not bind from its fixed expected call signature, for the Note of its
+// TypeMismatch_Kd: no binding fits structurally, a bound argument fails its Constraints, the bindings of one slot differ only in their
+// Origins, or a bound argument would hold an input Origin that is bound at each call.
+internal enum ReferenceSlotFailure : byte
+{
+    None,
+    Structure,
+    Constraint,
+    OriginConflict,
+    InputOrigin,
+}
+
+// SPEC 15.6.1, 23.3.6.5: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
+// comparison, never a call-time Origin of the implementation. For an implementation condition (a clause or a result premise), `Input`
+// names the required input that a repair can write over the shorter end.
+internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, string? Input = null);
+
+// SPEC 15.2.3, 23.3.6.5: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
+// which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
+// capture entry and closure it belongs to, the Borrow that supplies a captured binding's Origin, and whether the failure is Refuted (a
+// body-local Origin) rather than Unknown.
+internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, string Member, BoundType MemberType, BoundOrigin? Origin, CaptureKoto? Entry, FunctionKoto? Closure, Koto? Borrow, bool Refuted);
+
+// SPEC 15.6.1: one failed chain of an Origin relation at the value that supplies its longer end. `Clause` is the relation clause of a
+// declared relation (source `declared`, related with the role `relation`); null for a fit. When that value's Origin is a meet, `Longer`
+// is its failing operand and `Meet` the whole meet, which a result bound must name. At a selected call, `Substituted` marks a callee's
+// clause in `Clause` that is judged at the caller's input, where the caller's premises cannot remove it, and `FixedBy` is the input
+// whose equality made a fresh Origin of the call equal to a fixed one, related with the role `relation` (SPEC 15.6.1, Location).
+internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, BoundOrigin? Meet = null, bool Substituted = false, Koto? FixedBy = null);

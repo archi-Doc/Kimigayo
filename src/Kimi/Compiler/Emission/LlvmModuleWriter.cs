@@ -96,10 +96,14 @@ internal static partial class LlvmModuleWriter
             WriteFormattingWrappers(module, output);
         }
 
+        if (module.NeedsStorageBytes)
+        {
+            output.Write(StorageBytePrimitives);
+        }
+
         if (module.NeedsDictionaryRuntime)
         {
-            WriteDictionaryCapacity(module, output, append: false);
-            WriteDictionaryShrink(module, output);
+            output.Write(DictionaryDuplicateAdapter);
             WriteDictionaryStorage(module, output);
             WriteDictionaryHelpers(module, output);
         }
@@ -504,7 +508,7 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 case EmissionOpcode.EraseClosure:
-                    WriteErasure(output, function, instruction);
+                    WriteErasure(output, constants, function, instruction);
                     break;
 
                 case EmissionOpcode.CallValue:
@@ -520,7 +524,7 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 default:
-                    WriteScalar(output, constants, instruction, function.GetOperands(instruction));
+                    WriteScalar(output, constants, function, instruction, function.GetOperands(instruction));
                     break;
             }
         }

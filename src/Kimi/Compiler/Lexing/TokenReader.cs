@@ -17,6 +17,15 @@ namespace Kimi.Compiler.Lexing;
 public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
 
 /// <summary>
+/// The restrictions of the region the parser is in (SPEC 2.2.1): a new delimiter region lifts them, a body or header adds one, and
+/// each enter method of <see cref="TokenReader"/> returns the region to restore afterwards.
+/// </summary>
+/// <param name="SingleBody">Whether the position lies in an expression body after <c>=&gt;</c>.</param>
+/// <param name="IfBody">Whether the position lies in the body of an if.</param>
+/// <param name="Header">Whether the position lies in a statement header.</param>
+internal readonly record struct ParseRegion(bool SingleBody, bool IfBody, bool Header);
+
+/// <summary>
 /// Provides sequential access to tokens produced by a <see cref="Tokenizer"/>.
 /// </summary>
 /// <remarks>
@@ -82,11 +91,6 @@ public ref partial struct TokenReader
     public readonly bool CanRead => this.Position < this.tokens.Length;
 
     /// <summary>
-    /// Gets a value indicating whether all tokens have been consumed.
-    /// </summary>
-    public readonly bool IsEnd => this.Position >= this.tokens.Length;
-
-    /// <summary>
     /// Gets the current token. At the end of the sequence this is an invalid token positioned at the end of the source.
     /// </summary>
     public readonly Token CurrentToken => this.currentToken;
@@ -101,19 +105,55 @@ public ref partial struct TokenReader
     /// </summary>
     public readonly SourceSpan CurrentTokenRange => this.currentToken.Span;
 
-    /// <summary>
-    /// Gets the source length of the current token.
-    /// </summary>
-    public readonly int CurrentTokenLength => this.currentToken.Length;
-
     // Region-local parsing restrictions; grouping and arm/item boundaries reset these.
-    internal bool SingleBodyRegion { get; set; }
+    private ParseRegion region;
 
-    internal bool IfBodyRegion { get; set; }
+    /// <summary>Gets a value indicating whether the position lies in an expression body after <c>=&gt;</c>, where a nested arrow body is misplaced.</summary>
+    internal readonly bool SingleBodyRegion => this.region.SingleBody;
 
-    internal bool HeaderRegion { get; set; }
+    /// <summary>Gets a value indicating whether the position lies in the body of an if, where a nested if expression is misplaced.</summary>
+    internal readonly bool IfBodyRegion => this.region.IfBody;
+
+    /// <summary>Gets a value indicating whether the position lies in a statement header, where a body-bearing expression is misplaced.</summary>
+    internal readonly bool HeaderRegion => this.region.Header;
 
     internal bool ConstraintRequirement { get; set; }
+
+    /// <summary>
+    /// Enters a new delimiter region (SPEC 2.2.1), which lifts every restriction of the enclosing one: a grouped expression, each
+    /// argument or element in parentheses or brackets, an indented body, whose items are regions of their own, and a match arm.
+    /// </summary>
+    /// <returns>The region to restore afterwards.</returns>
+    internal ParseRegion EnterRegion()
+    {
+        var previous = this.region;
+        this.region = default;
+        return previous;
+    }
+
+    /// <summary>Enters the expression body after <c>=&gt;</c>.</summary>
+    /// <param name="ifBody">Whether the body belongs to an if.</param>
+    /// <returns>The region to restore after the body.</returns>
+    internal ParseRegion EnterSingleBody(bool ifBody)
+    {
+        var previous = this.region;
+        this.region = new(true, previous.IfBody || ifBody, previous.Header);
+        return previous;
+    }
+
+    /// <summary>Enters a statement header.</summary>
+    /// <returns>The region to restore after the header.</returns>
+    internal ParseRegion EnterHeader()
+    {
+        var previous = this.region;
+        this.region = new(previous.SingleBody, previous.IfBody, true);
+        return previous;
+    }
+
+    /// <summary>Restores the region that an enter method returned.</summary>
+    /// <param name="region">The region to restore.</param>
+    internal void RestoreRegion(ParseRegion region)
+        => this.region = region;
 
     internal readonly bool SameLine(int end, int start)
         => start >= end && !this.sourceText[end..start].ContainsAny('\r', '\n');
@@ -138,6 +178,12 @@ public ref partial struct TokenReader
 
     /// <summary>Gets a value indicating whether the current position lies inside excluded syntax.</summary>
     internal readonly bool InExcludedSyntax => this.ExclusionDepth > 0;
+
+    /// <summary>Gets the current token's span, or the insertion point after the last written token at a line boundary or the end.</summary>
+    internal readonly SourceSpan InsertionSpan
+        => this.currentToken.Kind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || !this.CanRead
+            ? new(this.PreviousSyntaxEnd, 0)
+            : this.currentToken.Span;
 
     /// <summary>Gets the end of the last written token before the current position: where a missing form is inserted.</summary>
     internal readonly int PreviousSyntaxEnd
@@ -320,11 +366,12 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Consumes a token of the specified kind.
+    /// Consumes a token of the specified kind. An attribute at the position is misplaced (SPEC 6.5): it is reported and skipped,
+    /// and the expected token may follow it.
     /// </summary>
     /// <param name="targetKind">The expected token kind.</param>
     /// <param name="range">The source range of the consumed token.</param>
-    /// <param name="addDiagnostic">Whether to report a diagnostic when the expected token is not found.</param>
+    /// <param name="addDiagnostic">Whether to report the token's form as expected, and skip the rest of the line, when the token is not found.</param>
     /// <returns><see langword="true"/> if the expected token was consumed; otherwise, <see langword="false"/>.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public bool TryConsume(TokenKind targetKind, out SourceSpan range, bool addDiagnostic = true)
@@ -426,14 +473,6 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Advances until the specified token kind is reached.
-    /// </summary>
-    /// <param name="kind1">The token kind at which to stop.</param>
-    /// <returns>The token kind that stopped the scan, or the default value if the end was reached.</returns>
-    public TokenKind SkipUntil(TokenKind kind1)
-        => this.SkipUntil(kind1, kind1, kind1);
-
-    /// <summary>
     /// Advances until either of the specified token kinds is reached.
     /// </summary>
     /// <param name="kind1">The first token kind at which to stop.</param>
@@ -466,62 +505,11 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Advances to the start of the immediately following block without reporting; the caller has reported what it
-    /// expected. Stops before a subsequent statement.
+    /// Skips the indented block at the current <see cref="TokenKind.StartBlock"/> with the blocks nested in it; the tokenizer ends
+    /// every block it starts, so the skip ends at the block's own <see cref="TokenKind.EndBlock"/>.
     /// </summary>
-    /// <returns>
-    /// <see cref="TokenKind.StartBlock"/> when a block was found;
-    /// otherwise, the default value.
-    /// </returns>
-    public TokenKind SkipUntilStartBlock()
+    public void SkipCurrentBlock()
     {
-        var reachedNextStatement = false;
-        while (this.CanRead)
-        {
-            var tokenKind = this.currentToken.Kind;
-            if (tokenKind == TokenKind.StartBlock)
-            {
-                return tokenKind;
-            }
-
-            if (tokenKind == TokenKind.EndBlock)
-            {
-                return default;
-            }
-
-            if (tokenKind == TokenKind.Separator)
-            {
-                reachedNextStatement = true;
-                this.AdvanceOne();
-                continue;
-            }
-
-            if (reachedNextStatement)
-            {
-                return default;
-            }
-
-            this.AdvanceOne();
-        }
-
-        return default;
-    }
-
-    /// <summary>
-    /// Skips the current block while respecting nested blocks.
-    /// </summary>
-    /// <param name="isRootGroup">
-    /// <see langword="true"/> to skip until the next root group;
-    /// otherwise, to skip the current nested block.
-    /// </param>
-    public void SkipCurrentBlock(bool isRootGroup)
-    {
-        if (isRootGroup)
-        {
-            this.SkipUntil(TokenKind.RootGroup);
-            return;
-        }
-
         if (!this.TryConsume(TokenKind.StartBlock))
         {
             return;
@@ -543,10 +531,6 @@ public ref partial struct TokenReader
                     this.AdvanceOne();
                     return;
                 }
-            }
-            else if (kind == TokenKind.RootGroup)
-            {
-                return;
             }
 
             this.AdvanceOne();
@@ -608,7 +592,7 @@ public ref partial struct TokenReader
     /// </summary>
     /// <returns>A new error node.</returns>
     public ErrorKoto NewErrorKoto()
-        => new ErrorKoto(ref this, this.currentToken.Span) { Cause = this.Diagnostic.LastError };
+        => new ErrorKoto(ref this, this.InsertionSpan) { Cause = this.Diagnostic.LastError };
 
     /// <summary>
     /// Gets the source text represented by the specified token.
@@ -633,7 +617,7 @@ public ref partial struct TokenReader
             return identifier;
         }
 
-        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
+        this.ReportInvalidIdentifier(token);
         return this.compilation.Intern(span); // Preserve the spelling for error recovery.
     }
 
@@ -643,13 +627,14 @@ public ref partial struct TokenReader
     /// <returns>Whether the token contains a valid identifier.</returns>
     public readonly bool TryGetIdentifier(Token token, [NotNullWhen(true)] out string? identifier)
     {
-        var span = this.GetSpan(token);
-        if (token.Kind.IsIdentifierOrContextualKeyword() && this.compilation.TryGetIdentifier(span, out identifier))
+        if (token.Kind.IsIdentifierOrContextualKeyword() && this.compilation.TryGetIdentifier(this.GetSpan(token), out identifier))
         {
             return true;
         }
 
-        return this.ReportInvalidIdentifier(token, out identifier);
+        this.ReportInvalidIdentifier(token);
+        identifier = null;
+        return false;
     }
 
     /// <summary>
@@ -664,15 +649,54 @@ public ref partial struct TokenReader
     /// <summary>Gets or sets a value indicating whether primitive type names are accepted in a directive condition.</summary>
     internal bool IsParsingCompileTimeCondition { get; set; }
 
+    /// <summary>Gets the token at the specified offset from the current token without advancing; offset zero is the current token,
+    /// which differs from the token at <see cref="Position"/> after <see cref="TryConsumeTypeClose"/> split it.</summary>
+    /// <param name="offset">The number of tokens to look ahead.</param>
+    /// <returns>The token, or the end token beyond the end of the sequence.</returns>
     internal readonly Token PeekToken(int offset)
     {
+        if (offset == 0)
+        {
+            return this.currentToken;
+        }
+
         var index = this.Position + offset;
         return (uint)index < (uint)this.tokens.Length ? this.tokens[index] : this.endToken;
     }
 
-    // Split compound operators only in type context; shift/comparison expressions keep
-    // their original tokens. The shared token buffer remains immutable.
-    internal bool TryConsumeTypeClose(out SourceSpan range)
+    /// <summary>
+    /// Reports attributes at the current position, where the grammar takes none (SPEC 6.5): an attribute precedes a
+    /// declaration, so one between the parts of a header, before a Type or in an expression is misplaced. Each is reported
+    /// once over its whole extent and kept for the next node, so the source still round-trips through the tree.
+    /// </summary>
+    /// <param name="next">The token the grammar expects after the attributes, or <see cref="TokenKind.Invalid"/>. Where it is
+    /// <c>(</c>, an attribute leaves the last parenthesized list to the grammar (<see cref="Parser.ParseAttributeKoto"/>).</param>
+    /// <returns><see langword="true"/> when at least one attribute was read.</returns>
+    internal bool ReportMisplacedAttributes(TokenKind next = TokenKind.Invalid)
+    {
+        var found = false;
+        while (this.currentToken.Kind == TokenKind.Sharp)
+        {
+            if (Parser.ParseAttributeKoto(ref this, next == TokenKind.OpenParenthesis) is { } attribute)
+            {
+                // The kept attribute is this Error's recovery: Binding lets it mark nothing and checks the node it lands on alone.
+                this.CodeContext.RecordRecovery(attribute, this.Unexpected(SyntaxForm.Attribute, attribute.Span));
+            }
+
+            found = true;
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// Consumes the '&gt;' that closes Type arguments or parameters, splitting '&gt;&gt;', '&gt;=' and '&gt;&gt;=' only here, in Type
+    /// context (SPEC 2.4); shift and comparison expressions keep their tokens, and the shared token buffer stays immutable.
+    /// </summary>
+    /// <param name="range">The consumed '&gt;'.</param>
+    /// <param name="report">Whether a missing closer is reported; a list whose last argument failed rests on that Error instead.</param>
+    /// <returns><see langword="true"/> when a closer was consumed.</returns>
+    internal bool TryConsumeTypeClose(out SourceSpan range, bool report = true)
     {
         var remainingKind = this.currentToken.Kind switch
         {
@@ -684,7 +708,7 @@ public ref partial struct TokenReader
         if (remainingKind == TokenKind.Invalid)
         {
             range = this.currentToken.Span;
-            return this.Expect(TokenKind.GreaterThan);
+            return report ? this.Expect(TokenKind.GreaterThan) : this.TryConsume(TokenKind.GreaterThan);
         }
 
         range = new SourceSpan(this.currentToken.Span.Start, 1);
@@ -692,36 +716,188 @@ public ref partial struct TokenReader
         return true;
     }
 
+    /// <summary>
+    /// Reports a problem with a code of its own at a span, unless an Error is already recorded there: a token is blamed once, so a
+    /// token the lexer rejected rests on that Error (DIAGNOSTICS.md §4.4).
+    /// </summary>
+    /// <param name="span">The span of the problem.</param>
+    /// <param name="code">The code.</param>
+    /// <param name="argument">The optional message argument.</param>
+    /// <returns>The key of the Error that explains the recovery, or <see langword="null"/> when the code is no Error.</returns>
+    internal DiagnosticKey? ReportOnce(SourceSpan span, DiagnosticCode code, object? argument = null)
+        => this.Diagnostic.RecallError(span) || this.Diagnostic.Add(span, code, argument) ? this.Diagnostic.LastError : null;
+
+    /// <summary>
+    /// Reads a Name (SPEC 2.5): a token that can be one is consumed and validated; any other token is where the Name was expected
+    /// (DIAGNOSTICS.md §4.4) and is not consumed, so a line boundary, a closer or a comma still ends the construct. A token that
+    /// the lexer rejected directly before a Name, such as a closer that closes nothing, is passed over: it was reported once.
+    /// </summary>
+    /// <param name="name">The validated Name, or <see langword="null"/> after the Error.</param>
+    /// <param name="span">The token read, or the token where the Name was expected.</param>
+    /// <returns>Whether a valid Name was read.</returns>
+    internal bool TryReadName([NotNullWhen(true)] out string? name, out SourceSpan span)
+    {
+        if ((this.currentToken.Kind == TokenKind.Invalid || this.currentToken.ClosesNothing) && this.PeekKind(1).IsIdentifierOrContextualKeyword())
+        {
+            this.AdvanceOne();
+        }
+
+        var token = this.currentToken;
+        span = token.Span;
+        if (!token.Kind.IsIdentifierOrContextualKeyword())
+        {
+            this.Expect(SyntaxForm.Name);
+            name = null;
+            return false;
+        }
+
+        this.AdvanceOne();
+        return this.TryGetIdentifier(token, out name);
+    }
+
+    /// <summary>
+    /// Consumes the closer of a grouping. Any other token there is where the closer was expected (DIAGNOSTICS.md §4.4), and the rest
+    /// of the grouping is then skipped to its closer, which is consumed. Nested groupings and bodies are skipped whole; the tokenizer
+    /// closes every grouping before what follows it (SPEC 2.2.1), so the skip never leaves the grouping that failed: it stops at the
+    /// closer of an enclosing grouping, the end of an enclosing body or a line boundary outside a nested body.
+    /// </summary>
+    /// <param name="closer">The closer: <c>)</c>, <c>]</c> or <c>}</c>.</param>
+    /// <param name="range">The closer consumed, or the default value when none was found.</param>
+    /// <returns><see langword="null"/> when the closer followed directly; otherwise the key of the Error, on which a node that the
+    /// recovery completed rests.</returns>
+    internal DiagnosticKey? ExpectCloser(TokenKind closer, out SourceSpan range)
+    {
+        if (!this.currentToken.ClosesNothing && this.TryConsume(closer, out range, false))
+        {
+            return null;
+        }
+
+        range = default;
+        var cause = this.Expect(FormOf(closer));
+        while (this.CanRead && !this.EndsGroupingContent())
+        {
+            this.SkipOne();
+        }
+
+        if (this.currentToken.Kind == closer && !this.currentToken.ClosesNothing)
+        {
+            range = this.currentToken.Span;
+            this.AdvanceOne();
+        }
+
+        return cause;
+    }
+
+    /// <summary>
+    /// Skips, without reporting, the rest of one item of a delimited list after the caller blamed it: up to the comma that ends the
+    /// item or the end of the grouping's content (<see cref="ExpectCloser"/>). Groupings, bodies and recognized Type argument lists
+    /// inside the item are skipped whole, so their commas and closers stay theirs.
+    /// </summary>
+    /// <param name="typeArguments">Whether the list is a Type argument or parameter list, which a '&gt;' at its level closes.</param>
+    internal void SkipListItem(bool typeArguments = false)
+    {
+        var angles = 0;
+        while (this.CanRead && !this.EndsGroupingContent())
+        {
+            switch (this.currentToken.Kind)
+            {
+                case TokenKind.Comma or TokenKind.Exclamation when angles == 0:
+                    return; // A comma ends the item; so does a parameter list's '!' boundary, which is no operator elsewhere.
+
+                case TokenKind.LessThan when this.currentToken.OpensTypeArguments:
+                    angles++;
+                    break;
+
+                case TokenKind.GreaterThan or TokenKind.GreaterThanGreaterThan or TokenKind.GreaterThanEquals or TokenKind.GreaterThanGreaterThanEquals:
+                    if (angles == 0)
+                    {
+                        if (typeArguments)
+                        {
+                            return;
+                        }
+                    }
+                    else
+                    {
+                        angles = Math.Max(0, angles - (this.currentToken.Kind is TokenKind.GreaterThanGreaterThan or TokenKind.GreaterThanGreaterThanEquals ? 2 : 1));
+                    }
+
+                    break;
+            }
+
+            this.SkipOne();
+        }
+    }
+
     private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
     {
-Loop:
-        if (this.CanRead)
+        // An attribute where the grammar takes none is misplaced: it is reported and skipped, and the expected token may follow it.
+        if (this.currentToken.Kind == TokenKind.Sharp && this.ReportMisplacedAttributes(targetKind) && this.currentToken.Kind == targetKind && this.CanRead)
         {
-            var token = this.currentToken;
-            if (token.Kind == targetKind)
-            {
-                range = token.Span;
-                this.AdvanceOne();
-                return true;
-            }
+            range = this.currentToken.Span;
+            this.AdvanceOne();
+            return true;
+        }
 
-            if (token.Kind == TokenKind.Sharp)
-            {
-                // Attributes may appear between the caller and the expected token.
-                _ = Parser.ParseAttributeKoto(ref this);
-                goto Loop;
-            }
-
-            if (addDiagnostic)
-            {
-                this.Expect(FormOf(targetKind));
-                this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-            }
+        if (addDiagnostic && this.CanRead)
+        {
+            this.Expect(FormOf(targetKind));
+            this.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
         }
 
         // At the end of the sequence the tokenizer has already reported the missing closers.
         range = default;
         return false;
+    }
+
+    // Whether the current token ends the content of the grouping that a recovery skips in: a closer, the end of a body that encloses
+    // the grouping, or a line boundary that opens no nested body. The tokenizer closes a grouping before any of the last two.
+    private readonly bool EndsGroupingContent()
+        => this.currentToken.Kind switch
+        {
+            TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace => !this.currentToken.ClosesNothing,
+            TokenKind.EndBlock => true,
+            TokenKind.Separator => this.PeekKind(1) != TokenKind.StartBlock,
+            _ => false,
+        };
+
+    // Skips the current token, or the nested grouping or body it opens whole, with the line boundaries around a nested body.
+    private void SkipOne()
+    {
+        if (this.currentToken.Kind == TokenKind.Separator)
+        {
+            this.AdvanceOne(); // Inside a grouping, a line boundary opens a nested body (EndsGroupingContent).
+        }
+
+        var kind = this.currentToken.Kind;
+        if (kind is not (TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace or TokenKind.StartBlock))
+        {
+            this.AdvanceOne();
+            return;
+        }
+
+        var nesting = 0;
+        do
+        {
+            switch (this.currentToken.Kind)
+            {
+                case TokenKind.OpenParenthesis or TokenKind.OpenBracket or TokenKind.OpenBrace or TokenKind.StartBlock:
+                    nesting++;
+                    break;
+
+                case TokenKind.CloseParenthesis or TokenKind.CloseBracket or TokenKind.CloseBrace when !this.currentToken.ClosesNothing:
+                case TokenKind.EndBlock:
+                    nesting--;
+                    break;
+            }
+
+            this.AdvanceOne();
+        }
+        while (nesting > 0 && this.CanRead);
+
+        if (kind == TokenKind.StartBlock && this.currentToken.Kind == TokenKind.Separator)
+        {
+            this.AdvanceOne(); // The dedent after a nested body separates nothing inside the grouping.
+        }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -748,11 +924,13 @@ Loop:
         this.currentToken = (uint)position < (uint)this.tokens.Length ? this.tokens[position] : this.endToken;
     }
 
+    // A token is blamed once: one that the lexer or an earlier expectation rejected keeps that Error (DIAGNOSTICS.md §4.4).
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private readonly bool ReportInvalidIdentifier(Token token, out string? identifier)
+    private readonly void ReportInvalidIdentifier(Token token)
     {
-        this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, this.GetSpan(token).ToString());
-        identifier = null;
-        return false;
+        if (!this.Diagnostic.RecallError(token.Span))
+        {
+            this.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, this.GetSpan(token).ToString());
+        }
     }
 }

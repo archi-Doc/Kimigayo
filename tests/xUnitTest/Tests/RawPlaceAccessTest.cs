@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -25,10 +26,14 @@ public class RawPlaceAccessTest
         var source = Resource + "func consume(value: Resource) => ()\nfunc run(pointer: raw/Resource)\n    unsafe\n        " + take + "\npublic func main() => ()\n";
         var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.TransferRequired_Kd), diagnostic.Code);
-        if (take.Contains('*'))
-        {
-            Assert.Contains("Write (*pointer)@move", diagnostic.Advice);
-        }
+
+        // SPEC 5.2.3, 23.3.6.9: a raw Place takes with @move, around the whole dereference so that it does not apply to the pointer.
+        var repair = Assert.Single(diagnostic.Repairs!);
+        Assert.Equal("Repair.Transfer", repair.Kind);
+        Assert.Equal([RepairCondition.Take], repair.Verified);
+        var repaired = UnnecessaryUnsafeBlockTest.Apply(source, repair.Edits);
+        Assert.Contains(take.Contains('*') ? take.Replace("*pointer", "(*pointer)@move", StringComparison.Ordinal) : take.Replace("pointer[0]", "pointer[0]@move", StringComparison.Ordinal), repaired, StringComparison.Ordinal);
+        Assert.Empty(DiagnosticCorpus.Check(repaired).Diagnostics);
     }
 
     [Theory]

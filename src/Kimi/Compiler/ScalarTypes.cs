@@ -5,6 +5,11 @@ namespace Kimi.Compiler;
 /// <summary>The scalar value-plan subset shared by ownership and emission, independent of storage layout.</summary>
 internal static class ScalarTypes
 {
+    // The bounded local-loop/checking evaluator accepts scalar/Unit values and references to those values.
+    // Default expressions use ordinary body analysis and do not share this representation boundary.
+    internal static bool SupportsFlowValue(BoundType? type) => Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
+        (type is { Kind: BoundTypeKind.Semantics, Semantics: Parsing.SemanticsKind.Ref or Parsing.SemanticsKind.Uniq, Components.Count: 1 } && SupportsFlowValue(type.Components[0]));
+
     internal static bool Supports(BoundType? type) => ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) || FloatingTypes.Supports(type) || Width(type) != 0;
 
     // Character storage uses i32, but does not grant integer arithmetic or conversions.

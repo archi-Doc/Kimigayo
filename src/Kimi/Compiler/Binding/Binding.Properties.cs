@@ -46,6 +46,11 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 11.2: an instance get reads through ref/Self and an instance set writes through uniq/Self. The shape is the outer
+    // Semantics of the normalized receiver, so Origin annotations are free; the Core is judged by IsReceiverType.
+    private static bool AccessorReceiverShapeMismatch(BoundAccessor accessor)
+        => accessor.Receiver is { } receiver && receiver.Semantics != (accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq);
+
     private void IndexAccessor(PropertyAccessorKoto syntax, BindingScope scope)
     {
         var accessor = Accessor(syntax);
@@ -276,7 +281,12 @@ public sealed partial class Binding
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
             property.IsVerified = proof == ConstraintProof.Proven && !InvalidDeclarationContext(syntax);
-            if (proof != ConstraintProof.Proven)
+
+            // SPEC 23.3.6.4: an accessor's own declaration Error explains the Property's failed verification; a second record at
+            // the Property would restate it. Every other failure is the Property's own problem.
+            var explainedByAccessor = proof == ConstraintProof.Error &&
+                (property.Getter.Declaration?.BindingState == BindingState.Invalid || property.Setter.Declaration?.BindingState == BindingState.Invalid);
+            if (proof != ConstraintProof.Proven && !explainedByAccessor)
             {
                 this.RequireConstraint(syntax, proof, mode, this.ConformanceDiagnosticCause(property.Symbol.Scope.Owner));
             }
@@ -347,14 +357,12 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        if (property.IsStored && owner is StructKoto)
+        // SPEC 11.2: the receiver has the shape of its operation. The body was checked with the written receiver, so this
+        // declaration error adds no body errors; a use that only the written shape rejects rests on it (ReceiverRestsOnAccessorShape).
+        if (owner is StructKoto or ContractKoto && AccessorReceiverShapeMismatch(accessor))
         {
-            var semantics = accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq;
-            if (accessor.Receiver is not { Kind: BoundTypeKind.Semantics } receiver || receiver.Semantics != semantics || !ReferenceEquals(receiver.Components[0], this.SelfType(owner.BoundSymbol!)))
-            {
-                this.Fail(syntax!, BindingFailure.TypeMismatch);
-                return ConstraintProof.Error;
-            }
+            this.Fail(syntax!, BindingFailure.AccessorReceiverShape);
+            return ConstraintProof.Error;
         }
 
         var compared = accessor.Kind == PropertyAccessorKind.Get ? accessor.Result : accessor.Input;
@@ -389,8 +397,7 @@ public sealed partial class Binding
         {
             var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
             var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
-            var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
-            structural.Clear();
+            var structural = this.ResultStructure();
             if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
                 actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax))
             {
@@ -399,6 +406,27 @@ public sealed partial class Binding
         }
 
         return Complete(syntax, accessor.Result);
+    }
+
+    // SPEC 11.2, 23.3.6.4: a receiver rejected under an accessor's wrongly shaped written receiver, but accepted under the shape
+    // its operation fixes, fails only because of that declaration error and rests on it; every other rejection stays direct.
+    private bool ReceiverRestsOnAccessorShape(Koto node, BoundAccessor accessor, Koto receiver, BoundType actual, BoundType? declaringType, BoundMemberPath? path, BindingScope scope, bool explicitBorrow)
+    {
+        if (!AccessorReceiverShapeMismatch(accessor) || accessor.Declaration is not { } declaration)
+        {
+            return false;
+        }
+
+        var owner = accessor.Property.Symbol.Scope.Owner.BoundSymbol!;
+        var shaped = this.InternType(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [this.DeclarationSelf(owner)], origin: this.OriginAtom(declaration, OriginKind.Input, 0));
+        var required = declaringType is null ? shaped : this.MemberType(shaped, declaringType);
+        if (required is null || !this.AdaptInput(receiver, required, actual, scope, path, declaringType, out _, out _, out _, explicitBorrow: explicitBorrow, receiver: true))
+        {
+            return false;
+        }
+
+        this.CompleteDependent(node, declaration);
+        return true;
     }
 
     private sealed class PropertyTypeVisitor : KotoVisitor

@@ -111,6 +111,12 @@ public enum SyntaxForm : ushort
     /// <summary>An extension declaration, which the language does not introduce.</summary>
     ExtensionDeclaration,
 
+    /// <summary>A Container declaration where no Container nests: in an enum, a Contract or an executable block (SPEC 6.1.1).</summary>
+    ContainerDeclaration,
+
+    /// <summary>A compile-time directive where no item is selected, such as in a parameter list, an operand or a match arm list (SPEC 19.1).</summary>
+    CompileTimeDirective,
+
     /// <summary>An associate declaration outside a Contract.</summary>
     AssociatedTypeDeclaration,
 
@@ -173,6 +179,9 @@ public enum SyntaxForm : ushort
 
     /// <summary>A '?' after a bare Semantics shorthand such as 'ref'.</summary>
     SemanticsShorthandSuffix,
+
+    /// <summary>A '?' after a Place result, which is never optional (SPEC 7.1.1).</summary>
+    PlaceResultSuffix,
 
     /// <summary>'move' or 'copy' written as a Semantics prefix.</summary>
     OperationAsSemanticsPrefix,

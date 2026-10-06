@@ -1,12 +1,12 @@
 # Language milestones
 
 Forty-two independent programs are planned from the current [SPEC](../../docs/SPEC.md).
-Programs 1–33, 41 and 42 have source files; programs 34–40 have design and verification scopes.
+Every program has a source file; programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../../docs/STATUS.md); expected output alone is
-not an execution claim. Milestones 24–28 and 33 are authored targets beyond current
-verified executable coverage; the status table below distinguishes untested
-programs from attempted builds that failed.
+not an execution claim. Programs not marked DONE in the status table below are
+authored targets beyond current verified executable coverage; the table distinguishes
+untested programs from attempted builds that failed.
 Milestones 6–9 were originally added without compiler capability checks, builds,
 or execution; subsequent verification is documented per program below.
 Milestones 10–14 were originally added from the specification without compiler
@@ -38,7 +38,7 @@ and in [STATUS.md](../../docs/STATUS.md).
 | [Milestone21](Milestone21.kimi) | Full length/Type specialization, inherited defaults/Origins and preserved implementation selection |
 | [Milestone22](Milestone22.kimi) | Concrete generic entries, compound layouts, specialization forwarding and distinct destruction operations |
 | [Milestone23](Milestone23.kimi) | Standard/custom/computed Copy Properties, direct storage and assignment evaluation order |
-| [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, borrowed/owned getters and a standard-operation Contract witness |
+| [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, a borrowed getter, a consuming function and a standard-operation Contract witness |
 | [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
 | [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
 | [Milestone27](Milestone27.kimi) | Saved position/range resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
@@ -65,7 +65,7 @@ Milestone harnesses preserve the original source bytes and filename and use sepa
 
 ## Program status
 
-As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../../docs/dev/PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../../docs/dev/PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Program 30 is complete; Program 31 retains the separately listed unfinished scope. Build means a native
+As of **2026-09-26**, the execution order was revised: the collection track (27, 39, 28, 31, 40, 26, 37) precedes the Property/object track, and Program 27 owns the Place foundation ([PLAN.md](../../docs/dev/PLAN.md#3-current-position)). Programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03; Program 37 runs natively and the others record their first diagnostics ([authoring verification](#programs-3439-authoring-verification-2026-09-27)). Program 23 is complete with 67 Debug/Release harness checks in the [Copy Property session](../../docs/dev/PLAN_HISTORY.md#p23-completion). That session also passes both full suites; earlier-program native regressions stopped at the user's request after programs 1–16. Programs 1–22 and 29–32 retain their Release harness evidence from the [Dictionary source session](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library); older Debug results retain their original verification scope. Programs 30 and 31 are complete; Program 31's capacity callback construction moved to P26 and was completed there (G20, 2026-10-05). Build means a native
 Application build including LLVM verification and linking; tests mean native
 output/exit checks. Since 2026-09-30, each harness builds the original source once per O0/O2 and directly executes each binary once; feature and rejection checks live in dedicated tests. Parser
 coverage alone is not a native test. NOT_RUN is neither a pass nor a failure.
@@ -81,19 +81,25 @@ unreached parts of a pending program.
 
 Affected programs now use postfix `during` annotations with the same intended behavior.
 An unchanged target run compiles the checked-in program without test-specific edits.
-A specification change may require a completed program to be re-spelled. The program
-keeps DONE when its unchanged target run and harness pass on the re-spelled source, and
-its row names the re-spelling. The 2026-09-25 place, borrowing and iteration change
-re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and the
-2026-09-26 rename of `@deref` to `@follow` re-spelled 14, 16 and 33 again:
+A program source is re-spelled only for a specification change or for an authoring
+correction, where the source contradicts its own specification-derived output. The
+table below records each re-spelling with its cause, and the program's status row
+names it. A completed program keeps DONE when
+[PLAN §5](../../docs/dev/PLAN.md#5-completion-conditions-every-program-milestone)
+conditions 1–3 (unchanged target run, harness and Session verification) hold for the
+re-spelled source. The 2026-09-25 place, borrowing and iteration change re-spelled
+programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, the 2026-09-26
+rename of `@deref` to `@follow` re-spelled 14, 16 and 33 again, and a 2026-10-04
+authoring correction re-spelled the pending program 36:
 
-| Program | Re-spelling | Specification |
+| Program | Re-spelling | Cause |
 | --- | --- | --- |
 | 13 | `associate Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1 |
 | 14 | `accumulator@follow@uniq` replaces `accumulator@uniq/Pipeline.Accumulator` | SPEC 13.5.5.2 |
 | 16 | `target@follow@uniq` replaces `target@uniq/Cell` | SPEC 13.5.5.2 |
 | 28 | `IntoIterable` with `IteratorType` and `intoIterator` replaces `Iterable`; `Iterator.Item` replaces `Iterator.Element` | SPEC 22.1.2.1, 22.1.2.2 |
 | 33 | `@follow@ref`/`@follow@uniq` payload borrows; `owner@move@obj/Base` transfers the bare Place | SPEC 3.5, 13.5.5.2, 13.5.7 |
+| 36 | `Resource.drop` gains the `2 =>` arm | Authoring correction; SPEC 11.3.2, 13.7.1, 22.2.3 |
 | 39 | `Collection<ref/Node>.init(...)` and `Collection<uniq/Node>.init(...)` supply the construction Type arguments (PLAN G24, approved 2026-09-27) | SPEC 6.2.3.2, 15.4.4 |
 
 | Program | Created | Binding | Build | Tests | Implementation | Evidence / boundary |
@@ -123,21 +129,21 @@ re-spelled programs 13, 14 and 16 (DONE) and the pending programs 28 and 33, and
 | 23 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (67 checks/configuration) | DONE | Unchanged target, name/value/compound/restricted-read/setter-Type variants and required rejections pass; focused lifetime/projection/Move tests and both full suites pass. Earlier-program harness scope was reduced by the user. |
 | 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnsupportedBinding_Kd` at required `value.item` (a Contract Property requirement read through a generic receiver); ownership-bearing setters/getters and Contract Property calls remain. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
-| 26 | YES | FAIL | FAIL (Debug/Release, O0/O2) | NOT_RUN | TODO | The current Binding baseline identifies unsupported generic capture storage at the closure with `UnsupportedBinding_Kd`; dependent declaration/call errors are suppressed. Native build status retains the [authoring evidence](../../docs/dev/PLAN_HISTORY.md#programs25-28-authoring). |
+| 26 | YES | PASS | PASS (Release, O0/O2) | PASS (Release) | DONE | Completed 2026-10-05 by user decision with recorded gaps: the unchanged source passes its original-source harness; the held follow-ups (PLAN G75, G76, G77) and the located limits (N25b, N26b, N27b, N27c, N24, LR, `T.compare`) are listed in the PLAN P26 row, and their behavior is in STATUS. [P26 completion](../../docs/dev/PLAN_HISTORY.md#p26-completion). |
 | 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`artifacts/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). Re-spelled 2026-09-30 for P41 (`FromEnd<i32>` and `Range<S, E>` in place of `Index`/`IndexRange`); the re-spelled harness passes in Release (`artifacts/verify/20260929-163311-215-unit-p41-u45`). |
 | 28 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (43 checks per configuration) | DONE | Completed 2026-09-29. The unchanged target executes through user `IntoIterable`/`Iterator` calls, with owned item cleanup, continue/exit, generic Option extraction and retained external references; the harness also checks exhaustion, empty enumeration, return, unnamed items and five rejection variants. Every standard collection now iterates through Kimigayo entries over `Kimi.Storage` (Array, Dictionary, fixed array, Slice), with LendingIterator, the `Kimi.Iteration` adapters and associated families. Session `artifacts/verify/20260929-132623-627-session-p28-completion` passes the Debug/Release suites and the harnesses of every completed program. |
 | 29 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged source, shared-view/cleanup variants and required rejections pass through test-milestone29.ps1 (129 checks per configuration); shared string iteration and zero-sized elements are positive cases (reopened and completed 2026-09-29). Allocation/cost probes pass. Harness re-spelled 2026-09-30 for P41: position variants use `^(0@u8)`/`^(1@i64)`, and an invalid position Aborts at the `insertAt`/`removeAt` call of the Kimigayo entry in `Array.kimi`. |
 | 30 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Unchanged target, 43 checks per harness, recursive Tuple/borrow mappings, preserved IEEE/Contract semantics and allocation probes; [completion evidence](../../docs/dev/PLAN_HISTORY.md#review-remediation). |
-| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | IN_PROGRESS | Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; public generic API/capacity source migration, nonempty runtime literals, borrowed indexing and nested owning storage remain. [Evidence](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library). |
+| 31 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (Debug/Release) | DONE | Completed 2026-10-03 (user decision G58). Unchanged target, 71 checks per harness, mandatory static duplicate rejection, Kimigayo storage algorithms, slot reuse/cleanup and zero-allocation warm compilation; every public operation dispatches through Kimigayo source, and the capacity callback construction moved to P26 and was completed there (G20, 2026-10-05). [Evidence](../../docs/dev/PLAN_HISTORY.md#p31-kimigayo-library). |
 | 32 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | DONE: unchanged target, O0/O2 UTF-8/NUL/empty/numeric/failure variants and required rejections pass through `test-milestone32.ps1`; runtime costs and full-session regressions pass. [Evidence](../../docs/dev/PLAN_HISTORY.md#program32-completion). |
 | 33 | YES | FAIL | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Re-spelled 2026-09-25 and 2026-09-26 (`@follow` payload borrows, `@move` transfer). Current Binding first stops at refinement-dependent `view.extra` with `UnresolvedBinding_Kd`. Explicit base construction, concrete runtime Type tests and complete dynamic destruction have focused native coverage. |
-| 34 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Kimi.Intrinsics.makeRc`: the rc/arc creation and clone intrinsics are cataloged without declarations (PLAN G4). The payload, dependency-carrying payload, consuming `rc/Payload` parameter and `objref` view declarations bind. |
+| 34 | YES | PASS | PASS (Release, O0/O2) | PASS | IN_PROGRESS | The unchanged source executes through its original-source harness (2026-10-04, U5). rc/arc creation, clone, shared views and final release are verified; remaining handle-update neighbors and milestone completion evidence stay in PLAN U6/U7. |
 | 35 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Node>`: `Weak` and the Weak/cyclic intrinsics are cataloged without declarations (PLAN G4). |
-| 36 | YES | PASS | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
+| 36 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Authored 2026-09-27; re-spelled 2026-10-04 (authoring correction: `Resource.drop` gains the `2 =>` arm). Binding passes; ownership analysis stops at the static group `Registry` with `UnsupportedOwnership_Kd` (static stored Properties are not analyzed or generated). |
 | 37 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-27. The unchanged target, five variants (two views, alternate threshold, early stop, out-of-range removal Abort) and four rejections pass 47 harness checks in Debug and Release (`test-milestone37.ps1`, `artifacts/verify/20260926-201111-530-session-p39-pair-layers`). `WorkloadCostTest` observes three heap allocations for the workload and logarithmic allocations for a scaled workload. Harness re-spelled 2026-09-30 for P41: the out-of-range removal Aborts at the `removeAt` call of the Kimigayo entry in `Array.kimi`. |
 | 38 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Authored 2026-09-27. Binding first reports `UnsupportedBinding_Kd` at `Weak` in `Weak<rc/Lamp>` in the static registry (PLAN G4); payload follow through a refined view and the custom setter through an owning handle report later `TypeMismatch_Kd` diagnostics (P33–P35 scope). Device, Lamp and Sensor bind. |
 | 39 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored 2026-09-27 per SPEC §13.5.5.1 (pair layers) and completed the same day; the two constructions were re-spelled with their Type arguments (G24). The unchanged re-spelled target, two variants and four rejections pass 29 harness checks in Debug and Release (`test-milestone39.ps1`, `artifacts/verify/20260926-225920-160-session-p39-completion`). |
-| 40 | NO (planned) | NOT_RUN | NOT_RUN | NOT_RUN | TODO | Scope assigned in the future-verification table; source follows the G22 decision (PLAN §7) |
+| 40 | YES | PASS | PASS (Release, O0/O2) | PASS | DONE | Completed 2026-10-04 with unchanged source; sibling fields, calls and stored exclusive references keep their split identities. Session `20261003-154434-122-session-p40-u1-u2-session` passes all 34 completed harnesses ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
 | 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
 | 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
 
@@ -172,8 +178,8 @@ Hello World program keeps `::Kimi.Console.writeLine`; no extra alias is needed.
 
 ## Roadmap from program 15 to core completion
 
-The current plan has **41 programs**, including **27 programs numbered 15–41**.
-Programs 15–33 are concrete; 34–40 are future source targets. Programs 39 and 40
+The current plan has **42 programs**, including **28 programs numbered 15–42**.
+All have sources; 34–39 were authored on 2026-09-27 and 40 on 2026-10-03. Programs 39 and 40
 were added on 2026-09-26 for the two collection designs that the Place foundation
 leaves open (PLAN issues G21 and G22); their execution order is in [PLAN.md](../../docs/dev/PLAN.md#4-milestones-execution-order).
 Source creation is not implemented capability. This count is a decomposition of scope, not an effort or delivery
@@ -185,10 +191,12 @@ collections in a useful single Application. Full Package distribution, Mod host
 integration, the test runner, and comprehensive FFI/platform integration are
 separate product work. Unintroduced/deferred features in
 [Appendix D](../../docs/spec/appendices/D-deferred-features.md) are excluded, including
-mutable-element Slice, lending iterators, virtual/override members and runtime
+mutable-element Slice, Cursor Contracts, virtual/override members and runtime
 Contract Views. "Complete generics" means the adopted specification, not future
-generic forms. ObjectCallCompatible inference/publication and release checking
-remain subject to the [explicit deferral](../../docs/spec/appendices/D-deferred-features.md#objectcallcompatible).
+generic forms. ObjectCallCompatible's same-build inference, use-time enforcement and
+publication ([effect verification](../../docs/spec/12-expressions.md#12442-effect-verification))
+are in scope; only its release comparison remains
+[deferred](../../docs/spec/appendices/D-deferred-features.md#objectcallcompatible).
 
 | Program | Main subject | Intended coverage |
 | --- | --- | --- |
@@ -201,7 +209,7 @@ remain subject to the [explicit deferral](../../docs/spec/appendices/D-deferred-
 | 21 | Explicit full specialization | Closed Type/length selection, inherited default/Origin contracts and generic forwarding |
 | 22 | Generic generation | Monomorphized bodies (initial profile), compound ABI and finite generation limits; separate internal checks. Code sharing is deferred (§21.3.1) |
 | 23 | Basic Properties | Standard/custom/computed access over Copy values, permissions and evaluation order |
-| 24 | Ownership-bearing Properties | Non-Copy setters, owned/borrowed getter results, temporary lifetimes and Contract witnesses |
+| 24 | Ownership-bearing Properties | Non-Copy setters, borrowed getter results, temporary lifetimes, receiver consumption through a function and Contract witnesses |
 | 25 | Inheritance | Base storage, construction/destruction, inherited members and already-verified Property operations |
 | 26 | General closures and Callable | Composite/generic captures, dependency retention, function values and permitted erasure |
 | 27 | General Slice, positions and ranges, and the Place foundation | Partial/nested slices, bounds evaluation, permitted element Types and retained Origins; `place ref/T`/`place uniq/T` results, Contract Type parameters and user `Indexable`/`UniqIndexable` conformances |
@@ -274,7 +282,7 @@ continues to own active execution scope, acceptance tracking, dependencies,
 states and exact next actions; [PLAN_HISTORY.md](../../docs/dev/PLAN_HISTORY.md) owns run
 history. This roadmap does not replace the active target or mark any work done.
 
-### Verification scopes for programs 22–40
+### Verification scopes for programs 22–41
 
 Every row inherits the three evidence gates above. The canonical program is a
 small successful Application. Rejection/Abort cases use separate source copies;
@@ -282,13 +290,14 @@ IR, allocation, runtime-state and complexity checks use companion tests or tools
 Prerequisites name the main exercised capabilities, not permission to postpone
 required legality checks. Where public operations use static-effect summaries,
 verify those summaries before accepting calls even though the static-storage
-demonstration is program 36. ObjectCallCompatible's deferred stages stay deferred.
+demonstration is program 36. ObjectCallCompatible's same-build inference, enforcement
+and publication are in scope; its release comparison stays deferred.
 
 | Program / main prerequisites | Canonical program | Separate semantic checks | Implementation evidence |
 | --- | --- | --- | --- |
 | 22 / 18–21 | Pass compound generic values through per-substitution concrete bodies; preserve different Type operations and selected specializations. | Different layouts and same-layout/different-destructor Types; finite recursion, growing substitutions, invalid infinite layout and required resource-limit diagnostics. | Inspect concrete FunctionAbi and ordinary frames, selected body identities and deterministic finite generation; measure relevant warm allocations. Shared contexts, scratch frames and optional sharing budgets are deferred (§21.3.1). |
 | 23 / 4, 7 | Read/write stored standard, custom and computed Copy Properties with observable evaluation order. | Access permissions, differing setter inputs where permitted, single receiver/RHS/getter evaluation; reject writes or exclusive borrows into getter-result temporaries. | Distinguish direct Places from accessor calls; verify standard storage access and custom dispatch without invented get/set round trips. |
-| 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Owned getter results and legal receiver consumption, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
+| 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Receiver consumption through an `into` function, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
 | 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
 | 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
 | 27 / 7, 13, 16, 19 | Resolve saved positions and ranges and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
@@ -297,10 +306,10 @@ demonstration is program 36. ObjectCallCompatible's deferred stages stay deferre
 | 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
 | 31 / 19, 28–30 | Insert/reject/replace/remove Dictionary entries with user-defined equal keys; inspect and iterate insertion order. | Result/Option ownership, duplicate literal diagnostics and runtime duplicates, stored-key preservation, missing-key assignment Abort, lookup/mutation Loans and dependency retention. | Equality effects and invocation order, value-before-key/reverse-insertion cleanup, allocation-free duplicate/lookup/replacement paths, churn reuse and specified management bounds. No public Hash requirement is added. |
 | 32 / 18–19 | Interpolate user/generic values through Utf8Format, retaining the original Non-Copy values and independent resulting strings; reuse a fixed buffer through `$tryWrite`. | UTF-8/NUL/empty text, source-order evaluation, once-only formatting, temporary cleanup, missing conformance, exclusive root acquisition and Abort before later interpolation. | Verified Utf8Format writes, buffer ownership and cleanup, no retained source Loan in the combined result; required allocation bounds and the bounded Console stack path. |
-| 33 / 14, 24–25 | Create an obj, use a base object view, perform specified struct `is` tests/refinement, preserve identity and destroy the complete Dynamic Type. | Sealed payload projection, borrow/reborrow, legal whole-payload updates, invalid view/acquisition/escape; test expression effects and refinement invalidation. | Header/view identity, dynamic destruction before original storage release, unchanged identity across updates. No runtime Contract View, checked-cast spelling or deferred ObjectCallCompatible inference. |
+| 33 / 14, 24–25 | Create an obj, use a base object view, perform specified struct `is` tests/refinement, preserve identity and destroy the complete Dynamic Type. | Sealed payload projection, borrow/reborrow, legal whole-payload updates, invalid view/acquisition/escape; test expression effects and refinement invalidation. | Header/view identity, dynamic destruction before original storage release, unchanged identity across updates. No runtime Contract View, checked-cast spelling or ObjectCallCompatible inference. |
 | 34 / 33 | Create rc and arc values, explicitly clone strong handles, Move them and observe final strong release. | Shared-only access even at count one, no implicit clone, moved-handle rejection, external payload dependencies and separate count-overflow failure probes. | Exact retain/release counts, clone without allocation/payload copy, complete payload destruction once; inspect atomic arc ordering with internal tests. No source concurrency or obj/rc/arc conversion is added. |
 | 35 / 26, 34 | Downgrade, upgrade and expire Weak handles; then demonstrate a cyclic factory's Building-to-Alive transition. | Weak clone/Move, upgrade before publication and after final release, payload dependencies, factory Owned/Callable constraints and failed construction. | Separate payload/object/table lifetimes, allocation-free upgrade/clone, final table release; internally test arc upgrade/final-release races without introducing source threading. |
-| 36 / 19, 22, 24–25, 34 | Initialize static values on first access, distinguish enclosing generic keys and destroy in reverse successful-initialization order. | First write before replacement, unused storage, alias paths to one key, effects/reentry, non-Owned storage rejection; initialization cycles and invalid shutdown access in separate Abort inputs. | Per-key state/address/destruction identity, preserved keys across body sharing and Origin erasure, no initialization from untaken paths or effect summaries alone. |
+| 36 / 19, 22, 24–25, 34 | Initialize static values on first access, distinguish enclosing generic keys and at shutdown destroy static vars, then static lets, each in reverse successful-initialization order. | First write before replacement, unused storage, alias paths to one key, effects/reentry, non-Owned storage rejection; initialization cycles and invalid shutdown access, including a static `let`'s `drop` that reaches a static `var`, in separate Abort inputs. | Per-key state/address/destruction identity, preserved keys across body sharing and Origin erasure, no initialization from untaken paths or effect summaries alone. |
 | 37 / 26–32 | One bounded processing workload using collections, borrowed views, iteration and closures with exact results and cleanup. | Empty input, alternate values, early stop, rejection/Abort paths and representative Loan violations derived from the workload. | Workload allocation/complexity observations and regressions of prerequisites; no new language mechanism introduced to make the application work. |
 | 38 / 24–25, 32–36; 37 as needed | A second application using Properties, inheritance, objects and formatted output with exact lifetime behavior. | Alternate object lifetimes, replacement, empty/expired states, shutdown and relevant rejected accesses. | Cross-feature identity/cleanup/ownership checks and prerequisite regressions. It need not repeat every program-37 collection operation; no new feature family is deferred to this final target. |
 | 39 / 8, 18, 27 | Generic code over `Collection<s/T>` follows a pair Place to its stored target for every admitted `s`: shared under `value or valueborrow`, exclusive under `owner or uniq`. | Reject an exclusive follow whose admitted set includes `ref`, Take through the followed Place and any layer choice that would differ between instantiations; the followed Place depends on the outer borrow Origin whenever `s` is a borrow. | The Access Effect is fixed per admitted set at definition checking; monomorphized bodies select the owner Place or the referent without a runtime test and without allocation. Written after the G21 decision. |
@@ -1360,8 +1369,9 @@ and [assignment](../../docs/spec/13-operators-and-assignment.md#137-assignment).
 Resource 2 to the setter and destroys Resource 1 before installing it. The computed
 view returns a receiver-bounded borrow. `Viewed.item` maps to the standard shared
 slot-borrow operation, even though the implementation has a custom setter; it does
-not expose a Move or exclusive borrow. `Parcel.result` consumes its receiver and
-returns its owned field, whose destruction responsibility transfers to `owned`.
+not expose a Move or exclusive borrow. `Parcel.intoResult()` consumes its receiver
+(an accessor receiver is always shared for `get`, SPEC §11.2) and returns its owned
+field, whose destruction responsibility transfers to `owned`.
 
 Expected stdout (specification-derived; native execution is blocked):
 
@@ -1381,6 +1391,7 @@ Separate checks: a setter that discards its input must destroy that input and ke
 the old value; direct standard replacement witnesses and explicit computed
 implementations must preserve requirement contracts. Borrow an owned getter result
 for one call (allowed), then retain the borrow past its temporary lifetime (reject).
+Reject a computed getter with a `uniq/Self`, owning or object-form receiver.
 Reject replacement while a view remains live, shared extraction of a Non-Copy
 field, use of a consumed Parcel, direct Move/exclusive borrow through the custom
 setter, and incompatible requirement operations. Verify exact destruction counts,
@@ -1422,9 +1433,13 @@ construction must not promise unwinding. Reject accessible inherited-Name
 redeclarations, derivation from a sealed Type, invalid base calls, use after Move
 and Partial Moves across a user-`drop` layer. Inspect base offsets, distinct
 Field identities and each layer's construction/cleanup state. Inherited standard
-storage and Type members require no ObjectCallCompatible publication; borrowed
-method/custom-accessor projection remains subject to that separate deferred proof
-boundary and is not silently assumed by this program.
+storage and Type members require no ObjectCallCompatible proof. A base method or
+custom accessor with a borrowed receiver, used through base-subobject projection,
+requires Proven status established in the same build
+([object receiver compatibility](../../docs/spec/12-expressions.md#1244-object-receiver-compatibility));
+with a `ref/Self` receiver it is Proven by its shape
+([effect verification](../../docs/spec/12-expressions.md#12442-effect-verification)).
+This program calls no such member.
 
 Focus: [inheritance](../../docs/spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
 [constructors](../../docs/spec/06-declarations-and-containers.md#623-constructors),
@@ -1442,7 +1457,7 @@ Owned, Non-Copy Packet environment is moved into a common Function Type, moved
 again as that same Type, called twice and destroyed once. A Function Item is
 also copied into a common value while remaining independently callable.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (verified in Release at O0/O2):
 
 ```text
 Packet destroyed.
@@ -1539,7 +1554,7 @@ destroys Item 2, then the cursor's unyielded Items 4 and 3 in reverse Field orde
 associated-Type Origin equality. A retained first reference survives subsequent
 `next` calls and exhaustion; a temporary View also drives a `for` loop.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (verified natively at O0/O2 in Debug and Release by `src/backend/windows-x64/test-milestone28.ps1`):
 
 ```text
 Owned iterator acquired.
@@ -1678,7 +1693,7 @@ them. Removing and reinserting an equal key appends its new entry while retainin
 capacity. Owning iteration stops after the first pair; cleanup destroys that
 pair, then the unyielded entries in reverse insertion order, value before key.
 
-Expected stdout (verified unchanged target with Debug/Release O0/O2; full milestone completion remains pending):
+Expected stdout (verified unchanged target with Debug/Release O0/O2; completed 2026-10-03):
 
 ```text
 Duplicate returned both inputs.
@@ -1757,7 +1772,7 @@ replacement/swap, field-fact invalidation, retained dependencies and destruction
 Abort. Inspect header/view identity, unchanged allocation/metadata across payload
 updates, and release through the original allocation after dynamic destruction;
 the source makes no address-equality claim. Direct standard Fields and complete
-Sealed projections require no deferred ObjectCallCompatible inference. Runtime
+Sealed projections require no ObjectCallCompatible proof. Runtime
 Contract Views and checked-cast syntax remain outside this program.
 
 Focus: [object views](../../docs/spec/03-types-and-values.md#335-object-views-and-identity),
@@ -1774,7 +1789,7 @@ moved and consumed; the payload is destroyed exactly once when the last strong
 handle is released. Object borrows read the payload without changing counts, and
 a payload that keeps a borrow retains that dependency in its handle.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (specification-derived; the original-source harness verifies Release O0/O2):
 
 ```text
 Handle reads payload 1.
@@ -1839,8 +1854,8 @@ read of `count` runs its initializer once before the replacement, a `let`
 initializes when first read, and a first write initializes the slot and then
 replaces its value. A never-accessed static is neither initialized nor destroyed.
 Nested groups of a generic struct keep one key per enclosing binding. Shutdown
-destroys the initialized values in reverse initialization order after main's
-locals.
+destroys static vars, then static lets, each in reverse initialization order, after
+main's locals: Resource 3 with the vars, then Resource 1 with the lets.
 
 Expected stdout (specification-derived; native execution is blocked):
 
@@ -1862,9 +1877,14 @@ Static resource 1 destroyed.
 Separate checks: alias paths (`Cache<ref/i32 during a>` and `during b`) reach one
 key; reject non-Owned static storage, a `let` write, a borrow `during static` of
 mutable storage, and initialization from untaken branches or effect summaries
-alone; initialization cycles and access to destroyed storage during shutdown Abort
-in separate inputs. Inspect per-key state/address/destruction identity and
-preserved keys across body sharing and Origin erasure.
+alone. Separate Abort inputs report the start of the Place expression that
+designates the slot: an initialization cycle reports `KIMI_E_STATIC_CYCLE` at the
+access that meets the Initializing slot, and a static `let` whose `drop` reaches a
+static `var` reports `KIMI_E_STATIC_SHUTDOWN` at that access to the `var`, as does
+any other access to a Finished or Not started slot during shutdown
+([Abort codes](../../docs/spec/22-core-execution-and-foreign-functions.md#2254-abort-diagnostics-and-exit)).
+Inspect per-key state/address/destruction identity and preserved keys across body
+sharing and Origin erasure.
 
 Focus: [static storage](../../docs/spec/11-properties.md#1132-static-storage),
 [`static` and `Owned`](../../docs/spec/15-ownership-and-lifetime-analysis.md#1523-static-and-owned),
@@ -1943,11 +1963,13 @@ Registry entry expired.
 Application finished.
 ```
 
-Separate checks: an out-of-range level Aborts through the setter; reject payload
-follow through an open view, a setter call through `rc` or `objref`, a computed
-accessor through an open view without ObjectCallCompatible, and a static Weak
-whose payload borrows a local. Check identity across replacement, the single
-destruction of each object and the shutdown release of the registry.
+Separate checks: an out-of-range level Aborts through the setter, and a computed
+getter through `objref/Device` is accepted (its `ref/Self` receiver is Proven by
+its shape). Reject payload follow through an open view; a setter call through `rc`
+or `objref`; a setter or method whose body replaces the whole receiver, used
+through an open view or base projection (NotProven); and a static Weak whose
+payload borrows a local. Check identity across replacement, the single destruction
+of each object and the shutdown release of the registry.
 
 Focus: [Properties](../../docs/spec/11-properties.md),
 [inheritance](../../docs/spec/06-declarations-and-containers.md#622-inheritance-and-open-structures),
@@ -1967,7 +1989,7 @@ each element through the pair layer implicitly. The same bodies serve
 instantiation borrows the element itself, and the reference instantiations
 reborrow the referent with the outer borrow's dependency.
 
-Expected stdout (derived from the proposal; native execution is blocked):
+Expected stdout (verified natively in Debug and Release by `src/backend/windows-x64/test-milestone39.ps1`):
 
 ```text
 Owned element updated to 5.
@@ -1987,8 +2009,54 @@ runtime test or allocation.
 Focus: [reference-path selection](../../docs/spec/03-types-and-values.md#341-reference-path-selection),
 [slots and projections](../../docs/spec/08-generics-constraints-and-contracts.md#811-slots-and-projections),
 [generic access effects](../../docs/spec/08-generics-constraints-and-contracts.md#89-generic-access-effects),
-[follow](../../docs/spec/13-operators-and-assignment.md#13551-follow) and the proposal
-`draft/Design/2026-09-26 Semantics-Generic Follow.md`, which owns the pending decision.
+[follow](../../docs/spec/13-operators-and-assignment.md#13551-follow) and
+[pair layers](../../docs/spec/13-operators-and-assignment.md#pair-layers).
+
+## Milestone 40: Disjoint exclusive element access
+
+`tryGetPairUniq` splits the exclusive capability of one collection into two exclusive references to distinct elements.
+`transfer` selects two accounts of an `Array<Account>` by positions of any `Position` Type (`0`, `^1`, `1@u8`) and
+updates both balances through the pair; the same account (`1` and `^2` of three), a missing one and an overdraft are
+refused, and both references end before the caller uses the collection again. Both Non-Copy elements are then
+replaced through one pair, destroying each old value once, and the Array grows again after the pair's last use.
+`settle` holds two neighbors of a fixed array exclusively at once to exchange them, `^1` and `3` name one element and
+give `None`, and a pair over an `Array<uniq/i32>` reaches both referents, which are free again after its last use.
+
+Expected stdout (verified at Release O0/O2):
+
+```text
+Balances 20, 25, 25.
+Closed Chi.
+Closed Aki.
+Eve holds 20.
+Ben holds 25.
+Dan holds 25.
+Fay holds 5.
+Settled 10 30 20 40 after 3 exchanges.
+Positions ^1 and 3 name one element.
+Limits 0 and 19.
+Disjoint element access finished.
+Closed Fay.
+Closed Dan.
+Closed Ben.
+Closed Eve.
+```
+
+Completed 2026-10-04: the unchanged source builds and runs through `test-milestone40.ps1` at Release O0/O2.
+Sibling exclusive references acquired from owned Tuple payloads keep their independent capabilities through field
+access, call arguments, Reborrows and stored exclusive-reference reads. A child still suspends its own parent, and
+both siblings keep the original collection borrowed. Session `20261003-154434-122-session-p40-u1-u2-session` passes
+15,830 tests, 338 native regression executions and all 34 completed milestone harnesses, completing P40.
+
+Separate feature checks (`DisjointArrayPairTest`, `DisjointSplitLoanTest`): an empty Array and zero-sized elements give `None` or distinct
+logical positions; rejections of a whole-collection read, write, `append` or Move while a pair reference is live, of
+`tryGetPairUniq` on a shared receiver, of two ordinary `receiver[i]@uniq` borrows with runtime indices (no inference
+from runtime inequality) and of a pair reference used after the collection's borrow ends.
+
+Focus: [disjoint exclusive element pairs](../../docs/spec/04-arrays-indexing-and-slices.md#4610-disjoint-exclusive-element-pairs),
+[region splitting](../../docs/spec/15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting),
+[Place overlap](../../docs/spec/15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts) and the
+[standard storage boundary](../../docs/spec/22-core-execution-and-foreign-functions.md#22125-standard-storage-boundary).
 
 ## Milestone 41: Positions and ranges
 
@@ -2051,7 +2119,7 @@ rejections), `WrapConversionTest`, `BitConversionTest`, `NumericConversionEmissi
 `ref/u8` and `ref/T` values directly: a conversion operand is a read position, SPEC §13.5.2).
 
 Focus: [wrapping integer Types](../../docs/spec/03-types-and-values.md#3111-wrapping-integer-types),
-[integer results](../../docs/spec/13-operators-and-assignment.md#133-arithmetic-operators),
+[integer results](../../docs/spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators),
 [numeric conversions and literals](../../docs/spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals) and
 [PrimitiveInteger](../../docs/spec/08-generics-constraints-and-contracts.md#8473-primitiveinteger).
 

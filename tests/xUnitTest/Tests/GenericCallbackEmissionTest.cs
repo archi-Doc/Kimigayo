@@ -1,13 +1,20 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
 public class GenericCallbackEmissionTest
 {
+    private const string FunctionTypeRun = "func first(v: ref/i32) -> ref/i32 => v\nfunc run<T>(f: (T) -> (), g: (T) -> (), h: T, k: T) -> ()\n    f(h@move)\n    g(k@move)\n" +
+        "func use1(h: (ref/i32) -> ref/i32) -> ()\n    let n: i32 = 1\n    Console.writeLine(\"u1 \\(h(n@ref)@follow)\")\n" +
+        "func use2(h: (ref/i32) -> ref/i32) -> ()\n    let n: i32 = 2\n    Console.writeLine(\"u2 \\(h(n@ref)@follow)\")\n" +
+        "let h: (ref/i32) -> ref/i32 = first\nlet k: (ref/i32) -> ref/i32 = first\n";
+
     [Theory]
     [InlineData("i8", "7")]
     [InlineData("i32", "7")]
@@ -25,8 +32,35 @@ public class GenericCallbackEmissionTest
     [InlineData("Isize", "func invoke<T>(x: T, f: (T) -> isize) -> isize => f(x@move)\nrequire invoke<i32>(7, func (x: i32) => 42) == 42 else => $abort(\"result\")", "")]
     [InlineData("Unit", "func invoke<T>(x: T, f: (T) -> ()) => f(x@move)\ninvoke<i32>(7, func (x: i32) => Console.writeLine(\"called\"))", "called\n")]
     [InlineData("NoArguments", "func invoke<T>(x: T, f: () -> bool) -> bool => f()\nrequire invoke<i32>(7, func () => true) else => $abort(\"result\")", "")]
+    // An instance's `(T) -> T` value call returns the substituted T: its scalar result was left without a value, so building
+    // any instance failed with GenerationFailed_Kd ("Missing scalar computation") after the check passed.
+    [InlineData("GenericResult", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (value: i32) -> i32 => value + 1\nrequire apply(g, 2) == 3 else => $abort(\"result\")", "")]
+    [InlineData("GenericResultNested", "func twice<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(f(v))\nlet g = func [] (value: i64) -> i64 => value * 3\nrequire twice(g, 2@i64) == 18 else => $abort(\"nested\")", "")]
+    [InlineData("GenericResultTuple", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (p: (i32, i32)) -> (i32, i32) => (p.1, p.0)\nlet r = apply(g, (1, 2))\nrequire r.0 == 2 and r.1 == 1 else => $abort(\"tuple\")", "")]
+    [InlineData("GenericResultString", "func apply<T>(f: (T) -> T, v: T) -> T => f(v@move)\nlet g = func [] (s: string) -> string => s@move\nrequire apply(g, \"abc\") == \"abc\" else => $abort(\"string\")", "")]
+    // SPEC 10.5: a written closure header is evidence for T before the literal's body is checked, so an untyped integer
+    // argument is fitted to it; it was UnprovenConstraint_Kd for `T is Copy`.
+    [InlineData("HeaderEvidence", "func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nrequire apply(func [] (value: i32) -> i32 => value + 1, 2) == 3 else => $abort(\"header\")", "")]
+    [InlineData("GenericElementCall", "func callAt<T>(fs: ref/Array<(T) -> T>, x: T) -> T => fs[0](x@move)\nlet fs: Array<(i32) -> i32> = [func [] (v) => v * 2]\nlet ws: Array<(i64) -> i64> = [func [] (v) => v + 7]\nrequire callAt(fs@ref, 3) == 6 and callAt(ws@ref, 1@i64) == 8@i64 else => $abort(\"element\")", "")]
+    [InlineData("GenericFieldCall", "struct H<T>\n    public var f: (T) -> T\n    public init(f: (T) -> T) => self.f = f@move\nfunc run<T>(h: ref/H<T>, x: T) -> T => (h.f)(x@move)\nlet h = H<i32>.init(func [] (v) => v + 5)\nrequire run(h@ref, 1) == 6 else => $abort(\"field\")", "")]
+    // SPEC 10.8: structural slot inference compares normalized Types, so the Function Types that two parameters spell, each with its own
+    // per-call input, are one binding of T; it was NoApplicableOverload_Kd (2026-10-05).
+    [InlineData("FunctionTypeSpellings", FunctionTypeRun + "run(use1, use2, h@move, k@move)", "u1 1\nu2 2\n")]
+    [InlineData("FunctionTypeSpellingsHeader", FunctionTypeRun + "run(func (p: (ref/i32) -> ref/i32) => use1(p@move), use2, h@move, k@move)", "u1 1\nu2 2\n")]
     public void SharedCallsPreserveBehavior(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericCallback" + name, source, stdout);
+
+    // SPEC 10.8: Function Types that differ in structure stay two bindings of one slot.
+    [Fact]
+    public void DistinctFunctionTypesDoNotBindOneSlot()
+    {
+        var c = MinimalEmissionTest.Analyze(FunctionTypeRun + "func use3(h: (ref/i32) -> ref/i64) -> () => ()\nrun(use1, use3, h@move, k@move)");
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), error.Code);
+        Assert.Equal("run(use1, use3, h@move, k@move)", error.Text);
+    }
 
     [Theory]
     [InlineData("i8", "7")]
@@ -74,5 +108,13 @@ public class GenericCallbackEmissionTest
         Assert.Empty(output.ToString());
         Assert.True(c.Ownership.Analyze().IsVerified);
         Assert.True(c.Emission.Validate(out error), error);
+    }
+
+    [Fact]
+    public void AClosureHeaderThatContradictsAnotherArgumentIsInapplicable()
+    {
+        var c = MinimalEmissionTest.Analyze("func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nlet two: i32 = 2\nlet r = apply(func [] (value: i64) -> i64 => value, two)");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Contains(c.Binding.Issues, static issue => issue.Code == Kimi.DiagnosticCode.NoApplicableOverload_Kd);
     }
 }

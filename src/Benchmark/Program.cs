@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using BenchmarkDotNet.Jobs;
 using BenchmarkDotNet.Running;
 
 namespace Benchmark;
@@ -8,6 +9,18 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] is "--object-plans" or "--callable-plans")
+        {
+            CompilerPlanMeasurements.Run(args[0] == "--callable-plans");
+            return;
+        }
+
+        if (args.Length > 0 && args[0] == "--pair-cases")
+        {
+            PairCaseMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--borrow-storage")
         {
             BorrowStorageMeasurements.Run();
@@ -86,6 +99,6 @@ public class BenchmarkConfig : BenchmarkDotNet.Configs.ManualConfig
         this.AddExporter(BenchmarkDotNet.Exporters.MarkdownExporter.GitHub);
         this.AddDiagnoser(BenchmarkDotNet.Diagnosers.MemoryDiagnoser.Default);
 
-        this.AddJob(BenchmarkDotNet.Jobs.Job.MediumRun);
+        this.AddJob(Job.MediumRun.WithToolchain(new BenchmarkToolchain()));
     }
 }

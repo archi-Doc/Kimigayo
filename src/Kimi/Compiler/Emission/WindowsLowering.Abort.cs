@@ -19,13 +19,13 @@ internal static partial class WindowsLowering
     internal const int IntegerConversionReason = 9;
     internal const int FloatingConversionReason = 11;
     internal const int IndexBoundsReason = 10;
-    internal const int ArgumentReason = 12;
-    internal const int ArgumentRangeReason = 13;
-    internal const int FormatReason = 14;
-    internal const int MissingKeyReason = 15;
-    internal const int DuplicateKeyReason = 16;
+    internal const int ArgumentRangeReason = 12;
+    internal const int FormatReason = 13;
+    internal const int MissingKeyReason = 14;
+    internal const int DuplicateKeyReason = 15;
+    internal const int ReferenceCountReason = 16;
 
-    // Indices are stable internal ABI values. The template's table, lengths and call sites
+    // Indices are module-local ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
     internal static ReadOnlySpan<AbortReason> AbortReasons => Reasons;
 
@@ -43,11 +43,11 @@ internal static partial class WindowsLowering
         new(IntegerConversionReason, "conversion", "KIMI_E_INT_CONVERSION: Integer conversion out of range"),
         new(IndexBoundsReason, "index_bounds", "KIMI_E_INDEX_BOUNDS: Index out of bounds"),
         new(FloatingConversionReason, "float_conversion", "KIMI_E_FLOAT_CONVERSION: Floating conversion out of range"),
-        new(ArgumentReason, "argument", "KIMI_E_ARGUMENT: Invalid argument value"),
         new(ArgumentRangeReason, "argument_range", "KIMI_E_ARG_RANGE: Argument out of range"),
         new(FormatReason, "format", "KIMI_E_FORMAT: Formatting failed"),
         new(MissingKeyReason, "missing_key", "KIMI_E_MISSING_KEY: Dictionary key was not found"),
         new(DuplicateKeyReason, "duplicate_key", "KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key"),
+        new(ReferenceCountReason, "ref_count", "KIMI_E_REF_COUNT: Reference count limit exceeded"),
     ];
 
     internal static string ExpandAbortReasons(string runtime)

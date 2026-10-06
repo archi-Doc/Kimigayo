@@ -21,6 +21,10 @@ public class KimiOptions
     [SimpleOption("ToolchainRoot")]
     public string? ToolchainRoot { get; set; }
 
+    /// <summary>Gets or sets the output form of <c>kimi check</c>: <c>text</c> renders the records, <c>json</c> writes the document of SPEC 23.3.6.8.</summary>
+    [SimpleOption("Format")]
+    public string Format { get; set; } = "text";
+
     // SimpleCommandLine requires values for Boolean options. Preserve the specified
     // bare --locked and --no-build spellings while retaining explicit Boolean values and other options.
     internal static string ExpandFlags(string commandLine)

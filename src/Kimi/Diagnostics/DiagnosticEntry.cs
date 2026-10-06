@@ -38,7 +38,7 @@ public partial record class DiagnosticEntry
     public string? Arguments { get; init; }
 
     /// <summary>Gets the facts that a report may add to the Reason beyond the message arguments, in the form of <see cref="Arguments"/>.
-    /// A report supplies all of them or none.</summary>
+    /// Alternatives are separated by <c>|</c>; a report supplies all facts of one alternative or none.</summary>
     public string? Evidence { get; init; }
 
     /// <summary>Gets the number of message arguments, fixed when the catalog loads.</summary>
@@ -49,9 +49,13 @@ public partial record class DiagnosticEntry
     [IgnoreMember]
     public DiagnosticParameter[] ArgumentSchema { get; private set; } = [];
 
-    /// <summary>Gets the evidence names and kinds, parsed when the catalog loads.</summary>
+    /// <summary>Gets the evidence names and kinds of the first alternative, parsed when the catalog loads.</summary>
     [IgnoreMember]
     public DiagnosticParameter[] EvidenceSchema { get; private set; } = [];
+
+    /// <summary>Gets every evidence alternative, the first being <see cref="EvidenceSchema"/>.</summary>
+    [IgnoreMember]
+    public DiagnosticParameter[][] EvidenceAlternatives { get; private set; } = [[]];
 
     [IgnoreMember]
     private CompositeFormat? format;
@@ -117,17 +121,32 @@ public partial record class DiagnosticEntry
             return "a message without arguments contains a brace.";
         }
 
-        if (Parse(this.Arguments) is not { } arguments || Parse(this.Evidence) is not { } evidence)
+        var written = string.IsNullOrWhiteSpace(this.Evidence) ? [string.Empty] : this.Evidence.Split('|');
+        var alternatives = new DiagnosticParameter[written.Length][];
+        if (ParseSchema(this.Arguments) is not { } arguments)
         {
             return "a fact is not written as name:Kind.";
         }
 
+        for (var i = 0; i < written.Length; i++)
+        {
+            if (ParseSchema(written[i]) is not { } alternative || (alternative.Length == 0 && written.Length > 1))
+            {
+                return "a fact is not written as name:Kind.";
+            }
+
+            if (arguments.Concat(alternative).Select(static x => x.Name).Distinct(StringComparer.Ordinal).Count() != arguments.Length + alternative.Length)
+            {
+                return "fact names must be unique within the code.";
+            }
+
+            alternatives[i] = alternative;
+        }
+
+        var evidence = alternatives[0];
         this.ArgumentSchema = arguments;
         this.EvidenceSchema = evidence;
-        if (arguments.Concat(evidence).Select(static x => x.Name).Distinct(StringComparer.Ordinal).Count() != arguments.Length + evidence.Length)
-        {
-            return "fact names must be unique within the code.";
-        }
+        this.EvidenceAlternatives = alternatives;
 
         if (arguments.Length != this.Arity)
         {
@@ -148,24 +167,80 @@ public partial record class DiagnosticEntry
     }
 
     internal void ValidateValue(DiagnosticParameter parameter, object? value)
+        => ValidateValue(this.Name, parameter, value);
+
+    /// <summary>Tells whether the label, written over the first alternative's facts, reads an alternative's facts: the first one, or one
+    /// whose facts are its leading facts with the same names and kinds, such as the first without a trailing fact.</summary>
+    /// <param name="alternative">The index of the alternative a report's facts satisfy.</param>
+    /// <returns>Whether the label's fact positions mean the same facts in that alternative.</returns>
+    internal bool LabelApplies(int alternative)
     {
-        var valid = parameter.Kind switch
+        if (alternative == 0)
         {
-            DiagnosticValueKind.Number => value is byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal ||
-                (value is double d && double.IsFinite(d)) || (value is float f && float.IsFinite(f)),
-            DiagnosticValueKind.Boolean => value is bool,
-            DiagnosticValueKind.Enumeration => value is Enum e && Enum.IsDefined(e.GetType(), e),
-            DiagnosticValueKind.Text => value is not null,
-            DiagnosticValueKind.Requirement => value is DiagnosticRequirement requirement && DiagnosticRequirements.TryGetPhrase(requirement, out _),
-            _ => false,
-        };
-        if (!valid)
+            return true;
+        }
+
+        var facts = this.EvidenceAlternatives[alternative];
+        if (facts.Length > this.EvidenceSchema.Length)
         {
-            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{this.Name}: {parameter.Name} requires {parameter.Kind}.");
+            return false;
+        }
+
+        for (var i = 0; i < facts.Length; i++)
+        {
+            if (facts[i].Name != this.EvidenceSchema[i].Name || facts[i].Kind != this.EvidenceSchema[i].Kind)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Selects the evidence alternative that a report's facts satisfy: the first whose arity and kinds they match.</summary>
+    /// <param name="evidence">The reported facts.</param>
+    /// <returns>The alternative's index, or -1 when none matches.</returns>
+    internal int EvidenceAlternative(object?[] evidence)
+    {
+        for (var i = 0; i < this.EvidenceAlternatives.Length; i++)
+        {
+            var alternative = this.EvidenceAlternatives[i];
+            if (alternative.Length != evidence.Length)
+            {
+                continue;
+            }
+
+            var matches = true;
+            for (var j = 0; j < alternative.Length && matches; j++)
+            {
+                matches = IsValid(alternative[j], evidence[j]);
+            }
+
+            if (matches)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    /// <summary>Checks that a reported value has the kind its definition names; a mismatch is a contract violation.</summary>
+    /// <param name="owner">The name of the code or repair kind that defines the fact.</param>
+    /// <param name="parameter">The fact's definition.</param>
+    /// <param name="value">The reported value.</param>
+    internal static void ValidateValue(string owner, DiagnosticParameter parameter, object? value)
+    {
+        if (!IsValid(parameter, value))
+        {
+            throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{owner}: {parameter.Name} requires {parameter.Kind}.");
         }
     }
 
-    private static DiagnosticParameter[]? Parse(string? schema)
+    /// <summary>Parses a schema of <c>name:Kind</c> pairs, as a code's Arguments and Evidence and a repair kind's Facts are written.</summary>
+    /// <param name="schema">The schema text; empty for no facts.</param>
+    /// <returns>The parameters, or <see langword="null"/> when a pair is malformed.</returns>
+    internal static DiagnosticParameter[]? ParseSchema(string? schema)
     {
         if (string.IsNullOrWhiteSpace(schema))
         {
@@ -204,4 +279,17 @@ public partial record class DiagnosticEntry
 
         return parameters;
     }
+
+    private static bool IsValid(DiagnosticParameter parameter, object? value)
+        => parameter.Kind switch
+        {
+            DiagnosticValueKind.Number => value is byte or sbyte or short or ushort or int or uint or long or ulong or Int128 or UInt128 or decimal ||
+                (value is double d && double.IsFinite(d)) || (value is float f && float.IsFinite(f)),
+            DiagnosticValueKind.Boolean => value is bool,
+            DiagnosticValueKind.Enumeration => value is Enum e && Enum.IsDefined(e.GetType(), e),
+            DiagnosticValueKind.Text => value is not null,
+            DiagnosticValueKind.Requirement => value is DiagnosticRequirement requirement && DiagnosticRequirements.TryGetPhrase(requirement, out _),
+            DiagnosticValueKind.Origin => value is DiagnosticOrigin { Kind: "expression" or "borrow" or "omitted" or "closure" },
+            _ => false,
+        };
 }

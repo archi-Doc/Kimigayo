@@ -67,7 +67,9 @@ public sealed partial class Binding
             throw new InvalidOperationException("Bound checking requires a final Binding pass.");
         }
 
+        // Check publishes both kinds of failure again.
         this.issues.Clear();
+        this.derivedIssues.Clear();
         return this.Result = this.Check(BindingMode.Final);
     }
 
@@ -87,221 +89,35 @@ public sealed partial class Binding
         this.running = true;
         try
         {
-            // Every later phase rests on Binding, so its facts are discarded with Binding's.
+            // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
+            // leaves no result behind.
+            this.Result = default;
             this.compilation.Diagnostics.InvalidateSemantics();
-            this.storageVersion++;
-            this.issues.Clear();
-            this.libraryImports.Clear();
-            this.constraintDiagnosticCauses?.Clear();
-            this.ResetPrerequisites();
-            this.objectPayloadCauses?.Clear();
-            this.ResetMatches();
-            this.resultContexts.Clear();
-            this.resultCursor = 0;
-            this.ResetStartup();
-            this.ResetSpecializations();
             this.compilation.InvalidateOwnership();
-            this.receiverOperations.Clear();
-            this.adaptations.Clear();
-            this.ResetSyntheticCalls();
-            this.pairFollows.Clear();
-            this.implicitPairFollows.Clear();
-            foreach (var construction in this.enumConstructions.Values)
+            this.ResetPass(mode);
+            this.IndexSources();
+            this.kimiValid = this.IndexLibrary();
+            if (this.kimiValid)
             {
-                construction.IsValid = false;
+                this.BindDeclarations(mode);
+                this.BindBodies();
+                this.ValidateBoundDeclarations(mode);
+                this.kimiValid = this.Library.ValidateBoundDeclarations();
+            }
+            else
+            {
+                // A malformed compiler library must not enter indexing/overload chains; only the indexed sources are pruned.
+                this.PruneCandidateScopes();
+                this.PrunePatternScopes();
+                this.PruneMatchPlans();
             }
 
-            this.nodes.Clear();
-            this.aliases.Clear();
-            this.ResetAliases();
-            this.obligations.Clear();
-            this.obligationSet.Clear();
-            this.inheritedOriginTypes.Clear();
-            this.ResetCapabilities(mode);
-            this.ResetContracts();
-            foreach (var scope in this.scopes.Values)
-            {
-                scope.Reset();
-            }
-
-            foreach (var symbol in this.symbols.Values)
-            {
-                if (symbol.Property is { } property)
-                {
-                    property.IsVerified = false;
-                }
-
-                if (symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget))
-                {
-                    symbol.Type = null;
-                }
-
-                symbol.Next = null;
-                symbol.ConditionalDeclaration = null;
-                symbol.Resolving = false;
-                symbol.HeaderBound = false;
-                symbol.ReceiverIndex = -1;
-                symbol.ObjectPayloadOptOut = null;
-            }
-
-            // The indexer resets every semantic field before any header or expression is evaluated.
-            foreach (var module in this.compilation.SourceModules)
-            {
-                this.indexer.Scope = this.GetScope(module.RootKoto, null);
-                this.indexer.Visit(module.RootKoto);
-            }
-
-            this.IndexModuleReferences();
-            this.Library.Restore();
-            this.kimiValid = this.Library.ValidateDeclarations();
-            if (!this.kimiValid)
-            {
-                this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
-                // A malformed compiler library must not enter indexing/overload chains.
-                return this.Result = this.Check(mode);
-            }
-
-            this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
-            this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
-            this.scopes[this.Library.Console] = this.Library.ConsoleScope;
-            this.scopes[this.Library.Test] = this.Library.TestScope;
-            this.scopes[this.Library.Text] = this.Library.TextScope;
-            this.indexer.Scope = this.Library.Scope;
-            var libraryRoot = this.Library.Kotonoha.RootKoto;
-            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
-            {
-                var declaration = libraryRoot.NestedContainers[i];
-                if (declaration.BoundSymbol?.Intrinsic is not (null or IntrinsicKind.None))
-                {
-                    continue;
-                }
-
-                if (this.Library.SignatureScope(declaration) is { } signatureScope)
-                {
-                    this.indexer.Scope = signatureScope;
-                    for (var m = 0; m < declaration.Members.Count; m++)
-                    {
-                        this.indexer.Visit(declaration.Members[m]);
-                    }
-
-                    this.indexer.Scope = this.Library.Scope;
-                }
-                else
-                {
-                    this.indexer.Visit(declaration);
-                }
-            }
-
-            for (var i = 0; i < libraryRoot.Members.Count; i++)
-            {
-                this.indexer.Visit(libraryRoot.Members[i]);
-            }
-
-            // Source guards are all indexed now; a removed guard may have become an arm body.
-            // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
-            this.PruneCandidateScopes();
-            this.cLayoutInstances.Clear();
-            this.storagePrepared = false;
-            this.ValidateDefaultAliases();
-            this.PrepareOriginDeclarations();
-            this.BindSchemas();
-            this.PrepareAssociatedOrigins();
-            this.PrepareAliases();
-            this.PrepareContracts();
-            this.BindConstraints();
-            this.BindTypeOriginContracts();
-            for (var i = 0; i < this.nodes.Count; i++)
-            {
-                if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
-                {
-                    this.BindHeader(symbol);
-                }
-            }
-
-            this.ValidateLayoutFragments();
-            this.ValidateLibraryImports();
-            this.ValidateBaseDeclarations();
-            this.PrepareStorage();
-            this.ValidateInlineLayouts();
-            this.ValidateCLayoutFields();
-            this.ComputeOriginRequirements();
-            this.ValidateSignatures();
-            this.ValidateContractDeclarations();
-            this.PrepareEffectBounds();
-            this.capabilitiesReady = true;
-            this.ValidateConformances(mode, false);
-            this.ValidateConstraintEnvironments();
-            this.PrepareSpecializations();
-            foreach (var module in this.compilation.SourceModules)
-            {
-                this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
-            }
-
-            for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
-            {
-                var declaration = libraryRoot.NestedContainers[i];
-                if (this.Library.SignatureScope(declaration) is { } signatureScope)
-                {
-                    for (var m = 0; m < declaration.Members.Count; m++)
-                    {
-                        this.BindNode(declaration.Members[m], signatureScope);
-                    }
-                }
-                else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
-                {
-                    this.BindNode(declaration, this.Library.Scope);
-                }
-            }
-
-            for (var i = 0; i < libraryRoot.Members.Count; i++)
-            {
-                this.BindNode(libraryRoot.Members[i], this.Library.Scope);
-            }
-
-            this.PrunePatternScopes();
-            this.PruneMatchPlans();
-            this.ClearCapabilityResults();
-            this.ValidateOriginRelations();
-            this.ValidateAssociatedApplications();
-            this.ValidateCopyDeclarations(mode);
-            this.ComputeOriginRequirements();
-            this.ValidateOriginRequirements();
-            this.ValidateApiAccess(mode);
-            // Base constraints need capability evidence; propagate failures before certificates.
-            this.ValidateBaseDeclarations(mode);
-            // Property certificates must include final Origin and declaration API validity.
-            this.ValidateProperties(mode);
-            this.ValidateConformances(mode, true);
-            this.ValidateConstraintUses(mode);
-            // Late witness failures can invalidate declarations that normalized their projections.
-            // Revisit dependent certificates only while declaration states change monotonically.
-            while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments())
-            {
-                this.ClearCapabilityResults();
-                this.ValidateBaseDeclarations(mode);
-                this.ValidateProperties(mode);
-                this.ValidateConformances(mode, true);
-            }
-
-            this.ClearCapabilityResults();
-            this.ValidateEffectBounds();
-            this.ValidateIterationWitnesses();
-            this.ValidateExpressionProjectionInputs(mode);
-            this.CompleteEnumAcquisitions();
-            this.CompletePatternAcquisitions();
-            if (mode == BindingMode.Final)
-            {
-                this.CompleteAliasWarnings();
-            }
-
-            this.kimiValid = this.Library.ValidateBoundDeclarations();
             if (!this.kimiValid)
             {
                 this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
             }
 
-            this.Result = this.Check(mode);
-            return this.Result;
+            return this.Result = this.Check(mode);
         }
         finally
         {
@@ -322,126 +138,7 @@ public sealed partial class Binding
                 continue; // Pairwise declaration failures are normalized as one group below.
             }
 
-            var requirement = DiagnosticRequirement.Binding(issue.Failure);
-            if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
-                this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
-                cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType)
-            {
-                // The recorded missing Name of the Constraint is its prerequisite.
-                issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
-            }
-            else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
-            {
-                // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
-                var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
-                issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
-            }
-            else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
-            {
-                // SPEC 13.5.4.2: a direct literal is converted at compile time, so its range failure is explained at the literal.
-                var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
-                issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4.2)");
-            }
-            else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
-            {
-                var (code, evidence, note) = this.TryFailure(issue.Node);
-                issue.Node.Report(requirement, code, note: note, evidence: evidence);
-            }
-            else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
-            {
-                // SPEC 15.3.5: the formation condition of Loan<T>.
-                issue.Node.Report(
-                    requirement,
-                    issue.Code,
-                    note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
-                    advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
-            }
-            else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
-            {
-                // FailObjectPayload records the declaring Type before it fails the use.
-                issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
-            }
-            else if (issue.Code == DiagnosticCode.NoApplicableOverload_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
-            {
-                var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
-                string? shapeNote = null;
-                for (var c = 0; c < rejected.Length; c++)
-                {
-                    var candidate = rejected[c];
-                    var label = candidate.Function.Name;
-                    if (candidate.Actual is { } actual && candidate.Expected is { } expected)
-                    {
-                        var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
-                        label = $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
-                        // Keep the compared Types even when the related-location limit omits this candidate.
-                        shapeNote ??= $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
-                    }
-
-                    candidates[c] = ("candidate", candidate.Function, label);
-                }
-
-                // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
-                // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
-                var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
-                issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: shapeNote is not null ? RangeShapeAdvice : null, at: at);
-            }
-            else if (issue.Code == DiagnosticCode.AcquisitionRequired_Kd && this.acquisitionConflicts.TryGetValue(issue.Node, out var conflicts))
-            {
-                this.ReportAcquisitionConflicts(issue.Node, requirement, conflicts);
-            }
-            else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
-            {
-                this.ReportEffectBound(effect, requirement);
-            }
-            else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
-            {
-                // SPEC 8.4.10.6: reported at the violating effect.
-            }
-            else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
-            {
-                // SPEC 15.3.2: an undeclared storage name, at the name.
-            }
-            else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
-            {
-                // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
-            }
-            else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
-            {
-                this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, requirement, issue.Code);
-            }
-            else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
-            {
-                this.ReportWrite(issue.Node, target, requirement, issue.Code);
-            }
-            else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
-            {
-                // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
-                // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
-                var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-                issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : null, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
-            }
-            else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
-            {
-                var subject = rangeFailure.Subject;
-                var integers = subject.Components[0].IsInteger && subject.Components[1].IsInteger;
-                var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
-                    "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
-                issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
-            }
-            else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
-            {
-                // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
-                var start = DiagnosticTypeName(unproven.Subject.Components[0]);
-                var end = DiagnosticTypeName(unproven.Subject.Components[1]);
-                var repair = ReferenceEquals(unproven.Subject.Components[0], unproven.Subject.Components[1])
-                    ? $"If the boundaries are meant to be integers, require {start} is PrimitiveInteger"
-                    : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
-                issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
-            }
-            else
-            {
-                issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
-            }
+            this.ReportIssue(issue);
         }
 
         foreach (var node in this.derivedIssues)
@@ -492,36 +189,23 @@ public sealed partial class Binding
             return;
         }
 
+        // An edit revokes the whole pass, exactly as the next Bind discards it; associated Origin parameters of the edited
+        // trees are recreated.
         this.Result = default;
-        this.issues.Clear();
-        this.libraryImports.Clear();
-        this.constraintDiagnosticCauses?.Clear();
-        this.ResetPrerequisites();
-        this.partPrerequisites.Clear();
-        this.obligations.Clear();
-        this.obligationSet.Clear();
+        this.ResetPass(BindingMode.Provisional);
         this.associatedOrigins.Clear();
-        this.ResetStartup();
-        this.ResetCapabilities(BindingMode.Provisional);
-        this.ResetContracts();
-        foreach (var symbol in this.symbols.Values)
-        {
-            if (symbol.Property is { } property)
-            {
-                property.IsVerified = false;
-            }
-        }
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
         => InvalidDeclarationContextCause(declaration) is not null;
 
     // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
+    // A declaration whose only failure is a form rule (IsFormFailure) keeps a valid signature and body, so it is no such context.
     private static Koto? InvalidDeclarationContextCause(Koto declaration)
     {
         for (Koto? node = declaration; node is not null; node = node.Parent)
         {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid)
+            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid && !IsFormFailure(node))
             {
                 return node;
             }
@@ -576,6 +260,16 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 7.6.3: the call a closure's minimum receiver needs, and the calls a Callable receiver permits.
+    private static string CallReceiverText(SemanticsKind receiver)
+        => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "an Exclusive call", _ => "a Consuming call" };
+
+    private static string PermittedCallsText(SemanticsKind receiver)
+        => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
+
+    private static string SufficientCallText(SemanticsKind receiver)
+        => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "a Shared or Exclusive call", _ => "any call" };
+
     private static bool SignatureSlotEquals(BindingSymbol? a, BindingSymbol? b, Koto aBinder, Koto bBinder)
         => ReferenceEquals(a, b) || (a is not null && b is not null && ReferenceEquals(a.Scope.Owner, aBinder) && ReferenceEquals(b.Scope.Owner, bBinder) && a.Slot == b.Slot);
 
@@ -617,6 +311,238 @@ public sealed partial class Binding
         return true;
     }
 
+    // Discards every fact of the latest pass. Cross-pass storage stays: interned Types, Origins and Constraints, scopes and
+    // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
+    private void ResetPass(BindingMode mode)
+    {
+        this.storageVersion++;
+        this.issues.Clear();
+        this.libraryImports.Clear();
+        this.constraintDiagnosticCauses?.Clear();
+        this.ResetPrerequisites();
+        this.objectPayloadCauses?.Clear();
+        this.ResetMatches();
+        this.waitingNestedCalls.Clear();
+        this.nestedArgumentProbe = null;
+        this.resultContexts.Clear();
+        this.resultCursor = 0;
+        this.ResetStartup();
+        this.ResetSpecializations();
+        this.receiverOperations.Clear();
+        this.adaptations.Clear();
+        this.ResetSyntheticCalls();
+        this.pairFollows.Clear();
+        this.implicitPairFollows.Clear();
+        foreach (var construction in this.enumConstructions.Values)
+        {
+            construction.IsValid = false;
+        }
+
+        this.nodes.Clear();
+        this.aliases.Clear();
+        this.ResetAliases();
+        this.obligations.Clear();
+        this.obligationSet.Clear();
+        this.inheritedOriginTypes.Clear();
+        this.ResetCapabilities(mode);
+        this.ResetContracts();
+        foreach (var scope in this.scopes.Values)
+        {
+            scope.Reset();
+        }
+
+        foreach (var symbol in this.symbols.Values)
+        {
+            if (symbol.Property is { } property)
+            {
+                property.IsVerified = false;
+            }
+
+            if (symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget))
+            {
+                symbol.Type = null;
+            }
+
+            symbol.Next = null;
+            symbol.ConditionalDeclaration = null;
+            symbol.Resolving = false;
+            symbol.HeaderBound = false;
+            symbol.ReceiverIndex = -1;
+            symbol.ObjectPayloadOptOut = null;
+        }
+    }
+
+    // The indexer resets every semantic field of the source trees before any header or expression is evaluated.
+    private void IndexSources()
+    {
+        foreach (var module in this.compilation.SourceModules)
+        {
+            this.indexer.Scope = this.GetScope(module.RootKoto, null);
+            this.indexer.Visit(module.RootKoto);
+        }
+
+        this.IndexModuleReferences();
+    }
+
+    // Restores and indexes the embedded Kimi library; false when its declarations are malformed.
+    private bool IndexLibrary()
+    {
+        this.Library.Restore();
+        if (!this.Library.ValidateDeclarations())
+        {
+            return false;
+        }
+
+        this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
+        this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
+        this.scopes[this.Library.Console] = this.Library.ConsoleScope;
+        this.scopes[this.Library.Test] = this.Library.TestScope;
+        this.scopes[this.Library.Text] = this.Library.TextScope;
+        this.indexer.Scope = this.Library.Scope;
+        var libraryRoot = this.Library.Kotonoha.RootKoto;
+        for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+        {
+            var declaration = libraryRoot.NestedContainers[i];
+            if (declaration.BoundSymbol?.Intrinsic is not (null or IntrinsicKind.None))
+            {
+                continue;
+            }
+
+            if (this.Library.SignatureScope(declaration) is { } signatureScope)
+            {
+                this.indexer.Scope = signatureScope;
+                for (var m = 0; m < declaration.Members.Count; m++)
+                {
+                    this.indexer.Visit(declaration.Members[m]);
+                }
+
+                this.indexer.Scope = this.Library.Scope;
+            }
+            else
+            {
+                this.indexer.Visit(declaration);
+            }
+        }
+
+        for (var i = 0; i < libraryRoot.Members.Count; i++)
+        {
+            this.indexer.Visit(libraryRoot.Members[i]);
+        }
+
+        return true;
+    }
+
+    // Declarations, Constraints, Contracts, headers, storage and signatures, before any body is bound.
+    private void BindDeclarations(BindingMode mode)
+    {
+        // Source guards are all indexed now; a removed guard may have become an arm body.
+        // Try arms are indexed later, so retain their Pattern scopes until binding finishes.
+        this.PruneCandidateScopes();
+        this.cLayoutInstances.Clear();
+        this.storagePrepared = false;
+        this.ValidateDefaultAliases();
+        this.PrepareOriginDeclarations();
+        this.BindSchemas();
+        this.PrepareAssociatedOrigins();
+        this.PrepareAliases();
+        this.PrepareContracts();
+        this.BindConstraints();
+        this.BindTypeOriginContracts();
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
+            {
+                this.BindHeader(symbol);
+            }
+        }
+
+        this.ValidateLayoutFragments();
+        this.ValidateLibraryImports();
+        this.ValidateBaseDeclarations();
+        this.PrepareStorage();
+        this.ValidateInlineLayouts();
+        this.ValidateCLayoutFields();
+        this.ComputeOriginRequirements();
+        this.ValidateSignatures();
+        this.ValidateContractDeclarations();
+        this.PrepareEffectBounds();
+        this.capabilitiesReady = true;
+        this.ValidateConformances(mode, false);
+        this.ValidateConstraintEnvironments();
+        this.PrepareSpecializations();
+    }
+
+    // Source bodies, then the library bodies outside the compiler-intrinsic declarations.
+    private void BindBodies()
+    {
+        foreach (var module in this.compilation.SourceModules)
+        {
+            this.BindNode(module.RootKoto, this.scopes[module.RootKoto]);
+        }
+
+        var libraryRoot = this.Library.Kotonoha.RootKoto;
+        for (var i = 0; i < libraryRoot.NestedContainers.Count; i++)
+        {
+            var declaration = libraryRoot.NestedContainers[i];
+            if (this.Library.SignatureScope(declaration) is { } signatureScope)
+            {
+                for (var m = 0; m < declaration.Members.Count; m++)
+                {
+                    this.BindNode(declaration.Members[m], signatureScope);
+                }
+            }
+            else if (declaration.BoundSymbol?.Intrinsic == IntrinsicKind.None)
+            {
+                this.BindNode(declaration, this.Library.Scope);
+            }
+        }
+
+        for (var i = 0; i < libraryRoot.Members.Count; i++)
+        {
+            this.BindNode(libraryRoot.Members[i], this.Library.Scope);
+        }
+    }
+
+    // Declaration checks that need the bound bodies: Origin requirements, API access, certificates and witnesses.
+    private void ValidateBoundDeclarations(BindingMode mode)
+    {
+        this.PrunePatternScopes();
+        this.PruneMatchPlans();
+        this.ClearCapabilityResults();
+        this.ValidateOriginRelations();
+        this.ValidateAssociatedApplications();
+        this.ValidateCopyDeclarations(mode);
+        this.ComputeOriginRequirements();
+        this.ValidateOriginRequirements();
+        this.ValidateApiAccess(mode);
+        // Base constraints need capability evidence; propagate failures before certificates.
+        this.ValidateBaseDeclarations(mode);
+        // Property certificates must include final Origin and declaration API validity.
+        this.ValidateProperties(mode);
+        this.ValidateConformances(mode, true);
+        this.ValidateConstraintUses(mode);
+        // Late witness failures can invalidate declarations that normalized their projections.
+        // Revisit dependent certificates only while declaration states change monotonically.
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(sourcesOnly: true))
+        {
+            this.ClearCapabilityResults();
+            this.ValidateBaseDeclarations(mode);
+            this.ValidateProperties(mode);
+            this.ValidateConformances(mode, true);
+        }
+
+        this.ClearCapabilityResults();
+        this.ValidateEffectBounds();
+        this.ValidateIterationWitnesses();
+        this.ValidateExpressionProjectionInputs(mode);
+        this.CompleteEnumAcquisitions();
+        this.CompletePatternAcquisitions();
+        if (mode == BindingMode.Final)
+        {
+            this.CompleteAliasWarnings();
+        }
+    }
+
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
         // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
@@ -633,6 +559,271 @@ public sealed partial class Binding
         node.BindingState = unresolved ? BindingState.Unresolved : BindingState.Invalid;
         node.BindingFailure = failure;
         return null;
+    }
+
+    // Publishes one direct failure with the facts its check recorded. Each fact table holds the explanation of its node's one
+    // failure only (FailExplained), so at most one table answers for a node.
+    private void ReportIssue(BindingIssue issue)
+    {
+        var requirement = DiagnosticRequirement.Binding(issue.Failure);
+        if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
+            this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
+            cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported)
+        {
+            // The recorded missing Name of the Constraint is its prerequisite.
+            issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
+        }
+        else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
+        {
+            // Only a match plan fails NonExhaustiveMatch, so its coverage is always known.
+            var coverage = this.matches[(MatchKoto)issue.Node].Coverage;
+            issue.Node.Report(requirement, issue.Code, note: coverage.Describe(), evidence: [coverage.Requirement]);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidNumericLiteral_Kd && LiteralConversionTarget(issue.Node) is { } literalTarget)
+        {
+            // SPEC 13.5.4.2: a direct literal is converted at compile time, so its range failure is explained at the literal.
+            var truncated = (issue.Node as NumberLiteralKoto ?? ((UnaryKoto)issue.Node).Operand) is NumberLiteralKoto { IsInteger: false };
+            issue.Node.Report(requirement, issue.Code, note: $"The direct literal is converted at compile time and its {(truncated ? "truncated " : string.Empty)}value is outside the range of {DiagnosticTypeName(literalTarget)} (SPEC 13.5.4.2)");
+        }
+        else if (issue.Code == DiagnosticCode.InvalidTry_Kd)
+        {
+            var (code, evidence, note) = this.TryFailure(issue.Node);
+            issue.Node.Report(requirement, code, note: note, evidence: evidence);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && issue.Node is GenericsKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.Loan })
+        {
+            // SPEC 15.3.5: the formation condition of Loan<T>.
+            issue.Node.Report(
+                requirement,
+                issue.Code,
+                note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
+                advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
+        }
+        else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
+        {
+            // FailObjectPayload records the declaring Type before it fails the use.
+            issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
+        }
+        else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
+        {
+            var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
+            string? shapeNote = issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? "No candidate is better than every other remaining candidate under the argument, parameter Type, generic and default ranking rules. Anonymous bodies, captures and waiting function references do not select an overload" : null;
+            string? advice = null;
+            for (var c = 0; c < rejected.Length; c++)
+            {
+                var candidate = rejected[c];
+                var label = candidate.Function.Name;
+                if (candidate.ReferenceSignature && issue.Code == DiagnosticCode.AmbiguousBinding_Kd)
+                {
+                    shapeNote = "No function reference candidate is better than every other fitting candidate under the parameter Type and generic ranking rules. Results do not rank candidates";
+                    advice = "Write explicit Type arguments or a Type annotation that uniquely selects the intended function reference";
+                }
+
+                if (candidate.UnfixedReference)
+                {
+                    // SPEC 10.5: without a fixed expected call signature, an overload set is not a value.
+                    shapeNote = "A function reference without a fixed expected call signature is a value only when exactly one candidate remains and its Type parameters are bound";
+                    advice = "Annotate the expected Function Type, or write explicit Type arguments, so that one function is referenced";
+                    candidates[c] = ("candidate", candidate.Function, candidate.Actual is { } signature ? $"{label}: callable signature {DiagnosticText.Bound(DiagnosticTypeName(signature), 48).Text}" : label);
+                    continue;
+                }
+
+                if (candidate.ErasureIncomparable && issue.Code == DiagnosticCode.AmbiguousBinding_Kd)
+                {
+                    shapeNote = ErasureAmbiguityNote;
+                }
+
+                if (candidate.Selected)
+                {
+                    shapeNote = "This declaration was selected before completing its callable arguments; its argument constraints failed. Another overload is not selected";
+                    if (candidate.ActualReceiver is { } actualReceiver && candidate.RequiredReceiver is { } requiredReceiver)
+                    {
+                        label = $"{candidate.Function.Name}: closure requires {actualReceiver.ToString().ToLowerInvariant()}; Callable requires {requiredReceiver.ToString().ToLowerInvariant()}";
+                        shapeNote = $"{label}. {shapeNote}";
+                    }
+                }
+                else if (candidate.ActualReceiver is { } closureReceiver && candidate.RequiredReceiver is { } callableReceiver &&
+                    (uint)candidate.ReceiverParameter < (uint)candidate.Function.Parameters.Count)
+                {
+                    // SPEC 7.6.3, 8.6: the closure argument's minimum call receiver is the candidate's only refuted condition
+                    // (TryCandidate), so the Advice names the parameter form and Callable receiver that admit it.
+                    var parameter = candidate.Function.Parameters[candidate.ReceiverParameter];
+                    var pattern = parameter.Type.BoundType;
+                    var slot = (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Symbol?.Name ?? "F";
+                    var needed = closureReceiver.ToString().ToLowerInvariant();
+                    label = $"{candidate.Function.Name}: closure requires {needed}; Callable requires {callableReceiver.ToString().ToLowerInvariant()}";
+                    shapeNote ??= $"{label}. The closure argument of {parameter.InternalName} needs {CallReceiverText(closureReceiver)}, and the Callable Constraint of {slot} permits {PermittedCallsText(callableReceiver)} (SPEC 7.6.3, 8.6)";
+                    var form = closureReceiver == SemanticsKind.Uniq ? $"uniq/{slot}, with {slot} is Callable<uniq, ...>, and pass the closure with @uniq" : $"{slot} by value, with {slot} is Callable<owner, ...>, and pass the closure with @move";
+                    advice ??= $"Declare {parameter.InternalName} as {form}, or change the closure so that {SufficientCallText(callableReceiver)} suffices";
+                }
+
+                if (candidate.Actual is { } actual && candidate.Expected is { } expected)
+                {
+                    var (shownActual, shownExpected) = DiagnosticText.BoundPair(DiagnosticTypeName(actual), DiagnosticTypeName(expected));
+                    label = candidate.ReferenceSignature && issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? $"{candidate.Function.Name}: callable signature {shownActual.Text}"
+                        : candidate.CallableSignature ? $"{candidate.Function.Name}: callable signature is {shownActual.Text}; requires {shownExpected.Text}"
+                        : candidate.SharedReceiver ? $"{candidate.Function.Name}: receiver has {shownActual.Text}; requires {shownExpected.Text}"
+                        : $"{candidate.Function.Name}: argument has {shownActual.Text}; parameter requires {shownExpected.Text}";
+                    // Keep the compared Types even when the related-location limit omits this candidate.
+                    shapeNote ??= candidate.ReferenceSignature ? $"The function reference requires the fixed call signature {shownExpected.Text}; no candidate applies"
+                        : candidate.CallableSignature ? $"The argument's known call signature is {shownActual.Text}; the candidate requires {shownExpected.Text} from the supplied Type evidence"
+                        : candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
+                        : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
+                    if (!candidate.SharedReceiver && !candidate.CallableSignature)
+                    {
+                        advice ??= RangeShapeAdvice;
+                    }
+                }
+
+                advice ??= candidate.ObjectClone ? StrongCloneAdvice : null;
+                candidates[c] = ("candidate", candidate.Function, label);
+            }
+
+            // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
+            // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
+            var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
+            issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: advice, at: at);
+        }
+        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots?.TryGetValue(issue.Node, out var unboundSlot) == true)
+        {
+            // SPEC 10.6, 10.8: the selected call's slot that no evidence binds, with the waiting argument whose signature holds it.
+            ReportUnboundSlots(issue.Node, unboundSlot, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && KotoHelper.UnwrapParentheses(issue.Node).BoundSymbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+        {
+            // SPEC 10.5: the Type parameter that no expected call signature or explicit Type argument binds.
+            issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: UnboundReferenceNote, advice: UnboundReferenceAdvice);
+        }
+        else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
+        {
+            // SPEC 7.3: the method named through a value; its declaration shows the receiver it would need.
+            issue.Node.Report(requirement, issue.Code, evidence: [method.Name], related: [("declaration", method, null)]);
+        }
+        else if (issue.Code == DiagnosticCode.ParameterShapeMismatch_Kd && this.parameterShapeConflicts.TryGetValue(issue.Node, out var shapes))
+        {
+            this.ReportParameterShapes(issue.Node, requirement, shapes);
+        }
+        else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
+        {
+            this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
+        {
+            ReportProtectedPlacement(issue.Node, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidEffectBound_Kd && issue.Node is EffectBoundKoto effect)
+        {
+            this.ReportEffectBound(effect, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd && this.ReportEffectViolation(issue.Node, requirement, issue.Code))
+        {
+            // SPEC 8.4.10.6: reported at the violating effect.
+        }
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
+        {
+            ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins?.TryGetValue(issue.Node, out var perCallOrigin) == true)
+        {
+            // SPEC 15.3.6, 10.8: only the argument's own per-call Origin would satisfy the slot; the argument is related.
+            issue.Node.Report(requirement, issue.Code, evidence: [perCallOrigin.Reason], related: [("argument", perCallOrigin.Argument, null)], advice: PerCallOriginAdvice);
+        }
+        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
+        {
+            // SPEC 15.3.2: an undeclared storage name, at the name.
+        }
+        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportAbsentSlot(issue.Node, requirement, issue.Code))
+        {
+            // SPEC 15.3.2: a projection of a slot its Type does not declare, at the slot name.
+        }
+        else if (issue.Code is DiagnosticCode.TransferRequired_Kd or DiagnosticCode.ExclusiveBorrowRequired_Kd && this.acquisitionPlaces?.TryGetValue(issue.Node, out var acquisition) == true)
+        {
+            this.ReportAcquisition(issue.Node, acquisition.Place, acquisition.Object, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidCaptureBinding_Kd && issue.Node is IdentifierNameKoto { BoundSymbol: { } contextual } && IsContextualBinding(contextual))
+        {
+            this.ReportContextualCapture(issue.Node, contextual, requirement, issue.Code);
+        }
+        else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
+        {
+            ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.BorrowOriginHint(issue.Node));
+            this.ReportMoreCallRelations(issue.Node, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
+        {
+            ReportOriginContract(issue.Node, contract, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidTypeFormation_Kd && this.arityFailures?.TryGetValue(issue.Node, out var arity) == true)
+        {
+            ReportArity(issue.Node, arity, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.originQualifierLimits?.TryGetValue(issue.Node, out var qualifierLimit) == true)
+        {
+            this.ReportOriginQualifier(issue.Node, qualifierLimit, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
+        {
+            this.ReportDuplicateBindingSet(bindingSet, reusedSet, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && this.captureRepeats?.TryGetValue(issue.Node, out var repeats) == true)
+        {
+            this.ReportCaptureRepeats(issue.Node, repeats, requirement, issue.Code);
+        }
+        else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
+        {
+            this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, entry.Source, requirement, issue.Code);
+        }
+        else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
+        {
+            this.ReportWrite(issue.Node, target, requirement, issue.Code);
+        }
+        else if (issue.Code is DiagnosticCode.NonNumericOperand_Kd or DiagnosticCode.NonIntegerOperand_Kd or DiagnosticCode.InvalidShiftCount_Kd &&
+            this.operatorOperands?.TryGetValue(issue.Node, out var operand) == true)
+        {
+            this.ReportOperatorOperand(issue.Node, operand, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.TypeMismatch_Kd && this.mismatches?.TryGetValue(issue.Node, out var mismatch) == true)
+        {
+            // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
+            // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
+            var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
+            // A default at a generic parameter Type is checked for every binding (SPEC 7.2.3).
+            var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected);
+            string? defaultAdvice = null;
+            var defaultNote = wrappingConversion || conversion is not null ? null : this.GenericDefaultNote(issue.Node, mismatch.Actual, mismatch.Expected, out defaultAdvice);
+            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? defaultNote ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : defaultAdvice, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+        }
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
+        {
+            this.ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.callableConstraints?.TryGetValue(issue.Node, out var callable) == true)
+        {
+            // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part, at the argument whose Type binds F.
+            ReportCallableConstraint(issue.Node, callable, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
+        {
+            var subject = rangeFailure.Subject;
+            var integers = subject.Components[0].IsInteger && subject.Components[1].IsInteger;
+            var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
+                "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
+            issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
+        }
+        else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
+        {
+            // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
+            var start = DiagnosticTypeName(unproven.Subject.Components[0]);
+            var end = DiagnosticTypeName(unproven.Subject.Components[1]);
+            var repair = ReferenceEquals(unproven.Subject.Components[0], unproven.Subject.Components[1])
+                ? $"If the boundaries are meant to be integers, require {start} is PrimitiveInteger"
+                : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
+            issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
+        }
+        else
+        {
+            issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
+        }
     }
 
     private BindingResult Check(BindingMode mode)
@@ -654,10 +845,18 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            // API and constraint validation can invalidate a target or Type after call selection.
+            // API and constraint validation can invalidate a target or Type after call selection; a target whose declaration
+            // failed leaves the call resting on that failure (SPEC 23.3.6.4).
             if (node is InvocationKoto { BoundCall: { } call })
             {
-                this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
+                if (node.BindingFailure == BindingFailure.None && InvalidDeclarationContextCause(call.Target.Declaration) is { } invalidTarget)
+                {
+                    this.CompleteDependent(node, invalidTarget);
+                }
+                else
+                {
+                    this.RequireConstraint(node, this.CheckCallTypeConstraints(call, this.ConstraintScope(node)), mode);
+                }
             }
             else if (node is IsKoto { BoundRuntimeTest: { } runtimeTest } test)
             {
@@ -743,7 +942,11 @@ public sealed partial class Binding
                     BindingFailure.MissingSpecializationTarget => DiagnosticCode.MissingSpecializationTarget_Kd,
                     BindingFailure.SpecializationInputMismatch => DiagnosticCode.SpecializationInputMismatch_Kd,
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
-                    BindingFailure.AcquisitionRequired => DiagnosticCode.AcquisitionRequired_Kd,
+                    BindingFailure.ParameterShapeMismatch => DiagnosticCode.ParameterShapeMismatch_Kd,
+                    BindingFailure.UnboundTypeArgument => DiagnosticCode.UnboundTypeArgument_Kd,
+                    BindingFailure.BoundMethodValue => DiagnosticCode.BoundMethodValue_Kd,
+                    BindingFailure.OriginRelation => this.OriginRelationCode(node),
+                    BindingFailure.OriginContract => DiagnosticCode.UnprovenOriginContract_Kd,
                     BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
@@ -751,11 +954,16 @@ public sealed partial class Binding
                     BindingFailure.ExclusivePathTake => DiagnosticCode.ExclusivePathTake_Kd,
                     BindingFailure.PlaceRequired => DiagnosticCode.PlaceRequired_Kd,
                     BindingFailure.ReceiverShapeMismatch => DiagnosticCode.ReceiverShapeMismatch_Kd,
+                    BindingFailure.AccessorReceiverShape => DiagnosticCode.AccessorReceiverShape_Kd,
                     BindingFailure.BareOwningShorthand => DiagnosticCode.BareOwningShorthand_Kd,
                     BindingFailure.NonCopyOperand => DiagnosticCode.NonCopyOperand_Kd,
+                    BindingFailure.NonNumericOperand => DiagnosticCode.NonNumericOperand_Kd,
+                    BindingFailure.NonIntegerOperand => DiagnosticCode.NonIntegerOperand_Kd,
+                    BindingFailure.InvalidShiftCount => DiagnosticCode.InvalidShiftCount_Kd,
                     BindingFailure.InvalidWrapConversion => DiagnosticCode.InvalidWrapConversion_Kd,
                     BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
                     BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
+                    BindingFailure.ProtectedPlacement => DiagnosticCode.ProtectedPlacement_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
@@ -878,6 +1086,13 @@ public sealed partial class Binding
         {
             foreach (var first in scope.Values.Values)
             {
+                // SPEC 7.3.1: the functions of one Name acquire corresponding parameters of overlapping Types in one mode; a Contract's
+                // requirements are checked below with the ones they inherit.
+                if (scope.Owner is not ContractKoto)
+                {
+                    this.ValidateParameterShapes(first);
+                }
+
                 for (var a = first; a is not null; a = a.Next)
                 {
                     if (a.Declaration is not FunctionKoto fa || fa.IsSpecialization)
@@ -936,6 +1151,7 @@ public sealed partial class Binding
 
             foreach (var members in shape.MembersByName.Values)
             {
+                this.ValidateContractParameterShapes(contract, members);
                 SemanticsKind? expected = null;
                 for (var i = 0; i < members.Count; i++)
                 {
@@ -978,9 +1194,10 @@ public sealed partial class Binding
 
             var marker = node is FunctionKoto function && !TestDefinition.IsValidSyntax(function) ? TestDefinition.Marker(function) : null;
             if (node is AttributeKoto { IdentifierKoto: IdentifierNameKoto { IdentifierName: "Test" } } attribute &&
-                (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null))
+                (attribute.Parent is not FunctionKoto owner || TestDefinition.Marker(owner) is null) &&
+                attribute.CodeContext.RecoveryCause(attribute) is null)
             {
-                marker = attribute;
+                marker = attribute; // A misplaced marker the parser kept is its syntax Error's recovery and marks nothing.
             }
 
             if (marker is not null)
@@ -1117,6 +1334,20 @@ public sealed partial class Binding
                 }
 
                 test.VisitChildren(binding.testSyntaxVisitor ??= new(binding));
+                return;
+            }
+
+            if (node is AttributeKoto misplaced && node.CodeContext.RecoveryCause(node) is not null)
+            {
+                // A misplaced attribute the parser kept for the source round trip is its syntax Error's recovery (SPEC 6.5): it
+                // marks nothing, so the node it was kept on is checked on its own.
+                misplaced.BoundType = BoundType.Unit;
+                misplaced.BindingState = BindingState.Resolved;
+                if (misplaced.AttributeChain is { } precedingMisplaced)
+                {
+                    this.Visit(precedingMisplaced);
+                }
+
                 return;
             }
 

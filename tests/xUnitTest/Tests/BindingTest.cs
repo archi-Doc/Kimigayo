@@ -70,13 +70,16 @@ public class BindingTest
     [InlineData("let x: f32 = 1e100", DiagnosticCode.InvalidNumericLiteral_Kd)]
     [InlineData("let x = 1\nfunc f() => x", DiagnosticCode.InvalidCaptureBinding_Kd)]
     [InlineData("let x: u32 = 1\nlet y = -x", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("var x: f64 = 1.0\nx++", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("var x: f64 = 1.0\nx %= 2.0", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("var x: f64 = 1.0\nx <<= 1", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("var x: f64 = 1.0\nx++", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("var x: f64 = 1.0\nx %= 2.0", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("var x: f64 = 1.0\nx <<= 1", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("let x: i32 = 1\nlet y = x << 1.0", DiagnosticCode.InvalidShiftCount_Kd)]
     [InlineData("let x = true < false", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("let x = true & false", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("let x = 'a' + 'b'", DiagnosticCode.TypeMismatch_Kd)]
-    [InlineData("let x = \"a\" - \"b\"", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("let x = true & false", DiagnosticCode.NonNumericOperand_Kd)]
+    [InlineData("let x = 'a' + 'b'", DiagnosticCode.NonNumericOperand_Kd)]
+    [InlineData("let x = \"a\" - \"b\"", DiagnosticCode.NonNumericOperand_Kd)]
+    [InlineData("let x = \"a\" + \"b\"", DiagnosticCode.NonNumericOperand_Kd)]
+    [InlineData("var s = \"a\"\ns += \"b\"", DiagnosticCode.NonNumericOperand_Kd)]
     [InlineData("let x: i32 = -1.5", DiagnosticCode.TypeMismatch_Kd)]
     public void FinalBindingRejectsInvalidProgramsWithoutDuplicatingIssues(string source, DiagnosticCode code)
     {
@@ -95,8 +98,8 @@ public class BindingTest
     [InlineData("let x: i32 = 1\nlet y = x << -1", "i32")]
     [InlineData("let n: u8 = 3\nlet y = if true => 1 << n else => 0", "i32")]
     [InlineData("var x: i16 = 1\nlet count: u32 = 3\nx >>= count\nlet y = x", "i16")]
-    [InlineData("let y = \"a\" + \"b\"", "string")]
-    [InlineData("var s = \"a\"\ns += \"b\"\nlet y = s", "string")]
+    [InlineData("let y = \"\\(\"a\")\\(\"b\")\"", "string")]
+    [InlineData("var s = \"a\"\ns = \"\\(s)b\"\nlet y = s", "string")]
     [InlineData("let y = 'a' < 'b'", "bool")]
     [InlineData("let y = \"a\" >= \"b\"", "bool")]
     [InlineData("let y = () == ()", "bool")]
@@ -252,6 +255,27 @@ public class BindingTest
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
+    }
+
+    // Closure receiver classification (12, 14, 37: a reusable visitor, the capture list without a boxed enumerator) and
+    // specialization Origin inheritance (21: scratch binders) once allocated on every warm rebind.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(12)]
+    [InlineData(14)]
+    [InlineData(21)]
+    [InlineData(37)]
+    public void RebindingAMilestoneProgramDoesNotAllocate(int number)
+    {
+        var compilation = Compilation.CreateForTest();
+        Assert.True(compilation.Prepare(WindowsProfile.Target));
+        compilation.Kotonoha.AddSource(new SourceDocument($"Milestone{number}.kimi", DiagnosticCorpus.Milestone(number)));
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.True(compilation.Bind().IsComplete, Describe(compilation));
+        }
+
+        Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final), iterations: 8));
     }
 
     [Fact]

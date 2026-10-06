@@ -180,107 +180,110 @@ public sealed partial class Binding
             return false;
         }
 
-        var left = this.ContractType(a.Type!, scope);
-        var right = this.ContractType(b.Type!, scope);
+        return this.MayUnify(this.ContractType(a.Type!, scope), this.ContractType(b.Type!, scope));
+    }
 
-        // Unification calls back into nothing, so one scratch map serves every check (a warm bind allocates none).
-        var substitutions = this.collisionSubstitutions;
-        substitutions.Clear();
-        return Unify(left, right);
+    // SPEC 8.4.9.1 steps 2-4, shared with the parameter acquisition shape (SPEC 7.3.1): Type parameters are variables with an
+    // occurs check, residual terms unify, and only a fixed-structure mismatch proves two Types apart. Unification calls back into
+    // nothing, so one scratch map serves every check (a warm bind allocates none).
+    private bool MayUnify(BoundType left, BoundType right)
+    {
+        this.collisionSubstitutions.Clear();
+        return this.UnifyTypes(left, right);
+    }
 
-        BoundType Resolve(BoundType type)
+    private BoundType ResolveSubstitution(BoundType type)
+    {
+        while (this.collisionSubstitutions.TryGetValue(type, out var target))
         {
-            while (substitutions.TryGetValue(type, out var target))
-            {
-                type = target;
-            }
-
-            return type;
+            type = target;
         }
 
-        bool Contains(BoundType value, BoundType variable)
+        return type;
+    }
+
+    private bool ContainsVariable(BoundType value, BoundType variable)
+    {
+        value = this.ResolveSubstitution(value);
+        if (ReferenceEquals(value, variable))
         {
-            value = Resolve(value);
-            if (ReferenceEquals(value, variable))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < value.Components.Count; i++)
-            {
-                if (Contains(value.Components[i], variable))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        bool IsFree(BoundType value)
-        {
-            value = Resolve(value);
-            if (value.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < value.Components.Count; i++)
-            {
-                if (!IsFree(value.Components[i]))
-                {
-                    return false;
-                }
-            }
-
             return true;
         }
 
-        bool Unify(BoundType left, BoundType right)
+        for (var i = 0; i < value.Components.Count; i++)
         {
-            left = Resolve(left);
-            right = Resolve(right);
-            if (ReferenceEquals(left, right))
+            if (this.ContainsVariable(value.Components[i], variable))
             {
                 return true;
             }
+        }
 
-            if (left.Kind == BoundTypeKind.Parameter || right.Kind == BoundTypeKind.Parameter)
-            {
-                var variable = left.Kind == BoundTypeKind.Parameter ? left : right;
-                var value = ReferenceEquals(variable, left) ? right : left;
-                if (Contains(value, variable))
-                {
-                    // An occurs check proves inequality only for free constructors.
-                    return !IsFree(value);
-                }
+        return false;
+    }
 
-                substitutions.Add(variable, value);
-                return true;
-            }
+    private bool IsFreeTerm(BoundType value)
+    {
+        value = this.ResolveSubstitution(value);
+        if (value.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        {
+            return false;
+        }
 
-            if (left.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
-                right.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
-            {
-                return true; // Residual, non-free terms are not injective constructors.
-            }
-
-            if (left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Components.Count != right.Components.Count ||
-                (left.Kind == BoundTypeKind.Primitive && left.Name != right.Name) ||
-                (left.Kind == BoundTypeKind.FixedArray && left.LengthExpression is null && right.LengthExpression is null && left.Length != right.Length))
+        for (var i = 0; i < value.Components.Count; i++)
+        {
+            if (!this.IsFreeTerm(value.Components[i]))
             {
                 return false;
             }
+        }
 
-            for (var i = 0; i < left.Components.Count; i++)
+        return true;
+    }
+
+    private bool UnifyTypes(BoundType left, BoundType right)
+    {
+        left = this.ResolveSubstitution(left);
+        right = this.ResolveSubstitution(right);
+        if (ReferenceEquals(left, right))
+        {
+            return true;
+        }
+
+        if (left.Kind == BoundTypeKind.Parameter || right.Kind == BoundTypeKind.Parameter)
+        {
+            var variable = left.Kind == BoundTypeKind.Parameter ? left : right;
+            var value = ReferenceEquals(variable, left) ? right : left;
+            if (this.ContainsVariable(value, variable))
             {
-                if (!Unify(left.Components[i], right.Components[i]))
-                {
-                    return false;
-                }
+                // An occurs check proves inequality only for free constructors.
+                return !this.IsFreeTerm(value);
             }
 
-            return true; // Origin/order and unresolved length equalities remain possible.
+            this.collisionSubstitutions.Add(variable, value);
+            return true;
         }
+
+        if (left.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
+            right.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        {
+            return true; // Residual, non-free terms are not injective constructors.
+        }
+
+        if (left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Components.Count != right.Components.Count ||
+            (left.Kind == BoundTypeKind.Primitive && left.Name != right.Name) ||
+            (left.Kind == BoundTypeKind.FixedArray && left.LengthExpression is null && right.LengthExpression is null && left.Length != right.Length))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Components.Count; i++)
+        {
+            if (!this.UnifyTypes(left.Components[i], right.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true; // Origin/order and unresolved length equalities remain possible.
     }
 }

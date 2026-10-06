@@ -46,7 +46,7 @@ internal sealed partial class BodyLowering
         var receiverSource = ElementAccess.ValueSource(receiverPlace.Source);
         if (syntaxReceiver is null || plan.Projection < -1 ||
             (plan.Projection < 0 && !ReferenceEquals(receiverSource, acquiredSource) && !ReferenceEquals(receiverSource, syntaxReceiver) &&
-                !(syntaxReceiver.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var local) && local == plan.Receiver)))
+                !(syntaxReceiver.BoundSymbol is { } symbol && body.TrySymbolPlaceAt(symbol, id, out var local) && local == plan.Receiver)))
         {
             return Fail("Sequence receiver does not match its evaluated source.", out failure);
         }

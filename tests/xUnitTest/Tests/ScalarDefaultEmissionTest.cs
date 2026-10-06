@@ -242,20 +242,20 @@ public class ScalarDefaultEmissionTest
 
     [Theory]
     [InlineData("func f(x: i32 = (label scope: do\n    let n = \"a\"\n    exit to scope 1\n)) => ()\nf(3)")]
-    [InlineData("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (label scope: do\n    let n = helper(\"a\")\n    exit to scope n\n)) => ()\nf(3)")]
-    public void SuppliedDefaultsStillRejectUnsupportedLocalEffects(string source)
+    public void SuppliedDefaultsCheckOwnedLocals(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.False(c.Emission.Validate(out _));
+        Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Fact]
-    public void UnexecutedDefaultArmStillRequiresSupportedEffects()
+    public void UnexecutedDefaultArmStillRejectsPreparedMoves()
     {
-        // SPEC 7.2.3: every default is checked at declaration time; a string-argument call is still unsupported.
-        var c = MinimalEmissionTest.Analyze("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (if true => 1 else => helper(\"a\"))) => ()\nf(3)");
-        Assert.True(c.Binding.Result.IsComplete);
+        // SPEC 7.2.3: every default is checked at declaration time, even a branch that never executes.
+        var c = MinimalEmissionTest.Analyze("func helper(s: string) -> i32 => 1\nfunc f(s: string, x: i32 = (if true => 1 else => helper(s@move))) => ()\nf(\"a\", 3)");
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -378,7 +378,6 @@ public class ScalarDefaultEmissionTest
 
     [Theory]
     [InlineData("func f(x: string, y: string = x) => ()\nf(\"a\", \"b\")")]
-    [InlineData("func helper(r: ref/i32) -> i32 => 1\nfunc f(x: i32, y: i32 = helper(x@ref)) => ()\nf(2, 3)")]
     public void UnsupportedDefaultBodiesRemainRejectedEvenWhenSupplied(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -387,18 +386,16 @@ public class ScalarDefaultEmissionTest
     }
 
     [Fact]
-    public void DefaultsReadReferencesToScalarsButSupplyOnlyScalars()
+    public void DefaultResultSupportDoesNotBroadenScalarLoopSupport()
     {
-        // SPEC 15.1.6: a binding of a shared Subject inside a default is a ref/T that the default may read; the value a
-        // default supplies to its parameter is a Scalar or Unit.
+        // The scalar loop/checking helper keeps its original boundary; default results now also include external references.
         var c = MinimalEmissionTest.Analyze("func f(x: ref/i32) => ()");
         var type = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parameters.Count == 1).Parameters[0].Type.BoundType;
         Assert.True(ReferenceTypes.IsScalarBorrow(type));
-        Assert.True(ScalarDefaults.SupportsValue(type));
-        Assert.False(ScalarDefaults.SupportsResult(type));
-        Assert.True(ScalarDefaults.SupportsResult(BoundType.I32));
-        Assert.True(ScalarDefaults.SupportsResult(BoundType.Unit));
-        Assert.False(ScalarDefaults.SupportsValue(BoundType.String));
+        Assert.True(ScalarTypes.SupportsFlowValue(type));
+        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.I32));
+        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.Unit));
+        Assert.False(ScalarTypes.SupportsFlowValue(BoundType.String));
     }
 
     [Trait("Purpose", "Allocation")]

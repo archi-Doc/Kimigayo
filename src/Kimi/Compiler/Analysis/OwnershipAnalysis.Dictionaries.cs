@@ -28,17 +28,26 @@ public sealed partial class OwnershipAnalysis
                 this.Connect(check, this.abortExit, OwnershipEdgeKind.Abort);
             }
 
+            var loanDepth = this.comparisonDepth++;
+            var reservationMark = this.body.CallReservations.Count;
             var value = this.Expression(entry.Value);
             if (key < 0 || value < 0)
             {
+                this.EndComparisonLoans(loanDepth, entry.Value);
+                this.comparisonDepth = loanDepth;
                 completes = false;
                 continue;
             }
 
+            // An exclusive reference stored as a value is acquired exclusively by the literal at its insertion (PLAN G53).
+            this.ReservePlacedReference(source, entry.Value, value, value);
+            this.ActivateCallReservations(source, reservationMark);
             var insert = this.Emit(OwnershipOperationKind.StoreDictionaryEntry, entry.Key, dictionary, key);
             this.body.OperationSteps[insert] = value;
             this.SetValue(insert, OwnershipValueKind.DictionaryLiteral, [this.Value(key), this.Value(value)]);
             this.Connect(insert, this.abortExit, OwnershipEdgeKind.Abort);
+            this.EndComparisonLoans(loanDepth, entry.Value);
+            this.comparisonDepth = loanDepth;
         }
 
         return completes ? dictionary : -1;

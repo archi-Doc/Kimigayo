@@ -31,7 +31,7 @@ public sealed partial class OwnershipAnalysis
             switch (node)
             {
                 case FieldKoto field:
-                    this.supported = ScalarDefaults.SupportsValue(field.BoundType);
+                    this.supported = ScalarTypes.SupportsFlowValue(field.BoundType);
                     if (field.InitializerKoto is { } initializer)
                     {
                         this.Visit(initializer);
@@ -39,7 +39,7 @@ public sealed partial class OwnershipAnalysis
 
                     return;
                 case IdentifierNameKoto or NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto:
-                    this.supported = ScalarDefaults.SupportsValue(node.BoundType);
+                    this.supported = ScalarTypes.SupportsFlowValue(node.BoundType);
                     return;
                 case UnitLiteralKoto or TupleLiteralKoto { Elements.Count: 0 } or TupleTypeKoto { ElementNodes.Count: 0 }:
                     return;
@@ -86,7 +86,7 @@ public sealed partial class OwnershipAnalysis
                     return;
                 case ConversionKoto conversion when conversion.ConversionBinding is ConversionBinding.Identity or ConversionBinding.Literal or
                     ConversionBinding.Integer or ConversionBinding.Floating or ConversionBinding.Numeric:
-                    this.supported = ScalarDefaults.SupportsValue(conversion.BoundType);
+                    this.supported = ScalarTypes.SupportsFlowValue(conversion.BoundType);
                     this.Visit(conversion.Left);
                     return;
                 case UnaryKoto unary when unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
@@ -126,7 +126,7 @@ public sealed partial class OwnershipAnalysis
 
         private bool IsLocalWrite(Koto node)
             => KotoHelper.UnwrapParentheses(node) is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: FieldKoto field } } &&
-                ScalarDefaults.SupportsValue(field.BoundType) && this.IsInside(field);
+                ScalarTypes.SupportsFlowValue(field.BoundType) && this.IsInside(field);
 
         private bool IsInside(Koto? node)
         {

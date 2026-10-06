@@ -50,6 +50,96 @@ public static partial class Parser
         reader.ExcludingDirective = region.PreviousDirective;
     }
 
+    /// <summary>
+    /// The arms of one <c>#switch</c> (SPEC 19.3), walked by the item loop of the enclosing owner. <see cref="Begin"/> validates the
+    /// Case Group and enters its arm list; <see cref="TryNextBody"/> leaves the reader at the <see cref="TokenKind.StartBlock"/> of
+    /// each arm body in turn, and the owner parses it as selected or excluded syntax with its own item grammar (SPEC 19.5).
+    /// </summary>
+    internal struct CompileTimeSwitchArms
+    {
+        private readonly int start;
+        private readonly CompileTimeSwitchSelection selection;
+        private bool inArmList;
+        private int next;
+
+        private CompileTimeSwitchArms(int start, CompileTimeSwitchSelection selection, bool inArmList)
+        {
+            this.start = start;
+            this.selection = selection;
+            this.inArmList = inArmList;
+        }
+
+        /// <summary>Scans the <c>#switch</c> at the reader, reports Attributes dangling before it and enters its arm list.</summary>
+        /// <param name="reader">The token reader positioned at <c>#switch</c>.</param>
+        /// <returns>The arm walk.</returns>
+        internal static CompileTimeSwitchArms Begin(ref TokenReader reader)
+        {
+            // Attributes before the Case Group are reported first: no Condition takes them (SPEC 6.5).
+            RejectDirectiveBlockAttributes(ref reader);
+            var start = reader.CurrentTokenRange.Start;
+            var selection = ScanCompileTimeSwitch(ref reader);
+            return new(start, selection, BeginCompileTimeSwitchArms(ref reader));
+        }
+
+        /// <summary>Moves to the next arm that has a body, leaving the reader at the body's <see cref="TokenKind.StartBlock"/>; the scan
+        /// reported an arm without one.</summary>
+        /// <param name="reader">The token reader inside the arm list.</param>
+        /// <param name="selected">Whether this arm is the one the <c>#switch</c> selects.</param>
+        /// <param name="header">The arm header, the excluding directive of an unselected arm.</param>
+        /// <returns><see langword="false"/> after the arm list, whose <see cref="TokenKind.EndBlock"/> is then consumed.</returns>
+        internal bool TryNextBody(ref TokenReader reader, out bool selected, out SourceSpan header)
+        {
+            while (this.inArmList && TryNextCompileTimeSwitchArm(ref reader, out header))
+            {
+                var arm = this.next++;
+                if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
+                {
+                    continue;
+                }
+
+                selected = arm == this.selection.Selected;
+                return true;
+            }
+
+            this.inArmList = false;
+            selected = false;
+            header = default;
+            return false;
+        }
+
+        /// <summary>Gets the marker of a <c>#switch</c> outside excluded syntax that selected no arm, once its arms are parsed.</summary>
+        /// <param name="reader">The token reader positioned after the Case Group.</param>
+        /// <returns>The marker, or <see langword="null"/> when an arm was selected or the Case Group is excluded syntax.</returns>
+        /// <remarks>The marker is the recovery of the Error that kept the Case Group from selecting an arm, so no later check of it
+        /// is reported again (DIAGNOSTICS.md §4.3).</remarks>
+        internal readonly CompileTimeSwitchKoto? Unselected(ref TokenReader reader)
+        {
+            if (this.selection.Selected >= 0 || reader.InExcludedSyntax)
+            {
+                return null;
+            }
+
+            var marker = new CompileTimeSwitchKoto(ref reader, SourceSpan.FromBounds(this.start, Math.Max(this.start, reader.PreviousSyntaxEnd)));
+            if (this.selection.Cause is { } cause)
+            {
+                reader.CodeContext.RecordRecovery(marker, cause);
+            }
+
+            return marker;
+        }
+    }
+
+    /// <summary>Reports Attributes left before a directive Block or <c>#switch</c>: no declaration at their indentation follows (SPEC 6.5).</summary>
+    /// <param name="reader">The token reader.</param>
+    internal static void RejectDirectiveBlockAttributes(ref TokenReader reader)
+    {
+        if (reader.AttributeKoto is not null)
+        {
+            reader.Expect(SyntaxForm.Declaration);
+            _ = reader.PopAttribute();
+        }
+    }
+
     /// <summary>Validates every arm header and Condition of a <c>#switch</c> before any arm body is parsed (SPEC 19.3).</summary>
     /// <param name="reader">The token reader positioned at <c>#switch</c>; it is not advanced.</param>
     /// <returns>The arm that the <c>#switch</c> would select, independent of enclosing exclusion.</returns>
@@ -57,7 +147,7 @@ public static partial class Parser
     /// Header, structure and Condition diagnostics are reported here exactly once; the arm walk that follows
     /// (<see cref="BeginCompileTimeSwitchArms"/>, <see cref="TryNextCompileTimeSwitchArm"/>) skips headers silently.
     /// </remarks>
-    internal static CompileTimeSwitchSelection ScanCompileTimeSwitch(ref TokenReader reader)
+    private static CompileTimeSwitchSelection ScanCompileTimeSwitch(ref TokenReader reader)
     {
         var scan = reader; // A copy: the arms are walked again to parse their bodies.
         var groupStart = scan.CurrentTokenRange.Start;
@@ -74,7 +164,7 @@ public static partial class Parser
         if (!scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             scan.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
-            return new(-1, -1);
+            return new(-1, scan.Diagnostic.LastError);
         }
 
         scan.Advance(); // The arm list is not a new lookup scope.
@@ -105,7 +195,7 @@ public static partial class Parser
                 SkipCompileTimeHeaderRemainder(ref scan);
                 if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    scan.SkipCurrentBlock(false);
+                    scan.SkipCurrentBlock();
                 }
 
                 continue;
@@ -151,7 +241,13 @@ public static partial class Parser
 
             if (scan.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
-                scan.SkipCurrentBlock(false);
+                scan.SkipCurrentBlock();
+            }
+            else
+            {
+                // An arm without a body leaves the Case Group invalid, as a malformed header does (SPEC 19.3).
+                scan.Expect(SyntaxForm.Body);
+                invalidSyntax = true;
             }
 
             invalidCondition |= result == CompileTimeConditionResult.Error;
@@ -166,12 +262,12 @@ public static partial class Parser
         if (armCount == 0)
         {
             scan.Diagnostic.Add(header, DiagnosticCode.EmptyCompileTimeSwitch_Kd);
-            return new(-1, -1);
+            return new(-1, scan.Diagnostic.LastError);
         }
 
         if (invalidSyntax || invalidCondition)
         {
-            return new(-1, armCount);
+            return new(-1, scan.Diagnostic.LastError);
         }
 
         if (selected < 0 && !reader.InExcludedSyntax && !reader.IsExcluded)
@@ -179,15 +275,16 @@ public static partial class Parser
             // A valid #switch with no True arm and no catch-all, where selection actually happens (SPEC 19.3). The Case Group ends
             // at its last written token, before the blank and comment lines that precede the dedented line.
             scan.Diagnostic.Add(SourceSpan.FromBounds(groupStart, scan.PreviousSyntaxEnd), DiagnosticCode.NonExhaustiveCompileTimeCase_Kd);
+            return new(-1, scan.Diagnostic.LastError);
         }
 
-        return new(selected, armCount);
+        return new(selected, null);
     }
 
     /// <summary>Consumes a <c>#switch</c> header whose diagnostics <see cref="ScanCompileTimeSwitch"/> reported.</summary>
     /// <param name="reader">The token reader positioned at <c>#switch</c>.</param>
     /// <returns><see langword="true"/> when the arm list follows.</returns>
-    internal static bool BeginCompileTimeSwitchArms(ref TokenReader reader)
+    private static bool BeginCompileTimeSwitchArms(ref TokenReader reader)
     {
         reader.Advance(2);
         SkipCompileTimeHeaderRemainder(ref reader);
@@ -204,7 +301,7 @@ public static partial class Parser
     /// <param name="reader">The token reader inside the arm list.</param>
     /// <param name="header">The arm header: the <c>#case</c> keyword through its Condition.</param>
     /// <returns><see langword="true"/> when an arm header was consumed; <see langword="false"/> after the arm list.</returns>
-    internal static bool TryNextCompileTimeSwitchArm(ref TokenReader reader, out SourceSpan header)
+    private static bool TryNextCompileTimeSwitchArm(ref TokenReader reader, out SourceSpan header)
     {
         while (true)
         {
@@ -227,7 +324,7 @@ public static partial class Parser
                 SkipCompileTimeHeaderRemainder(ref reader);
                 if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
                 {
-                    reader.SkipCurrentBlock(false);
+                    reader.SkipCurrentBlock();
                 }
 
                 continue;
@@ -238,27 +335,6 @@ public static partial class Parser
             SkipCompileTimeHeaderRemainder(ref reader);
             header = SourceSpan.FromBounds(start, reader.PreviousEnd);
             return true;
-        }
-    }
-
-    /// <summary>Creates the marker of a <c>#switch</c> outside excluded syntax that selected no arm.</summary>
-    /// <param name="reader">The token reader positioned after the Case Group.</param>
-    /// <param name="start">The start of the <c>#switch</c> keyword.</param>
-    /// <param name="selection">The selection of the Case Group.</param>
-    /// <returns>The marker, or <see langword="null"/> when an arm was selected or the Case Group is excluded syntax.</returns>
-    internal static CompileTimeSwitchKoto? UnselectedCompileTimeSwitch(ref TokenReader reader, int start, CompileTimeSwitchSelection selection)
-        => selection.Selected < 0 && !reader.InExcludedSyntax
-            ? new CompileTimeSwitchKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, reader.PreviousSyntaxEnd)))
-            : null;
-
-    /// <summary>Reports Attributes left before a directive Block or <c>#switch</c>: no declaration at their indentation follows (SPEC 6.5).</summary>
-    /// <param name="reader">The token reader.</param>
-    internal static void RejectDirectiveBlockAttributes(ref TokenReader reader)
-    {
-        if (reader.AttributeKoto is not null)
-        {
-            reader.Expect(SyntaxForm.Declaration);
-            _ = reader.PopAttribute();
         }
     }
 
@@ -301,8 +377,11 @@ public static partial class Parser
     /// <summary>Validates a <c>#case</c> outside a <c>#switch</c> body and makes its body an excluded target.</summary>
     /// <param name="reader">The token reader positioned at <c>#case</c>.</param>
     /// <returns><see langword="true"/> when an indented body follows and is now the pending excluded target.</returns>
+    /// <remarks>Attributes before it are reported first, as before a <c>#switch</c>: its body is a block and its Condition takes
+    /// none. Without a body, the <c>#case</c> line is the whole item, and an enclosing prefix's exclusion ends with it.</remarks>
     private static bool ParseOrphanCompileTimeCase(ref TokenReader reader)
     {
+        RejectDirectiveBlockAttributes(ref reader);
         var start = reader.CurrentTokenRange.Start;
         reader.AddDiagnostic(DiagnosticCode.CompileTimeCaseOutsideSwitch_Kd);
         reader.Advance(2); // '#' 'case'
@@ -322,6 +401,7 @@ public static partial class Parser
         if (!reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
             reader.Expect(SyntaxForm.Body);
+            reader.ClearContext();
             return false;
         }
 
@@ -354,7 +434,7 @@ public static partial class Parser
             SkipCompileTimeHeaderRemainder(ref reader);
             if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
             {
-                reader.SkipCurrentBlock(false);
+                reader.SkipCurrentBlock();
             }
 
             return;
@@ -362,7 +442,7 @@ public static partial class Parser
 
         if (reader.CurrentTokenKind == TokenKind.StartBlock)
         {
-            reader.SkipCurrentBlock(false);
+            reader.SkipCurrentBlock();
             return;
         }
 
@@ -370,7 +450,7 @@ public static partial class Parser
         _ = reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
         if (reader.TrySkipSeparatorsTo(TokenKind.StartBlock))
         {
-            reader.SkipCurrentBlock(false);
+            reader.SkipCurrentBlock();
             return;
         }
 
@@ -389,8 +469,8 @@ public static partial class Parser
 
     /// <summary>The arm a <c>#switch</c> would select.</summary>
     /// <param name="Selected">The selected arm index, or -1 when the <c>#switch</c> selects nothing.</param>
-    /// <param name="ArmCount">The number of <c>#case</c> arms, or -1 without an arm list.</param>
-    internal readonly record struct CompileTimeSwitchSelection(int Selected, int ArmCount);
+    /// <param name="Cause">The Error that keeps the <c>#switch</c> from selecting an arm, if one was reported.</param>
+    private readonly record struct CompileTimeSwitchSelection(int Selected, DiagnosticKey? Cause);
 
     /// <summary>The Constraint-prefix state of one executable body, shared by its directive targets and arms (SPEC 7.4, 19.5).</summary>
     /// <param name="function">The function whose body this is, if any.</param>

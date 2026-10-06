@@ -2,8 +2,8 @@
   "name": "kimi-ext",
   "publisher": "archi-Doc",
   "displayName": "Kimi Extension",
-  "description": "Kimi language diagnostics, build, run, and check commands for Visual Studio Code.",
-  "version": "0.0.10",
+  "description": "Kimi language syntax highlighting, diagnostics, build, run, and check commands for Visual Studio Code.",
+  "version": "0.0.11",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -70,7 +70,8 @@
         ],
         "extensions": [
           ".kimi"
-        ]
+        ],
+        "configuration": "./language-configuration.json"
       },
       {
         "id": "kimiproj",
@@ -83,6 +84,30 @@
         ]
       }
     ],
+    "grammars": [
+      {
+        "language": "kimi",
+        "scopeName": "source.kimi",
+        "path": "./syntaxes/kimi.tmLanguage.json"
+      },
+      {
+        "scopeName": "markdown.kimi.codeblock",
+        "path": "./syntaxes/kimi.markdown.tmLanguage.json",
+        "injectTo": [
+          "text.html.markdown"
+        ],
+        "embeddedLanguages": {
+          "meta.embedded.block.kimi": "kimi"
+        }
+      }
+    ],
+    "configurationDefaults": {
+      "[kimi]": {
+        "editor.insertSpaces": true,
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false
+      }
+    },
     "configuration": {
       "title": "Kimi",
       "properties": {
@@ -228,7 +253,9 @@
     "esbuild": "0.28.2",
     "eslint": "^10.5.0",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.61.1"
+    "typescript-eslint": "^8.61.1",
+    "vscode-oniguruma": "^2.0.1",
+    "vscode-textmate": "^9.3.2"
   },
   "overrides": {
     "mocha": {

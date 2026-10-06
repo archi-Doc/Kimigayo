@@ -1,17 +1,78 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 9.3: enclosing declaration accessibility comes from functions and Containers. A Pattern scope's owner may
+    // bind a local in that same scope; following its BoundSymbol would revisit that local forever. Body/guard scopes
+    // are lexical scopes, not declarations with their own accessibility.
+    private static BindingSymbol? EnclosingAccessDeclaration(BindingSymbol symbol)
+    {
+        for (var scope = symbol.Scope; scope is not null; scope = scope.Parent)
+        {
+            if (scope.Owner is DeclarationContainerKoto or FunctionKoto && scope.Owner.BoundSymbol is { } enclosing)
+            {
+                return enclosing;
+            }
+        }
+
+        return null;
+    }
+
     private static BoundType EffectiveCore(BoundType type)
         => type.Kind == BoundTypeKind.Semantics && type.Components.Count == 1 ? type.Components[0] : type;
 
     private static bool ProjectionAccessCovers(Koto use, BoundType qualifier, BindingSymbol contract, BindingSymbol domain, BindingSymbol? intersection = null)
         => TypeAccessCovers(qualifier, domain, intersection ?? domain) && AccessCovers(contract, domain, intersection ?? domain) &&
             (use.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } requirement || AccessCovers(requirement, domain, intersection ?? domain));
+
+    // SPEC 9.3: the written access of a declaration that may carry a protected form.
+    private static ModifierKind WrittenAccess(Koto declaration) => (declaration switch
+    {
+        DeclarationContainerKoto container => container.Modifier,
+        FunctionKoto function => function.Modifier,
+        VariableKoto variable => variable.Modifier,
+        _ => ModifierKind.NoModifier,
+    }).ExtractAccessibilityModifiers();
+
+    // The Container or function body that declares a member; a conditional implementation block is part of its Container.
+    private static Koto? DeclaringContainer(Koto declaration)
+    {
+        for (var node = declaration.Parent; node is not null; node = node.Parent)
+        {
+            if (node is DeclarationContainerKoto or FunctionKoto)
+            {
+                return node;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 9.3: protected forms apply only to struct members; the record names what declares this one instead.
+    private static void ReportProtectedPlacement(Koto declaration, DiagnosticRequirement requirement)
+    {
+        var container = DeclaringContainer(declaration) switch
+        {
+            DeclarationContainerKoto { IsRoot: true } or FunctionKoto { IsGenerated: true } => "the source root",
+            GroupKoto group => $"group {group.Name}",
+            EnumKoto enumeration => $"enum {enumeration.Name}",
+            FunctionKoto => "a function body",
+            _ => "a Container other than a struct",
+        };
+
+        SourceSpan? span = declaration switch
+        {
+            FunctionKoto { SignatureSpan.Length: > 0 } function => function.SignatureSpan,
+            VariableKoto variable => variable.NameKoto.Span,
+            _ => null,
+        };
+        declaration.Report(requirement, DiagnosticCode.ProtectedPlacement_Kd, container, span: span);
+    }
 
     private static FunctionKoto? FunctionSignatureOwner(Koto use)
     {
@@ -239,11 +300,14 @@ public sealed partial class Binding
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i].BoundSymbol is { Scope.Owner: GroupKoto } groupMember &&
-                ReferenceEquals(groupMember.Declaration, this.nodes[i]) &&
-                DeclarationAccess(groupMember) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal)
+            // SPEC 9.3: a protected form is invalid on root and group declarations, group members, enum members and local
+            // declarations: every declaration whose declaring Container is not a struct. A Contract requirement takes no
+            // modifier at all, which the parser reports (MisplacedSyntax_Kd).
+            if (this.nodes[i].BoundSymbol is { } declared && ReferenceEquals(declared.Declaration, this.nodes[i]) &&
+                WrittenAccess(this.nodes[i]) is ModifierKind.Protected or ModifierKind.ProtectedAndInternal or ModifierKind.ProtectedOrInternal &&
+                DeclaringContainer(this.nodes[i]) is not (StructKoto or ContractKoto))
             {
-                this.Fail(this.nodes[i], BindingFailure.Access);
+                this.Fail(this.nodes[i], BindingFailure.ProtectedPlacement);
             }
 
             if (this.nodes[i] is FunctionKoto or PropertyKoto && this.nodes[i].BoundSymbol is { ConditionalDeclaration: { } conditional } member)
@@ -365,7 +429,7 @@ public sealed partial class Binding
             return true;
         }
 
-        for (var current = symbol; current is not null; current = current.Scope.Owner.BoundSymbol)
+        for (var current = symbol; current is not null; current = EnclosingAccessDeclaration(current))
         {
             // The fixed-array member group stands for the public built-in Type (PLAN G32): only a member's own modifier applies.
             if (current.Declaration is DeclarationContainerKoto { IsRoot: true } || (!ReferenceEquals(current, symbol) && this.Library.IsBuiltinMemberGroup(current.Declaration)))

@@ -7,11 +7,24 @@ internal static partial class LlvmModuleWriter
     private static void WriteErasureAdapter(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
     {
         var entry = instruction.Callee!;
+        var heap = instruction.Aggregate is { } environment && (environment.NeedsDestruction || environment.Value.Layout.Size > 8);
         output.Write('@');
         WriteClosureTableName(output, function, instruction.Operation);
         output.Write(" = private constant { ptr, ptr, ptr } { ptr @");
         WriteErasureAdapterName(output, function, instruction.Operation);
-        output.Write(", ptr null, ptr null }, align 8\ndefine internal ");
+        output.Write(", ptr null, ptr ");
+        if (heap)
+        {
+            output.Write('@');
+            WriteErasureAdapterName(output, function, instruction.Operation);
+            output.Write("_drop");
+        }
+        else
+        {
+            output.Write("null");
+        }
+
+        output.Write(" }, align 8\ndefine internal ");
         output.Write(entry.Result);
         output.Write(" @");
         WriteErasureAdapterName(output, function, instruction.Operation);
@@ -27,7 +40,8 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        output.Write(", ptr %context) #0 {\nentry:\n  %storage = alloca i64, align 8\n  store i64 %environment, ptr %storage, align 8\n");
+        output.Write(", ptr %context) #0 {\nentry:\n");
+        output.Write(heap ? "  %storage = inttoptr i64 %environment to ptr\n" : "  %storage = alloca i64, align 8\n  store i64 %environment, ptr %storage, align 8\n");
         output.Write(entry.Result == "void" ? "  call " : "  %result = call ");
         output.Write(entry.Result);
         output.Write(" @");
@@ -57,6 +71,20 @@ internal static partial class LlvmModuleWriter
             output.Write(entry.Result);
             output.Write(entry.Result == "void" ? "\n}\n" : " %result\n}\n");
         }
+
+        if (heap)
+        {
+            output.Write("define internal void @");
+            WriteErasureAdapterName(output, function, instruction.Operation);
+            output.Write("_drop(i64 %environment, ptr %context, ptr %location, i64 %length) #0 {\nentry:\n  %storage = inttoptr i64 %environment to ptr\n");
+            if (instruction.Aggregate!.NeedsDestruction)
+            {
+                Name(output, "  call void @__kimi_drop_aggregate", instruction.Aggregate.Id);
+                output.Write("(ptr %storage, ptr %location, i64 %length)\n");
+            }
+
+            output.Write("  call void @__kimi_free(ptr %storage, ptr %location, i64 %length)\n  ret void\n}\n");
+        }
     }
 
     private static void WriteErasureAdapterName(TextWriter output, EmissionFunction function, int operation)
@@ -66,15 +94,43 @@ internal static partial class LlvmModuleWriter
         Name(output, "_", operation);
     }
 
-    private static void WriteErasure(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
+    private static void WriteErasure(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
-        output.Write("  store i64 0, ptr ");
-        WriteSlot(output, function, instruction.Place);
-        output.Write(", align 8\n");
-        if (instruction.Aggregate!.Value.Layout.Size > 0)
+        var heap = instruction.Aggregate is { } layout && (layout.NeedsDestruction || layout.Value.Layout.Size > 8);
+        if (heap)
+        {
+            Name(output, "  %heapEnvironment", instruction.Operation);
+            output.Write(" = call ptr @__kimi_alloc(i64 ");
+            WriteNumber(output, instruction.Aggregate!.Value.Layout.Size);
+            output.Write(", ptr @");
+            output.Write(constants[instruction.Constant].Name);
+            output.Write(", i64 ");
+            WriteNumber(output, constants[instruction.Constant].ByteLength);
+            output.Write(")\n  store ptr ");
+            Name(output, "%heapEnvironment", instruction.Operation);
+            output.Write(", ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n");
+        }
+        else
+        {
+            output.Write("  store i64 0, ptr ");
+            WriteSlot(output, function, instruction.Place);
+            output.Write(", align 8\n");
+        }
+
+        if (instruction.Aggregate is { } environment && environment.Value.Layout.Size > 0)
         {
             output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr ");
-            WriteSlot(output, function, instruction.Place);
+            if (heap)
+            {
+                Name(output, "%heapEnvironment", instruction.Operation);
+            }
+            else
+            {
+                WriteSlot(output, function, instruction.Place);
+            }
+
             output.Write(", ptr ");
             WriteSlot(output, function, (int)function.GetOperands(instruction)[0].Value);
             output.Write(", i64 ");
@@ -177,16 +233,20 @@ internal static partial class LlvmModuleWriter
         output.Write(", align 8\n");
     }
 
+    // The value is in Place's slot, or at the address of a leading operand beyond the ABI parameters when a reference holds it.
     private static void WriteValueCall(TextWriter output, EmissionFunction function, EmissionInstruction instruction)
     {
         var id = instruction.Operation;
+        var abi = instruction.Callee!;
+        var operands = function.GetOperands(instruction);
+        var first = operands.Length - abi.Parameters.Length;
         Name(output, "  %environment", id);
         output.Write(" = load i64, ptr ");
-        WriteSlot(output, function, instruction.Place);
+        WriteValueAddress(output, function, instruction, operands, first);
         output.Write(", align 8\n");
         Name(output, "  %operationsSlot", id);
         output.Write(" = getelementptr i8, ptr ");
-        WriteSlot(output, function, instruction.Place);
+        WriteValueAddress(output, function, instruction, operands, first);
         output.Write(", i64 8\n");
         Name(output, "  %operations", id);
         Name(output, " = load ptr, ptr %operationsSlot", id);
@@ -200,7 +260,6 @@ internal static partial class LlvmModuleWriter
         Name(output, "  %context", id);
         Name(output, " = load ptr, ptr %contextSlot", id);
         output.Write(", align 8\n");
-        var abi = instruction.Callee!;
         if (abi.Result != "void")
         {
             Name(output, "  %v", id);
@@ -214,16 +273,27 @@ internal static partial class LlvmModuleWriter
         output.Write(abi.Result);
         Name(output, " %entry", id);
         Name(output, "(i64 %environment", id);
-        var operands = function.GetOperands(instruction);
-        for (var i = 0; i < operands.Length; i++)
+        for (var i = first; i < operands.Length; i++)
         {
             output.Write(", ");
-            output.Write(abi.Parameters[i].Type);
+            output.Write(abi.Parameters[i - first].Type);
             output.Write(' ');
             WriteStorageAddress(output, function, operands[i]);
         }
 
         Name(output, ", ptr %context", id);
         output.Write(")\n");
+    }
+
+    private static void WriteValueAddress(TextWriter output, EmissionFunction function, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands, int first)
+    {
+        if (first > 0)
+        {
+            WriteOperand(output, operands[0]);
+        }
+        else
+        {
+            WriteSlot(output, function, instruction.Place);
+        }
     }
 }

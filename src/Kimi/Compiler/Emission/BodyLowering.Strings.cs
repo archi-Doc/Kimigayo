@@ -88,7 +88,7 @@ internal sealed partial class BodyLowering
             }
 
             var operation = body.Operations[id];
-            if (StartsStringLifetime(body, operation) && (flags[operation.Place] & 3) != 0)
+            if (StartsStringLifetime(body, operation, id) && (flags[operation.Place] & 3) != 0)
             {
                 flags[operation.Place] |= 2;
             }
@@ -112,10 +112,13 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private static bool StartsStringLifetime(OwnershipBody body, OwnershipOperation operation) =>
+    private static bool StartsStringLifetime(OwnershipBody body, OwnershipOperation operation, int id) =>
         (uint)operation.Place < (uint)body.Places.Count && body.Places[operation.Place].Kind switch
         {
-            OwnershipPlaceKind.Local => operation.Kind == OwnershipOperationKind.Declare,
+            OwnershipPlaceKind.Local => operation.Kind == OwnershipOperationKind.Declare ||
+                (operation.Kind == OwnershipOperationKind.Produce && body.Values[id].Kind == OwnershipValueKind.Capture &&
+                body.Function.BoundClosure?.EnvironmentType is not null && ReferenceEquals(operation.Source, body.Function) &&
+                ReferenceEquals(body.Places[operation.Place].Source, body.Function)),
             OwnershipPlaceKind.Parameter => operation.Kind == OwnershipOperationKind.Produce && ReferenceEquals(operation.Source, body.Places[operation.Place].Source),
             _ => false,
         };
@@ -326,7 +329,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < count; i++)
         {
             var operation = body.Operations[i];
-            if (StartsStringLifetime(body, operation) && this.liveFlags[operation.Place] != 0)
+            if (StartsStringLifetime(body, operation, i) && this.liveFlags[operation.Place] != 0)
             {
                 this.liveFlags[operation.Place] = 2;
             }
@@ -341,7 +344,7 @@ internal sealed partial class BodyLowering
 
             if (this.liveFlags[p] == 1)
             {
-                return Fail("Conditional string lifetime has no declaration or parameter initialization.", out failure);
+                return Fail("Conditional owned lifetime has no declaration, parameter or capture initialization.", out failure);
             }
 
             if (this.liveFlags[p] != 0)

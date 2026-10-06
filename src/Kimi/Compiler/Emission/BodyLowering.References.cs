@@ -115,7 +115,7 @@ internal sealed partial class BodyLowering
                     this.referenceRoots[id] = id;
                     break;
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Parameter:
-                    if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.Function.Parameters.Count || id != parameterStart + value.Constant ||
+                    if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.ParameterCount || id != parameterStart + value.Constant ||
                         !ReferenceEquals(place.Source, body.Function.Parameters[(int)value.Constant].Type) || !ReferenceEquals(operation.Source, place.Source) ||
                         !ReferenceEquals(type, SignatureType(this, body.Function.Parameters[(int)value.Constant].Type.BoundType)))
                     {
@@ -129,7 +129,7 @@ internal sealed partial class BodyLowering
                     var originSource = Binding.PlaceOriginSource(operation.Source);
                     if ((uint)operation.Place >= (uint)body.Places.Count || place.Kind != OwnershipPlaceKind.Temporary || operation.LoanMode != LoanRequirement.Ref ||
                         operation.Acquisition != AcquisitionKind.None || loan < 0 || body.ComparisonLoans[loan].Read != id || body.ComparisonLoans[loan].Call is null ||
-                        (operation.Projection < 0 && (!ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) || !this.ValidateBorrowSource(body, operation))) ||
+                        (operation.Projection < 0 && (!ReferenceEquals(body.Places[operation.Place].Type, BoundType.String) || !this.ValidateBorrowSource(body, id, operation))) ||
                         type!.Origin is not { Kind: OriginKind.Projection } origin ||
                         !ReferenceEquals(origin.Binder, Binding.PlaceOriginBinder(originSource)) || origin.Slot != Binding.PlaceOriginSlot(originSource))
                     {
@@ -159,13 +159,18 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool ValidateBorrowSource(OwnershipBody body, OwnershipOperation operation)
+    private bool ValidateBorrowSource(OwnershipBody body, int id, OwnershipOperation operation)
     {
         var source = body.Places[operation.Place];
+        if (operation.Source is IdentifierNameKoto { BoundSymbol: { } parameter } && this.IsPreparedArgument(body, id, parameter, operation.Place))
+        {
+            return true;
+        }
+
         if (source.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter)
         {
             return operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } &&
-                body.SymbolPlaces.TryGetValue(symbol, out var anchor) && anchor == operation.Place;
+                body.TrySymbolPlaceAt(symbol, id, out var anchor) && anchor == operation.Place;
         }
 
         // A transferred or Identity-acquired operand (text@move, text@owner/string) is borrowed through the
@@ -185,7 +190,7 @@ internal sealed partial class BodyLowering
         // Only a reference formed from a projection uses that projection's address.
         return body.Values[root].Kind switch
         {
-            OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[root].Constant),
+            OwnershipValueKind.Parameter => body.DefaultParameter >= 0 ? new(EmissionOperandKind.Value, root) : new(EmissionOperandKind.Argument, body.Values[root].Constant),
             _ => StringPlaceOperand(body, body.Operations[root].Place, body.Operations[root].Projection >= 0 ? body.LoanStates[root] : -1),
         };
     }

@@ -47,6 +47,22 @@ public class NeverContinuationTest
     }
 
     [Theory]
+    [InlineData("stop() + 1", "i32")]
+    [InlineData("stop() * wide", "i64")]
+    [InlineData("stop() == 1", "bool")]
+    [InlineData("stop() < wide", "bool")]
+    public void ANonCompletingLeftOperandFitsTheOtherOperand(string expression, string type)
+    {
+        // SPEC 3.1.5, 13.3, 13.4: Never fits the other operand's Type; it imposes no expected Never on that operand.
+        var c = MinimalEmissionTest.Analyze(Stop + "let wide: i64 = 2\nlet n: " + type + " = " + expression);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    [Fact]
+    public void ANonCompletingLeftOperandSkipsTheOperation()
+        => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Left", Stop + "Console.writeLine(\"begin\")\nlet n: i32 = stop() + 1\nConsole.writeLine(\"after\")", "begin\n", 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
+
+    [Theory]
     [InlineData("f()")]
     [InlineData("f(3)")]
     public void DefaultOperatorCannotInitializeFromAMissingOperand(string call)

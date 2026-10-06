@@ -177,6 +177,13 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 7.3.1, 9.5: nor may they acquire corresponding parameters of overlapping Types in different modes.
+        if (this.CheckGatheredParameterShapes(member, group.Members, aliasStage: false))
+        {
+            group.Active = false;
+            return null;
+        }
+
         group.Active = group.Members.Count != 0;
         return group.Active ? group.Members[0] : null;
 

@@ -209,8 +209,10 @@ public sealed partial class Binding
     /// <param name="use">The Self clause of the conformance.</param>
     /// <param name="requirement">The failed requirement of the record.</param>
     /// <param name="code">The code to report.</param>
+    /// <param name="instanceContext">The concrete generic context, when reporting an instance.</param>
+    /// <param name="instanceSite">The source call that requested the instance.</param>
     /// <returns><see langword="true"/> when a violation was recorded for the conformance and reported.</returns>
-    internal bool ReportEffectViolation(Koto use, DiagnosticRequirement requirement, DiagnosticCode code)
+    internal bool ReportEffectViolation(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, string? instanceContext = null, Koto? instanceSite = null)
     {
         if (this.effectViolations?.TryGetValue(use, out var violation) != true)
         {
@@ -259,13 +261,18 @@ public sealed partial class Binding
         var note = (definite
             ? $"{name} must satisfy {spelling}, declared by {contract}, and this effect violates it"
             : $"{name} must satisfy {spelling}, declared by {contract}; this effect cannot be classified, so verification treats it as a conflict (SPEC 8.4.5)") + delegation;
+        if (instanceContext is not null)
+        {
+            note += "; " + instanceContext;
+        }
+
         var editable = item is not null && !ReferenceEquals(item.CodeContext.Kotonoha, this.Library.Kotonoha);
         var advice = (bound == EffectBoundKind.Confined
             ? "Keep the state in a Field of self or pass it as a parameter, so the implementation uses only authority from its inputs"
             : "Avoid accesses that may reach a Loan the result keeps, or return only results of the same requirement on one value reached through a Field path of self") +
             (editable ? $". If no caller relies on the guarantee, {contract} may instead declare no bound, which affects the callers that do" : string.Empty);
         var source = label is not null && violation.DelegationNode is { } delegationNode && !ReferenceEquals(delegationNode, violation.Site) ? delegationNode : null;
-        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + (source is null ? 0 : 1) + 1 + (item is null ? 0 : 1);
+        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + (source is null ? 0 : 1) + 1 + (item is null ? 0 : 1) + (instanceSite is null ? 0 : 1);
         var related = new (string Role, Koto At, string? Label)[count];
         var next = 0;
         if (violation.Node is { } effectNode && !ReferenceEquals(effectNode, violation.Site))
@@ -281,7 +288,12 @@ public sealed partial class Binding
         related[next++] = ("conformance", use, "the conformance checked against the bound");
         if (item is not null)
         {
-            related[next] = ("bound", item, "the bound");
+            related[next++] = ("bound", item, "the bound");
+        }
+
+        if (instanceSite is not null)
+        {
+            related[next] = ("instantiation", instanceSite, "the call requesting this instance");
         }
 
         use.Report(requirement, code, note: note, at: violation.Site, evidence: [$"{effect}, which {spelling} excludes"], advice: advice, related: related);

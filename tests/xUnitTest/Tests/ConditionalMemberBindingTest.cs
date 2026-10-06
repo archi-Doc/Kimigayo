@@ -186,7 +186,11 @@ public class ConditionalMemberBindingTest
         Assert.False(c.Bind().IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Null(call.BoundCall);
-        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        Assert.NotEqual(BindingState.Resolved, call.BindingState);
+
+        // SPEC 23.3.6.4: the failed candidate declaration publishes its Error, and the call rests on it instead of repeating it.
+        Assert.Contains(c.Binding.Issues, x => x.Node is FunctionKoto { Name: "f" } && x.Code == DiagnosticCode.InvalidConstraint_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, call));
     }
 
     [Theory]

@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class OwnershipAnalysis
 {
     private const string RetainedLoanLabel = "value retaining the conflicting loan";
+    private const string BorrowLabel = "borrow that created the loan";
     private const string ReservationLabel = "conflicting exclusive call reservation";
 
     private static bool IsDirectExclusiveBorrow(Koto source)
@@ -32,9 +33,14 @@ public sealed partial class OwnershipAnalysis
 
     private static string? ImplicitAcquisition(OwnershipLending? lending)
     {
-        if (lending is not { Input: var input, Call: var call })
+        if (lending is not { Input: var input, Call: var consumer })
         {
             return null;
+        }
+
+        if (consumer is not InvocationKoto call)
+        {
+            return $"`{input}` is acquired exclusively where the literal places it (PLAN G53, SPEC 15.6.3)";
         }
 
         // A borrow value is Reborrowed; an owned Place, including an object payload reached by a follow, is borrowed.
@@ -133,10 +139,48 @@ public sealed partial class OwnershipAnalysis
         return this.Argument(source, argument.Kind);
     }
 
-    private int NewCallReservation(InvocationKoto call)
+    // SPEC 15.6.3, 15.6.7 (PLAN G53): an exclusive reference moved into a literal is acquired exclusively there, as a call
+    // argument is: a reserved Reborrow of the placed reference activates with the literal and conflicts with every live Loan on
+    // its referent, such as its own Reborrow child placed in the same literal. A direct borrow written in the literal is a new
+    // exclusive borrow, already checked where it is taken. The Reborrow is of the acquired value before it is placed (a
+    // payload slot takes only its placement) and is never used, so it ends at the activation.
+    private void ReservePlacedReference(Koto literal, Koto element, int placed, int source)
+    {
+        var type = this.body.Places[placed].Type;
+        if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } || IsDirectExclusiveBorrow(element))
+        {
+            return;
+        }
+
+        var reservation = this.NewCallReservation(literal);
+        var reborrow = this.Place(element, type, OwnershipPlaceKind.Temporary, false);
+        var borrow = this.Emit(OwnershipOperationKind.Borrow, element, source, reborrow, loanMode: LoanRequirement.Uniq, reservation: reservation);
+        this.SetValue(borrow, OwnershipValueKind.Address, [this.Value(source)], constant: source);
+        this.CompleteCallReservation(reservation, this.Value(reborrow), reborrow);
+
+        // The placed reference is held in the reservation's mode, so the Reborrow never conflicts with that reference's own Loan.
+        this.body.CallReservations[reservation] = this.body.CallReservations[reservation] with { Loaded = placed };
+    }
+
+    // Intermediate references in one argument's acquisition path share its activation, but each has its own checked
+    // reservation. Reusing the final reservation would leave an intermediate exclusive borrow active during evaluation.
+    private int BorrowIntermediate(Koto source, BoundType type, int argument, int through = -1)
+    {
+        var reservation = argument >= 0 && type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq
+            ? this.NewCallReservation(this.body.CallReservations[argument].Call, argument) : -1;
+        var result = through < 0 ? this.BorrowStruct(source, type, reservation) : this.BorrowThrough(source, through, type, reservation);
+        if (result >= 0 && reservation >= 0)
+        {
+            this.CompleteCallReservation(reservation, this.Value(result), result);
+        }
+
+        return result;
+    }
+
+    private int NewCallReservation(Koto call, int argument = -1)
     {
         var id = this.body.CallReservations.Count;
-        this.body.CallReservations.Add(new(call));
+        this.body.CallReservations.Add(new(call, Argument: argument));
         return id;
     }
 
@@ -152,7 +196,7 @@ public sealed partial class OwnershipAnalysis
         this.body.CallReservations[id] = reservation with { Borrow = borrow, Place = place, Loan = loan };
     }
 
-    private void ActivateCallReservations(InvocationKoto call, int mark)
+    private void ActivateCallReservations(Koto call, int mark)
     {
         var activation = this.body.Operations.Count;
         var head = -1;

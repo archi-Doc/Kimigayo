@@ -14,7 +14,7 @@ public struct Array<T>
 
     /// Starts an exclusive enumeration of the elements in index order; each element is lent exclusively once.
     public func iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source
-        return ArrayUniqIterator<T>.init(Storage.borrowStorage(self))
+        return ArrayUniqIterator<T>.init(Storage.borrowStorageUniq(self))
 
     /// Starts an owning enumeration: each element is transferred out once, and the unreturned elements are destroyed
     /// with the iterator in reverse index order (SPEC 4.7.6).
@@ -99,7 +99,7 @@ public struct Array<T>
     ) -> Option<(uniq/T during self, uniq/T during self)>
         P is Position
         Q is Position
-        return Storage.tryGetPairUniq(Storage.borrowStorage(self), first: first, second: second)
+        return Storage.tryGetPairUniq(Storage.borrowStorageUniq(self), first: first, second: second)
 
     /// Removes and returns the element `index` resolves to; the last element takes its position.
     ///
@@ -124,7 +124,7 @@ public struct Array<T>
     ///
     /// - abort: `length` is negative.
     public func truncate(self: uniq/Self, length: isize)
-        require length >= 0 else => $abort("Negative Array length")
+        require length >= 0 else => Kimi.Storage.argumentOutOfRange()
         while self.length > length
             match self.pop()
                 .Some(_) => ()

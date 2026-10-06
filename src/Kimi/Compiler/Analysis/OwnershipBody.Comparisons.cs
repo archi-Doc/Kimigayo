@@ -42,7 +42,7 @@ public sealed partial class OwnershipBody
             operation = operation with { LoanMode = loan.Reservation >= 0 ? LoanRequirement.Uniq : LoanRequirement.Ref };
         }
 
-        if (loan.Call is { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } &&
+        if (loan.Call is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap } &&
             ReferenceEquals(operation.Source, loan.Call) && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Write)
         {
             return false; // The selected intrinsic operates through its acquired target Loan.
@@ -277,6 +277,15 @@ public sealed partial class OwnershipBody
             this.LoanStates[end] == this.LoanInputs[entry];
     }
 
+    // The receiver Place has the plan's Type, or is the temporary shared borrow of a common Function value in a field or element.
+    private bool CallableReceiverType(int place, BoundValueCall plan)
+    {
+        var type = this.Places[place].Type;
+        var receiver = this.Concrete(plan.ReceiverType);
+        return ReferenceEquals(type, receiver) || (receiver?.Kind == BoundTypeKind.Function && this.Places[place].Kind == OwnershipPlaceKind.Temporary &&
+            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && ReferenceEquals(type.Components[0], receiver));
+    }
+
     private bool ValidCallableLoan(int index)
     {
         var loan = this.ComparisonLoans[index];
@@ -285,7 +294,7 @@ public sealed partial class OwnershipBody
             (uint)loan.Place < (uint)this.Places.Count && (uint)loan.Read < (uint)this.Operations.Count && loan.Parent < index && loan.Depth > 0 &&
             loan.Call is null && loan.Guard == -1 && !loan.Access && loan.Projection == -1 &&
             this.Operations[loan.Read].Kind == OwnershipOperationKind.Read && this.Operations[loan.Read].Place == loan.Place &&
-            ReferenceEquals(this.Operations[loan.Read].Source, plan.Receiver) && ReferenceEquals(this.Places[loan.Place].Type, this.Concrete(plan.ReceiverType)) &&
+            ReferenceEquals(this.Operations[loan.Read].Source, plan.Receiver) && this.CallableReceiverType(loan.Place, plan) &&
             (loan.Mode != LoanRequirement.Uniq || this.Places[loan.Place].Type.Semantics == SemanticsKind.Uniq || this.Places[loan.Place].Mutable) &&
             this.LoanInputs[loan.Read] == loan.Parent && this.LoanStates[loan.Read] == index &&
             (loan.Parent < 0 || this.ComparisonLoans[loan.Parent].Depth <= loan.Depth) &&
@@ -295,7 +304,7 @@ public sealed partial class OwnershipBody
     private bool ValidElementWriteLoan(int id)
     {
         var loan = this.ComparisonLoans[id];
-        if (loan.Call is { BoundCall: { } call } syntax && loan.Mode == LoanRequirement.Uniq &&
+        if (loan.Call is InvocationKoto { BoundCall: { } call } syntax && loan.Mode == LoanRequirement.Uniq &&
             call.Target.CompilerFunction is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap)
         {
             if (loan.Access || loan.Projection != -1 || loan.Guard != -1 || loan.Depth <= 0 ||

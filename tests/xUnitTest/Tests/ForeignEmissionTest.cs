@@ -719,14 +719,15 @@ public class ForeignEmissionTest
         ScalarEmissionTest.EmitFixture("ForeignPointerIncrement" + name, source, string.Empty, 1, "Hello.kimi:8:15: abort KIMI_E_INT_OVERFLOW: Integer overflow\n");
     }
 
+    // SPEC 13.2, 13.3: a pointer itself has no increment; a float pointee needs an integer operand and a bool pointee a numeric one.
     [Theory]
-    [InlineData("i32", "p++")]
-    [InlineData("f64", "(*p)++")]
-    [InlineData("bool", "++p[0]")]
-    public void PointerIncrementsRequireIntegerPointees(string type, string operation)
+    [InlineData("i32", "p++", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("f64", "(*p)++", DiagnosticCode.NonIntegerOperand_Kd)]
+    [InlineData("bool", "++p[0]", DiagnosticCode.NonNumericOperand_Kd)]
+    public void PointerIncrementsRequireIntegerPointees(string type, string operation, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze($"var p: raw/{type} = null\nunsafe => {operation}");
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == code);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());

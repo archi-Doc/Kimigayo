@@ -7,29 +7,14 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly ScratchBuffers<EvaluatedCandidate> candidateScratch = new();
-    private readonly ScratchBuffers<ArgumentAcquisition> acquisitionScratch = new();
-
-    // SPEC 10.2.2: the two plans for a bare Place argument that the call site does not distinguish.
-    private enum ArgumentAcquisition : byte
-    {
-        Other,
-
-        /// <summary>The bare by-value acquisition of SPEC 3.5: a Copy that needs Copy proof.</summary>
-        Copy,
-
-        /// <summary>A new shared borrow of the same Place, the first row of SPEC 10.2.</summary>
-        SharedBorrow,
-    }
 
     private enum CandidateApplicability : byte
     {
         Inapplicable,
         Applicable,
+        Waiting,
         Pending,
         Error,
-
-        /// <summary>Applicable except for a held bare Copy whose proof failed: it takes part in the conflict check only (SPEC 10.2.2).</summary>
-        CopyUnproven,
     }
 
     private static int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
@@ -39,7 +24,7 @@ public sealed partial class Binding
         var compared = stride - 1;
         for (var a = 0; a < candidates.Length; a++)
         {
-            if (candidates[a].State != CandidateApplicability.Applicable)
+            if (candidates[a].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
             {
                 continue;
             }
@@ -48,7 +33,7 @@ public sealed partial class Binding
             var dominates = true;
             for (var b = 0; b < candidates.Length; b++)
             {
-                if (a == b || candidates[b].State != CandidateApplicability.Applicable)
+                if (a == b || candidates[b].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                 {
                     continue;
                 }
@@ -60,6 +45,13 @@ public sealed partial class Binding
                 {
                     var x = operations[(a * stride) + i];
                     var y = operations[(b * stride) + i];
+                    if (x.Adaptation != y.Adaptation && (x.Adaptation == ArgumentAdaptation.Erasure || y.Adaptation == ArgumentAdaptation.Erasure))
+                    {
+                        // Incomparability at one argument cannot be rescued by another argument or a later tie-breaker.
+                        worse = true;
+                        break;
+                    }
+
                     better |= x.Adaptation < y.Adaptation;
                     worse |= x.Adaptation > y.Adaptation;
                 }
@@ -77,16 +69,28 @@ public sealed partial class Binding
 
                 for (var i = 0; i < compared; i++)
                 {
+                    if (candidates[a].State == CandidateApplicability.Waiting && candidates[b].State == CandidateApplicability.Waiting &&
+                        operations[(a * stride) + i].Adaptation != ArgumentAdaptation.Erasure &&
+                        operations[(a * stride) + i].Source is { } source && (IsWaitingCallable(source) || IsWaitingNestedCall(source)))
+                    {
+                        // ComparableCallableSlots proved matching acquisition. A waiting argument is completed only for the
+                        // selected candidate, so its Callable constraint signature never ranks.
+                        continue;
+                    }
+
+                    // SPEC 10.8: a parameter Type that holds an unsolved slot (an open position, without a Type) is neither identical
+                    // to nor a subtype of another Type.
                     var x = operations[(a * stride) + i].ParameterType;
                     var y = operations[(b * stride) + i].ParameterType;
-                    if (ReferenceEquals(x, y))
+                    if (ReferenceEquals(x, y) && (x is not null || operations[(a * stride) + i].Source is null))
                     {
                         continue;
                     }
 
-                    // Only existing operation-free Type relations participate here.
-                    var xy = x is not null && y is not null && FitsType(x, y);
-                    var yx = x is not null && y is not null && FitsType(y, x);
+                    // Only existing operation-free Type relations participate here, by their structural part: Origin bindings never
+                    // rank candidates (SPEC 10.4 step 2, 15.6.1), also inside Function Types.
+                    var xy = x is not null && y is not null && FitsStructuralPart(x, y);
+                    var yx = x is not null && y is not null && FitsStructuralPart(y, x);
                     better |= xy && !yx;
                     worse |= !xy;
                 }
@@ -120,67 +124,115 @@ public sealed partial class Binding
         return -1;
     }
 
-    // SPEC 10.2.2 step 2: an argument at which one remaining candidate plans the bare by-value acquisition and another the new
-    // shared borrow of the same Place is a conflict that ranking never resolves. One pass per argument over the plans; the
-    // explanation is recorded in reused stores only when the call fails.
-    private bool CheckAcquisitionConflicts(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, ArgumentAcquisition[] plans, int argumentCount, BoundArgumentOperation[] operations, int stride, BoundType?[] proofTypes, bool[] proven)
+    // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an
+    // unsolved slot or is absent (no Callable Constraint on F), compares equal there when the candidates acquire it in one mode.
+    private static bool ComparableCallableSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
     {
-        var start = this.acquisitionConflictStore.Count;
-        for (var i = 0; i < argumentCount; i++)
+        for (var argument = 0; argument < call.ArgumentNodes.Count; argument++)
         {
-            var copy = false;
-            var borrow = false;
-            for (var c = 0; c < candidates.Length; c++)
-            {
-                if (candidates[c].State is CandidateApplicability.Applicable or CandidateApplicability.CopyUnproven)
-                {
-                    var plan = plans[(c * argumentCount) + i];
-                    copy |= plan == ArgumentAcquisition.Copy;
-                    borrow |= plan == ArgumentAcquisition.SharedBorrow;
-                }
-            }
-
-            if (!(copy && borrow))
+            if (!IsWaitingCallable(call.ArgumentNodes[argument]))
             {
                 continue;
             }
 
-            var partyStart = this.acquisitionPartyStore.Count;
-            for (var c = 0; c < candidates.Length; c++)
+            var first = true;
+            SemanticsKind? acquisition = null;
+            for (var candidate = 0; candidate < candidates.Length; candidate++)
             {
-                var plan = plans[(c * argumentCount) + i];
-                if (candidates[c].State is CandidateApplicability.Applicable or CandidateApplicability.CopyUnproven && plan != ArgumentAcquisition.Other)
+                if (candidates[candidate].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                 {
-                    var operation = operations[(c * stride) + i];
-                    this.acquisitionPartyStore.Add(new((FunctionKoto)candidates[c].Symbol.Declaration, operation.ParameterIndex, operation.ParameterType, plan == ArgumentAcquisition.Copy));
+                    continue;
                 }
+
+                var operation = operations[(candidate * stride) + argument];
+                if (operation.Adaptation == ArgumentAdaptation.Erasure)
+                {
+                    continue; // The comparison retains this distinct operation; it never ties with a concrete slot.
+                }
+
+                if (candidates[candidate].State != CandidateApplicability.Waiting)
+                {
+                    return false;
+                }
+
+                var function = (FunctionKoto)candidates[candidate].Symbol.Declaration;
+                var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
+                var borrowed = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq };
+                var slot = borrowed ? pattern.Components[0] : pattern;
+                SemanticsKind? mode = borrowed ? pattern.Semantics : null;
+                // SPEC 10.5: a waiting reference, like an anonymous body, never ranks the outer candidates; once their ordinary
+                // inputs and defaults select one, its fixed call signature selects the reference, even when the signatures differ.
+                if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, slot.Symbol!) < 0 || (!first && acquisition != mode))
+                {
+                    return false;
+                }
+
+                acquisition = mode;
+                first = false;
             }
-
-            var argument = call.ArgumentNodes[i];
-            this.acquisitionConflictStore.Add(new(argument, argument.BoundType!, proofTypes[i] is not null && proven[i], OffersTake(argument), partyStart, this.acquisitionPartyStore.Count - partyStart));
         }
 
-        var found = this.acquisitionConflictStore.Count - start;
-        if (found == 0)
-        {
-            return false;
-        }
-
-        this.acquisitionConflicts[call] = (start, found);
         return true;
     }
 
-    // SPEC 10.2.2 step 3: one Copy proof per argument and Type, shared by every candidate that holds it.
-    private bool HeldCopyProven(int argument, BoundType type, Koto source, BoundType?[] proofTypes, bool[] proven)
+    // SPEC 10.2.1, 10.7: whether the remaining candidates erase one argument in some candidate and take it directly in another.
+    private static bool ErasureIncomparable(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, int arguments)
     {
-        if (!ReferenceEquals(proofTypes[argument], type))
+        for (var a = 0; a < arguments; a++)
         {
-            proofTypes[argument] = type;
-            proven[argument] = this.ProveCopy(type, source) == ConstraintProof.Proven;
+            var erased = false;
+            var direct = false;
+            for (var i = 0; i < candidates.Length; i++)
+            {
+                if (candidates[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+                {
+                    erased |= operations[(i * stride) + a].Adaptation == ArgumentAdaptation.Erasure;
+                    direct |= operations[(i * stride) + a].Adaptation != ArgumentAdaptation.Erasure;
+                }
+            }
+
+            if (erased && direct)
+            {
+                return true;
+            }
         }
 
-        return proven[argument];
+        return false;
     }
 
-    private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed);
+    private BoundType? FailWaitingSelection(InvocationKoto call, BindingFailure failure)
+    {
+        this.MarkWaitingHeaders(call);
+        return this.Fail(call, failure, true);
+    }
+
+    // SPEC 8.7, 15.6.1: a selection that a single pending Callable proof blocks, explained by that Constraint record.
+    private BoundType? FailCallableSelection(InvocationKoto call, CallableConstraintFact fact)
+    {
+        this.MarkWaitingHeaders(call);
+        return this.FailExplained(ref this.callableConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+    }
+
+    // Omitted header Types need this selection's expectation. Keep that dependency explicit without checking
+    // the body or turning an independent written-Type error into a consequence of the selection.
+    private void MarkWaitingHeaders(InvocationKoto call)
+    {
+        foreach (var argument in call.ArgumentNodes)
+        {
+            if (IsWaitingNestedCall(argument))
+            {
+                this.CompleteDependent(argument, call);
+            }
+            else if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
+            {
+                this.MarkOmittedHeaders(closure, call);
+            }
+        }
+    }
+
+    // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
+    private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, ulong Unsolved = 0, ClosureReceiverRefutation? ClosureReceiver = null);
+
+    // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
+    private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);
 }

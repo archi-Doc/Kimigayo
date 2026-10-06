@@ -57,6 +57,17 @@ public static partial class Parser
             {
                 reader.Advance();
             }
+            else if (reader.CurrentTokenKind is TokenKind.Separator or TokenKind.StartBlock or TokenKind.EndBlock || !reader.CanRead)
+            {
+                // The line ends after the left operand: the operator is missing at its insertion point, and the right operand,
+                // missing at the same point, rests on it (DIAGNOSTICS.md §4.4).
+                var at = new SourceSpan(reader.PreviousSyntaxEnd, 0);
+                reader.Diagnostic.Add(at, DiagnosticCode.OriginRelationOperator_Kd);
+                var missing = new ErrorKoto(ref reader, at) { Cause = reader.Diagnostic.LastError };
+                var incomplete = new OriginRelationKoto(ref reader, SourceSpan.FromBounds(start, left.Span.End), left, missing, false);
+                reader.ExpectLineEnd();
+                return incomplete;
+            }
             else
             {
                 reader.AddDiagnostic(DiagnosticCode.OriginRelationOperator_Kd);
@@ -101,7 +112,7 @@ public static partial class Parser
                 reader.AddDiagnostic(DiagnosticCode.AttachedOriginRelation_Kd);
                 if (reader.CurrentTokenKind == TokenKind.StartBlock)
                 {
-                    reader.SkipCurrentBlock(false);
+                    reader.SkipCurrentBlock();
                 }
                 else
                 {
@@ -122,7 +133,8 @@ public static partial class Parser
         var keyword = reader.Read();
         if (reader.GetSpan(keyword) is "from")
         {
-            reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginKeyword_Kd);
+            // SPEC 3.3.6, 23.3.6.9: the annotation keyword is during; the repair candidate replaces the former spelling.
+            reader.Diagnostic.AddSyntax(keyword.Span, DiagnosticCode.BorrowOriginKeyword_Kd, repairs: reader.ReplaceToken(keyword.Span, "during"));
         }
 
         var expression = ParseOriginAtom(ref reader);
@@ -174,14 +186,14 @@ public static partial class Parser
         }
     }
 
-    private static List<string>? RejectCallableOriginList(ref TokenReader reader)
+    /// <summary>Reports and consumes an Origin header written after a function or accessor Name; callables declare no Origin slots (SPEC 15.3.2).</summary>
+    /// <param name="reader">The token reader.</param>
+    private static void RejectCallableOriginList(ref TokenReader reader)
     {
         if (reader.CurrentTokenKind == TokenKind.OpenBrace)
         {
             reader.AddDiagnostic(DiagnosticCode.CallableOriginList_Kd);
             _ = ParseOriginParameters(ref reader);
         }
-
-        return null;
     }
 }

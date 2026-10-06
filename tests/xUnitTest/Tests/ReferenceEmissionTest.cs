@@ -293,7 +293,8 @@ public class ReferenceEmissionTest
     [Fact]
     public void OverloadRankingRetainsExactOwnedAcquisition()
     {
-        const string Source = "func pick(a: string) -> bool => true\nfunc pick(a: ref/string) -> bool => false\nif pick(\"a\") => Console.writeLine(\"owned\")";
+        // SPEC 7.3.1: the borrowing candidate at the same position has a disjoint Type; the owned temporary takes the by-value one exactly.
+        const string Source = "func pick(a: string) -> bool => true\nfunc pick(a: ref/i64) -> bool => false\nif pick(\"a\") => Console.writeLine(\"owned\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.Empty(c.Binding.Issues);
         var call = c.Ownership.Bodies[0].Operations.First(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.Target.Name: "pick" });

@@ -32,6 +32,9 @@ public class CatalogSignatureValidationTest
     [InlineData(KimiDeclarationId.Exchange)]
     [InlineData(KimiDeclarationId.Swap)]
     [InlineData(KimiDeclarationId.MakeObj)]
+    [InlineData(KimiDeclarationId.MakeRc)]
+    [InlineData(KimiDeclarationId.MakeArc)]
+    [InlineData(KimiDeclarationId.Clone)]
     [InlineData(KimiDeclarationId.WriteLine)]
     [InlineData(KimiDeclarationId.TestTempDirectory)]
     public void EveryOperationChecksItsCompleteBoundSignature(KimiDeclarationId id)

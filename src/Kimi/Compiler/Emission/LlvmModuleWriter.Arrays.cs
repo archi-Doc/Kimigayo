@@ -147,7 +147,7 @@ internal static partial class LlvmModuleWriter
     private static readonly string ArrayRuntime =
         WindowsLowering.ArrayGrow.GetDefinition(false) + ArrayGrowBody.Replace("REASON_SIZE", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal)
             .Replace("ZERO_SIZED_BUFFER", Reason(WindowsLowering.ZeroSizedBuffer), StringComparison.Ordinal) +
-        WindowsLowering.ArrayReserve.GetDefinition(false) + ArrayReserveBody.Replace("REASON_ARGUMENT", Reason(WindowsLowering.ArgumentReason), StringComparison.Ordinal).Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal) +
+        WindowsLowering.ArrayReserve.GetDefinition(false) + ArrayReserveBody.Replace("REASON_ARGUMENT", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal).Replace("REASON_OVERFLOW", Reason(WindowsLowering.IntegerOverflowReason), StringComparison.Ordinal) +
         WindowsLowering.ArrayShrink.GetDefinition(false) + ArrayShrinkBody;
 
     private static void WriteArrayHelpers(EmissionModule module, TextWriter output)

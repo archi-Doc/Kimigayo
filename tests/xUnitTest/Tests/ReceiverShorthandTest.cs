@@ -82,15 +82,17 @@ public class ReceiverShorthandTest
     }
 
     [Fact]
-    public void ComputedAccessorsBindSelfAndPreserveExplicitReceiverOverrides()
+    public void ComputedAccessorsBindSelfAndAcceptExplicitShapedReceivers()
     {
-        var c = CompilationTestHelper.ParseSuccess("struct S\n    var measured: i32\n    computed item: i32\n        get() -> i32 => self.measured\n        set(value: i32) -> () => self.measured = value\n    computed exclusive: i32\n        get(self: uniq/Self) -> i32 => self.measured");
+        var c = CompilationTestHelper.ParseSuccess("struct S<T> {source}\n    var measured: i32\n    computed item: i32\n        get() -> i32 => self.measured\n        set(value: i32) -> () => self.measured = value\n    computed annotated: i32\n        get(self: ref/Self during static) -> i32 => self.measured");
         AssertComplete(c);
         var properties = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().ToArray();
         var property = properties.Single(x => x.NameKoto.IdentifierName == "item").BoundSymbol!.Property!;
         AssertReceiver(property.Getter, SemanticsKind.Ref);
         AssertReceiver(property.Setter, SemanticsKind.Uniq);
-        AssertReceiver(properties.Single(x => x.NameKoto.IdentifierName == "exclusive").BoundSymbol!.Property!.Getter, SemanticsKind.Uniq);
+        var annotated = properties.Single(x => x.NameKoto.IdentifierName == "annotated").BoundSymbol!.Property!.Getter;
+        Assert.Equal(SemanticsKind.Ref, annotated.Receiver!.Semantics);
+        Assert.Equal(OriginKind.Static, annotated.Receiver.Origin!.Kind);
         Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(x => x.IdentifierName == "self"), self => Assert.Equal(BindingSymbolKind.Parameter, self.BoundSymbol!.Kind));
         var receiver = property.Getter.Receiver;
         AssertComplete(c);

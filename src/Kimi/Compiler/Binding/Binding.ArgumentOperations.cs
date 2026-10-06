@@ -12,6 +12,9 @@ public enum ArgumentAdaptation : byte
     Literal,
     SameSemanticsReborrow,
     CrossSemanticsBorrow,
+
+    // SPEC 10.2: two erasures are equal; erasure and any other row are incomparable, not numerically ranked.
+    Erasure,
 }
 
 public enum ArgumentOperationKind : byte
@@ -49,8 +52,10 @@ public enum ExpectedAdaptationKind : byte
 /// <summary>The one recorded adaptation of an expression and the Type it supplies; the node keeps its own Type.</summary>
 public readonly record struct BoundAdaptation(ExpectedAdaptationKind Kind, BoundType Type);
 
-/// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it.</summary>
-public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven);
+/// <summary>A selected operation. Source retains the original storage/Loan anchor; substitution never rewrites it. AdaptedType is
+/// the Type the adaptation supplies, whose Origin relations to ParameterType are judged after selection (SPEC 15.6.1). MissingOrigin
+/// marks a known call signature whose fit only one of its own per-call Origins would satisfy, reported after selection (SPEC 15.3.6).</summary>
+public readonly record struct BoundArgumentOperation(Koto? Source, BoundType? SourceType, BoundType? ParameterType, ArgumentOperationKind Kind, ArgumentAdaptation Adaptation, BoundMemberPath? BasePath = null, int ParameterIndex = -1, ConstraintProof ObjectCompatibility = ConstraintProof.Proven, BoundType? AdaptedType = null, bool MissingOrigin = false);
 
 public sealed partial class Binding
 {
@@ -100,13 +105,70 @@ public sealed partial class Binding
     internal static Koto PlaceOriginBinder(Koto source) => source.CodeContext.Compilation.Binding.PropertyCall(source, PropertyAccessorKind.Get) is { } getter ? getter
         : source.BoundSymbol is { Kind: BindingSymbolKind.PatternCandidate } candidate
         ? CandidateOriginBinder(candidate)
-        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage } symbol ? symbol.Declaration : source;
+        : source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture } symbol ? symbol.Declaration : source;
+
+    // SPEC 7.6.2, 15.8.2: an environment binding is a Place of its closure, distinct from the closure's parameters, which share
+    // the closure as binder; the i-th binding's Projection slot is -2 - i.
+    internal static int EnvironmentSlot(int index) => -2 - index;
+
+    // The Projection slot of a closure's call result, a display end only (SPEC 23.3.6.5).
+    internal const int CallResultSlot = -1;
+
+    // The Projection slot that names a closure literal's own temporary value, the receiver of a call on that literal (SPEC 15.8.2).
+    internal const int ClosureValueSlot = int.MinValue;
+
+    // The Projection slot that names a binding's own Place.
+    internal static int SymbolOriginSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.Capture ? EnvironmentSlot(symbol.Slot) : symbol.Slot;
 
     // A guard candidate and the selected body binding share their source declaration,
     // but never their storage lifetime. Reuse the name node as the candidate's identity.
     internal static Koto CandidateOriginBinder(BindingSymbol candidate) => ((SyntaxFormKoto)candidate.Declaration).Operands[0];
 
-    internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate } symbol ? symbol.Slot : 0;
+    internal static int PlaceOriginSlot(Koto source) => source.BoundSymbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture } symbol
+        ? SymbolOriginSlot(symbol) : 0;
+
+    // SPEC 15.1.5, 23.3.6.9: whether a bare Place that needs @move offers Take and is a Movable Place, judged from its path alone
+    // for a repair candidate: an owned path from a local, parameter or capture root is verified; a borrowed, published or shared
+    // path, a Property's storage, a Pattern candidate and an element outside a static Move Path (SPEC 15.1.4) are refuted; a raw
+    // referent takes with (*p)@move (SPEC 5.2.3); any other path is left to the check of the edited input.
+    internal static AcquisitionJudgment TakeJudgment(Koto place)
+    {
+        place = KotoHelper.UnwrapParentheses(place);
+        if (place is DereferenceKoto || (place is IndexKoto raw && ReferenceTypes.IsPointer(raw.Left.BoundType)))
+        {
+            return AcquisitionJudgment.Verified;
+        }
+
+        if (!OffersTake(place))
+        {
+            return AcquisitionJudgment.Refuted;
+        }
+
+        for (var depth = 0; depth < 64; depth++)
+        {
+            switch (place)
+            {
+                case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture }:
+                    return AcquisitionJudgment.Verified;
+                case IdentifierNameKoto:
+                    return AcquisitionJudgment.Refuted;
+                case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.FixedArray && KotoHelper.UnwrapParentheses(index.Right) is NumberLiteralKoto:
+                    place = KotoHelper.UnwrapParentheses(index.Left);
+                    break;
+                case IndexKoto or InvocationKoto:
+                    return AcquisitionJudgment.Refuted;
+                case MemberAccessKoto { BoundSymbol.Property.Getter.IsStandard: false }:
+                    return AcquisitionJudgment.Refuted;
+                case MemberAccessKoto member:
+                    place = KotoHelper.UnwrapParentheses(member.Left);
+                    break;
+                default:
+                    return AcquisitionJudgment.Required;
+            }
+        }
+
+        return AcquisitionJudgment.Required;
+    }
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
         => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PreparedOrigin(source));
@@ -281,6 +343,25 @@ public sealed partial class Binding
 
     // SPEC 7.1.1: whether the expression is the operand of a return, or the single-item body, of a function with a
     // place uniq/T result; only there does an owned Place adapt to an exclusive expectation without @uniq.
+    // An Origin that a function's signature introduces, over its receiver or parameters, rather than a body-local borrow.
+    private static bool SignatureOrigin(BoundOrigin origin)
+    {
+        if (origin.Kind is OriginKind.Input or OriginKind.Parameter)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (SignatureOrigin(origin.Operands[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static bool IsExclusivePlaceResultSource(Koto node) => ResultFunction(node) is { ReturnType: PlaceResultKoto { IsExclusive: true } };
 
     // The function whose result the expression is: the operand of a return, or the single-item body.
@@ -302,12 +383,12 @@ public sealed partial class Binding
     }
 
     // Set while candidates are evaluated: the reason an otherwise fitting bare Place was not applicable,
-    // so a call without applicable candidates names the required spelling (SPEC 15.1.5).
+    // so a call without applicable candidates names the required spelling (SPEC 15.1.5), the Place that needs it and,
+    // for an exclusive borrow, whether the Place is an object handle (@objuniq) (SPEC 23.3.6.9).
     private bool transferRequired;
     private bool lendingRequired;
-
-    // The plan the last AdaptInput chose for a bare Place, read by candidate evaluation right after the call (SPEC 10.2.2).
-    private ArgumentAcquisition argumentAcquisition;
+    private Koto? acquisitionPlace;
+    private bool acquisitionObject;
 
     // SPEC 3.4.1: a member or Tuple element selected through several reference layers is reached through one reference
     // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
@@ -315,7 +396,7 @@ public sealed partial class Binding
     private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
     {
         if (actual is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-            actual.Components[0] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            actual.Components[0] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 })
         {
             return null;
         }
@@ -326,6 +407,14 @@ public sealed partial class Binding
         {
             exclusive &= terminal.Semantics == SemanticsKind.Uniq;
             terminal = terminal.Components[0];
+        }
+
+        // A stored shared object view is Copy: reading it preserves its own external Origin and header identity,
+        // without borrowing its payload from the outer reference slot or granting exclusive authority.
+        if (terminal.Semantics == SemanticsKind.ObjRef)
+        {
+            this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, terminal);
+            return terminal;
         }
 
         if ((terminal is not { Kind: BoundTypeKind.Tuple } && !StructStorage.IsStruct(terminal)) || this.SharedReferenceThroughLayers(actual, terminal, out _) is not { } shared)
@@ -428,6 +517,14 @@ public sealed partial class Binding
             return new(ExpectedAdaptationKind.ReferentRead, referent);
         }
 
+        if (ObjectTypes.IsBorrow(expected) && IsObjectSemantics(actual.Semantics) && actual.Components.Count == 1 && Compatible(actual.Components[0], expected.Components[0]))
+        {
+            // SPEC 10.2: object views use the same authority and acquisition row at every fixed expectation.
+            return this.AdaptObjectBorrow(node, expected, actual, this.ConstraintScope(node), false, out var adapted, out _, out var operation) &&
+                operation is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow
+                ? new(operation == ArgumentOperationKind.Reborrow ? ExpectedAdaptationKind.Reborrow : ExpectedAdaptationKind.SharedBorrow, adapted) : null;
+        }
+
         if (expected is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             return null;
@@ -440,12 +537,17 @@ public sealed partial class Binding
             {
                 // An exclusive Reborrow keeps one exclusive layer; a shared layer on the path bounds it.
                 return actual.Semantics == SemanticsKind.Uniq && ReferenceEquals(actual.Components[0], target) && !ReachedThroughShared(node)
-                    ? new(ExpectedAdaptationKind.Reborrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [target], origin: actual.Origin)) : null;
+                    ? new(ExpectedAdaptationKind.Reborrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [target], origin: this.PathReborrowOrigin(node, actual.Origin))) : null;
             }
 
             if (this.SharedReferenceThroughLayers(actual, target, out var layers) is not { } shared)
             {
                 return null;
+            }
+
+            if (actual.Semantics == SemanticsKind.Uniq && shared.Origin is { } layered && this.PathReborrowOrigin(node, layered) is { } bounded && !ReferenceEquals(bounded, layered))
+            {
+                shared = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: bounded);
             }
 
             // A single ref layer is the reference itself: ordinary fitting Copies it.
@@ -493,6 +595,117 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(source) is var place && this.ImplicitPairAdmitted(place) is var admitted && admitted != SemanticsMask.None && place.BoundType is { } pair
             ? this.PairOrigin(place, pair, admitted) : this.PlaceOrigin(source);
 
+    // SPEC 15.6.3: a Reborrow through an exclusive reference stored in a Place is contained in that reference's Origin and in the
+    // Origin of each safe borrow through which the Place is reached, counting outward up to and including the first shared
+    // layer, so a result reached through a borrowed receiver or parameter stays within that borrow. A shared reference is Copied
+    // and keeps its own Origin. Body-local borrows on the path stay ancestors in ownership analysis (SPEC 15.6.2), and an
+    // implementation verified under `preserves results` publishes results independent of its receiver Loan (SPEC 8.4.10.3).
+    private BoundOrigin? PathReborrowOrigin(Koto place, BoundOrigin? origin)
+    {
+        if (origin is null || this.PublishesIndependentResults(place))
+        {
+            return origin;
+        }
+
+        var path = KotoHelper.UnwrapParentheses(place);
+        for (var depth = 0; depth < 64 && origin is not null; depth++)
+        {
+            var outer = path switch
+            {
+                MemberAccessKoto member => member.Left,
+                IndexKoto index => index.Left,
+                ConversionKoto { ConversionBinding: ConversionBinding.Follow } follow => follow.Left,
+                _ => null,
+            };
+            if (outer is null)
+            {
+                break;
+            }
+
+            outer = KotoHelper.UnwrapParentheses(outer);
+            if (outer.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { } layer })
+            {
+                if (SignatureOrigin(layer))
+                {
+                    origin = this.Meet(origin, layer);
+                }
+
+                if (outer.BoundType.Semantics == SemanticsKind.Ref)
+                {
+                    break;
+                }
+            }
+
+            path = outer;
+        }
+
+        return origin;
+    }
+
+    // SPEC 8.4.10.3, 15.6.3: whether the named function enclosing a node implements a requirement whose Contract declares
+    // `preserves results`, such as an Iterator's `next`, so that the bound's verification establishes the independence of its
+    // published results.
+    private bool PublishesIndependentResults(Koto node)
+    {
+        var function = node.Parent;
+        while (function is not null and not FunctionKoto { IsAnonymous: false })
+        {
+            function = function.Parent;
+        }
+
+        if (function is not FunctionKoto { BoundSymbol: { } symbol } named || symbol.Scope.Owner.BoundSymbol is not { } owner ||
+            !this.conformancesByType.TryGetValue(owner, out var conformances))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < conformances.Count; i++)
+        {
+            if (conformances[i].Contract.Contract is { HasEffectBounds: true } shape && PreservesRequirement(shape, named))
+            {
+                return true;
+            }
+
+            for (var a = 0; conformances[i].Contract.Contract is { } contract && a < contract.Ancestors.Count; a++)
+            {
+                if (contract.Ancestors[a].Contract is { HasEffectBounds: true } ancestor && PreservesRequirement(ancestor, named))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+
+        static bool PreservesRequirement(BoundContract shape, FunctionKoto function)
+        {
+            for (var b = 0; b < shape.EffectBoundStorage.Count; b++)
+            {
+                var bound = shape.EffectBoundStorage[b];
+                if (bound.Bound == EffectBoundKind.PreservesResults && bound.Requirement.Name == function.Name &&
+                    bound.Requirement.Declaration is FunctionKoto requirement && requirement.Parameters.Count == function.Parameters.Count)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
+    // The Origin a followed reference's referent keeps: an exclusive reference's own Origin met with its reaching borrows.
+    private BoundOrigin? FollowedOrigin(Koto reference)
+        => reference.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin: { } origin } ? this.PathReborrowOrigin(reference, origin) : reference.BoundType?.Origin;
+
+    // SPEC 13.5.5.2, 15.6.5: a borrow of a slot that stores a reference depends on that slot. A slot reached through a reference
+    // keeps that reference's dependencies, whereas the own slot of a local, a parameter, an environment binding or a temporary is
+    // a Place of the body or of the closure's receiver (SPEC 15.8.2).
+    private BoundOrigin SlotOrigin(Koto source)
+        => KotoHelper.UnwrapParentheses(source) is var slot &&
+            (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
+            (slot is InvocationKoto && ElementAccess.PlaceCallReference(slot) is null && ElementAccess.IndexerCall(slot, false) is null))
+            ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source);
+
     private BoundOrigin PlaceOrigin(Koto source)
     {
         if (this.ReadsReferent(source))
@@ -503,15 +716,17 @@ public sealed partial class Binding
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
         {
             // SPEC 13.5.5.1: an admitted owner selects the operand Place itself; with only borrows admitted, the selected
-            // referent keeps the dependencies of the stored reference, like a Reborrow.
-            return (this.PairAdmitted(pair) & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(pair.Left) : pair.Left.BoundType?.Origin ?? this.PlaceOrigin(pair.Left);
+            // referent keeps the dependencies of the stored reference, like a Reborrow: the layer's outer-Origin slot.
+            return (this.PairAdmitted(pair) & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(pair.Left)
+                : (pair.Left.BoundType is { } layer ? this.OuterOrigin(layer) : null) ?? this.PlaceOrigin(pair.Left);
         }
 
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)
         {
-            // SPEC 13.5.5: a selected referent or payload keeps the dependencies of its reference or handle,
-            // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent.
-            return selected.Left.BoundType?.Origin ?? this.PlaceOrigin(selected.Left);
+            // SPEC 13.5.5, 15.6.3: a selected referent or payload keeps the dependencies of its reference or handle,
+            // so a Reborrow depends on the referent and the parent Loan, not on the slot holding the parent; through an
+            // exclusive reference, it also stays within the borrows that reach that reference.
+            return this.FollowedOrigin(selected.Left) ?? this.PlaceOrigin(selected.Left);
         }
 
         if (ElementAccess.PlaceCallReference(source) is { Origin: { } published })
@@ -526,7 +741,14 @@ public sealed partial class Binding
 
         // A pair layer's Origin is the dependency of the reference it may hold; the Place itself is its own dependency.
         source = PlaceOriginSource(source);
-        return source.BoundType is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
+        if (source is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } reached)
+        {
+            // SPEC 13.5.5: a part of a selected referent (`p@follow.x`) keeps the dependencies of the reference, as the
+            // referent itself does.
+            return this.FollowedOrigin(reached.Left) ?? this.PlaceOrigin(reached.Left);
+        }
+
+        return ElementAccess.AccessType(source) is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
             : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
@@ -647,6 +869,11 @@ public sealed partial class Binding
                     return true;
                 }
 
+                if (ObjectTypes.HandleMode(access.Left.BoundType) is { } handle)
+                {
+                    return !exclusive || (handle.PayloadAuthority == LoanRequirement.Uniq && this.BorrowablePlace(access.Left, scope, true));
+                }
+
                 return access.Left.BoundType is { Kind: BoundTypeKind.Semantics } receiver
                     ? !exclusive || receiver.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq
                     : this.BorrowablePlace(access.Left, scope, exclusive);
@@ -668,12 +895,14 @@ public sealed partial class Binding
     /// Adapts an input to a parameter Type. <paramref name="receiver"/> marks a Receiver Expression, which SPEC 7.3
     /// acquires implicitly: a new exclusive borrow of an owned Place or temporary needs no spelling there, whereas
     /// every other position requires <c>@uniq</c>/<c>@objuniq</c> whatever the access path (SPEC 15.1.5).
-    /// <paramref name="holdCopy"/> holds the Copy proof of a bare Place's by-value acquisition for overload resolution's
-    /// conflict check (SPEC 10.2.2); <see cref="argumentAcquisition"/> names the plan chosen for a bare Place.
     /// </summary>
-    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false, bool holdCopy = false)
+    private bool AdaptInput(Koto source, BoundType pattern, BoundType actual, BindingScope scope, BoundMemberPath? path, BoundType? declaringType, out BoundType adapted, out ArgumentAdaptation quality, out ArgumentOperationKind kind, bool explicitBorrow = false, bool receiver = false)
     {
-        this.argumentAcquisition = ArgumentAcquisition.Other;
+        if (receiver && this.adaptations.TryGetValue(source, out var preparedReceiver) && preparedReceiver.Kind == ExpectedAdaptationKind.ReferenceRead)
+        {
+            actual = preparedReceiver.Type; // Member selection already prepared the reference reached through the stored layers.
+        }
+
         actual = this.ContractType(actual, scope);
         adapted = actual;
         quality = ArgumentAdaptation.Exact;
@@ -713,15 +942,15 @@ public sealed partial class Binding
             }
             else if (actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source))
             {
-                // SPEC 3.5, 10.2: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not acquired by value;
-                // overload resolution decides this held proof after its conflict check (SPEC 10.2.2).
-                if (!holdCopy && this.ProveCopy(actual, source) != ConstraintProof.Proven)
+                // SPEC 3.5, 10.1: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not acquired by value, and
+                // the candidate that needs the Copy is inapplicable. A bare pair-layer Place whose every admitted case Copies or
+                // Reborrows is acquired by each case as its case Type is (SPEC 8.9, 8.10).
+                if (this.ProveCopy(actual, source) != ConstraintProof.Proven && !(TryPairLayer(actual, out _, out _) && this.BareAcquisition(actual, source, out _) == SemanticsMask.None))
                 {
                     this.transferRequired = true;
+                    this.acquisitionPlace = source;
                     return false;
                 }
-
-                this.argumentAcquisition = ArgumentAcquisition.Copy;
             }
 
             return true;
@@ -770,7 +999,7 @@ public sealed partial class Binding
             referent = actual;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
-            adapted = this.InternType(BoundTypeKind.Semantics, null, target, [referent], origin: this.PlaceOrigin(source));
+            adapted = this.InternType(BoundTypeKind.Semantics, null, target, [referent], origin: this.SlotOrigin(source));
             return true;
         }
 
@@ -816,6 +1045,9 @@ public sealed partial class Binding
             // SPEC 13.5.5.2: an explicit borrow of a slot storing a pair application borrows that slot like a stored value.
             var exclusive = target == SemanticsKind.Uniq;
             var unwrapped = KotoHelper.UnwrapParentheses(source);
+            // Function references and anonymous expressions construct callable values, despite retaining declaration Symbols.
+            var callableValue = (actual.Kind == BoundTypeKind.FunctionItem && unwrapped.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
+                unwrapped is FunctionKoto { IsAnonymous: true };
             if (this.BorrowablePlace(source, scope, exclusive))
             {
                 // SPEC 15.1.5 lending rule: an owned Place is lent exclusively by @uniq at every position other
@@ -823,20 +1055,17 @@ public sealed partial class Binding
                 if (exclusive && !explicitBorrow && !receiver)
                 {
                     this.lendingRequired = true;
+                    this.acquisitionPlace = source;
+                    this.acquisitionObject = false;
                     return false;
-                }
-
-                if (!exclusive && !explicitBorrow && !receiver && !projected && IsBarePlace(source))
-                {
-                    this.argumentAcquisition = ArgumentAcquisition.SharedBorrow; // SPEC 10.2.2: a new shared borrow of the Place.
                 }
             }
             else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || ElementAccess.IsPlaceCall(unwrapped) ||
                 (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)) || // SPEC 4.6.9: a published element Place is never a temporary.
-                (!((source.BoundSymbol is null || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
+                (!((source.BoundSymbol is null || callableValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
                 (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
                 !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
-                unwrapped is not IdentifierNameKoto && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) &&
+                (unwrapped is not IdentifierNameKoto || callableValue) && source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)) &&
                 !(target == SemanticsKind.Ref && IsUnfittedLiteral(source))))
             {
                 return false;
@@ -890,13 +1119,15 @@ public sealed partial class Binding
             kind = ArgumentOperationKind.Reborrow;
             quality = exclusive ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
         }
-        else if ((actual.Semantics == SemanticsKind.Obj || (explicitOwner && !exclusive && actual.Semantics is SemanticsKind.Rc or SemanticsKind.Arc)) &&
+        else if (ObjectTypes.HandleMode(actual) is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
             this.BorrowablePlace(source, scope, exclusive))
         {
             if (exclusive && !explicitOwner && !receiver)
             {
                 // SPEC 15.1.5 lending rule: an owned handle is lent exclusively by @objuniq except as a receiver (SPEC 7.3).
                 this.lendingRequired = true;
+                this.acquisitionPlace = source;
+                this.acquisitionObject = true;
                 return false;
             }
 

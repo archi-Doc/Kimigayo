@@ -41,6 +41,9 @@ public abstract class UnaryKoto : ExpressionKoto
     /// <summary>Gets or sets the operand.</summary>
     public Koto Operand { get; protected set; }
 
+    /// <summary>Gets the spelling of a prefix or postfix operator, without the operand or spaces.</summary>
+    public string OperatorText => (PrefixTexts[(int)this.Akind] ?? PostfixTexts[(int)this.Akind] ?? string.Empty).Trim();
+
     /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>

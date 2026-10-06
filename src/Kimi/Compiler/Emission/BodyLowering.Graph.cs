@@ -66,7 +66,7 @@ internal sealed partial class BodyLowering
         return body.Values[id].Kind switch
         {
             OwnershipValueKind.Constant => new(ReferenceEquals(ValueType(body, id), BoundType.F32) ? EmissionOperandKind.Float32 : ReferenceEquals(ValueType(body, id), BoundType.F64) ? EmissionOperandKind.Float64 : ReferenceTypes.IsPointer(ValueType(body, id)) ? EmissionOperandKind.NullAddress : EmissionOperandKind.Integer, body.Values[id].Constant),
-            OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[id].Constant),
+            OwnershipValueKind.Parameter => body.DefaultParameter >= 0 ? new(EmissionOperandKind.Value, id) : new(EmissionOperandKind.Argument, body.Values[id].Constant),
             OwnershipValueKind.PointerProject => new(EmissionOperandKind.ElementAddress, id),
             _ => new(EmissionOperandKind.Value, id),
         };
@@ -86,6 +86,7 @@ internal sealed partial class BodyLowering
         Grow(ref this.checks, count);
 
         this.PrepareConversions(body);
+        this.PrepareCallIndex(body);
         if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure))
         {
             return false;
@@ -281,7 +282,7 @@ internal sealed partial class BodyLowering
                 for (var i = 0; i < body.Operations.Count && !addressRequired; i++)
                 {
                     var operation = body.Operations[i];
-                    addressRequired = operation.Kind == OwnershipOperationKind.Borrow && operation.Place == p;
+                    addressRequired = operation.Place == p && (operation.Kind == OwnershipOperationKind.Borrow || body.Values[i].Kind == OwnershipValueKind.DefaultRead);
                 }
             }
 
@@ -559,6 +560,12 @@ internal sealed partial class BodyLowering
 
                 function.AddScalar(EmissionOpcode.StoreScalar, id, [this.PhysicalOperand(body, Input(body, id, 0))], llvm, place: operation.Place, representation: representation);
                 return true;
+        }
+
+        if (value.Kind == OwnershipValueKind.Parameter && operation.Kind == OwnershipOperationKind.Produce && body.DefaultParameter >= 0)
+        {
+            function.AddScalar(EmissionOpcode.LoadPointer, id, [new(EmissionOperandKind.Argument, value.Constant)], llvm, representation: representation);
+            return true;
         }
 
         if (value.Kind == OwnershipValueKind.Parameter && operation.Kind == OwnershipOperationKind.Produce && this.IsMaterializedScalar(operation.Place))

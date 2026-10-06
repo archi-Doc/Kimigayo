@@ -186,6 +186,7 @@ public class StorageBoundaryTest
     public void RemainderElementsAreLentByBorrowingRawPlaces(bool exclusive)
     {
         var semantics = exclusive ? "uniq" : "ref";
+        var operation = exclusive ? "borrowStorageUniq" : "borrowStorage";
         var c = CompilationTestHelper.ParseSuccess($$"""
             var values: Array<i32> = [7, 9]
             require Kimi.StorageProbe.first(values@{{semantics}}) == 7 else => $abort("first")
@@ -194,7 +195,7 @@ public class StorageBoundaryTest
         var helper = $$"""
             public group StorageProbe
                 public func first(values: {{semantics}}/Array<i32>) -> i32
-                    var state = Storage.borrowStorage(values)
+                    var state = Storage.{{operation}}(values)
                     unsafe
                         let item = state.storage[0]@{{semantics}}
                         return item

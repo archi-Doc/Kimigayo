@@ -300,8 +300,9 @@ public sealed partial class Binding
             return this.FitsInputLiteral(source, expected, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
         }
 
+        // SPEC 15.6.1: the structural part decides applicability; the element's Origin relations are judged when it is bound.
         return source.BoundType is not { } actual ? CandidateApplicability.Pending :
-            this.FitsTypeAt(actual, expected, source) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+            this.FitsStructurallyAt(actual, expected, source) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
     }
 
     private CandidateApplicability ProbeRangeBoundary(Koto? boundary, BoundType expected, BoundType omitted, BindingScope scope)

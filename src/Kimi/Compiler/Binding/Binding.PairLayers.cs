@@ -12,16 +12,16 @@ public sealed partial class Binding
     // Receivers whose stored pair layer selection follows implicitly (SPEC 3.4.1, 7.3), with their admitted sets.
     private readonly Dictionary<Koto, SemanticsMask> implicitPairFollows = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Decomposes a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, stored as the pair's whole Type, or an
-    /// application <c>s/U</c> to another Type. The pair target <c>T</c> alone is not a pair layer.</summary>
+    /// <summary>Decomposes a pair layer (SPEC 13.5.5.1): the original <c>s/T</c>, stored as the pair's whole Type, an annotated
+    /// occurrence of it (<c>s/T during a</c>, SPEC 8.1.2), or an application <c>s/U</c> to another Type. The pair target <c>T</c>
+    /// alone is not a pair layer.</summary>
     /// <param name="type">The normalized Type.</param>
     /// <param name="whole">The pair's whole Type, which carries the Semantics premises.</param>
     /// <param name="target">The direct target.</param>
     /// <returns>Whether <paramref name="type"/> is a pair layer.</returns>
     internal static bool TryPairLayer(BoundType? type, out BoundType whole, out BoundType target)
     {
-        if (type is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } original, Type: { } projection } } &&
-            ReferenceEquals(type, original))
+        if (type is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } original, Type: { } projection } })
         {
             whole = original;
             target = projection;
@@ -82,8 +82,9 @@ public sealed partial class Binding
         return admitted != SemanticsMask.None && (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0 ? admitted : SemanticsMask.None;
     }
 
-    // SPEC 13.5.5.1: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability,
-    // uniq grants Write also through a let slot but never through a shared path, and ref grants Read only.
+    // SPEC 13.5.5.1: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability (a write
+    // needs an assignable Place, such as an inline element of a writable root), uniq grants Write also through a let slot but
+    // never through a shared path, and ref grants Read only.
     private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
         => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
 
@@ -96,7 +97,7 @@ public sealed partial class Binding
 
         return (admitted & SemanticsMask.Ref) == 0 &&
             ((admitted & SemanticsMask.Uniq) == 0 || !ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(operand) : this.BorrowablePlace(operand, scope, true)));
+            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(operand) || ElementAccess.WritableRoot(operand) is not null : this.BorrowablePlace(operand, scope, true)));
     }
 
     // SPEC 7.3, 13.5.5.1: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
@@ -166,7 +167,8 @@ public sealed partial class Binding
     }
 
     // SPEC 13.5.5.1: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow) and
-    // otherwise on the stored reference (Reborrow).
+    // otherwise on the layer's outer-Origin slot and the parent Loan (Reborrow): `o` for the original pair, the annotation or
+    // the application's own slot otherwise, and the Place only for an application without a slot.
     private BoundOrigin PairOrigin(Koto node, BoundType pair, SemanticsMask admitted)
-        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : pair.Origin ?? this.PlaceOrigin(node);
+        => (admitted & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(node) : this.OuterOrigin(pair) ?? this.PlaceOrigin(node);
 }

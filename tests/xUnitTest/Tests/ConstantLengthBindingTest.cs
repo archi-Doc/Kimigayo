@@ -64,7 +64,7 @@ public class ConstantLengthBindingTest
     public void AdaptationSyntaxIsNotPartOfLengthExpressions()
     {
         var c = MinimalEmissionTest.Analyze("let N = 4\nlet row: [(N@isize) of u8]");
-        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto), x => x.Akind == KotoKind.Error);
+        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto), static x => x.Akind == KotoKind.Error || x.CodeContext.RecoveryCause(x) is not null);
         Assert.False(c.Binding.Result.IsComplete);
     }
 

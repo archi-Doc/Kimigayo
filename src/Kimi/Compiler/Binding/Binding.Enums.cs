@@ -165,7 +165,7 @@ public sealed partial class Binding
             else
             {
                 input = source.BoundType is not { } actual ? CandidateApplicability.Pending :
-                    this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out _, out _) && FitsType(adapted, type) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+                    this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out _, out _) && FitsStructurally(adapted, type) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
             }
 
             // Error remains visible even if another payload cannot fit this candidate.
@@ -312,6 +312,13 @@ public sealed partial class Binding
                     }
 
                     var actual = this.BindNode(source, scope, hint);
+                    if (actual is null && hint?.Kind != BoundTypeKind.Function &&
+                        source is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
+                    {
+                        // SPEC 7.6.4: infer an open payload from the declaration's Item Type, just as for a generic call.
+                        actual = this.BindFunctionItem(source, item, scope);
+                    }
+
                     if (actual is null)
                     {
                         return Complete(use, null);
@@ -322,13 +329,22 @@ public sealed partial class Binding
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
                         // SPEC 6.3.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
-                        return this.Fail(use, this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch);
+                        var failure = this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch;
+                        return failure != BindingFailure.TypeMismatch ? this.FailAcquisition(use, failure, source, this.acquisitionObject) : this.Fail(use, failure);
                     }
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);
                     var inferred = this.SubstituteStoredOrigins(pattern, declaration, origins.AsSpan(0, originCount));
                     if (!(hint is not null && this.FitsTypeAt(adapted, hint, source)) && !this.Infer(inferred, adapted, declaration, arguments, true))
                     {
+                        // SPEC 15.6.1: a payload that fits its expected payload Type only structurally fails in its Origin relations, at
+                        // the payload value, never as a Type mismatch.
+                        if (hint is not null && this.FitsStructurallyAt(adapted, hint, source))
+                        {
+                            this.RecordMismatch(source, source, adapted, hint);
+                            return Complete(use, null);
+                        }
+
                         return this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
@@ -355,7 +371,16 @@ public sealed partial class Binding
             var result = this.InternType(slots == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, enumeration.Owner, SemanticsKind.Owner, ((BoundType[])(object)arguments).AsSpan(0, slots), originArguments: origins.AsSpan(0, originCount));
             if (expected is not null && !FitsType(result, expected))
             {
-                return this.Fail(use, BindingFailure.TypeMismatch);
+                // SPEC 15.6.1: a construction that fits only structurally fails in its Origin relations, never as a Type mismatch.
+                if (!FitsStructurally(result, expected))
+                {
+                    return this.Fail(use, BindingFailure.TypeMismatch);
+                }
+
+                if (!this.FitsTypeAt(result, expected, use))
+                {
+                    return this.RecordMismatch(use, use, result, expected);
+                }
             }
 
             for (var i = 0; i < count; i++)
@@ -409,6 +434,8 @@ public sealed partial class Binding
                 continue;
             }
 
+            this.CompleteEnumOrigins(entry.Key, plan);
+
             if (plan.Case.Symbol.Declaration.BindingState != BindingState.Resolved || plan.Case.Owner.Declaration.BindingState != BindingState.Resolved || InvalidDeclarationContext(plan.Case.Owner.Declaration))
             {
                 plan.IsValid = false;
@@ -443,10 +470,41 @@ public sealed partial class Binding
                 {
                     // SPEC 6.3.2, 3.5: a bare Non-Copy or Copy-unproven Place never Moves into a payload; write value@move.
                     plan.IsValid = false;
-                    this.Fail(payloadSource, BindingFailure.TransferRequired);
+                    this.FailAcquisition(payloadSource, BindingFailure.TransferRequired, payloadSource);
                 }
 
                 plan.SetAcquisition(i, operation.Kind is ArgumentOperationKind.CopyRead or ArgumentOperationKind.ReferenceRead ? AcquisitionKind.Copy : operation.Kind != ArgumentOperationKind.Value ? AcquisitionKind.None : proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove);
+            }
+        }
+    }
+
+    // The enclosing local has now solved all acquisition bounds. Complete this plan against those solutions without
+    // changing the source expressions' own call/adaptation certificates or their acquired source Types.
+    private void CompleteEnumOrigins(Koto use, BoundEnumConstruction construction)
+    {
+        for (var node = use.Parent; node is not null; node = node.Parent)
+        {
+            if (!this.initializerOrigins.TryGetValue(node, out var declaration) || declaration.State < 2 || declaration.Replacements.Count == 0)
+            {
+                continue;
+            }
+
+            var source = construction.PayloadOperations;
+            var operations = this.argumentOperationScratch.Rent(source.Length);
+            try
+            {
+                for (var i = 0; i < source.Length; i++)
+                {
+                    operations[i] = source[i] with { ParameterType = this.RewriteOrigins(source[i].ParameterType!, declaration) };
+                }
+
+                var type = this.RewriteOrigins(construction.Type, declaration);
+                construction.Set(construction.Case, type, operations.AsSpan(0, source.Length));
+                use.BoundType = type;
+            }
+            finally
+            {
+                this.argumentOperationScratch.Return(operations, clearArray: true);
             }
         }
     }

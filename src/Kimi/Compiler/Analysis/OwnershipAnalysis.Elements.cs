@@ -12,7 +12,7 @@ public sealed partial class OwnershipAnalysis
     {
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
         var type = this.Concrete(target.BoundType);
-        if (type is null || operation == KotoKind.Invalid || (operation != KotoKind.Equals && !type.IsNumeric))
+        if (type is null || (operation != KotoKind.Equals && !this.SupportsUpdate(target, target.BoundType, operation)))
         {
             this.Unsupported(source);
             return -1;
@@ -87,7 +87,7 @@ public sealed partial class OwnershipAnalysis
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);
         var type = ElementAccess.DestinationType(target, target.BoundType);
-        if (operation == KotoKind.Invalid || type?.IsNumeric != true || ElementAccess.WritableRoot(target) is null)
+        if (!this.SupportsUpdate(target, type, operation) || ElementAccess.WritableRoot(target) is null)
         {
             this.Unsupported(source);
             return -1;
@@ -219,8 +219,17 @@ public sealed partial class OwnershipAnalysis
             result = this.Temporary(source, projection: projection);
             if (allowMove && acquisition is null && this.body.Places[result].Acquisition != AcquisitionKind.Copy)
             {
-                // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move.
-                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move. A bare element storing an exclusive
+                // reference, the exclusive case of a pair element included, would Reborrow (SPEC 15.1.5), which element paths do not
+                // support yet (STATUS), as the concrete element does not.
+                if (this.body.Places[result].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
+                {
+                    this.Unsupported(source);
+                }
+                else
+                {
+                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                }
             }
 
             if (allowMove && acquisition == AcquisitionKind.Move && this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&
@@ -277,7 +286,7 @@ public sealed partial class OwnershipAnalysis
         else
         {
             // SPEC 4.6.6, 4.6.9: a Place reached through a Slice or a borrow is not part of an owned root; a Copy one is read as the root.
-            root = receiver is IdentifierNameKoto && receiver.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter
+            root = receiver is IdentifierNameKoto && receiver.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture
                 ? this.Local(receiver) : this.Expression(receiver, PlaceUseKind.Read);
             if (root >= 0)
             {

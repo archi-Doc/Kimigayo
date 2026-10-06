@@ -6,31 +6,52 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    private readonly Dictionary<Koto, bool> invalidDefaults = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Koto> checkedDefaults = new(ReferenceEqualityComparer.Instance);
     private DefaultDeclarationVisitor? defaultDeclarations;
+    private DefaultDeclarationVisitor? definiteDefaultProbe;
     private OwnershipBody? defaultBody;
+
+    // SPEC 7.2.3: declaration checking owns a rejected default. A caller never executes it against its pending inputs.
+    // Before the declaration pass reaches a nested callee, the probe recognizes definite forbidden Moves without building it.
+    private bool InvalidDefault(FunctionKoto function, int index, Koto expression)
+    {
+        if (!this.invalidDefaults.TryGetValue(expression, out var definite))
+        {
+            definite = (this.definiteDefaultProbe ??= new(this, probe: true)).Probe(function, index, expression);
+            this.invalidDefaults[expression] = definite;
+        }
+
+        return definite;
+    }
 
     private void CheckDefaultDeclarations(FunctionKoto function)
     {
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (function.Parameters[i].DefaultValue is { } expression)
+            if (function.Parameters[i].DefaultValue is { } expression && this.checkedDefaults.Add(expression))
             {
+                var before = this.issues.Count;
                 (this.defaultDeclarations ??= new(this)).Check(function, i, expression);
-                if (ScalarDefaults.Supports(function, i))
+                if (before == this.issues.Count)
                 {
                     this.Build(function, i);
                 }
+
+                this.invalidDefaults[expression] = before != this.issues.Count;
             }
         }
     }
 
     // This checks definite forbidden acquisitions, not a certificate that arbitrary
     // defaults are executable. Unsupported effects and representations retain their guards.
-    private sealed class DefaultDeclarationVisitor(OwnershipAnalysis owner) : KotoVisitor
+    private sealed class DefaultDeclarationVisitor(OwnershipAnalysis owner, bool probe = false) : KotoVisitor
     {
         private FunctionKoto? function;
         private int parameter;
         private PlaceUseKind use;
+        private bool transfer;
+        private bool found;
 
         public override void Visit(Koto node)
         {
@@ -46,8 +67,11 @@ public sealed partial class OwnershipAnalysis
 
             switch (node)
             {
-                case FunctionKoto:
-                    return; // Nested bodies have their own declaration/ownership pass.
+                case FunctionKoto closure:
+                    // Nested bodies have their own declaration/ownership pass; a capture entry that moves a preceding prepared
+                    // argument is this default's own acquisition (SPEC 7.2.3, 7.6.2).
+                    this.CheckCaptures(closure);
+                    return;
                 case IdentifierNameKoto:
                     this.CheckMove(node);
                     return;
@@ -59,8 +83,16 @@ public sealed partial class OwnershipAnalysis
                 case TupleLiteralKoto tuple:
                     this.VisitAcquired(tuple.Elements);
                     return;
-                case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.FixedArray:
+                case ArrayLiteralKoto array:
                     this.VisitAcquired(array.Elements);
+                    return;
+                case DictionaryLiteralKoto dictionary:
+                    foreach (var entry in dictionary.Entries)
+                    {
+                        this.Visit(entry.Key, PlaceUseKind.Consume);
+                        this.Visit(entry.Value, PlaceUseKind.Consume);
+                    }
+
                     return;
                 case BinaryKoto { Akind: KotoKind.Equals } assignment:
                     this.Visit(assignment.Left, PlaceUseKind.Read);
@@ -93,6 +125,14 @@ public sealed partial class OwnershipAnalysis
                     }
 
                     return;
+                case InvocationKoto { BoundValueCall: { } plan } call:
+                    this.Visit(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
+                    for (var i = 0; i < call.ArgumentNodes.Count; i++)
+                    {
+                        this.Visit(call.ArgumentNodes[i], plan.Arguments[i].Kind == ArgumentOperationKind.Value ? PlaceUseKind.Consume : PlaceUseKind.Read);
+                    }
+
+                    return;
                 case InvocationKoto { BoundCall: { } plan } call:
                     if (plan.Receiver is { } receiver)
                     {
@@ -106,8 +146,13 @@ public sealed partial class OwnershipAnalysis
 
                     return;
                 case ConversionKoto conversion:
-                    // SPEC 13.5.3: a transfer (x@move) and an Identity acquisition (x@copy, x@i32) consume their operand.
-                    this.Visit(conversion.Left, conversion.ConversionBinding is ConversionBinding.Transfer or ConversionBinding.Identity ? PlaceUseKind.Consume : PlaceUseKind.Read);
+                    // SPEC 13.5.3: a transfer (x@move) and an Identity acquisition (x@copy, x@i32) consume their operand; a transfer
+                    // moves even a Copy Place, so it is a Move of that Place whatever its Type.
+                    var transferred = conversion.ConversionBinding == ConversionBinding.Transfer;
+                    var outer = this.transfer;
+                    this.transfer = transferred && KotoHelper.UnwrapParentheses(conversion.Left) is IdentifierNameKoto or BinaryKoto or MemberAccessKoto;
+                    this.Visit(conversion.Left, transferred || conversion.ConversionBinding == ConversionBinding.Identity ? PlaceUseKind.Consume : PlaceUseKind.Read);
+                    this.transfer = outer;
                     return;
             }
 
@@ -130,8 +175,55 @@ public sealed partial class OwnershipAnalysis
             finally
             {
                 this.function = null;
+                this.transfer = false;
             }
         }
+
+        internal bool Probe(FunctionKoto declaration, int index, Koto expression)
+        {
+            this.found = false;
+            this.Check(declaration, index, expression);
+            return this.found;
+        }
+
+        private void Report(OwnershipIssue issue)
+        {
+            if (probe)
+            {
+                this.found = true;
+            }
+            else
+            {
+                owner.issues.Add(issue);
+            }
+        }
+
+        private void CheckCaptures(FunctionKoto closure)
+        {
+            if (closure.ClosureStorage is not { } plan || closure.Captures is not { } entries)
+            {
+                return;
+            }
+
+            for (var i = 0; i < plan.Storage.Count; i++)
+            {
+                var capture = plan.Storage[i];
+                if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Move && this.PrecedingParameter(capture.Source))
+                {
+                    for (var entry = 0; entry < entries.Length; entry++)
+                    {
+                        if (entries[entry].Name == capture.Source.Name)
+                        {
+                            this.Report(new(closure, OwnershipFailure.DefaultArgumentMove, Capture: entry));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        private bool PrecedingParameter(BindingSymbol symbol)
+            => symbol.Kind == BindingSymbolKind.Parameter && ReferenceEquals(symbol.Scope.Owner, this.function) && symbol.Slot < this.parameter;
 
         private void Visit(Koto node, PlaceUseKind use)
         {
@@ -156,6 +248,12 @@ public sealed partial class OwnershipAnalysis
                 return;
             }
 
+            if (!this.transfer && owner.compilation.Binding.TryGetAdaptation(source, out var adaptation) &&
+                adaptation.Kind is ExpectedAdaptationKind.ReferentRead or ExpectedAdaptationKind.SharedBorrow or ExpectedAdaptationKind.Reborrow or ExpectedAdaptationKind.ReferenceRead)
+            {
+                return; // The committed acquisition inspects or reborrows the input; it does not move its slot.
+            }
+
             var root = source;
             while (root is BinaryKoto element && ElementAccess.IsSyntax(element))
             {
@@ -169,11 +267,10 @@ public sealed partial class OwnershipAnalysis
                 root = KotoHelper.UnwrapParentheses(element.Left);
             }
 
-            if (root is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } &&
-                ReferenceEquals(symbol.Scope.Owner, this.function) && symbol.Slot < this.parameter &&
-                owner.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Refuted)
+            if (root is IdentifierNameKoto { BoundSymbol: { } symbol } && this.PrecedingParameter(symbol) &&
+                (this.transfer || owner.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Refuted))
             {
-                owner.issues.Add(new(source, OwnershipFailure.DefaultArgumentMove));
+                this.Report(new(source, OwnershipFailure.DefaultArgumentMove));
             }
         }
     }

@@ -580,6 +580,11 @@ public class ParserRegressionTest
         Assert.Equal(2, warnings.Length);
         Assert.All(warnings, x => Assert.Equal(DiagnosticSeverity.Warning, x.Severity));
 
+        // Each warning is at the first token of the member out of order, not at the line after it.
+        Assert.Equal(
+            [new SourceSpan(source.IndexOf("var field", StringComparison.Ordinal), 3), new SourceSpan(source.IndexOf("Self is", StringComparison.Ordinal), 4)],
+            warnings.Select(x => x.Span));
+
         var type = Assert.IsType<StructKoto>(root.GetOrAddGroup("Mixed", TokenKind.Struct, default, default));
         Assert.Single(type.TypeConstraints);
         Assert.Collection(
@@ -1002,6 +1007,17 @@ public class ParserRegressionTest
     {
         var (_, diagnostics) = Parse(source);
         Assert.Empty(diagnostics);
+    }
+
+    // A repeated modifier is named as written, whether it is an access modifier or a flag such as open.
+    [Theory]
+    [InlineData("open open struct S\n    let x: i32\n", "open")]
+    [InlineData("public public struct S\n    let x: i32\n", "public")]
+    public void DuplicateModifierIsNamedAsWritten(string source, string modifier)
+    {
+        var (_, diagnostics) = Parse(source);
+        var duplicate = Assert.Single(diagnostics, x => x.Code == nameof(DiagnosticCode.DuplicateModifier_Kd));
+        Assert.Contains($"'{modifier}'", duplicate.Message);
     }
 
     private static (GroupKoto Root, TestDiagnostic[] Diagnostics) Parse(string source)

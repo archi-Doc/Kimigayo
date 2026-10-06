@@ -23,10 +23,15 @@ public sealed partial class KimiLibrary
     private static bool PlacementInput(FunctionParameterKoto parameter, string name)
         => parameter is { DefaultValue: null, AttributeChain: null } && parameter.InternalName == name && parameter.ExternalName == name;
 
-    private bool ValidMissingDictionaryKey(BindingSymbol symbol)
-        => symbol.CompilerFunction == CompilerFunctionKind.StorageMissingDictionaryKey &&
-        symbol.Declaration is FunctionKoto { Name: "missingDictionaryKey", Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, Parameters.Count: 0, TypeConstraints.Count: 0 } function &&
-        ReferenceEquals(function.Parent, this.StorageScope.Owner) && BareName(function.ReturnType, "Never");
+    private static bool ValidBoundStorageBytes(BindingSymbol symbol, KimiDeclarationId id)
+    {
+        var bytes = BoundType.Primitives["u8"];
+        return symbol.Declaration is FunctionKoto function &&
+            (id == KimiDeclarationId.StorageTransferBytes
+                ? function.Parameters.Count == 3 && BoundStoragePointer(function.Parameters[0].Type.BoundType, bytes) && BoundStoragePointer(function.Parameters[1].Type.BoundType, bytes) &&
+                    ReferenceEquals(function.Parameters[2].Type.BoundType, BoundType.ISize) && (symbol.Type is null || ReferenceEquals(symbol.Type, BoundType.Unit))
+                : function.Parameters.Count == 1 && ReferenceEquals(function.Parameters[0].Type.BoundType, BoundType.ISize) && BoundStoragePointer(symbol.Type, bytes));
+    }
 
     // This private unsafe primitive only exposes physical storage to the source algorithms. It acquires no entries.
     private bool ValidDictionaryLayout(BindingSymbol symbol)
@@ -41,8 +46,8 @@ public sealed partial class KimiLibrary
         BareName(key, "K") && BareName(value, "V") && BareName(address.Type, "u8") &&
         BareName(stride, "isize");
 
-    // These private unsafe primitives transfer acquired values into physical slots: placeEntry appends one slot for a key
-    // and value after the source proves absence; placeValue refills a live slot whose value was moved out.
+    // The private unsafe primitive placeEntry transfers an acquired key and value into one physical slot appended after the
+    // source proves the key absent.
     private bool ValidDictionaryPlacement(BindingSymbol symbol)
     {
         if (symbol.CompilerFunction != CompilerFunctionKind.StoragePlaceDictionaryEntry ||
@@ -98,32 +103,23 @@ public sealed partial class KimiLibrary
             (id == KimiDeclarationId.RawRelease || (PlacementInput(function.Parameters[1], "value") && BareName(function.Parameters[1].Type, "T")));
     }
 
-    // These private capacity bridges keep the Kimigayo growth and shrink decisions; the compiler constructs the platform
-    // callbacks and forwards the standard operation's caller location.
-    private bool ValidDictionaryCapacity(BindingSymbol symbol, KimiDeclarationId id)
+    // SPEC 22.1.2.5: the private nullable allocation and byte copy hold no collection logic; their signatures are fixed.
+    private bool ValidStorageBytes(BindingSymbol symbol, KimiDeclarationId id)
     {
-        var reserve = id == KimiDeclarationId.StorageReserveDictionary;
+        var transfer = id == KimiDeclarationId.StorageTransferBytes;
         return symbol.CompilerFunction == KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function &&
-            symbol.Declaration is FunctionKoto { Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, ReturnType: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0 } function &&
-            function.Name == (reserve ? "reserveEntries" : "shrinkEntries") && ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
-            function.GenericArguments is [GenericParameterKoto { Identifier: "K", SemanticsParameter: null, AttributeChain: null }, GenericParameterKoto { Identifier: "V", SemanticsParameter: null, AttributeChain: null }] &&
-            function.TypeConstraints is [IsKoto { IsNegated: false } constraint] && BareName(constraint.Left, "K") && BareName(constraint.Right, "Equatable") &&
-            function.Parameters.Count == (reserve ? 2 : 1) && PlacementInput(function.Parameters[0], "value") &&
-            function.Parameters[0].Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: GenericsKoto { TypeArguments: [var key, var value] } input } &&
-            BareName(input.Identifier, "Dictionary") && BareName(key, "K") && BareName(value, "V") &&
-            (!reserve || (PlacementInput(function.Parameters[1], "additional") && BareName(function.Parameters[1].Type, "isize")));
-    }
+            symbol.Declaration is FunctionKoto { AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, TypeConstraints.Count: 0 } function &&
+            function.Modifier == (transfer ? ModifierKind.Internal | ModifierKind.Unsafe : ModifierKind.Internal) &&
+            function.Name == (transfer ? "transferBytes" : "tryAllocateBytes") && ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
+            (transfer
+                ? function.ReturnType is null && function.Parameters.Count == 3 && PlacementInput(function.Parameters[0], "destination") && BytePointer(function.Parameters[0].Type) &&
+                    PlacementInput(function.Parameters[1], "source") && BytePointer(function.Parameters[1].Type) &&
+                    PlacementInput(function.Parameters[2], "count") && BareName(function.Parameters[2].Type, "isize")
+                : function.Parameters.Count == 1 && PlacementInput(function.Parameters[0], "bytes") && BareName(function.Parameters[0].Type, "isize") && BytePointer(function.ReturnType));
 
-    private bool ValidBoundDictionaryCapacity(BindingSymbol symbol, KimiDeclarationId id)
-        => symbol.Declaration is FunctionKoto { GenericArguments: [var key, var value] } function &&
-        key.BoundType is { Kind: BoundTypeKind.Parameter } keyType && value.BoundType is { Kind: BoundTypeKind.Parameter } valueType &&
-        function.Parameters.Count == (id == KimiDeclarationId.StorageReserveDictionary ? 2 : 1) &&
-        function.Parameters[0].Type.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Symbol: null, OriginArguments.Count: 0, Components: [var dictionary] } input &&
-        StorageInputOrigin(input.Origin, function) &&
-        dictionary is { Kind: BoundTypeKind.Dictionary, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var storedKey, var storedValue] } &&
-        ReferenceEquals(dictionary.Symbol, this.GetSymbol(KimiDeclarationId.Dictionary)) && ReferenceEquals(storedKey, keyType) && ReferenceEquals(storedValue, valueType) &&
-        (function.Parameters.Count == 1 || ReferenceEquals(function.Parameters[1].Type.BoundType, BoundType.ISize)) &&
-        (symbol.Type is null || ReferenceEquals(symbol.Type, BoundType.Unit));
+        static bool BytePointer(Koto? type) => type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } pointer &&
+            BareName(pointer.Type, "u8");
+    }
 
     private bool ValidBoundDictionaryLayout(BindingSymbol symbol)
         => symbol.Declaration is FunctionKoto { GenericArguments: [var key, var value], Parameters: [var parameter] } function &&

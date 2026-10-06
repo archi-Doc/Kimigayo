@@ -82,6 +82,26 @@ public class ContainerNestingTest
     }
 
     [Fact]
+    public void ABaseTypeParameterIsNoInheritedMember()
+    {
+        // SPEC 9.1, 9.6: Base's T belongs to Base's own scope, so Derived's nested T collides with nothing.
+        var c = CompilationTestHelper.Parse("open struct Base<T>\n    public var a: i32 = 0\nstruct Derived: Base<i32>\n    public var b: i32 = 0\n    public struct T\n        public var w: i32 = 0\nlet t = Derived.T.init()");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+    }
+
+    [Theory]
+    [InlineData("struct Box<T>\n    public var a: i32 = 0\nlet v: Box<i32>.T = 1", "Box<i32>.T")]
+    [InlineData("struct Box<T>\n    public var a: i32 = 0\nfunc f(x: Box<i32>.T) => ()", "Box<i32>.T")]
+    public void AQualifiedNameNeverSelectsAGenericParameter(string source, string name)
+    {
+        var c = CompilationTestHelper.Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        var issue = Assert.Single(c.Binding.Issues);
+        Assert.Equal(Kimi.DiagnosticCode.UnresolvedBinding_Kd, issue.Code);
+        Assert.Equal(name, issue.Node.ToString());
+    }
+
+    [Fact]
     public void UnusedOuterArgumentsRemainPartOfIdentity()
     {
         var c = CompilationTestHelper.Parse("struct Outer<T>\n    public struct Tag\nfunc a(x: Outer<i32>.Tag) => ()\nfunc b(x: Outer<i64>.Tag) => ()\nfunc same(x: Outer<i32>.Tag) => ()");

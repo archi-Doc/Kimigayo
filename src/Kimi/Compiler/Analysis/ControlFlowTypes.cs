@@ -20,11 +20,10 @@ public record ControlFlowType(string Name)
     public static readonly ControlFlowType Boolean = new("bool");
 }
 
-/// <summary>A structural result source; reachability never removes its type constraint.</summary>
+/// <summary>A structural result source; its type constraint holds whether or not execution reaches it.</summary>
 /// <param name="Node">The operand or implicit result expression.</param>
 /// <param name="Type">Its known type, or null while Binding is pending.</param>
-/// <param name="IsReachable">Whether execution can reach this source (informational only).</param>
-public readonly record struct ControlFlowResultSource(Koto Node, ControlFlowType? Type, bool IsReachable)
+public readonly record struct ControlFlowResultSource(Koto Node, ControlFlowType? Type)
 {
     internal JumpKoto? Transfer { get; init; }
 
@@ -140,6 +139,12 @@ public abstract class ControlFlowTypeSystem
     /// <returns>A four-state coverage result; Invalid suppresses cascading coverage errors.</returns>
     public virtual MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
         => this.IsExhaustive(match) is { } known ? new(known ? MatchCoverageState.Exhaustive : MatchCoverageState.NonExhaustive) : MatchCoverage.FromSyntax(match, subject);
+
+    /// <summary>Gets the Origin relation that an incompatible result leaves when only its Origin part fails (SPEC 15.6.1).</summary>
+    /// <param name="source">The supplied result.</param>
+    /// <param name="target">The required type.</param>
+    /// <returns>The relation, or null when the structural part fails too or no Origin is judged.</returns>
+    internal virtual OriginRelationFact? OriginRelation(ControlFlowResultSource source, ControlFlowType target) => null;
 }
 
 /// <summary>Provides facts available before general name, overload, and Origin Binding.</summary>

@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
-using Kimi.Compiler.Helper;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -110,21 +109,16 @@ public static partial class KotoHelper
         return false;
     }
 
-    /// <summary>Parses and validates a dot-separated namespace name.</summary>
-    /// <remarks>
-    /// When the name is written without interior whitespace, the returned span aliases the
-    /// source text and no string is allocated.
-    /// </remarks>
+    /// <summary>
+    /// Reads the qualified Name of a root group: Names separated by dots, whitespace allowed between the parts. A reserved word or
+    /// any other token where a Name belongs is where the Name was expected (SPEC 2.5.1, DIAGNOSTICS.md §4.4); the caller then
+    /// skips the declaration with its body.
+    /// </summary>
     /// <param name="reader">The token reader.</param>
-    /// <returns>The validated namespace name.</returns>
+    /// <returns>The qualified Name, or an empty span after the Error; the separator after the Name is consumed.</returns>
     public static ReadOnlySpan<char> ValidateAndGetNamespace(ref TokenReader reader)
     {
-        if (reader.IsEnd)
-        {
-            return default;
-        }
-
-        // Qualified names alternate between identifiers and dots.
+        // Qualified names alternate between Names and dots.
         var expectsIdentifier = true;
         var isContiguous = true;
         Token first = default;
@@ -133,25 +127,31 @@ public static partial class KotoHelper
         // A line ends at a separator or at the layout token of a dedent or body, which the caller handles.
         while (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.Separator or TokenKind.EndBlock or TokenKind.StartBlock))
         {
-            var token = reader.Read();
+            var token = reader.CurrentToken;
             if (expectsIdentifier)
             {
-                var span = reader.GetSpan(token);
-                if (!IdentifierHelper.IsValidIdentifier(span))
+                if (!token.Kind.IsIdentifierOrContextualKeyword())
                 {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
-                    break;
+                    reader.Expect(SyntaxForm.Name);
+                    return default;
                 }
 
-                fallback?.Append(span);
+                reader.Advance();
+                if (!reader.TryGetIdentifier(token, out _))
+                {
+                    return default; // The invalid identifier is reported once.
+                }
+
+                fallback?.Append(reader.GetSpan(token));
             }
             else if (token.Kind == TokenKind.Dot)
             {
+                reader.Advance();
                 fallback?.Append(Constants.DotChar);
             }
             else
             {
-                reader.Expect(SyntaxForm.LineEnd, token);
+                reader.Expect(SyntaxForm.LineEnd);
                 reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
                 break;
             }
@@ -176,6 +176,7 @@ public static partial class KotoHelper
         if (expectsIdentifier)
         {
             reader.Expect(SyntaxForm.Name);
+            return default;
         }
 
         if (reader.CurrentTokenKind == TokenKind.Separator)
@@ -183,67 +184,51 @@ public static partial class KotoHelper
             reader.Advance();
         }
 
-        if (fallback is not null)
-        {
-            return fallback.ToString();
-        }
-
-        return first.Kind == TokenKind.Invalid
-            ? default
+        return fallback is not null
+            ? fallback.ToString()
             : reader.GetSpan(new(TokenKind.Identifier, SourceSpan.FromBounds(first.Start, last.Span.End)));
     }
 
-    /// <summary>Parses a dot-separated qualified name.</summary>
+    /// <summary>
+    /// Parses the dot-separated qualified Name of an alias target. A reserved word or any other token where a Name belongs is
+    /// where the Name was expected (SPEC 2.5.1, DIAGNOSTICS.md §4.4); the caller then skips the declaration.
+    /// </summary>
     /// <param name="reader">The token reader.</param>
-    /// <returns>The parsed name segments.</returns>
-    public static List<string> ParseQualifiedNameSegments(ref TokenReader reader)
+    /// <returns>The parsed name segments, or <see langword="null"/> after the Error; the separator after the Name is consumed.</returns>
+    public static List<string>? ParseQualifiedNameSegments(ref TokenReader reader)
     {
         var list = new List<string>(4);
-        if (reader.IsEnd)
+        while (true)
         {
-            return list;
+            var token = reader.CurrentToken;
+            if (!token.Kind.IsIdentifierOrContextualKeyword())
+            {
+                reader.Expect(SyntaxForm.Name);
+                return null;
+            }
+
+            reader.Advance();
+            if (!reader.TryGetIdentifier(token, out var segment))
+            {
+                return null; // The invalid identifier is reported once.
+            }
+
+            list.Add(segment);
+            if (!reader.TryConsume(TokenKind.Dot))
+            {
+                break;
+            }
         }
 
-        // Qualified names alternate between identifiers and dots.
-        var expectsIdentifier = true;
-        while (reader.CanRead)
+        // The line ends after the Name: a separator is consumed, a dedent or a body is left for the caller.
+        if (reader.CurrentTokenKind == TokenKind.Separator)
         {
-            // A dedent or a body ends the line without being consumed; a separator is consumed.
-            if (reader.CurrentTokenKind is TokenKind.EndBlock or TokenKind.StartBlock)
-            {
-                break;
-            }
-
-            var token = reader.Read();
-            if (token.Kind == TokenKind.Separator)
-            {
-                break;
-            }
-
-            if (expectsIdentifier)
-            {
-                var span = reader.GetSpan(token);
-                if (!IdentifierHelper.IsValidIdentifier(span))
-                {
-                    reader.Diagnostic.Add(token.Span, DiagnosticCode.InvalidIdentifier_Kd, span.ToString());
-                    break;
-                }
-
-                list.Add(reader.GetIdentifier(token));
-            }
-            else if (token.Kind != TokenKind.Dot)
-            {
-                reader.Expect(SyntaxForm.LineEnd, token);
-                reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
-                break;
-            }
-
-            expectsIdentifier = !expectsIdentifier;
+            reader.Advance();
         }
-
-        if (expectsIdentifier)
+        else if (reader.CanRead && reader.CurrentTokenKind is not (TokenKind.EndBlock or TokenKind.StartBlock))
         {
-            reader.Expect(SyntaxForm.Name);
+            reader.Expect(SyntaxForm.LineEnd);
+            reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
         }
 
         return list;

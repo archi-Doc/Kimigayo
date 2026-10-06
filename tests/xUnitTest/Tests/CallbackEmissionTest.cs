@@ -1,7 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -22,6 +26,47 @@ public class CallbackEmissionTest
     [InlineData("Unused", "let value: i32 = 6\nlet f: () -> i32 = func [value] () => 7\nrequire f() == 7 else => $abort(\"unused\")")]
     [InlineData("Block", "let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    return n\nrequire f() == 6 else => $abort(\"block\")")]
     [InlineData("Unit", "let n = ()\nlet f: () -> () = func [n] () => n\nf()\nf()")]
+    // SPEC 7.6.4: a stored concrete Closure converts to the parameter's common Function Type at an argument, as at an
+    // initialization; it was NoApplicableOverload_Kd unless the argument was a literal.
+    [InlineData("StoredArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet g = func [] (value: i32) -> i32 => value * 2\nrequire apply(g, 3) == 6 and apply(g, 4) == 8 and g(5) == 10 else => $abort(\"stored\")")]
+    [InlineData("MovedArgument", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet k: i32 = 3\nlet g = func [k] (value: i32) -> i32 => value * k\nrequire apply(g@move, 3) == 9 else => $abort(\"moved\")")]
+    // SPEC 10.5, 7.6.4: an omitted parameter Type takes the fixed expected input (the SPEC's own `makeAdder` example was a
+    // TypeMismatch_Kd), at a return, an initialization, an argument, a generic argument and between overloads by arity.
+    [InlineData("OmittedReturn", "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\nlet f = makeAdder(10)\nrequire f(5) == 15 else => $abort(\"return\")")]
+    [InlineData("OmittedInitializer", "let f: (i32) -> i32 = func [] (value) => value + 1\nrequire f(5) == 6 else => $abort(\"initializer\")")]
+    [InlineData("OmittedArgument", "func apply(f: (i32) -> bool) -> bool => f(1)\nlet k: i32 = 1\nrequire apply(func [k] (v) => v == k) else => $abort(\"argument\")")]
+    [InlineData("OmittedGeneric", "func apply<T>(f: (T) -> T, v: T) -> T\n    T is Copy\n    return f(v)\nlet two: i32 = 2\nrequire apply(func [] (value) => value + 1, two) == 3 else => $abort(\"generic\")")]
+    [InlineData("OmittedArity", "func apply(f: (i32) -> i32) -> i32 => f(1)\nfunc apply(f: (i32, i32) -> i32) -> i32 => f(1, 2)\nrequire apply(func [] (a) => a + 1) == 2 and apply(func [] (a, b) => a + b) == 3 else => $abort(\"arity\")")]
+    // A closure body that returns through a result slot took (ret, environment, ...) while every common call and erasure
+    // adapter passes (environment, ret, ...): calling such a common value wrote the result through the environment word
+    // and crashed (exit 139) or returned garbage.
+    [InlineData("FunctionResult", "func outer(n: i32) -> () -> () -> i32\n    return func [n] () -> () -> i32 => func [n] () -> i32 => n\nlet f = outer(4)\nlet g = f()\nrequire g() == 4 else => $abort(\"nested\")")]
+    [InlineData("StringResult", "let f: () -> string = func [] () -> string => \"abc\"\nrequire f() == \"abc\" else => $abort(\"string\")")]
+    [InlineData("ArrayResult", "let n: i32 = 7\nlet f: () -> Array<i32> = func [n] () -> Array<i32> => [n, n, n]\nlet a = f()\nrequire a.length == 3 and a[2] == 7 else => $abort(\"array\")")]
+    [InlineData("TupleResult", "let f: (i32) -> (i32, i64, i32) = func [] (v) => (v, 2@i64, 3)\nlet t = f(1)\nrequire t.0 == 1 and t.1 == 2 and t.2 == 3 else => $abort(\"tuple\")")]
+    [InlineData("DirectStringResult", "let n: i32 = 7\nlet f = func [n] () -> Array<i32> => [n, n]\nlet a = f()\nrequire a.length == 2 and a[1] == 7 else => $abort(\"direct\")")]
+    // SPEC 7.6.4: a Function Item converts to a fixed common Function Type without an environment; the erasure adapter calls
+    // the function with its own ABI. Ownership analysis read the item as a missing local, and an argument was unsupported.
+    [InlineData("FunctionItemInitializer", "func inc(value: i32) -> i32 => value + 1\nlet f: (i32) -> i32 = inc\nrequire f(2) == 3 else => $abort(\"initializer\")")]
+    [InlineData("FunctionItemArgument", "func inc(value: i32) -> i32 => value + 1\nfunc apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nrequire apply(inc, 2) == 3 else => $abort(\"argument\")")]
+    [InlineData("FunctionItemOverload", "func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc inc(v: i32) -> i32 => v + 1\nfunc inc(v: i64) -> i64 => v + 2\nrequire apply(inc, 2) == 3 else => $abort(\"overload\")")]
+    [InlineData("FunctionItemReturn", "func make() -> (i32) -> string\n    return describe\nfunc describe(v: i32) -> string => if v > 0 => \"pos\" else => \"neg\"\nlet f = make()\nrequire f(3) == \"pos\" and f(-1) == \"neg\" else => $abort(\"return\")")]
+    // Common Function values as container elements and payloads: the library's owning iteration reads them through a raw
+    // pointer and a match moves them out of Option; both were generation failures after the check passed.
+    [InlineData("FunctionArrayIteration", "let n: i32 = 3\nvar fs: Array<(i32) -> i32> = []\nfs.append(func [n] (v) => v + n)\nfs.append(func [] (v) => v * 10)\nvar acc = 1\nfor f in fs@move\n    acc = f(acc)\nrequire acc == 40 else => $abort(\"iteration\")")]
+    [InlineData("FunctionOption", "func choose(flag: bool) -> Option<(i32) -> i32>\n    if flag => return Option.Some(func [] (v) => v + 5)\n    return Option.None\nmatch choose(true)@move\n    .Some(let f) => require f(1) == 6 else => $abort(\"option\")\n    .None => $abort(\"none\")")]
+    [InlineData("FunctionArrayRemove", "var fs: Array<(i32) -> i32> = []\nfs.append(func [] (v) => v + 1)\nlet g = fs.remove(0)\nrequire g(1) == 2 and fs.length == 0 else => $abort(\"remove\")")]
+    // A Dictionary of common Function values: the library's entry lookups return `Option<(ref/K, ref/V)>`, whose `ref/V` had no
+    // representation for a Function V, so building `tryInsert` failed after the check passed.
+    [InlineData("FunctionDictionary", "var ops: Dictionary<i32, (i32) -> i32> = [:]\nlet a = ops.tryInsert(1, func [] (v) => v + 1)\nlet b = ops.tryInsert(2, func [] (v) => v * 2)\nrequire ops.length == 2 else => $abort(\"length\")\nmatch ops.remove(2)\n    .Some((let k, let f)) => require f(5) == 10 else => $abort(\"f\")\n    .None => $abort(\"none\")")]
+    [InlineData("FunctionReferenceArgument", "func twice(f: ref/((i32) -> i32), v: i32) -> i32 => f(f(v))\nlet k = 1\nlet g: (i32) -> i32 = func [k] (v) => v + k\nrequire twice(g@ref, 0) == 2 else => $abort(\"ref\")")]
+    [InlineData("FunctionReferenceLocal", "let k = 5\nlet g: (i32) -> i32 = func [k] (v) => v + k\nlet r = g@ref\nrequire r(3) == 8 and r(4) == 9 else => $abort(\"local\")")]
+    [InlineData("FunctionUniqueReference", "func apply(f: uniq/((i32) -> i32), v: i32) -> i32 => f(v)\nvar g: (i32) -> i32 = func [] (v) => v * 2\nlet r = g@uniq\nrequire r(3) == 6 else => $abort(\"local\")\nrequire apply(g@uniq, 4) == 8 else => $abort(\"argument\")")]
+    [InlineData("FunctionPartReference", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nlet h = H.init(func [] (v) => v * 3)\nlet r = h.f@ref\nlet fs: Array<(i32) -> i32> = [func [] (v) => v + 1, func [] (v) => v + 2]\nlet e = fs[1]@ref\nrequire r(2) == 6 and e(1) == 3 else => $abort(\"part\")")]
+    [InlineData("FunctionFieldCall", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nstruct G\n    public var h: H\n    public init(h: H) => self.h = h@move\nfunc call(h: ref/H, v: i32) -> i32 => (h.f)(v)\nlet k = 7\nlet h = H.init(func [k] (v) => v + k)\nlet g = G.init(H.init(func [] (v) => v * 5))\nrequire (h.f)(2) == 9 and call(h@ref, 1) == 8 and (g.h.f)(2) == 10 else => $abort(\"field\")")]
+    [InlineData("FunctionElementCall", "let a = 10\nlet b = 20\nlet fs: Array<(i32) -> i32> = [func [a] (v) => v + a, func [b] (v) => v + b]\nvar total = 0\nvar i = 0\nwhile i < 2\n    total += fs[i](1)\n    i += 1\nrequire total == 32 else => $abort(\"element\")")]
+    [InlineData("FunctionReceiverSharedArgument", "struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc peek(g: ref/((i32) -> i32)) -> i32 => g(1)\nfunc peekh(h: ref/H) -> i32 => (h.f)(1)\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nvar h = H.init(func [] (v) => v + 4)\nrequire r(peek(g@ref)) == 9 and (h.f)(peekh(h@ref)) == 9 else => $abort(\"shared\")")]
+    [InlineData("FunctionItemPayload", "func inc(v: i32) -> i32 => v + 1\nlet o: Option<(i32) -> i32> = Option.Some(inc)\nmatch o@move\n    .Some(let f) => require f(1) == 2 else => $abort(\"payload\")\n    .None => $abort(\"none\")")]
     public void Executes(string name, string source)
         => ScalarEmissionTest.EmitFixture("Callback" + name, source, string.Empty);
 
@@ -40,16 +85,21 @@ public class CallbackEmissionTest
             "created\n");
 
     [Theory]
-    [InlineData("let a: u128 = 1\nlet f: () -> u128 = func [a] () => a")]
-    [InlineData("let a: i64 = 1\nlet b: i64 = 2\nlet f: () -> i64 = func [a, b] () => a")]
-    public void LargerEnvironmentsRemainExplicitlyUnsupported(string source)
+    [InlineData("Wide", "let a: u128 = 1\nlet f: () -> u128 = func [a] () => a\nrequire f() == 1 else => $abort(\"wide\")")]
+    [InlineData("Two", "let a: i64 = 1\nlet b: i64 = 2\nlet f: () -> i64 = func [a, b] () => a\nrequire f() == 1 else => $abort(\"two\")")]
+    public void LargerEnvironmentsUseHeapErasure(string name, string source)
+        => NativeAllocationAudit.WriteFixture("ContextualClosure" + name, source, 1, 1, 16, string.Empty);
+
+    // SPEC 7.6.2: an Option capture, once reported at its entry as unsupported, is an ordinary environment binding.
+    [Theory]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet f = func [t] () => 1\nrequire f() == 1 else => $abort(\"f\")")]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet f: () -> i32 = func [t] () => 1\nrequire f() == 1 else => $abort(\"f\")")]
+    [InlineData("let t: Option<i32> = .Some(1)\nlet n = 3\nlet f = func [n, t] () => n\nrequire f() == 3 else => $abort(\"f\")")]
+    public void OptionCapturesAreEnvironmentBindings(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified);
-        using var output = new StringWriter();
-        Assert.False(c.Emission.WriteIr(output, out var failure));
-        Assert.Contains("inline", failure!, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(output.ToString());
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.Validate(out var failure), failure);
     }
 
     [Theory]
@@ -64,6 +114,13 @@ public class CallbackEmissionTest
     [InlineData("let n: i32\nlet f: () -> i32 = func [n] () => 6")]
     [InlineData("func eat(f: (i32) -> bool) -> i32 => 0\nlet f: (i32) -> bool = func (v: i32) => true\nf(eat(f@move))")]
     [InlineData("let n: i32 = 6\nlet f: () -> i32 = func [n] ()\n    func nested() -> i32 => n\n    return nested()")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nlet h = func [] (value: i64) -> i64 => value\nlet x = apply(h, 3)")]
+    [InlineData("let f = func [] (value) => value + 1")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nfunc wide(v: i64) -> i64 => v\nlet r = apply(wide, 2)")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nunsafe func raw(v: i32) -> i32 => v\nlet r = apply(raw, 2)")]
+    [InlineData("func apply(f: (string) -> i32) -> i32 => f(\"ab\")\nlet n = apply(func [] (s) => s + 1)")]
+    [InlineData("func apply(f: (i32) -> i32, v: i32) -> i32 => f(v)\nvar k: i32 = 2\nlet g = func [k@ref] (value: i32) -> i32 => value + k\nlet x = apply(g, 3)")]
+    [InlineData("let g: (i32) -> i32 = func [] (v) => v * 2\nlet r = g@ref\nlet h = g@move\nlet x = r(3)")]
     public void RejectsInvalidClosures(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -71,6 +128,71 @@ public class CallbackEmissionTest
         using var output = new StringWriter();
         Assert.False(c.Emission.WriteIr(output, out _));
         Assert.Empty(output.ToString());
+    }
+
+    // SPEC 10.5 permits length-generic reference selection against a fixed signature. That selection is still unsupported;
+    // Type-generic references are exercised by GenericFunctionReferenceTest and nongeneric Items by FunctionItemTest.
+    [Theory]
+    [InlineData("let f: ([3 of i32]) -> i32 = inc")]
+    [InlineData("func g() -> ([3 of i32]) -> i32 => inc")]
+    public void UnsupportedGenericReferencesReportTheReference(string body)
+    {
+        var c = MinimalEmissionTest.Analyze("func inc<length N>(v: [N of i32]) -> i32 => v[0]\n" + body);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        c.Ownership.ReportDiagnostics();
+        var diagnostics = TestDiagnostics.Of(c);
+        Assert.Single(diagnostics);
+        Assert.All(diagnostics, x => Assert.True(x.Code == "UnsupportedBinding_Kd" && x.Text == "inc", x.ToString() + " " + x.Text));
+    }
+
+    [Fact]
+    public void CliAndLspPlaceUnsupportedGenericReferencesAtTheReference()
+    {
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = MinimalEmissionTest.Analyze("func inc<length N>(v: [N of i32]) -> i32 => v[0]\nlet f: ([3 of i32]) -> i32 = inc", path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize(rejected: true);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("Hello.kimi:2:30", console.Text, StringComparison.Ordinal);
+        Assert.Contains("let f: ([3 of i32]) -> i32 = inc\n  |                              ^^^", console.Text, StringComparison.Ordinal);
+        Assert.DoesNotContain("UnresolvedBinding", console.Text, StringComparison.Ordinal);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var capability in new[] { false, true })
+        {
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, capability)[identity]);
+            Assert.Equal(error.Display!.Range, sent.Range);
+            Assert.Equal(error.Code, sent.Code);
+            Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
+        }
+    }
+
+    // A reference receiver of a value call is used again at the call, so the Place it borrows stays lent while the arguments
+    // run, as for a method receiver; the loan is retained by the reference local or by the borrowed field or element.
+    [Theory]
+    [InlineData("func lend(g: uniq/((i32) -> i32)) -> i32 => 1\nvar g: (i32) -> i32 = func [] (v) => v * 3\nlet r = g@ref\nlet n = r(lend(g@uniq))", "lend(g@uniq)", "let r = g@ref")]
+    [InlineData("struct H\n    public var f: (i32) -> i32\n    public init(f: (i32) -> i32) => self.f = f@move\nfunc lend(h: uniq/H) -> i32 => 1\nvar h = H.init(func [] (v) => v * 3)\nlet n = (h.f)(lend(h@uniq))", "lend(h@uniq)", "h.f")]
+    [InlineData("func grow(a: uniq/Array<(i32) -> i32>) -> i32\n    a.append(func [] (v) => v)\n    return 1\nvar fs: Array<(i32) -> i32> = [func [] (v) => v + 1]\nlet n = fs[0](grow(fs@uniq))", "grow(fs@uniq)", "fs[0]")]
+    public void ReferenceReceiversStayLentWhileArgumentsRun(string source, string reserved, string retained)
+    {
+        var path = Path.GetFullPath("value-receiver-conflict.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.False(c.Ownership.Result.IsVerified);
+        c.Ownership.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var error = Assert.Single(c.Diagnostics.Finalize().Diagnostics);
+        Assert.Equal("CallActivationConflict_Kd", error.Code);
+        Assert.Equal(reserved, source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        var loan = Assert.Single(error.Related!);
+        Assert.Equal("loan", loan.Role);
+        Assert.StartsWith(retained, source.Substring(loan.Span!.Value.Start, loan.Span.Value.Length), StringComparison.Ordinal);
+        using var output = new StringWriter();
+        Assert.False(c.Emission.WriteIr(output, out _));
     }
 
     [Trait("Purpose", "Allocation")]

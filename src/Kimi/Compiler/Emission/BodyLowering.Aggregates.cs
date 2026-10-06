@@ -57,6 +57,8 @@ internal sealed partial class BodyLowering
 
         module.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
         this.dictionaryRuntimeUsed = false;
+        module.NeedsStorageBytes |= this.storageBytesUsed;
+        this.storageBytesUsed = false;
         this.dictionaryHelpers.Clear();
         module.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
         this.formattingRuntimeUsed = false;
@@ -93,7 +95,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && !ObjectTypes.IsOwner(place.Type))
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && ObjectTypes.HandleMode(place.Type) is null)
             {
                 continue;
             }
@@ -114,7 +116,7 @@ internal sealed partial class BodyLowering
             var operation = body.Operations[id];
             if (operation.Kind == OwnershipOperationKind.Produce && (uint)operation.Place < (uint)body.Places.Count &&
                 body.Places[operation.Place].Kind == OwnershipPlaceKind.Temporary && this.aggregatePlaces[operation.Place] is not null &&
-                (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField ||
+                (body.Values[id].Kind is OwnershipValueKind.PointerLoad or OwnershipValueKind.BorrowedField or OwnershipValueKind.Element ||
                     (body.Values[id].Kind == OwnershipValueKind.Sequence && operation.Source is IndexKoto &&
                         body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Read) ||
                     (body.Values[id].Kind == OwnershipValueKind.Sequence && body.Sequences[(int)body.Values[id].Constant].Kind == SequenceOperation.Indices) ||
@@ -128,6 +130,8 @@ internal sealed partial class BodyLowering
 
                 // Each producer is checked by its ordinary lowering path. Retain its
                 // initialization so subsequent field access uses the acquired snapshot.
+                // An element read (`s.pair`, `arr[i]`, `t.1`) copies or moves the whole
+                // element into its temporary, which a pending call may prepare (SPEC 7.2.3).
                 this.aggregateReadInitializations[operation.Place] = id;
             }
         }
@@ -334,7 +338,7 @@ internal sealed partial class BodyLowering
     {
         if (body.Values[id].Kind == OwnershipValueKind.ClosureErasure)
         {
-            return this.LowerClosureErasure(body, function, id, out failure);
+            return this.LowerClosureErasure(body, function, constants, directory, id, out failure);
         }
 
         failure = null;
@@ -348,8 +352,8 @@ internal sealed partial class BodyLowering
 
         switch (operation.Kind)
         {
-            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.Closure:
-            case OwnershipOperationKind.Read when ObjectTypes.IsOwner(place.Type):
+            case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure:
+            case OwnershipOperationKind.Read when ObjectTypes.HandleMode(place.Type) is not null:
                 return !body.IsReachable(id) || (body.GetInputState(id, place.Id) & PlaceState.MustInit) != 0 || Fail("Callable receiver is not initialized.", out failure);
             case OwnershipOperationKind.Read when place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice:
                 // SPEC 4.6.1: metadata and a receiver borrow share the handle in place; the operation loads its fields.
@@ -362,6 +366,11 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Produce:
+                if (place.Type.Kind == BoundTypeKind.FunctionItem && ReferenceEquals(operation.Source.BoundSymbol, place.Type.Symbol))
+                {
+                    break; // A resolved Item has no runtime payload to initialize.
+                }
+
                 if (id > 0 && body.Values[id - 1].Kind == OwnershipValueKind.PatternProjection &&
                     body.Operations[id - 1] is { Kind: OwnershipOperationKind.Read } candidate && candidate.Input == place.Id &&
                     ReferenceEquals(candidate.Source, operation.Source) && (!body.IsReachable(id) || this.Dominates(id - 1, id)))
@@ -463,9 +472,9 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Consume:
                 // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
                 var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
-                    ObjectTypes.IsOwner(place.Type) && ObjectTypes.IsOwner(conversion.BoundType) &&
-                    ReferenceEquals(SignatureType(this, conversion.Left.BoundType), place.Type) &&
-                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(SignatureType(this, conversion.BoundType), body.Places[operation.Input].Type) &&
+                    ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(conversion.BoundType) == sourceMode &&
+                    ReferenceEquals(body.ConcreteAt(conversion.Left.BoundType, id), place.Type) &&
+                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(body.ConcreteAt(conversion.BoundType, id), body.Places[operation.Input].Type) &&
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     (!upcast && !(operation.Kind == OwnershipOperationKind.Consume
@@ -637,9 +646,29 @@ internal sealed partial class BodyLowering
     {
         var operation = body.Operations[id];
         var place = body.Places[operation.Place];
-        return place.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result && operation.Acquisition == AcquisitionKind.Copy &&
-            ScalarDefaults.SupportsPatternValue(place.Type) && ReferenceEquals(SignatureType(this, operation.Source.BoundType), place.Type) &&
-            operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } &&
-            this.IsPreparedArgument(body, id, symbol, place.Id) && this.IsElementOwnerStorage(place) && this.ValidateElementOwner(body, id);
+        if (place.Kind is not (OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result) || operation.Acquisition != AcquisitionKind.Copy ||
+            !this.IsElementOwnerStorage(place) || !this.ValidateElementOwner(body, id))
+        {
+            return false;
+        }
+
+        if (operation.Source is FunctionKoto { BoundClosure: { } closure })
+        {
+            // SPEC 7.2.3, 7.6.2: a default closure's bare entry Copies the argument that its pending call prepared.
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                var capture = closure.Captures[i];
+                if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Copy or CaptureAcquisition.Bare && !this.BorrowingEntry(capture) && capture.Source is { } source &&
+                    ReferenceEquals(body.ConcreteAt(capture.Environment.Type, id), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), place.Type) &&
+            operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } && this.IsPreparedArgument(body, id, symbol, place.Id);
     }
 }

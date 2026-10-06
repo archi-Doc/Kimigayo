@@ -32,6 +32,17 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // A qualified Type Name selects the declarations of the qualifier's scope, never its generic parameters (SPEC 9.1).
+    private static BindingSymbol? QualifiedTypeMember(BindingSymbol? head)
+    {
+        while (head is not null && IsGenericParameter(head))
+        {
+            head = head.Next;
+        }
+
+        return head;
+    }
+
     private bool ParameterVisible(BindingSymbol candidate, Koto use)
     {
         if (this.defaultBindingDepth == 0 || candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function)
@@ -319,7 +330,7 @@ public sealed partial class Binding
         {
             var qualifier = this.TypeName(member.Left, scope, false);
             if (qualifier is not null && this.scopes.TryGetValue(qualifier.Declaration, out var members) && TypeSpelling(member.Right) is { } rightName &&
-                this.SelectTypeCandidate(members.Types.GetValueOrDefault(rightName), scope, syntax, core, arity) is { } target)
+                this.SelectTypeCandidate(QualifiedTypeMember(members.Types.GetValueOrDefault(rightName)), scope, syntax, core, arity) is { } target)
             {
                 var right = member.Right;
                 member.Left.BoundSymbol = qualifier;
@@ -681,7 +692,7 @@ public sealed partial class Binding
 
         if (generic.TypeArguments.Count != container.GenericParameterNodes.Count)
         {
-            return this.Fail(generic, BindingFailure.TypeMismatch);
+            return this.FailExplained(ref this.arityFailures, generic, BindingFailure.InvalidTypeFormation, (definition, container.GenericParameterNodes.Count, generic.TypeArguments.Count, false));
         }
 
         generic.Identifier!.BoundSymbol = definition;
@@ -732,7 +743,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null)
+    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, BoundCall? closureContext = null)
     {
         // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
         // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
@@ -767,6 +778,7 @@ public sealed partial class Binding
 
         var hash = default(HashCode);
         hash.Add(kind);
+        hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
         hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
         hash.Add(semantics);
         hash.Add(length);
@@ -788,7 +800,7 @@ public sealed partial class Binding
             for (var i = 0; i < bucket.Count; i++)
             {
                 var type = bucket[i];
-                if (type.Kind != kind || type.Symbol != symbol || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
+                if (type.Kind != kind || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
                 {
                     continue;
                 }
@@ -815,7 +827,7 @@ public sealed partial class Binding
             this.types.Add(key, bucket = new(1));
         }
 
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression);
+        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression) { ClosureContext = closureContext };
         bucket.Add(created);
         return created;
     }

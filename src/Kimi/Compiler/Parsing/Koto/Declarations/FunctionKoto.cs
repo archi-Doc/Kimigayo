@@ -73,6 +73,11 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the parsed signature span before the function's span is extended by its body.</summary>
     internal SourceSpan SignatureSpan { get; }
 
+    // Anonymous bodies also inherit their enclosing function's substitution through every environment boundary.
+    internal bool RequiresInstantiation => !this.IsSpecialization &&
+        (this.GenericArguments.Count != 0 || this.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } ||
+        (this.IsAnonymous && this.BoundSymbol?.Scope.Function?.RequiresInstantiation == true));
+
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;
@@ -234,6 +239,9 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal BoundClosure? ClosureStorage { get; set; }
 
+    /// <summary>Gets or sets the end of the header, the closing parenthesis of the parameter list (SPEC 23.3.6.5 relates a closure end there).</summary>
+    internal int HeaderEnd { get; set; }
+
     internal void SetCaptures(CaptureKoto[]? captures) => this.Captures = captures;
 
     internal void SetBaseInitializer(InvocationKoto initializer)
@@ -242,7 +250,10 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Adopt(initializer);
     }
 
-    /// <summary>Gets the abstract Origin parameters.</summary>
+    /// <summary>
+    /// Gets the Origin parameters the signature introduces (SPEC 15.3.4). The parser never writes them, since a callable
+    /// declares no Origin header of its own (SPEC 15.3.2); Binding supplies the names it discovers in the signature.
+    /// </summary>
     public IReadOnlyList<string> Origins => (IReadOnlyList<string>?)this.origins ?? [];
 
     internal void SetOrigins(List<string>? origins) => this.origins = origins;
@@ -259,34 +270,22 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Adopt(effect);
     }
 
-    internal bool IsGenericParameter(string name)
-    {
-        if (this.genericArguments is not null)
-        {
-            foreach (var parameter in this.genericArguments)
-            {
-                if (parameter.Identifier == name || parameter.SemanticsParameter == name)
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-    }
+    /// <summary>Gets whether a spelling names one of this function's Type parameters or their Semantics parameters; the parser asks with the token's text, before any interning.</summary>
+    /// <param name="name">The spelling.</param>
+    /// <returns><see langword="true"/> when the function declares the parameter.</returns>
+    internal bool IsGenericParameter(ReadOnlySpan<char> name)
+        => this.genericArguments is not null && NamesParameter(this.genericArguments, name);
 
     // SPEC 7.4: a member function or constructor of a generic Type may constrain the declaring Type's parameters. The body
     // is parsed before the member is attached, so the container is recorded for the parse.
-    internal bool IsDeclaringTypeParameter(string name)
-    {
-        if (this.DeclaringContainer is not (StructKoto or EnumKoto) || this.DeclaringContainer is not { GenericParameterNodes: { Count: > 0 } parameters })
-        {
-            return false;
-        }
+    internal bool IsDeclaringTypeParameter(ReadOnlySpan<char> name)
+        => this.DeclaringContainer is StructKoto or EnumKoto && NamesParameter(this.DeclaringContainer.GenericParameterNodes, name);
 
+    private static bool NamesParameter(IReadOnlyList<TypeKoto> parameters, ReadOnlySpan<char> name)
+    {
         for (var i = 0; i < parameters.Count; i++)
         {
-            if (parameters[i].Identifier == name || parameters[i].SemanticsParameter == name)
+            if (name.SequenceEqual(parameters[i].Identifier) || (parameters[i].SemanticsParameter is { } semantics && name.SequenceEqual(semantics)))
             {
                 return true;
             }
@@ -302,8 +301,6 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the function parameters.</summary>
     public IReadOnlyList<FunctionParameterKoto> Parameters
         => (IReadOnlyList<FunctionParameterKoto>?)this.parameters ?? [];
-
-    internal bool HasGenericDeclaringType => this.DeclaringContainer is StructKoto or EnumKoto && this.DeclaringContainer.GenericParameterNodes.Count > 0;
 
     internal DeclarationContainerKoto? DeclaringContainer { get; set; }
 

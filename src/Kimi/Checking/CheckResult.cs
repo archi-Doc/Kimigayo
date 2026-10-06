@@ -5,19 +5,20 @@ using Kimi.Diagnostics;
 namespace Kimi.Checking;
 
 /// <summary>The outcome of one check (SPEC 23.3.3).</summary>
+/// <remarks>
+/// A cancelled check has no output: the check entry lets <see cref="OperationCanceledException"/> propagate, so cancellation
+/// is never published.
+/// </remarks>
 public enum CheckOutcome : byte
 {
     /// <summary>Checked, with or without errors.</summary>
     Completed,
 
-    /// <summary>An input or the effective configuration could not be established.</summary>
+    /// <summary>An input or the effective configuration could not be established; an <c>Input</c> Error explains it.</summary>
     Blocked,
 
-    /// <summary>An exception inside the compiler, or a violation of the diagnostic contract.</summary>
+    /// <summary>An exception inside the compiler, or a violation of the diagnostic contract; one <c>CheckFaulted_Kd</c> Error explains it.</summary>
     Faulted,
-
-    /// <summary>Command cancellation; never published.</summary>
-    Cancelled,
 }
 
 /// <summary>The mode of a check unit (SPEC 23.3.1).</summary>
@@ -60,28 +61,16 @@ public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresen
         : this(outcome, accepted, presence, result.Diagnostics, result.Sources)
     {
     }
-}
 
-/// <summary>Signals a read of an open document that is out of sync (SPEC 23.4.2); it is reported as <c>DocumentDesynchronized_Kd</c>.</summary>
-internal sealed class DesynchronizedInputException : IOException
-{
-    /// <summary>The observed failure of a desynchronized document, which is its unestablished identity.</summary>
-    public const string Failure = "DocumentDesynchronized: the editor document is out of sync";
-
-    /// <summary>Initializes a new instance of the <see cref="DesynchronizedInputException"/> class.</summary>
-    public DesynchronizedInputException()
-        : base(Failure)
+    /// <summary>Creates the output of a check that an input or its configuration blocked before the check entry ran (SPEC 23.3.3).</summary>
+    /// <param name="code">The <c>Input</c> Error that explains it.</param>
+    /// <param name="location">The input it concerns, such as the project file, or the default value for none.</param>
+    /// <param name="note">The environment-dependent text of the failure, published as a bounded Note.</param>
+    /// <returns>The Blocked output: that one record, without a range.</returns>
+    public static CheckOutput Blocked(DiagnosticCode code, SourceIdentity location, string? note = null)
     {
-    }
-}
-
-/// <summary>Signals that a check needs an input with an event after its base (SPEC 23.4.6); the check takes no effect.</summary>
-internal sealed class PendingInputException : Exception
-{
-    /// <summary>Initializes a new instance of the <see cref="PendingInputException"/> class.</summary>
-    /// <param name="path">The path of the pending input.</param>
-    public PendingInputException(string path)
-        : base("Pending input: " + path)
-    {
+        var owner = new DiagnosticOwner();
+        owner.Report(DiagnosticPartition.Input, code, location.IsEmpty ? null : location.Value, note: note);
+        return new(CheckOutcome.Blocked, false, TestPresence.Unknown, owner.Finalize());
     }
 }

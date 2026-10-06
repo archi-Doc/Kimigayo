@@ -102,8 +102,6 @@ public sealed partial class Binding
         return this.WithOrigins(left, this.Meet(a, b), []);
     }
 
-    // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
-    // sources with the same layers keep the ordinary common-borrow rule.
     // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
     // result sources reaches no syntax the survey cannot bind yet.
     private static bool SurveyablePosition(Koto node)
@@ -117,6 +115,8 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
+    // sources with the same layers keep the ordinary common-borrow rule.
     private BoundType? ReadTypeUnification(List<BoundType> types, BindingScope scope)
     {
         BoundType? scalar = null;
@@ -167,6 +167,7 @@ public sealed partial class Binding
 
         var context = this.resultPool[this.resultCursor++];
         context.HasLiteral = false;
+        context.PartialEvidence = false;
         context.Expected = expected;
         context.Invalid = context.Pending = false;
         context.Sources.Clear();
@@ -188,10 +189,25 @@ public sealed partial class Binding
             // Only literal fitting needs early read-conversion evidence. Ordinary borrow results must wait for
             // block-local declarations and all their Origins before selecting a common reference Type.
             context.Evidence.Clear();
+            context.PartialEvidence = false;
             this.FindResultEvidence(target, scope, context);
         }
 
         context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
+        if (context.PartialEvidence && context.Expected is { CarriesOrigin: true })
+        {
+            // SPEC 14.9.1, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
+            // of a later body-local Borrow.
+            context.Expected = null;
+        }
+
+        if (context.Expected?.Kind == BoundTypeKind.Function)
+        {
+            // SPEC 10.2: a common-Type search compares each source's own Type; it cannot supply the fixed
+            // Function expectation that enables erasure. The ordinary source pass collects those Types below.
+            context.Expected = null;
+        }
+
         if (context.HasLiteral && context.Expected is { } common && this.ReadTypeReferent(common, scope) is { } terminal)
         {
             // SPEC 3.5.3, 14.9.1: an unfitted literal is fitted to the terminal read Type of the reference sources,
@@ -259,6 +275,13 @@ public sealed partial class Binding
                 return this.BindType(conversion.Right, conversionScope);
             case IdentifierNameKoto name:
                 var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
+                if (symbol?.Kind == BindingSymbolKind.Function)
+                {
+                    // A declaration's Type is its return contract, not the Type of a reference to that declaration.
+                    // Bind the Item in the ordinary source pass; result inference must not invent an erasure signature.
+                    return null;
+                }
+
                 if (symbol?.Type is { } type)
                 {
                     return type;
@@ -342,6 +365,10 @@ public sealed partial class Binding
         {
             context.HasLiteral = true;
         }
+        else if (evidence is null)
+        {
+            context.PartialEvidence = true;
+        }
     }
 
     private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
@@ -379,7 +406,7 @@ public sealed partial class Binding
         if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
         {
             // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
-            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.BoundType);
+            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);
         }
         else if (structural.CanComplete(body))
         {
@@ -387,10 +414,18 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? FinishResult(Koto node, ResultContext context)
+    // The one structural completion of result, body and conversion checks, cleared for a new query. Its Never evidence is the
+    // bound Type, or during a conversion probe the operand's signature (ResultNeverEvidence), whichever check asks first.
+    private StructuralCompletion ResultStructure()
     {
         var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
         structural.Clear();
+        return structural;
+    }
+
+    private BoundType? FinishResult(Koto node, ResultContext context)
+    {
+        var structural = this.ResultStructure();
         switch (node)
         {
             case IfKoto conditional:
@@ -440,6 +475,7 @@ public sealed partial class Binding
 
         var suppliedValue = types.Count > 0;
         var common = context.Expected;
+        BoundType? failed = null;
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
@@ -447,16 +483,22 @@ public sealed partial class Binding
         }
         else
         {
+            // SPEC 15.6.1, 14.9: each result source fits the expected Type under the premises in scope; the first that does not
+            // is the explained one, an Origin relation when only its Origin part fails.
             for (var i = 0; i < types.Count; i++)
             {
-                context.Invalid |= !FitsType(types[i], common);
+                if (!this.FitsTypeAt(types[i], common, node))
+                {
+                    context.Invalid = true;
+                    failed ??= types[i];
+                }
             }
         }
 
         types.Clear();
         if (context.Invalid)
         {
-            return this.Fail(node, BindingFailure.TypeMismatch);
+            return failed is not null && common is not null ? this.FailMismatch(node, node, failed, common) : this.Fail(node, BindingFailure.TypeMismatch);
         }
 
         if (context.Pending)
@@ -485,5 +527,7 @@ public sealed partial class Binding
         internal bool Invalid { get; set; }
 
         internal bool HasLiteral { get; set; }
+
+        internal bool PartialEvidence { get; set; }
     }
 }

@@ -52,8 +52,11 @@ public sealed partial class Binding
     private bool CompleteSpecializationOrigins(FunctionKoto function, FunctionKoto definition, BoundType?[] arguments, BoundLength?[] lengths)
     {
         var count = InputOriginCount(definition);
+        var definitionOrigins = definition.BoundSymbol!.Schema?.Origins ?? [];
         var inputs = this.originScratch.Rent(count);
+        var binders = this.originScratch.Rent(definitionOrigins.Count);
         Array.Clear(inputs, 0, count);
+        Array.Clear(binders, 0, definitionOrigins.Count);
         try
         {
             for (var i = 0; i < definition.Parameters.Count; i++)
@@ -102,9 +105,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.8.2: named Origin binders are inherited by name; a specialization neither adds nor renames one.
-            var definitionOrigins = definition.BoundSymbol.Schema?.Origins ?? [];
             var written = function.BoundSymbol!.Schema?.Origins ?? [];
-            var binders = definitionOrigins.Count == 0 ? Array.Empty<BoundOrigin>() : new BoundOrigin[definitionOrigins.Count];
             for (var i = 0; i < definitionOrigins.Count; i++)
             {
                 BoundOrigin? inherited = null;
@@ -158,7 +159,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                pattern = this.SubstituteStoredOrigins(pattern, definition, binders, inputs.AsSpan(0, count));
+                pattern = this.SubstituteStoredOrigins(pattern, definition, binders.AsSpan(0, definitionOrigins.Count), inputs.AsSpan(0, count));
                 var syntax = function.Parameters[i].Type;
                 this.InheritOriginContract(syntax, pattern);
                 Reset(syntax);
@@ -172,7 +173,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            result = this.SubstituteStoredOrigins(result, definition, binders, inputs.AsSpan(0, count));
+            result = this.SubstituteStoredOrigins(result, definition, binders.AsSpan(0, definitionOrigins.Count), inputs.AsSpan(0, count));
             var actualResult = BoundType.Unit;
             if (function.ReturnType is { } returnSyntax)
             {
@@ -186,6 +187,7 @@ public sealed partial class Binding
         }
         finally
         {
+            this.originScratch.Return(binders, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
         }
 

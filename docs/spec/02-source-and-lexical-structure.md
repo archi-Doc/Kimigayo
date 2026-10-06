@@ -12,7 +12,7 @@ A **SourceDocument** is one immutable source snapshot (path and text) belonging 
 
 ## 2.2. Lines, indentation, and continuation
 
-Each indentation level is four U+0020 spaces; tabs are forbidden in indentation. A physical line ending may be LF, CRLF or CR. Newlines separate source items where the grammar permits. Commas separate arguments and elements, not statements or binary operands. A line that starts with a binary operator does not continue the previous line.
+Each indentation level is four U+0020 spaces; tabs are forbidden in indentation. A physical line ending may be LF, CRLF or CR. Newlines separate source items where the grammar permits. Commas separate arguments and elements, not statements or binary operands. A `;` occurs only as the separator of a leading task slot or task argument `task;` (§2.4) and separates nothing else. A line that starts with a binary operator does not continue the previous line.
 
 An executable Body is either `=>` followed by one expression or statement, or a newline followed by an indented body (§14.2). The `=>` and the start of its item must be on the header's ending physical line. A body colon, a `=>` followed by a newline, and a separate leading `=>` continuation line are all invalid.
 
@@ -204,17 +204,19 @@ Disabled collection adds no documentation-specific allocations and retains no te
 
 A token's spelling is contiguous. Adjacent spellings must be separated when their concatenation would form a different token. Names, keywords, literals, punctuation and operators follow their own token rules; recognizing a token does not make it a permitted expression. `$` and `#` are separate punctuation tokens: `$abort` is `$` followed by the Name `abort`, and `#if` is `#` followed by the keyword `if`.
 
-`;` is never a statement separator or expression-body terminator; every occurrence outside comments and literal content is an error. Separate statements go on separate effective lines. For example, `if condition => 1` joins an aligned following `else` without `;`.
+`;` occurs only as the separator of the task slot or task argument `task;` (§2.5.1, [§24.2](24-suspension-and-asynchronous-tasks.md#242-task-slots)). It is never a statement separator or expression-body terminator, and every other occurrence outside comments and literal content is an error. Separate statements go on separate effective lines. For example, `if condition => 1` joins an aligned following `else` without `;`.
 
 | Punctuation/operator class | Spellings |
 | --- | --- |
-| Structural | `(` `)` `[` `]` `{` `}` `,` `.` `:` `::` `->` `=>` `@` `#` `$` `!` |
+| Structural | `(` `)` `[` `]` `{` `}` `,` `;` `.` `:` `::` `->` `=>` `@` `#` `$` `!` |
 | Arithmetic and updates | `+` `-` `*` `/` `%` `++` `--` `+=` `-=` `*=` `/=` `%=` |
 | Comparison and assignment | `=` `==` `!=` `<` `<=` `>` `>=` |
 | Bitwise and shifts | `&` `\|` `^` `<<` `>>` `&=` `\|=` `^=` `<<=` `>>=` |
 | Ranges | `..` `..=` |
 | Optional Type suffix | `?` |
-| Recognized but unavailable | `;` `&&` `\|\|` |
+| Recognized but unavailable | `&&` `\|\|` |
+
+`&&` and `\|\|` are recognized so that their use is reported as misplaced syntax whose repair candidates are `and` and `or` (§23.3.6.9).
 
 Outside comments and literals, the longest punctuation spelling is matched: `..=` before `..` before `.`, `->` before `-`, `<<=` before `<<` before `<`, `>>=` before `>>` before `>`, `::` before `:`, and `=>` or `==` before `=`. Thus `a+++b` is `a`, `++`, `+`, `b`; there is no `+++` token. Unlisted punctuation is invalid unless it forms a grammatically valid sequence of listed tokens.
 
@@ -274,7 +276,7 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Primitive Types | `isize`, `usize`, `i8`, `i16`, `i32`, `i64`, `i128`, `u8`, `u16`, `u32`, `u64`, `u128`, `f32`, `f64`, `bool`, `char`, `string` |
 | Bindings and functions | `let`, `var`, `func` |
 | Control, tests and literals | `if`, `else`, `case`, `for`, `while`, `loop`, `do`, `match`, `return`, `exit`, `continue`, `yield`, `try`, `require`, `defer`, `is`, `not`, `and`, `or`, `true`, `false`, `null` |
-| Access and inheritance | `public`, `internal`, `private`, `protected`, `open` |
+| Access | `public`, `internal`, `private`, `protected` |
 | Dedicated forms | `Self`, `init`, `drop`, `base` |
 | Compile-time selection | `switch`; used after `#`. There is no runtime switch construct. |
 | Reserved future syntax | `as` |
@@ -284,7 +286,8 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Declarations | `alias`, `rootgroup`, `group`, `struct`, `enum`, `contract`, `computed`, `property` in declaration and header positions. `extension` is reserved in the same positions for a future declaration and is rejected in this revision. |
 | Control labels | `label` at a Primary expression start when followed by a Name and `:` on the same physical line; commits to the label-prefix rules of §14.4. Elsewhere it is an ordinary Name. |
 | Unavailable declaration modifiers | `virtual`, `override`, `abstract`; recognized only in a declaration's leading modifier sequence, and rejected there with the unavailable-feature diagnostic. |
-| Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance; `place` in a function result position when followed by `ref` or `uniq` and a slash (§7.1.1). |
+| Inheritance modifier | `open` in a declaration's leading modifier sequence, recognized as the unavailable modifiers are: before the declaration introducer of the same logical header, without scanning across a newline, indent or dedent. It is valid only immediately before `struct` ([§6.2.2](06-declarations-and-containers.md#622-inheritance-and-open-structures)). Elsewhere it is an ordinary Name. |
+| Parameters and accessors | `in` in a `for` header; `to` immediately after `exit`, `continue` or `yield`; `associate` in an associated-Type declaration or specification; `has`, `get`, `set` in accessor syntax; `specialize` immediately before `func`; `when` in a conditional conformance; `place` in a function result position when followed by `ref` or `uniq` and a slash (§7.1.1); `task` as the first token after the `(` of a parameter list, argument list or Function Parameter List that admits a task slot or task argument, or of a constructor's parameter list, when the next token is `;` ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)). |
 | Origins | `during` after an AnnotatedType's body and optional suffixes; `origin` at the start of a declaration-attached relation; `outlives` within that relation; `static` as the distinguished Origin in Origin expressions. |
 | Semantics and safety | `owner`, `ref`, `uniq`, `obj`, `rc`, `arc`, `objref`, `objuniq`, `raw` in Semantics positions, including requirements and the mode of a Place result; `raw` also immediately after `@` (§5.4). Elsewhere `raw` is an ordinary Name, such as a Field `raw`. `unsafe` is recognized only before `func` and before a Body that introduces an Unsafe Statement. |
 | Explicit value operations | `move`, `copy` and `follow` immediately after `@`, as the [transfer and copy operations](13-operators-and-assignment.md#1353-defined-adaptations) `E@move` and `E@copy` and the [follow operation](13-operators-and-assignment.md#13551-follow) `E@follow`; `wrap` and `bits` immediately after `@` and followed by an adjacent `<`, as the [wrapping and bit conversions](13-operators-and-assignment.md#1354-numeric-conversions-and-literals) `E@wrap<U>` and `E@bits<U>`. |
@@ -299,6 +302,7 @@ Further notes on individual keywords:
 - `init`, `drop` and `base` are reserved for [construction](06-declarations-and-containers.md#623-constructors) and destruction. They introduce no ordinary callable Names and no implicit base receiver.
 - `require` and `do` are reserved for the [require statement](14-control-flow.md#1411-require-statement) and the [do expression](14-control-flow.md#1432-do-expressions).
 - `specialize` introduces an [explicit specialization declaration](08-generics-constraints-and-contracts.md#88-explicit-full-function-specialization) and reserves nothing in other contexts.
+- `open` and `task` are ordinary Names outside their contexts: in `file.open(task; path)`, `open` is a member Name and `task;` is the task argument, and `let open = 2` and `let task = open` declare ordinary locals.
 
 **Unavailable modifiers.** `virtual`, `override` and `abstract` are recognized before the other modifiers and the declaration introducer of the same logical header. This applies to Type, function and Property declarations, Contract requirements, constructors, `drop` and accessors, even where access and `open` modifiers are otherwise forbidden. Recognition does not scan across a newline, indent or dedent that separates independent items. Thus `abstract open struct`, `virtual func`, `virtual init`, `override drop` and `abstract get` all receive the unavailable-feature diagnostic. The words remain ordinary Names in `struct abstract`, `func virtual(...)`, `let override: i32`, `x.abstract()` and `virtual(...)`, and a standalone `abstract` expression must not consume the declaration on the next line. This recognition adds no valid declaration form and no globally reserved word.
 

@@ -143,12 +143,12 @@ internal static class ElementAccess
         // Pattern body bindings have their own local identity; a var pattern
         // permits writes to its acquired value just like a var declaration.
         // Guard candidates remain excluded by their distinct symbol kind.
-        if (source is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local } symbol } root)
+        if (source is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local or BindingSymbolKind.Capture } symbol } root)
         {
             return null;
         }
 
-        return Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
+        return symbol.MutableCapture || Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
     }
 
     // SPEC 5.2, 12: *p, p[n], and the stored fields, Tuple elements and integer-indexed fixed-array elements of one are raw
@@ -218,6 +218,23 @@ internal static class ElementAccess
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the
     // reference-typed base, or null for other forms.
+    // The reference whose struct or Tuple referent `reference@follow` selects, or null.
+    internal static Koto? FollowedReference(Koto receiver)
+        => KotoHelper.UnwrapParentheses(receiver) is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed &&
+            AccessType(followed.Left) is var type && (ReferenceTypes.IsStruct(type) || ReferenceTypes.IsTuple(type)) ? followed.Left : null;
+
+    // Whether a borrowed path root is the reference operand of `root@follow`.
+    internal static bool IsFollowedRoot(Koto root) => root.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Follow } followed && ReferenceEquals(followed.Left, root);
+
+    // Whether a receiver reference lends a borrowed path root: the root's access Type, or for a followed root a reborrow of
+    // its referent that is shared or matches the root's exclusive capability.
+    internal static bool ReceiverMatches(BoundType? receiver, BoundType? access, Koto root)
+        => ReferenceEquals(receiver, access) ||
+            (receiver is { Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 } && ObjectTypes.HandleMode(access) is { } mode &&
+                (receiver.Semantics == SemanticsKind.ObjRef || mode.PayloadAuthority == LoanRequirement.Uniq) && ReferenceEquals(receiver.Components[0], access!.Components[0])) ||
+            (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
+                ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
+
     internal static Koto? BorrowedPathRoot(MemberAccessKoto field)
     {
         for (var depth = 0; depth < 64; depth++)
@@ -228,9 +245,15 @@ internal static class ElementAccess
             }
 
             var receiver = AccessType(field.Left);
-            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver))
+            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver) || ObjectTypes.HandleMode(receiver) is not null)
             {
                 return field.Left;
+            }
+
+            // SPEC 13.5.5.1: an explicitly selected referent (`p@follow.x`) is reached through its reference, as `p.x` is.
+            if (FollowedReference(field.Left) is { } reference)
+            {
+                return reference;
             }
 
             if (field.Left is not MemberAccessKoto parent || !TryType(field, out _, out _))
@@ -256,7 +279,7 @@ internal static class ElementAccess
             }
 
             var receiver = KotoHelper.UnwrapParentheses(field.Left);
-            if (receiver is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } root)
+            if (receiver is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } root)
             {
                 return root;
             }
@@ -283,7 +306,7 @@ internal static class ElementAccess
             return TryBorrowedTupleElement(field, out element, out var index) ? index : -1;
         }
 
-        if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left))
+        if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left) || ObjectTypes.HandleMode(left) is not null)
         {
             owner = left!.Components[0];
             for (var i = 0; i < StructStorage.Count(owner); i++)

@@ -102,8 +102,9 @@ public sealed partial class Binding
             return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.1: a shared layer bounds the path to shared access.
         }
 
-        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field && StructStorage.IsStruct(field.Left.BoundType) &&
-            !IsSpecialField(field, out _) && !Writable(field.Left))
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
+            (StructStorage.IsStruct(field.Left.BoundType) || ObjectTypes.HandleMode(field.Left.BoundType) is not null) &&
+            !IsSpecialField(field, out _) && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
         {
             return false; // A mutable field still requires a mutable owning root.
         }
@@ -120,31 +121,10 @@ public sealed partial class Binding
         return node.BoundSymbol?.MutableCapture == true || IsMutableDeclaration(node.BoundSymbol?.Declaration);
     }
 
-    // SPEC 7.7 acquisition positions currently supported by function-item Binding: a declaration
-    // initializer, an assignment source, a call argument, a transferred result, an expression body
-    // and an array or tuple literal element. Wider selection shapes remain G10/I18.
-    private static bool IsAcquisitionPosition(Koto node)
-    {
-        if (!TryNameRoot(node, out var target))
-        {
-            return false;
-        }
-
-        return target.Parent switch
-        {
-            VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
-            JumpKoto jump => ReferenceEquals(jump.Expression, target),
-            FunctionKoto body => ReferenceEquals(body.ExpressionBody, target),
-            ArrayLiteralKoto or TupleLiteralKoto => true,
-            InvocationKoto invocation => !ReferenceEquals(invocation.Method, target),
-            BinaryKoto binary => !ReferenceEquals(binary.Left, target) && binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals,
-            _ => false,
-        };
-    }
-
-    // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition, unlike the
-    // function-item positions above. Arguments, assignment sources and results take their expected Type from the
-    // declaration and adapt there instead.
+    // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
+    // Arguments, assignment sources and results take their expected Type from the
+    // declaration and adapt there instead; an anonymous function's expression body without a written or expected result
+    // Type is a result source (SPEC 14.9.1) whose Type the bare acquisition infers.
     private static bool IsBareAcquisitionPosition(Koto node)
     {
         var target = node;
@@ -158,6 +138,7 @@ public sealed partial class Binding
             VariableKoto variable => ReferenceEquals(variable.InitializerKoto, target),
             DiscardKoto discard => ReferenceEquals(discard.Operand, target),
             TupleLiteralKoto or ArrayLiteralKoto => true,
+            FunctionKoto { IsAnonymous: true } function => ReferenceEquals(function.ExpressionBody, target),
             _ => false,
         };
     }
@@ -214,6 +195,14 @@ public sealed partial class Binding
             (node is NumberLiteralKoto or NullLiteralKoto || node is PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } ||
             IsLiteralOnlyOperation(node) || IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node));
     }
+
+    // SPEC 13.3: a primitive without arithmetic (bool, Unit, char, string) or safe reference layers ending in string. Never fits
+    // every operator, and a pointer operand is displaced by SPEC 5.3 before this test.
+    private static bool NonNumericOperand(BoundType type)
+        => (type.Kind == BoundTypeKind.Primitive && !type.IsNumeric && !ReferenceEquals(type, BoundType.Never)) || ReferenceTypes.EndsInString(type);
+
+    // SPEC 13.2, 13.3: a numeric Type without the integer operators (%, bitwise, shift, increment, decrement), a floating-point Type.
+    private static bool NonIntegerOperand(BoundType type) => type.IsNumeric && !type.HasIntegerArithmetic;
 
     // SPEC 4.6.3.1, 12.3.1: a range whose written boundaries, at least one, are all literal-only is itself literal-only.
     private static bool IsLiteralOnlyRange(Koto node)
@@ -379,6 +368,22 @@ public sealed partial class Binding
         return type;
     }
 
+    // SPEC 7.6.4: a concrete Closure converts to an expected common Function Type when its signature fits, its minimum
+    // receiver is Shared and its complete environment is Owned. Initializations, returns and call arguments share this judgment.
+    private bool ErasesToFunction(Koto node, BoundType actual, BoundType expected)
+        => this.ErasureSignatureFits(actual, expected, node) &&
+            (actual.Kind != BoundTypeKind.Closure || actual.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: SemanticsKind.Ref }) &&
+            this.ProveOwned(actual, node) == ConstraintProof.Proven;
+
+    // SPEC 7.6.4, 10.5, 10.7: the signature part of an erasure, which a call's applicability uses; the Shared receiver and the Owned
+    // environment are judged after selection, at the argument, and a failure there never selects another candidate. A Function Item's
+    // Origin conditions belong to its signature, proven from the required contract at `use` (SPEC 15.3.7).
+    private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
+        => expected.Kind == BoundTypeKind.Function &&
+            ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
+            (actual.Kind == BoundTypeKind.Closure && actual.Symbol?.Declaration is FunctionKoto { BoundClosure: not null } &&
+            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
+
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
         if (expected is { ContainsParameter: true })
@@ -399,14 +404,19 @@ public sealed partial class Binding
         }
 
         if (actual is null && expected?.Kind == BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
-            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsAcquisitionPosition(node))
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } symbol && IsValueUse(node))
         {
             return this.BindFunctionReference(node, symbol, expected, scope);
         }
 
-        if (expected?.Kind == BoundTypeKind.Function && actual?.Kind == BoundTypeKind.Closure &&
-            actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } &&
-            CallableSignatureFits(closure.Signature, expected) && this.ProveCopy(actual, node) == ConstraintProof.Proven && !actual.CarriesOrigin)
+        if (actual is null && expected?.Kind != BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
+            node.BoundSymbol is { Kind: BindingSymbolKind.Function } item && IsValueUse(node) &&
+            (expected is not null || !TryNameRoot(node, out var root) || root.Parent is not InvocationKoto))
+        {
+            actual = this.BindFunctionItem(node, item, scope);
+        }
+
+        if (expected is not null && actual is not null && this.ErasesToFunction(node, actual, expected))
         {
             node.ErasedFunctionType = expected;
             return expected;
@@ -480,10 +490,23 @@ public sealed partial class Binding
         {
             case ExpressionKoto recovered when recovered is not ErrorKoto && recovered.CodeContext.RecoveryCause(recovered) is not null:
                 // The parser's guess of a rejected form, or a form it reported as misplaced: its operands are checked on their
-                // own, its combination is not, and every check of it rests on the syntax Error (DIAGNOSTICS.md §4.3).
-                foreach (var part in recovered.ChildNodes)
+                // own, its combination is not, and every check of it rests on the syntax Error (DIAGNOSTICS.md §4.3). Arm
+                // Patterns have no meaning apart from their match, so a recovered match with arms is checked by its own binder.
+                if (recovered is MatchKoto { Arms.Count: > 0 } recoveredMatch)
                 {
-                    this.BindNode(part, scope);
+                    this.BindMatch(recoveredMatch, scope, null);
+                }
+                else if (recovered is IsKoto clause)
+                {
+                    // A recovery Constraint keeps an Error constraint and binds none of its parts, as a function's does.
+                    clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+                }
+                else
+                {
+                    foreach (var part in recovered.ChildNodes)
+                    {
+                        this.BindNode(part, scope);
+                    }
                 }
 
                 return Complete(node, null);
@@ -597,7 +620,7 @@ public sealed partial class Binding
                 var numberType = DefaultLiteralType(number, expected);
                 if (!LiteralCategoryMatches(number, numberType) && !(ReferenceEquals(number, this.floatingIntegerLiteral) && numberType.IsFloatingPoint))
                 {
-                    return this.FailMismatch(node, node, number.IsInteger ? "integer literal" : "floating-point literal", numberType.Name);
+                    return this.RecordMismatch(node, node, number.IsInteger ? "integer literal" : "floating-point literal", numberType); // The Type keeps a generic default's parameter (SPEC 7.2.3).
                 }
 
                 return FitsLiteral(number, numberType, false, this.compilation.PointerWidth) ? Complete(node, numberType) : this.Fail(node, BindingFailure.InvalidLiteral);
@@ -742,11 +765,44 @@ public sealed partial class Binding
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
                 return this.BindAccessorBody(accessor, scope);
+            case GenericsKoto { Identifier: IdentifierNameKoto or MemberAccessKoto } reference when IsValueUse(reference):
+                return this.BindExplicitReferenceName(reference, scope);
         }
 
         // Unsupported semantics stay explicit and cannot pass final Bound checking.
         this.BindUnknownChildren(node, scope);
         return this.Fail(node, BindingFailure.Unsupported, true);
+    }
+
+    // SPEC 10.5: a function Name with explicit Type arguments in a value position is a reference whose candidates take
+    // those arguments. It is resolved here and selected as a value, or against the fixed expected call signature.
+    private BoundType? BindExplicitReferenceName(GenericsKoto reference, BindingScope scope)
+    {
+        var name = reference.Identifier!;
+        this.BindNodeCore(name, scope, null);
+        if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
+        {
+            this.BindUnknownChildren(reference, scope);
+            return this.Fail(reference, BindingFailure.Unsupported, true);
+        }
+
+        for (var i = 0; i < reference.TypeArguments.Count; i++)
+        {
+            var syntax = reference.TypeArguments[i];
+            if (this.IsLengthArgument(syntax, scope))
+            {
+                return this.Fail(reference, BindingFailure.Unsupported, true);
+            }
+
+            if (this.BindType(syntax, scope) is null)
+            {
+                return this.CompleteDependent(reference, syntax);
+            }
+        }
+
+        reference.BoundSymbol = group;
+        reference.BindingState = BindingState.Resolved;
+        return null;
     }
 
     private BoundType? BindFunction(FunctionKoto function, BindingScope scope)
@@ -824,8 +880,7 @@ public sealed partial class Binding
 
             if (symbol is not null)
             {
-                var structural = this.resultStructure ??= new(item => ReferenceEquals(item.BoundType, BoundType.Never));
-                structural.Clear();
+                var structural = this.ResultStructure();
                 if (!discards && (KotoHelper.IsBodyExpression(expression) || structural.CanComplete(expression)) &&
                     symbol.Type is { } expected && result is not null && !this.FitsTypeAt(result, expected, function))
                 {
@@ -891,10 +946,10 @@ public sealed partial class Binding
 
         var inferred = variable.InitializerKoto is { } initializer ? this.BindExpected(initializer, scope, declared, variable.TypeKoto) : null;
         symbol.Resolving = false;
-        if (declared is null && inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
+        if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
             initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
         {
-            // SPEC 15.4.4: Origins omitted in the initializer's own Type expressions are resolved into the local's Type.
+            // SPEC 15.4.4: finish all initializer acquisition bounds before checking the local's fixed Type.
             inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, scope);
         }
 
@@ -916,6 +971,11 @@ public sealed partial class Binding
         if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
         {
             this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared);
+        }
+
+        if (symbol.Kind == BindingSymbolKind.Local && declared is not null && variable.TypeKoto is { } occurrence)
+        {
+            this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
         }
 
         symbol.Type = declared ?? inferred;
@@ -1008,9 +1068,9 @@ public sealed partial class Binding
         if (symbol.Kind == BindingSymbolKind.Function)
         {
             this.BindHeader(symbol);
-            if (symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
+            if (symbol.Next is null && symbol.Declaration is FunctionKoto { IsAnonymous: false } named && (named.Modifier & ModifierKind.Unsafe) != 0 && IsValueUse(node))
             {
-                // SPEC 7.7: an unsafe function supports direct calls only.
+                // SPEC 7.7: an unsafe function supports direct calls only. An overload group is checked after selection.
                 return this.Fail(node, BindingFailure.UnsafeFunctionValue);
             }
 
@@ -1076,7 +1136,8 @@ public sealed partial class Binding
                     // SPEC 7.3, 13.7: an accessor receiver is a Receiver Expression and is acquired implicitly.
                     if (!this.AdaptInput(sourceReceiver, required, sourceType, scope, pathSelection.Path, pathSelection.DeclaringType, out var projectedReceiver, out var quality, out var kind, explicitBorrow: update, receiver: true))
                     {
-                        return this.Fail(node, BindingFailure.TypeMismatch);
+                        // SPEC 11.2: a receiver that only the accessor's wrongly shaped written receiver rejects rests on that declaration.
+                        return this.ReceiverRestsOnAccessorShape(node, operation, sourceReceiver, sourceType, pathSelection.DeclaringType, pathSelection.Path, scope, update) ? null : this.Fail(node, BindingFailure.TypeMismatch);
                     }
 
                     var compatibility = kind == ArgumentOperationKind.PayloadProjection ? ConstraintProof.Proven : ProjectedReceiverProof(symbol);
@@ -1189,10 +1250,14 @@ public sealed partial class Binding
             case KotoKind.Not:
                 return Compatible(operand, BoundType.Boolean) ? Complete(unary, BoundType.Boolean) : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlus:
-                return operand.IsNumeric || this.IsGenericInteger(operand, scope) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return operand.IsNumeric || this.IsGenericInteger(operand, scope) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand)
+                    : NonNumericOperand(operand) ? this.FailOperand(unary, operand, BindingFailure.NonNumericOperand)
+                    : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixMinus:
                 // Negation is defined for signed integers, floating-point values and every wrapping integer Type (SPEC 13.2, 13.3).
-                return (operand.IsNumeric && !operand.IsUnsignedInteger) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return (operand.IsNumeric && !operand.IsUnsignedInteger) || this.IsGenericWrapping(operand, scope) ? Complete(unary, operand)
+                    : NonNumericOperand(operand) ? this.FailOperand(unary, operand, BindingFailure.NonNumericOperand)
+                    : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 if (!this.ValidPropertyWritePath(unary.Operand, scope))
                 {
@@ -1212,7 +1277,10 @@ public sealed partial class Binding
 
                 // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
                 var destination = ElementAccess.DestinationType(unary.Operand, operand);
-                return this.IsArithmeticInteger(destination, scope) ? Complete(unary, destination) : this.Fail(unary, BindingFailure.TypeMismatch);
+                return this.IsArithmeticInteger(destination, scope) ? Complete(unary, destination)
+                    : destination is not null && NonNumericOperand(destination) ? this.FailOperand(unary, destination, BindingFailure.NonNumericOperand)
+                    : destination is not null && NonIntegerOperand(destination) ? this.FailOperand(unary, destination, BindingFailure.NonIntegerOperand)
+                    : this.Fail(unary, BindingFailure.TypeMismatch);
             case KotoKind.Dereference:
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
@@ -1237,6 +1305,8 @@ public sealed partial class Binding
         var operation = assignment && kind != KotoKind.Equals ? KotoHelper.CompoundOperation(kind) : kind;
         var comparison = operation is KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals;
         var shift = operation is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan;
+        var arithmetic = operation is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret;
+        var integerOnly = operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret;
         BoundType? left;
         BoundType? right;
         // SPEC 3.3 and 13.4: an operand of Type ref/T or uniq/T denotes its Copy referent; an assignment
@@ -1273,7 +1343,15 @@ public sealed partial class Binding
             // SPEC 5.3: a pointer is displaced by an isize count, including in p += n and p -= n.
             // SPEC 13.4: a comparison reads through every reference layer, so the other operand is fitted to the referent.
             var comparand = comparison && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && !ReferenceTypes.IsString(left) ? ComparisonReferent(left) : left;
-            right = this.BindExpected(binary.Right, scope, logical ? BoundType.Boolean : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null : comparand, assignment ? binary.Left : null);
+            // SPEC 13.3: a left operand without the operator is the problem, so the right operand is bound without its Type.
+            // SPEC 3.1.5, 13.4: a non-completing left operand fits the right operand's Type, so it expects nothing of it.
+            var expectedRight = logical ? BoundType.Boolean
+                : !assignment && ReferenceEquals(left, BoundType.Never) ? null
+                : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize
+                : arithmetic && left is not null && (NonNumericOperand(left) || (integerOnly && NonIntegerOperand(left))) ? null
+                : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
+                : comparand;
+            right = this.BindExpected(binary.Right, scope, expectedRight, assignment ? binary.Left : null);
             if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
                 right is not null && !Compatible(right, left) && Compatible(right, left.Components[0]) && ReferenceBindingAssignment(binary.Left) is { } valueBinding)
             {
@@ -1291,6 +1369,11 @@ public sealed partial class Binding
             return Complete(binary, null);
         }
 
+        if (arithmetic && !assignment && ReferenceEquals(left, BoundType.Never))
+        {
+            left = right; // The operation is checked at the Type the non-completing operand fits (SPEC 3.1.5, 13.3).
+        }
+
         if (assignment && !this.ValidPropertyWritePath(binary.Left, scope))
         {
             return this.FailWrite(binary, binary.Left);
@@ -1306,7 +1389,11 @@ public sealed partial class Binding
         if (shift)
         {
             // SPEC 13.3: the shifted operand may be a wrapping integer Type; the count is an integer Type, never a wrapping one.
-            return this.IsArithmeticInteger(left, scope) && (this.IsIntegerOperand(right, scope) || ReferenceEquals(right, BoundType.Never)) ? Complete(binary, result) : this.Fail(binary, BindingFailure.TypeMismatch);
+            return NonNumericOperand(left) ? this.FailOperand(binary, left, BindingFailure.NonNumericOperand)
+                : NonIntegerOperand(left) ? this.FailOperand(binary, left, BindingFailure.NonIntegerOperand)
+                : !this.IsArithmeticInteger(left, scope) ? this.Fail(binary, BindingFailure.TypeMismatch)
+                : this.IsIntegerOperand(right, scope) || ReferenceEquals(right, BoundType.Never) ? Complete(binary, result)
+                : this.FailOperand(binary, right, BindingFailure.InvalidShiftCount);
         }
 
         // Shared references compare their immediate referents, independently of the two input Origins.
@@ -1338,6 +1425,21 @@ public sealed partial class Binding
                 : this.FailMismatch(binary, binary.Right, right, BoundType.ISize);
         }
 
+        // SPEC 13.3: arithmetic and bitwise operators take numeric operands, so bool, Unit, char and string have none. A string
+        // operand is judged through its reference layers and before the operands are compared, so that two string references
+        // with distinct Origins are not reported as a mismatch of one Type with itself; an interpolated literal is the one way
+        // to join strings (SPEC 12.3.3). % and the bitwise operators take integers only, so a floating-point left operand is
+        // the problem whatever the other operand is.
+        if (arithmetic && NonNumericOperand(left))
+        {
+            return this.FailOperand(binary, left, BindingFailure.NonNumericOperand);
+        }
+
+        if (integerOnly && NonIntegerOperand(left))
+        {
+            return this.FailOperand(binary, left, BindingFailure.NonIntegerOperand);
+        }
+
         if (comparison)
         {
             // SPEC 13.4, 3.4.1: qualifying pair layers are among the followed layers.
@@ -1361,14 +1463,16 @@ public sealed partial class Binding
 
             left = ComparisonReferent(left);
             right = ComparisonReferent(right);
-            if (ReferenceEquals(left, BoundType.Never))
-            {
-                // The other operand still supplies and must prove the user comparison capability.
-                left = right;
-            }
         }
 
-        if (!Compatible(right, left))
+        if (comparison && ReferenceEquals(left, BoundType.Never))
+        {
+            // The other operand still supplies and must prove the user comparison capability.
+            left = right;
+        }
+
+        // SPEC 15.6.1: an assignment's Origin part is judged under the premises in scope, such as `origin other outlives anchor`.
+        if (comparison ? !Compatible(right, left) : !this.FitsTypeAt(right, left, binary))
         {
             if (comparison && this.CommonOriginType(left, right) is { } common)
             {
@@ -1419,19 +1523,11 @@ public sealed partial class Binding
                 return this.Fail(binary, BindingFailure.Unsupported, true);
             }
 
-            // % and bitwise operators accept integers only, including their compound forms (SPEC 13.3).
-            return operation is KotoKind.Percent or KotoKind.Ampersand or KotoKind.Caret or KotoKind.Bar && !left.HasIntegerArithmetic
-                ? this.Fail(binary, BindingFailure.TypeMismatch)
-                : Complete(binary, result);
-        }
-
-        // string + string concatenates; there is no other built-in string arithmetic (SPEC 13.3).
-        if (operation == KotoKind.Plus && ReferenceEquals(left, BoundType.String))
-        {
             return Complete(binary, result);
         }
 
-        return primitive ? this.Fail(binary, BindingFailure.TypeMismatch) : this.Fail(binary, BindingFailure.Unsupported, true);
+        // Every primitive with an arithmetic operator is numeric and handled above; arithmetic on other Types remains deferred.
+        return this.Fail(binary, BindingFailure.Unsupported, true);
     }
 
     private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)

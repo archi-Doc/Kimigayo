@@ -2,6 +2,7 @@
 
 using BenchmarkDotNet.Attributes;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 
 namespace Benchmark;
@@ -13,88 +14,125 @@ public class ParseBenchmark
 {
     private readonly Compilation compilation;
     private readonly string sourceText = $"""
-            alias Kimi.Crypto
-            alias Kimi.LowLevelInterface
+            alias Playground.A
 
             // Single-line comment
             /* Multi-line
                comment */
 
-            rootgroup Playground.A
+            public rootgroup Playground.A
+                public struct StructA
+                    public var value: i32 = 0
 
-            // Type Semantics = s/T
-            // owner, borrow, stack, ownerref, borrowref, rc, arc, unsafe,
-            public struct Array<s/T>
-                Self is all
-                s is owning
-                T is Comparable
+                #if windows
+                /// Kernel32 helper.
+                public group Kernel32
+                    public let count: i32 = 1 + 2 + 3 + 4 + 5
 
-                var count: isize
-                var capacity: isize
-                var buffer: ptr
+                    #LibraryImport("kernel32", "GetStdHandle")
+                    public func getStdHandle(nStdHandle: u32) -> raw/()
 
-            var array = Array<owner/StructA>.new()
-            array[1] = StructA.new()
-            var x = array[1] // borrow/StructA
-            var last = array[^1] // Last element
-            var middle = array[1..^1] // Excludes both element 0 and the last element
-            var y = array.remove(at: 1) // owner/StructA
-            func Set(index: isize, obj: s/T) -> () => ()
-            func Get(index: isize) -> s/T
-                return
+                public group Helper
+                    public let id: i32 = 123
 
-            var items: Array<Int> = [1, 2, 3]
-            var items2 = [1, 2, 3, ]
-            var map: Map<String, Int> = ["A": 1, "B": 2]
-            var array: Array<owner/T> = new()
+                    public func set<T>(array: uniq/Array<T>, index: isize, obj: T)
+                        array[index] = obj@move
 
-            #Description("Kernel32 helper")
-            public group Kernel32 // shared (no instance)
-                public let libraryName: string = "Kernel32.dll"
-                public let count = 1 + 2 + 3 + 4 + 5 // readonly
-                #LibraryImport(LibraryName) public func GetStdHandle(nStdHandle: u32) -> ptr
+                    public func get<T>(array: ref/Array<T>, index: isize) -> ref/T during array
+                        return array[index]
 
-            public group Helper // namespace - alias
-                public let Id: i32 = 123
-                public func Method1() -> int32 // use PackageName, Helper
-                    return 1
+                    public func method1() -> i32 => 1
 
-                func Method2() -> ()
-                    #if(os=="windows")
-                    var i = if (x == true) => 1 else => 0
-                    var i2 = if (x == true)
-                        1
-                    else
-                        yield 3
+                    public func method2(x: bool)
+                        #if windows
+                            let i = if x => 1 else => 0
+                            let i2 = if x
+                                yield 1
+                            else
+                                yield 3
 
-                    var j = match x
-                        true => 1
-                        false => 0
-                    var k = match x
-                        true => 1
-                        false
-                            yield 0
-                    return
+                            let j = match x
+                                true => 1
+                                false => 0
+                            let k = match x
+                                true => 1
+                                false
+                                    yield 0
+                        return
+
+            var array: Array<StructA> = [StructA.init(), StructA.init(), StructA.init()]
+            array[1] = StructA.init()
+
+            do
+                let x: ref/StructA = array[1]
+                let last: ref/StructA = array[^1]
+                let middle: Slice<StructA> = array[1..^1]
+
+            let y: StructA = array.remove(1)
+
+            let items: Array<i32> = [1, 2, 3]
+            let items2 = [1, 2, 3,]
+            let map: Dictionary<string, i32> = ["A": 1, "B": 2]
+            var emptyArray: Array<StructA> = []
+
+            Helper.set(array@uniq, 0, StructA.init())
+            let first: ref/StructA = Helper.get(array, 0)
+            Helper.method2(true)
             """;
 
     public ParseBenchmark()
     {
-        this.compilation = Compilation.CreateForTest(true);
+        this.compilation = Compilation.CreateForTest();
         if (!this.compilation.Prepare("x86_64-pc-windows-msvc"))
         {
             throw new InvalidOperationException("Benchmark environment must be prepared.");
         }
     }
 
+    /// <summary>Rejects invalid input and checks repeated parsing before collecting measurements.</summary>
+    [GlobalSetup]
+    public void Setup()
+    {
+        for (var i = 0; i < 128; i++)
+        {
+            this.Test1();
+        }
+
+        this.Validate();
+    }
+
+    /// <summary>Checks that parsing succeeded and no per-invocation source or syntax remains retained.</summary>
+    [GlobalCleanup]
+    public void Validate()
+    {
+        var kotonoha = this.compilation.Kotonoha;
+        if (this.compilation.Diagnostics.HasErrors || kotonoha.SourceDocuments.Count != 0 ||
+            kotonoha.GeneratedFunction is not null || kotonoha.RootKoto.Members.Count != 0 || kotonoha.RootKoto.NestedContainers.Count != 0)
+        {
+            throw new InvalidOperationException("Parsing must succeed without retaining source snapshots or syntax between invocations.");
+        }
+    }
+
     [Benchmark]
     public Koto Test1()
-    {// 7.8 us
+    {
         var kotonoha = this.compilation.Kotonoha;
-        var codeContext = kotonoha.CreateCodeContext();
-        codeContext.Parse(kotonoha.RootKoto, this.sourceText);
-
-        kotonoha.RootKoto.Clear();
-
-        return kotonoha.RootKoto;
+        var source = new SourceDocument("ParseBenchmark.kimi", this.sourceText);
+        var codeContext = new CodeContext(kotonoha, sourceDocument: source);
+        var tokenizer = new Tokenizer(codeContext.DiagnosticCollection, source);
+        try
+        {
+            // Measure lexing and parsing, without adding each invocation to the module's serialization history.
+            this.compilation.BeginSourceParsing();
+            tokenizer.ReadAll();
+            var reader = new TokenReader(codeContext, ref tokenizer);
+            kotonoha.RootKoto.Parse(ref reader);
+            return kotonoha.RootKoto;
+        }
+        finally
+        {
+            kotonoha.RootKoto.Clear();
+            tokenizer.Dispose();
+        }
     }
 }

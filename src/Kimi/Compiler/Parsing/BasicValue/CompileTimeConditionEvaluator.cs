@@ -34,7 +34,22 @@ internal static class CompileTimeConditionEvaluator
     private static bool TryEvaluateValue(Compilation compilation, Koto node, out BasicValue value)
     {
         value = default;
-        if (node.AttributeChain is not null)
+        if (node is not ErrorKoto && node.CodeContext.RecoveryCause(node) is not null)
+        {
+            // The parser's guess of a rejected form: its parts are checked on their own, and its value rests on the syntax Error
+            // (DIAGNOSTICS.md §4.3).
+            foreach (var part in node.ChildNodes)
+            {
+                if (part is not AttributeKoto)
+                {
+                    _ = TryEvaluateValue(compilation, part, out _);
+                }
+            }
+
+            return false;
+        }
+
+        if (Parser.HasWrittenAttribute(node.AttributeChain))
         {
             return Invalid(node);
         }

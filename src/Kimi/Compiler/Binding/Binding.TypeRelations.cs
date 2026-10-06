@@ -18,7 +18,17 @@ public sealed partial class Binding
     /// <returns>Whether the implemented rules prove the relation.</returns>
     public static bool FitsType(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null);
 
+    // SPEC 15.6.1: the structural part of a fit, with all Origin bindings treated as equal; only its failure is a Type mismatch. The
+    // Origin part of a Function Type, a comparison of whole contracts, is still judged here (SPEC 10.7).
+    internal static bool FitsStructurally(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null, structural: true);
+
+    // SPEC 10.4 step 2, 15.6.1: the structural part with every Origin binding treated as equal, inside Function Types too, since Origin
+    // bindings never rank candidates.
+    internal static bool FitsStructuralPart(BoundType actual, BoundType expected) => FitsTypeCore(actual, expected, null, null, structural: true, everywhere: true);
+
     internal bool FitsTypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
+
+    internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use, structural: true);
 
     // Only Origin restriction is inferred here. No Core conversion or common base search is
     // introduced; every invariant position stays identical and both inputs must fit the result.
@@ -30,7 +40,7 @@ public sealed partial class Binding
         }
 
         if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
-            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || left.Components.Count != right.Components.Count ||
+            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || left.Components.Count != right.Components.Count ||
             left.OriginArguments.Count != right.OriginArguments.Count || (left.Origin is null) != (right.Origin is null))
         {
             return null;
@@ -42,7 +52,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < left.Components.Count; i++)
             {
-                var covariant = left.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw) &&
+                var covariant = !IsInvariantLayer(left, this) &&
                     !(left.Kind == BoundTypeKind.Function && i == 0) &&
                     (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
                 if ((covariant ? this.CommonOriginType(left.Components[i], right.Components[i]) : ReferenceEquals(left.Components[i], right.Components[i]) ? left.Components[i] : null) is not { } part)
@@ -63,7 +73,7 @@ public sealed partial class Binding
                 origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
             }
 
-            var result = this.InternType(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression);
+            var result = this.InternType(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext);
             return FitsType(left, result) && FitsType(right, result) ? result : null;
         }
         finally
@@ -73,7 +83,17 @@ public sealed partial class Binding
         }
     }
 
-    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool renameInput = false)
+    // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
+    // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
+    // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
+    // layer whose binder admits one of them (InvariantAdmitted), since a relation between pair layers must hold for every admitted
+    // Semantics. A comparison without a Binding sees only the concrete layers.
+    private static bool IsInvariantLayer(BoundType type, Binding? binding)
+        => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type));
+
+    // Callable comparison whose per-call Origins the parts are compared under; `structural` treats Origin bindings as equal outside
+    // Function Types, and `everywhere` inside them too.
+    private static bool FitsTypeCore(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant = false, bool skipOrigin = false, CallableInstance instance = default, Koto? own = null, bool structural = false, bool everywhere = false)
     {
         if (ReferenceEquals(actual, expected) || ReferenceEquals(actual, BoundType.Never))
         {
@@ -85,14 +105,13 @@ public sealed partial class Binding
             return false;
         }
 
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || !ReferenceEquals(actual.ClosureContext, expected.ClosureContext) || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return false;
         }
 
-        if (!(renameInput && actual.Origin?.Kind == OriginKind.Input && expected.Origin?.Kind == OriginKind.Input) &&
-            !ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
-            !OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))
+        if (!skipOrigin && !ReferenceEquals(actual.Origin, expected.Origin) && (actual.Origin is null || expected.Origin is null ||
+            (!structural && (!OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))))
         {
             return false;
         }
@@ -101,7 +120,7 @@ public sealed partial class Binding
         {
             var a = actual.OriginArguments[i];
             var b = expected.OriginArguments[i];
-            if (ReferenceEquals(a, b))
+            if (ReferenceEquals(a, b) || structural)
             {
                 continue;
             }
@@ -114,6 +133,11 @@ public sealed partial class Binding
             }
         }
 
+        if (actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2)
+        {
+            return FunctionFits(actual, expected, binding, use, invariant, new(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected)), everywhere);
+        }
+
         for (var i = 0; i < actual.Components.Count; i++)
         {
             var a = actual.Components[i];
@@ -122,7 +146,7 @@ public sealed partial class Binding
             {
                 var variance = schema.GenericSlots[i].OriginVariance;
                 if (invariant || variance is OriginVariance.Invariant or OriginVariance.Unused ?
-                    !FitsTypeCore(a, b, binding, use, true) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use) : !FitsTypeCore(b, a, binding, use))
+                    !FitsTypeCore(a, b, binding, use, true, instance: instance, structural: structural, everywhere: everywhere) : variance == OriginVariance.Covariant ? !FitsTypeCore(a, b, binding, use, instance: instance, structural: structural, everywhere: everywhere) : !FitsTypeCore(b, a, binding, use, instance: instance, structural: structural, everywhere: everywhere))
                 {
                     return false;
                 }
@@ -130,38 +154,14 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (actual.Kind == BoundTypeKind.Function && i == 0 && PerCallSignature(actual) && PerCallSignature(expected))
+            if (invariant || IsInvariantLayer(actual, binding))
             {
-                // Fresh input binders are local quantifiers of the Function Type, not fixed external Origins.
-                // Rename only the outer input layer; referent Types and their own Origins remain rigid.
-                if (a.Components.Count != b.Components.Count)
-                {
-                    return false;
-                }
-
-                for (var input = 0; input < a.Components.Count; input++)
-                {
-                    if (!FitsTypeCore(b.Components[input], a.Components[input], binding, use, invariant, renameInput: true))
-                    {
-                        return false;
-                    }
-                }
-            }
-            else if (invariant || actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
-            {
-                if (!FitsTypeCore(a, b, binding, use, true))
+                if (!FitsTypeCore(a, b, binding, use, true, instance: instance, structural: structural, everywhere: everywhere))
                 {
                     return false;
                 }
             }
-            else if (actual.Kind == BoundTypeKind.Function && i == 0)
-            {
-                if (!FitsTypeCore(b, a, binding, use))
-                {
-                    return false;
-                }
-            }
-            else if (!FitsTypeCore(a, b, binding, use))
+            else if (!FitsTypeCore(a, b, binding, use, instance: instance, structural: structural, everywhere: everywhere))
             {
                 return false;
             }
@@ -169,12 +169,184 @@ public sealed partial class Binding
 
         return true;
 
-        bool OriginFits(BoundOrigin a, BoundOrigin b) => binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+        bool OriginFits(BoundOrigin a, BoundOrigin b) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
+            binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
     }
 
-    private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use)
+    // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
+    private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
+        => PerCallSignature(signature, own, any) || InputDependentBinder(signature, own, any) is not null;
+
+    // SPEC 10.7, 15.3.7: an implementation fits a required signature when its inputs accept the required inputs and its result fits
+    // the required result. Each input the implementation binds per call is instantiated at the required input in the same position,
+    // per call or fixed, so only its referent is compared; every other input is compared as written, contravariantly.
+    private static bool FunctionFits(BoundType actual, BoundType expected, Binding? binding, Koto? use, bool invariant, CallableInstance instance, bool everywhere = false)
     {
-        if (this.FitsTypeAt(actual, expected, use))
+        var actualInputs = actual.Components[0];
+        var expectedInputs = expected.Components[0];
+        if (!ReferenceEquals(actualInputs, expectedInputs))
+        {
+            if (actualInputs.Kind != expectedInputs.Kind || actualInputs.Components.Count != expectedInputs.Components.Count)
+            {
+                return false;
+            }
+
+            for (var i = 0; i < actualInputs.Components.Count; i++)
+            {
+                var input = actualInputs.Components[i];
+                var required = expectedInputs.Components[i];
+                if (!FitsTypeCore(required, input, binding, use, invariant, skipOrigin: instance.IsQuantifiedInput(input, i), instance: instance, structural: everywhere, everywhere: everywhere))
+                {
+                    return false;
+                }
+            }
+        }
+
+        return FitsTypeCore(actual.Components[1], expected.Components[1], binding, use, invariant, instance: instance, structural: everywhere, everywhere: everywhere);
+    }
+
+    // SPEC 10.7: within one Callable comparison, `a` outlives `b` after the implementation's call-time Origins are instantiated. The
+    // required per-call Origins are rigid: one outlives another only at the same position, and a fixed Origin outlives one only when
+    // it is static, since the call that binds it may come after every point of the enclosing body. A meet outlives an Origin when
+    // each operand does, and an Origin outlives a meet when it outlives one operand.
+    private static bool InstanceOutlives(BoundOrigin a, BoundOrigin b, in CallableInstance instance, Binding? binding, Koto? use, int depth)
+    {
+        if (depth > 8)
+        {
+            return false;
+        }
+
+        a = instance.Instantiate(a);
+        b = instance.Instantiate(b);
+        if (ReferenceEquals(a, b) || a.Kind == OriginKind.Static)
+        {
+            return true;
+        }
+
+        if (a.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < a.Operands.Count; i++)
+            {
+                if (!InstanceOutlives(a.Operands[i], b, instance, binding, use, depth + 1))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        if (b.Kind == OriginKind.Intersection)
+        {
+            for (var i = 0; i < b.Operands.Count; i++)
+            {
+                if (InstanceOutlives(a, b.Operands[i], instance, binding, use, depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        if (instance.IsRequiredSlot(a) || instance.IsRequiredSlot(b))
+        {
+            return false;
+        }
+
+        if (b is { Kind: OriginKind.Inference, Open: true } && instance.IsResultOnlyOrigin(a))
+        {
+            return true;
+        }
+
+        return binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+    }
+
+    // SPEC 10.7, 15.6.1, 23.3.6.5: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
+    // parameter, whose required input must outlive the implementation's, or the result, which must outlive the required one. Both ends
+    // are instantiated, so neither is a call-time Origin of the implementation.
+    private OriginContractFact? ConversionContractFailure(BoundType actual, BoundType expected, Koto? own, Koto at, Koto use)
+    {
+        if (actual.Components.Count != 2 || expected.Components.Count != 2)
+        {
+            return null;
+        }
+
+        var instance = new CallableInstance(actual, own ?? FunctionTypeBinder(actual), expected, FunctionTypeBinder(expected));
+        var inputs = actual.Components[0];
+        var required = expected.Components[0];
+        for (var i = 0; i < inputs.Components.Count && i < required.Components.Count; i++)
+        {
+            var input = inputs.Components[i];
+            var part = instance.IsQuantifiedInput(input, i)
+                ? this.FailedInstancePart(required.Components[i].Components[0], input.Components[0], input.Semantics == SemanticsKind.Uniq, instance, use)
+                : this.FailedInstancePart(required.Components[i], input, false, instance, use);
+            if (part is { } failed)
+            {
+                return new(at, $"the {Ordinal(i + 1)} parameter", failed.Longer, failed.Shorter, failed.Equality);
+            }
+        }
+
+        return this.FailedInstancePart(actual.Components[1], expected.Components[1], false, instance, use) is { } result
+            ? new(at, "the result", result.Longer, result.Shorter, result.Equality) : null;
+
+        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+    }
+
+    // The first Origin position, in the order of FailedOriginRelation, at which `longer` does not fit `shorter` under the instantiation.
+    private (BoundOrigin Longer, BoundOrigin Shorter, bool Equality)? FailedInstancePart(BoundType longer, BoundType shorter, bool invariant, in CallableInstance instance, Koto use, int depth = 0)
+    {
+        if (depth > 64 || longer.Components.Count != shorter.Components.Count || longer.OriginArguments.Count != shorter.OriginArguments.Count)
+        {
+            return null;
+        }
+
+        if (longer.Origin is { } a && shorter.Origin is { } b && !ReferenceEquals(a, b) &&
+            (!InstanceOutlives(a, b, instance, this, use, 0) || (invariant && !InstanceOutlives(b, a, instance, this, use, 0))))
+        {
+            return (instance.Instantiate(a), instance.Instantiate(b), invariant);
+        }
+
+        var exclusive = longer.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || this.InvariantAdmitted(longer);
+        for (var i = 0; i < longer.Components.Count && longer.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
+        {
+            if (this.FailedInstancePart(longer.Components[i], shorter.Components[i], invariant || exclusive, instance, use, depth + 1) is { } target)
+            {
+                return target;
+            }
+        }
+
+        for (var i = 0; i < longer.OriginArguments.Count; i++)
+        {
+            var a2 = longer.OriginArguments[i];
+            var b2 = shorter.OriginArguments[i];
+            var variance = longer.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant;
+            var both = invariant || variance is OriginVariance.Invariant or OriginVariance.Unused;
+            if (!ReferenceEquals(a2, b2) && (both ? !InstanceOutlives(a2, b2, instance, this, use, 0) || !InstanceOutlives(b2, a2, instance, this, use, 0)
+                : variance == OriginVariance.Covariant ? !InstanceOutlives(a2, b2, instance, this, use, 0) : !InstanceOutlives(b2, a2, instance, this, use, 0)))
+            {
+                return (instance.Instantiate(a2), instance.Instantiate(b2), both);
+            }
+        }
+
+        for (var i = 0; i < longer.Components.Count && longer.Kind is not (BoundTypeKind.Semantics or BoundTypeKind.Function); i++)
+        {
+            if (this.FailedInstancePart(longer.Components[i], shorter.Components[i], invariant, instance, use, depth + 1) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 15.6.1: a fit whose structure holds leaves each differing Origin position as an obligation that ownership judges and reports
+    // with facts at the value. `polarity` is the variance of the compared position within the fitted Type (SPEC 15.3.5), composed as
+    // FitsTypeCore composes it: a contravariant position reverses the relation, and an invariant or unused one makes it `==`, also for
+    // every position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
+    private bool CheckTypeUse(BoundType actual, BoundType expected, Koto use, OriginVariance polarity = OriginVariance.Covariant)
+    {
+        if (polarity == OriginVariance.Contravariant ? this.FitsTypeAt(expected, actual, use) : FitsTypeCore(actual, expected, this, use, polarity == OriginVariance.Invariant))
         {
             return true;
         }
@@ -184,6 +356,11 @@ public sealed partial class Binding
             return false;
         }
 
+        if (actual.Kind == BoundTypeKind.Function)
+        {
+            return false; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
+        }
+
         if (!ReferenceEquals(actual.Origin, expected.Origin))
         {
             if (actual.Origin is null || expected.Origin is null)
@@ -191,29 +368,34 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, expected, actual.Origin, expected.Origin));
+            this.AddOriginFit(actual.Origin, expected.Origin, expected, use, polarity);
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
         {
-            if (ReferenceEquals(actual.OriginArguments[i], expected.OriginArguments[i]))
+            var a = actual.OriginArguments[i];
+            var b = expected.OriginArguments[i];
+            if (!ReferenceEquals(a, b))
             {
-                continue;
+                this.AddOriginFit(a, b, expected, use, ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant));
             }
-
-            this.AddObligation(new(BindingObligationKind.TypeFormation, use, BindingDeadline.BodyOrigins, expected, actual.OriginArguments[i], expected.OriginArguments[i]));
         }
 
         for (var i = 0; i < actual.Components.Count; i++)
         {
-            if (actual.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw)
+            if (IsInvariantLayer(actual, this))
             {
                 if (!ReferenceEquals(actual.Components[i], expected.Components[i]))
                 {
                     return false;
                 }
+
+                continue;
             }
-            else if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use))
+
+            var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count
+                ? schema.GenericSlots[i].OriginVariance : OriginVariance.Covariant;
+            if (!this.CheckTypeUse(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position)))
             {
                 return false;
             }
@@ -221,6 +403,13 @@ public sealed partial class Binding
 
         return true;
     }
+
+    // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
+    // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination.
+    private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance)
+        => this.AddObligation(variance == OriginVariance.Contravariant
+            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual)
+            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant));
 
     private BoundType DirectTarget(BoundType whole)
     {
@@ -329,7 +518,17 @@ public sealed partial class Binding
                 return this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, scratch.AsSpan(0, 1), origin: IsBorrow(whole.Semantics) ? type.Origin : null);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, type.Origin, (BoundOrigin[])type.OriginArguments, expression) : type;
+            var origin = type.Origin;
+            if (origin is { Kind: OriginKind.Parameter, Occurrence: GenericParameterKoto declaration } && ReferenceEquals(origin.Binder, binder) &&
+                declaration.BoundSymbol is { } target && ContainerSlot(binder, target) is >= 0 and var pair && pair < arguments.Length && arguments[pair] is { } bound)
+            {
+                // SPEC 8.1.1, 8.1.2: the pair's outer Origin `o` is bound through its Type argument: the outer Origin of a borrow
+                // binding, nothing for a value binding (static, which no exclusive slot accepts); an abstract binding keeps its own `o`.
+                origin = IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static;
+                changed |= !ReferenceEquals(origin, type.Origin);
+            }
+
+            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, (BoundOrigin[])type.OriginArguments, expression, type.ClosureContext) : type;
         }
         finally
         {

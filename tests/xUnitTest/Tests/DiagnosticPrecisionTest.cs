@@ -7,6 +7,8 @@ namespace XunitTest;
 
 public class DiagnosticPrecisionTest
 {
+    private const string Payload = "struct P\n    public var v: i32\n    public init(v: i32) => self.v = v\n";
+
     public static TheoryData<string> MutationNames => [.. DiagnosticCorpus.Mutations.Select(static x => x.Name)];
 
     [Fact]
@@ -32,7 +34,6 @@ public class DiagnosticPrecisionTest
     [Theory]
     [InlineData("struct S\n    public let v: [2 of i32]\n    public init() => self.v = [1, 2]\nfunc set(s: uniq/S)\n    s.v[0] = 5\npublic func main() => ()", "InvalidAssignment_Kd", "s.v[0]")]
     [InlineData("func f(w: Weak<i32>) -> i32 => 0\npublic func main() => ()", "UnsupportedBinding_Kd", "Weak")]
-    [InlineData("public func main()\n    let r = Kimi.Intrinsics.makeRc(1)", "UnsupportedBinding_Kd", "Kimi.Intrinsics.makeRc")]
     [InlineData("public func main()\n    let r = Kimi.Intrinsics.nothing(1)", "UnresolvedBinding_Kd", "Kimi.Intrinsics.nothing")]
     [InlineData("func f(w: Missing<i32>) -> i32 => 0\npublic func main() => ()", "UnresolvedBinding_Kd", "Missing")]
     [InlineData("public func main()\n    let w: Option<Missing> = .None", "UnresolvedBinding_Kd", "Missing")]
@@ -67,6 +68,14 @@ public class DiagnosticPrecisionTest
     [InlineData("public func main()\n    let wrong: i32 = true", "true", "expected i32, found bool")]
     [InlineData("public func main()\n    let sum = 1 + \"a\"", "1", "expected string, found integer literal")]
     [InlineData("public func main()\n    if 1 and true\n        ()", "1", "expected bool, found integer literal")]
+
+    // An untyped literal or an anonymous function at a Type it cannot have names that complete Type, Type arguments included.
+    [InlineData("struct Box<T>\n    public let v: T\n    public init(v: T) => self.v = v@move\npublic func main()\n    let b: Box<i32> = 5", "5", "expected Box<i32>, found integer literal")]
+    [InlineData("public func main()\n    let t: (i32, bool) = 4", "4", "expected (i32, bool), found integer literal")]
+    [InlineData("public func main()\n    let o: Option<i32> = 1", "1", "expected Option<i32>, found integer literal")]
+    [InlineData("public func main()\n    let f: (i32) -> i32 = 9", "9", "expected (i32) -> i32, found integer literal")]
+    [InlineData("public func main()\n    let t: (f64, f64) = 2.5", "2.5", "expected (f64, f64), found floating-point literal")]
+    [InlineData("public func main()\n    let x: i32 = func () => 1", "func () => 1", "expected i32, found an anonymous function")]
     [InlineData("public func main()\n    let counter = 1\n    counter += 1", "counter", "counter cannot be written")]
     public void TargetChecksShowTheirLocationAndFacts(string source, string text, string label)
     {
@@ -103,8 +112,35 @@ public class DiagnosticPrecisionTest
     [InlineData("func f(a: i32) -> i32\n    let s: string\n    Console.writeLine(s)\n    if a == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UninitializedPlace_Kd")]
     [InlineData("public func main()\n    let g = func (a: i32) -> i32\n        if a == 1 => return 1\n    _ = g", "FunctionFallthrough_Kd")]
     [InlineData("struct S\n    public var v: i32 = 0\n    public computed w: i32\n        get(self: ref/Self) -> i32\n            if self.v == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    // A rejected acquisition states its overlap once; a later use of the rejected Loan meets the same holder again, while an
+    // independent access to the root during that holder's Loan is still its own problem.
+    [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
+    [InlineData("public func main()\n    var value = 1\n    let p = value@uniq\n    let inner = p@follow@ref\n    let other = p@follow@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
+    [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    value = 9\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd,ComparisonLoanConflict_Kd")]
+    [InlineData("public func main()\n    var a = 1\n    let p = (a@uniq, 2)\n    let q = (a@uniq, 3)\n    p.0@follow = 5\n    q.0@follow = 6", "ComparisonLoanConflict_Kd")]
+    [InlineData("public func main()\n    var a = 1\n    var b = 1\n    let p = (a@uniq, 2)\n    let q = (a@uniq, 3)\n    p.0@follow = 5\n    let r = b@ref\n    b = 2\n    require r == 1 else => $abort(\"r\")\n    q.0@follow = 6", "ComparisonLoanConflict_Kd,ComparisonLoanConflict_Kd")]
+    [InlineData("func pack<T>(x: T, n: i32) -> (T, i32) => (x@move, n)\npublic func main()\n    var a = 1\n    let p = pack(a@uniq, 2)\n    let q = pack(a@uniq, 3)\n    p.0@follow = 5\n    q.0@follow = 6", "CallActivationConflict_Kd")]
+    [InlineData("func pack<T>(x: T, n: i32) -> (T, i32) => (x@move, n)\npublic func main()\n    var a = 1\n    var b = 1\n    let p = pack(a@uniq, 2)\n    let q = pack(a@uniq, 3)\n    p.0@follow = 5\n    let r = b@ref\n    b = 2\n    require r == 1 else => $abort(\"r\")\n    q.0@follow = 6", "CallActivationConflict_Kd,ComparisonLoanConflict_Kd")]
+    // A result or binding whose expression already reported why it has no value is not reported again as uninitialized, at the
+    // signature or at the binding's later uses. SPEC 3.5, 13.5.5.1: a bare read needs Copy, and P has not opted in;
+    // a selected payload provides no Take. Its one acquisition error must not become uninitialized-result cascades.
+    [InlineData(Payload + "func read(o: objref/P) -> P => o@follow\npublic func main() => ()", "TransferRequired_Kd")]
+    [InlineData(Payload + "func read(o: objref/P, c: bool) -> P\n    if c => return o@follow\n    return P.init(1)\npublic func main() => ()", "TransferRequired_Kd")]
+    [InlineData(Payload + "func read(o: objref/P) -> i32\n    let p = o@follow\n    return p.v\npublic func main() => ()", "TransferRequired_Kd")]
     public void EachProblemPublishesOneErrorAcrossPhases(string source, string codes)
         => Assert.Equal(codes.Split(',', StringSplitOptions.RemoveEmptyEntries), PublishedErrors(MinimalEmissionTest.Analyze(source)).Select(static x => x.Code).Order(StringComparer.Ordinal));
+
+    [Theory]
+    [InlineData("Return", "func read(o: objref/P) -> P => o@follow", "read(owner@objref).v")]
+    [InlineData("Branch", "func read(o: objref/P, c: bool) -> P\n    if c => return o@follow\n    return P.init(1)", "read(owner@objref, true).v")]
+    [InlineData("Local", "func read(o: objref/P) -> i32\n    let p = o@follow\n    return p.v", "read(owner@objref)")]
+    public void ExplicitCopyPayloadsNeedNoAcquisitionDiagnostic(string name, string function, string result)
+    {
+        var source = Payload.Replace("struct P\n", "struct P\n    Self is Copy\n", StringComparison.Ordinal) + function +
+            "\nlet owner = Kimi.Intrinsics.makeObj(P.init(7))\nrequire " + result + " == 7 else => $abort(\"copy\")";
+        Assert.Empty(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        ScalarEmissionTest.EmitFixture("ObjectPayloadPrecision" + name, source, string.Empty);
+    }
 
     // DIAGNOSTICS.md §9.2: the published Errors of a mutation are exactly its expected codes. Every intended problem is
     // reported, including independent ones, nothing depends on another, and no fallback or unexplained derived fact remains.
@@ -188,6 +224,48 @@ public class DiagnosticPrecisionTest
         Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal(text, error.Text);
         Assert.Equal(label, error.Label);
+    }
+
+    // SPEC 23.3.6.4: a repeated loop binding is one problem at the later name; the loop rests on it.
+    [Theory]
+    [InlineData("let pairs: [2 of (i32, i32)] = [(1, 2), (3, 4)]\nfor (a, a) in pairs => ()")]
+    [InlineData("var entries = [1: 2]\nfor (a, a) in entries => ()")]
+    public void ARepeatedLoopBindingIsReportedOnceAtTheLaterName(string source)
+    {
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        Assert.Equal(nameof(Kimi.DiagnosticCode.DuplicateBinding_Kd), error.Code);
+        Assert.Equal(new Kimi.Diagnostics.SourceSpan(source.IndexOf("a, a)", StringComparison.Ordinal) + 3, 1), error.Span);
+    }
+
+    // SPEC 23.3.6.4: a fill literal whose element or length failed rests on that part instead of adding a formation error.
+    [Theory]
+    [InlineData("let a = [3 of missingValue]", "missingValue")]
+    [InlineData("let a = [missingLength of 0]", "missingLength")]
+    public void AFillLiteralRestsOnItsFailedPart(string source, string text)
+    {
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
+        Assert.Equal(nameof(Kimi.DiagnosticCode.UnresolvedBinding_Kd), error.Code);
+        Assert.Equal(text, error.Text);
+    }
+
+    // A closure Type has no written name: a mismatch shows the signature of its anonymous function, never the captured
+    // environment as Type arguments.
+    [Fact]
+    public void AClosureTypeIsShownByItsSignature()
+    {
+        var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze("let offset: i32 = 1\nlet f = func [offset] (value: i32) -> i32 => value + offset\nlet n: i32 = f")));
+        Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
+        Assert.Equal("expected i32, found closure (i32) -> i32", error.Label);
+    }
+
+    // SPEC 23.3.6.2: a startup main that breaks the startup rules is located at its signature, not over its body.
+    [Fact]
+    public void AnInvalidStartupMainIsLocatedAtItsSignature()
+    {
+        const string Source = "public func main() -> i32\n    return 0\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.InvalidStartupMain_Kd), record.Code);
+        Assert.Equal(new Kimi.Diagnostics.SourceSpan(Source.IndexOf("main()", StringComparison.Ordinal), "main() -> i32".Length), record.Span);
     }
 
     // Publishes every front-end phase as a check does and returns its Errors.

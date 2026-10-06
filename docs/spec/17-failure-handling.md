@@ -141,7 +141,7 @@ let pending: Result<i64, ParseError> = parse()
 let other = try pending@move // The stored Non-Copy Result is transferred.
 ```
 
-`try .None` and `try .Err(error)` lack an enum expectation and fail. An anonymous function's implicit failure returns are expectation-dependent result sources like written Case returns; they cannot invent a return Type. Obtain it from an annotation, a fixed expected signature or other independently typed sources, without source-order dependence or instantiation-time body reinterpretation.
+`try .None` and `try .Err(error)` lack an enum expectation and fail. An anonymous function's implicit failure returns are expectation-dependent result sources like written Case returns; they cannot invent a return Type. Obtain it from an annotation, a fixed expected call signature (§10.5) or other independently typed sources, without source-order dependence or instantiation-time body reinterpretation.
 
 ```kimi
 // getOpt() -> Option<i32>; f has no expected signature.
@@ -163,7 +163,7 @@ func run() -> Result<(), Error>
     return .Ok(())
 ```
 
-For mismatched normal or failure results, diagnose the path and Types. Suggest a suitable return annotation where missing, explicit success wrapping where needed, or removing try when its operand already has the complete return Type and is itself the normal result. These are alternatives, not automatic fixes. Validate changes to inference, calls, ownership and cleanup. For `try X.m`, explain grouping and suggest `(try X).m` only as a checked candidate; do not search unlimited alternate interpretations.
+For mismatched normal or failure results, diagnose the path and Types. Suggest a suitable return annotation where missing, explicit success wrapping where needed, or removing try when its operand already has the complete return Type and is itself the normal result. These are alternatives stated as Advice, not repair candidates (§23.3.6.9). Validate changes to inference, calls, ownership and cleanup. For `try X.m`, explain grouping and suggest `(try X).m` only as a checked candidate; do not search unlimited alternate interpretations.
 
 There is no user-defined try support, try block, Option/Result interconversion, special implicit error conversion, automatic borrowing from borrowed enums, success wrapping, None-from-null or new Option layout guarantee. A try-prefixed API name is separate: it promises its documented result, not propagation or interception of argument Abort.
 
@@ -175,7 +175,7 @@ There is no user-defined try support, try block, Option/Result interconversion, 
 
 Abort is a termination mechanism, not a classification of causes. It may represent a programming defect, such as an invariant violation or an unexpected state, or an unrecoverable external condition, such as allocation failure or an unavailable required runtime resource. Classifying bugs belongs to diagnostics and introduces no different control flow.
 
-Checked runtime operations Abort on their defined failures: an arithmetic result that an integer Type cannot represent (a wrapping integer Type wraps instead, §13.3); integer division or remainder by zero; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid numeric conversions or shift counts; duplicate Dictionary keys; and missing indexed keys. Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754, and the wrapping and bit conversions `@wrap` and `@bits` never fail. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
+Checked runtime operations Abort on their defined failures: an arithmetic result that an integer Type cannot represent (a wrapping integer Type wraps instead, §13.3); integer division or remainder by zero; failed resolution of a position or range, including invalid indices; the start of iteration over a reversed range; invalid numeric conversions or shift counts; duplicate Dictionary keys; missing indexed keys; and static storage access in a state that forbids it (§22.2.3). Each operation defines its invalid inputs; floating-point division by zero follows IEEE 754, and the wrapping and bit conversions `@wrap` and `@bits` never fail. Failed Type tests and checked object casts instead follow their Boolean, Option or Result contracts.
 
 The same cause can be recoverable under a different API contract:
 
@@ -290,7 +290,7 @@ if ready => 1                     // Warn on the discarded body value.
 func cleanup() => handle.close()  // Do not assume a call is effect-free.
 ```
 
-The explicit no-op Unit value `()` receives no warning. The diagnostic should suggest a return annotation or a use of the value and never deletes the expression automatically. Diagnostics for `defer` placement and `while true` follow §16.1.3 and §14.9.2.
+The explicit no-op Unit value `()` receives no warning. The diagnostic should suggest a return annotation or a use of the value; it carries no repair candidate and never deletes the expression automatically. Diagnostics for `defer` placement and `while true` follow §16.1.3 and §14.9.2.
 
 ### 17.4.3. Try success and intentional discard
 
@@ -308,7 +308,7 @@ Use existing Value/Discard Context propagation, including parentheses and branch
 | try save() | Propagate error, continue with Unit | None |
 | _ = try save() | Explicit Unit discard | None; discard marker optional |
 
-A try-success warning explains that the extracted value is unused, not that failure is unhandled. Suggest using it or writing `_ = try ...`. For Result discard, suggest applicable options in order: propagate and use success (or explicitly discard it), handle with match, then explicitly ignore the entire Result. Do not suggest bare try as warning-free for a non-Unit payload. Fixes target the actual discard site, preserve Body form/Context/ownership, and are not applied automatically.
+A try-success warning explains that the extracted value is unused, not that failure is unhandled. Suggest using it or writing `_ = try ...`. For Result discard, suggest applicable options in order: propagate and use success (or explicitly discard it), handle with match, then explicitly ignore the entire Result. Do not suggest bare try as warning-free for a non-Unit payload. The propagation (`_ = try ...`) and the explicit discard (`_ = ...`) are repair candidates at the discard site when the expression is a direct item of an indented body (§23.3.6.9): propagation only when the failure return target fits (§17.2.4), and in that order; `_ =` puts the expression in Value Context (§14.2.4) and changes no scope. Other fixes are Advice, and nothing is applied automatically.
 
 ### 17.4.4. Positions and ranges that always fail
 

@@ -83,9 +83,11 @@ public class CopyPropertyEmissionTest
     public void ComputedSetterHasItsOwnInputType()
         => ScalarEmissionTest.EmitFixture("CopyPropertySetterType", "struct S\n    var raw: i32 = 0\n    public computed item: i32\n        get() -> i32 => self.raw\n        set(value: bool) -> ()\n            if value => self.raw = 9\nvar s = S.init()\ns.item = true\nrequire s.item == 9 else => $abort(\"input\")", string.Empty);
 
+    // SPEC 11.2: a getter reads through ref/Self; the operation that advances the state is a function whose receiver is acquired
+    // exclusively by the call form (SPEC 7.3), and a shared getter beside it reads the same state.
     [Fact]
-    public void ComputedExclusiveGetterBorrowsWritableReceiver()
-        => ScalarEmissionTest.EmitFixture("CopyPropertyExclusiveGet", "struct S\n    var hits: i32 = 0\n    public computed next: i32\n        get(self: uniq/Self) -> i32\n            self.hits += 1\n            return self.hits\nvar s = S.init()\nrequire s.next == 1 and s.next == 2 else => $abort(\"hits\")", string.Empty);
+    public void ExclusiveReadingIsAFunctionBesideASharedGetter()
+        => ScalarEmissionTest.EmitFixture("CopyPropertyNextReading", "struct S\n    var hits: i32 = 0\n    public computed hitCount: i32\n        get() -> i32 => self.hits\n    public func nextReading(self: uniq/Self) -> i32\n        self.hits += 1\n        return self.hits\nvar s = S.init()\nrequire s.nextReading() == 1 and s.nextReading() == 2 and s.hitCount == 2 else => $abort(\"hits\")\nlet fixed = S.init()\nrequire fixed.hitCount == 0 else => $abort(\"fixed\")", string.Empty);
 
     [Fact]
     public void SharedBorrowMaterializesGetterResultForTheCall()

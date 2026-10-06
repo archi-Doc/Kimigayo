@@ -36,9 +36,4 @@ public sealed class OriginApplicationKoto : ApplicationKoto
         this.Type.WriteTo(ref builder);
         this.WriteArgumentsTo(ref builder, '(', ')');
     }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        return base.ReplaceChildCore(oldKoto, newKoto);
-    }
 }

@@ -20,6 +20,20 @@ public sealed class CheckCommand : ISimpleCommand<KimiOptions>
 
     public async Task Execute(KimiOptions options, string[] args, CancellationToken cancellationToken)
     {
+        if (string.Equals(options.Format, "json", StringComparison.OrdinalIgnoreCase))
+        {
+            // SPEC 23.3.6.8: one check unit through the shared check entry, written as one JSON document.
+            Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, () => Task.FromResult(CheckJsonOutput.Run(options, args, cancellationToken)));
+            return;
+        }
+
+        if (!string.Equals(options.Format, "text", StringComparison.OrdinalIgnoreCase))
+        {
+            this.kimigayo.WriteLine(Diagnostics.DiagnosticSeverity.Error, $"Unknown --Format '{options.Format}'; the forms are text and json.");
+            Environment.ExitCode = 1;
+            return;
+        }
+
         Environment.ExitCode = await CommandExecution.Execute(this.kimigayo, async () =>
         {
             this.solution.LoadForBuild(this.logger, options, args);

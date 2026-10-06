@@ -6,19 +6,18 @@ namespace XunitTest;
 
 public class AssociatedCollectionFormationTest
 {
+    // SPEC 15.3.7: the published element domain of the result S.Item(a, b) is a premise of f and an obligation of its calls
+    // (AssociatedFormationTest.ACallProvesThePublishedFormationCondition), so f is valid with or without a clause.
     [Theory]
-    [InlineData("origin a outlives b", true)]
-    [InlineData("", false)]
-    [InlineData("origin b outlives a", false)]
-    public void SliceFamilyPublishesElementFormationDomain(string relation, bool valid)
+    [InlineData("origin a outlives b")]
+    [InlineData("")]
+    [InlineData("origin b outlives a")]
+    public void SliceFamilyPublishesElementFormationDomain(string relation)
     {
         var source = "contract C\n    associate Item(a, b) is Slice<ref/i32 during a> during b\nstruct S\n    Self is C\nfunc f(x: ref/i32 during a, y: ref/i32 during b) -> S.Item(a, b)\n    " + relation + "\n    $abort(\"unused\")";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        if (valid)
-        {
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        }
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

@@ -59,7 +59,7 @@ internal static partial class LlvmModuleWriter
         WriteNumber(output, operand.Value);
     }
 
-    private static void WriteScalar(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
+    private static void WriteScalar(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
     {
         var id = instruction.Operation;
         var type = instruction.ScalarType;
@@ -103,8 +103,15 @@ internal static partial class LlvmModuleWriter
                 }
                 else
                 {
-                    output.Write(instruction.Opcode == EmissionOpcode.LoadElement ? ", ptr %element" : ", ptr %p");
-                    WriteNumber(output, instruction.Place);
+                    output.Write(", ptr ");
+                    if (instruction.Opcode == EmissionOpcode.LoadElement)
+                    {
+                        Name(output, "%element", instruction.Place);
+                    }
+                    else
+                    {
+                        WriteSlot(output, function, instruction.Place);
+                    }
                 }
 
                 WriteAlignment(output, instruction.Representation.Layout.Alignment);
@@ -132,7 +139,7 @@ internal static partial class LlvmModuleWriter
                     output.Write("  store ");
                     output.Write(type);
                     output.Write(' ');
-                    WriteOperand(output, operands[0]);
+                    WriteStorageAddress(output, function, operands[0]);
                 }
 
                 if (instruction.Opcode == EmissionOpcode.StorePointer)
@@ -142,7 +149,15 @@ internal static partial class LlvmModuleWriter
                 }
                 else
                 {
-                    Name(output, instruction.Opcode == EmissionOpcode.StoreElement ? ", ptr %element" : ", ptr %p", instruction.Place);
+                    output.Write(", ptr ");
+                    if (instruction.Opcode == EmissionOpcode.StoreElement)
+                    {
+                        Name(output, "%element", instruction.Place);
+                    }
+                    else
+                    {
+                        WriteSlot(output, function, instruction.Place);
+                    }
                 }
 
                 WriteAlignment(output, instruction.Representation!.Layout.Alignment);
@@ -449,7 +464,7 @@ internal static partial class LlvmModuleWriter
             ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
             ArithmeticCheckKind.FloatingConversion => WindowsLowering.FloatingConversionReason,
             ArithmeticCheckKind.Bounds => WindowsLowering.IndexBoundsReason,
-            ArithmeticCheckKind.Argument => WindowsLowering.ArgumentReason,
+            ArithmeticCheckKind.Argument => WindowsLowering.ArgumentRangeReason,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };
         var reason = new EmissionOperand(EmissionOperandKind.Integer, reasonId);

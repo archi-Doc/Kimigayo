@@ -20,14 +20,14 @@ public sealed partial class Binding
         return inference;
     }
 
-    private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false)
+    private void CollectOriginInference(BoundType pattern, BoundType actual, OriginInference inference, int polarity = 1, bool result = false, Koto? known = null)
     {
         if (!pattern.CarriesOrigin || !actual.CarriesOrigin)
         {
             return;
         }
 
-        if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && PerCallSignature(pattern) && PerCallSignature(actual))
+        if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && PerCallShape(pattern, null, any: true) && PerCallShape(actual, null, any: true))
         {
             // These Origins are quantified by the nested Function Types, not by this call's binder.
             // Their positional correspondence is checked by the ordinary Type relation.
@@ -47,20 +47,25 @@ public sealed partial class Binding
 
         for (var i = 0; i < Math.Min(pattern.Components.Count, actual.Components.Count); i++)
         {
-            var sign = pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw ? 0 :
+            var sign = IsInvariantLayer(pattern, this) ? 0 :
                 pattern.Kind == BoundTypeKind.Function && i == 0 ? -polarity : polarity;
             if (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema)
             {
                 sign = Compose(polarity, schema.GenericSlots[i].OriginVariance);
             }
 
-            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result);
+            this.CollectOriginInference(pattern.Components[i], actual.Components[i], inference, sign, result, known);
         }
 
         static int Compose(int sign, OriginVariance variance) => variance == OriginVariance.Covariant ? sign : variance == OriginVariance.Contravariant ? -sign : 0;
 
         void Add(BoundOrigin parameter, BoundOrigin value, int sign)
         {
+            if (known is not null && QuantifiedBy(value, known))
+            {
+                return; // SPEC 10.8: a known call signature's own Origin is no bound for the callee's Origins.
+            }
+
             inference.Discover(parameter, sign == 0 ? 3 : sign > 0 ? 1 : 2);
             if ((sign >= 0) != result || sign == 0)
             {
@@ -74,7 +79,9 @@ public sealed partial class Binding
         }
     }
 
-    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null)
+    // With `select`, candidate applicability: the bounds are not judged, since the Origin relations of a fit never change a selection
+    // (SPEC 15.6.1, 10.4); the selected call judges them after selection.
+    private bool SolveOriginInference(OriginInference inference, BoundOrigin[] origins, BoundOrigin[] inputs, Koto use, BoundType? declaringType = null, bool select = false)
     {
         var binder = inference.Binder;
         if (this.originDeclarations.TryGetValue(binder, out var declaration))
@@ -151,6 +158,22 @@ public sealed partial class Binding
             }
         }
 
+        if (select)
+        {
+            // SPEC 15.6.1: a selection judges no Origin relation. A variable without a principal solution takes a representative,
+            // so that the selected call's relations are judged at their own sources: an invariant variable its first equality
+            // partner, any other its first upper bound, else its first lower bound. A variable with no bound stays open.
+            foreach (var variable in inference.Variables)
+            {
+                if (Get(variable.Origin) is null && this.RepresentativeOrigin(inference, variable.Origin, variable.Polarity) is { } representative)
+                {
+                    Set(variable.Origin, representative);
+                }
+            }
+
+            return true;
+        }
+
         if (!converged)
         {
             return false;
@@ -216,6 +239,38 @@ public sealed partial class Binding
 
             return meet;
         }
+    }
+
+    // The representative of a variable without a principal solution: for an invariant one the first Origin that bounds it from both
+    // sides (an equality), for a contravariant one its first lower bound, otherwise its first upper bound, else its first lower bound.
+    // Only bounds whose other end is a fixed value count.
+    private BoundOrigin? RepresentativeOrigin(OriginInference inference, BoundOrigin variable, int polarity)
+    {
+        BoundOrigin? upper = null;
+        BoundOrigin? lower = null;
+        foreach (var bound in inference.Bounds)
+        {
+            if (bound.ShorterVariable && !bound.LongerVariable && ReferenceEquals(bound.Shorter, variable))
+            {
+                if (polarity == 3 && inference.Bounds.Contains((variable, bound.Longer, true, false)))
+                {
+                    return bound.Longer;
+                }
+
+                upper ??= bound.Longer;
+            }
+            else if (bound.LongerVariable && !bound.ShorterVariable && ReferenceEquals(bound.Longer, variable))
+            {
+                if (polarity == 3 && inference.Bounds.Contains((bound.Shorter, variable, false, true)))
+                {
+                    return bound.Shorter;
+                }
+
+                lower ??= bound.Shorter;
+            }
+        }
+
+        return polarity == 2 ? lower ?? upper : upper ?? lower;
     }
 
     private sealed class OriginInference(Koto binder)

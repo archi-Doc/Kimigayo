@@ -248,6 +248,9 @@ internal sealed class EmissionModule
 
     internal bool NeedsDictionaryRuntime { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.1.2.5).</summary>
+    internal bool NeedsStorageBytes { get; set; }
+
     internal FunctionAbi? DictionaryAppendSlot { get; set; }
 
     internal FunctionAbi? DictionaryRequireAbsent { get; set; }
@@ -307,6 +310,7 @@ internal sealed class EmissionModule
         this.DictionaryHelpers.Clear();
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
+        this.NeedsStorageBytes = false;
         this.DictionaryAppendSlot = null;
         this.DictionaryRequireAbsent = null;
         this.DictionaryReserveStorage = null;

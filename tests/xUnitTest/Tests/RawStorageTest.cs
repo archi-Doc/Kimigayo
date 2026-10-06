@@ -91,7 +91,7 @@ public class RawStorageTest
     }
 
     [Theory]
-    [InlineData("Negative", "-1", "abort KIMI_E_ARGUMENT: Invalid argument value")]
+    [InlineData("Negative", "-1", "abort KIMI_E_ARG_RANGE: Argument out of range")]
     [InlineData("Oversized", "4611686018427387904", "abort KIMI_E_ALLOC_SIZE: Allocation size exceeds limit")]
     public void InvalidCountsAbort(string name, string count, string message)
         => ScalarEmissionTest.EmitFixture("RawStorageCount" + name, "let count: isize = " + count + "\nlet storage = Raw.allocate<i64>(count)\nConsole.writeLine(\"after\")", string.Empty, 1, "Hello.kimi:2:15: " + message + "\n");

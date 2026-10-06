@@ -34,7 +34,7 @@ internal sealed partial class BodyLowering
         }
 
         var type = body.Places[operation.Place].Type;
-        if (function.Abi.NoReturn || !ReferenceEquals(type, SignatureType(this, body.Function.BoundSymbol?.Type) ?? (body.Function.IsGenerated ? BoundType.Unit : null)))
+        if (function.Abi.NoReturn || !ReferenceEquals(type, SignatureType(this, body.DeclaredResultType) ?? (body.Function.IsGenerated ? BoundType.Unit : null)))
         {
             return Fail("A function returns contrary to its signature.", out failure);
         }
@@ -52,7 +52,7 @@ internal sealed partial class BodyLowering
                 (uint)delivery.Write >= (uint)body.Operations.Count ||
                 body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } secured ||
                 secured.Place != operation.Place || (uint)secured.Input >= (uint)body.Places.Count ||
-                !ReferenceEquals(body.Places[secured.Input].Type, type) || !this.IsSlotValue(body.Places[secured.Input]) ||
+                !ReferenceTypes.StorageMatches(type, body.Places[secured.Input].Type) || !this.IsSlotValue(body.Places[secured.Input]) || // An Origin shortened by variance keeps the storage (SPEC 15.3.5).
                 (body.GetInputState(delivery.Write, secured.Input) & PlaceState.MustInit) == 0 ||
                 (body.GetInputState(id, operation.Place) & PlaceState.MustInit) == 0 || !this.Dominates(delivery.Write, id))
             {
@@ -64,7 +64,7 @@ internal sealed partial class BodyLowering
         }
 
         if (!IsScalar(type) || (uint)delivery.Value >= (uint)body.Values.Count || (uint)delivery.Write >= (uint)body.Operations.Count ||
-            !ReferenceEquals(ValueType(body, delivery.Value), type) ||
+            !ReferenceTypes.StorageMatches(type, ValueType(body, delivery.Value)) || // An Origin shortened by variance keeps the storage (SPEC 15.3.5).
             body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } write ||
             write.Place != operation.Place || body.Values[delivery.Write].Kind != OwnershipValueKind.Alias ||
             Input(body, delivery.Write, 0) != delivery.Value || !this.Dominates(delivery.Value, delivery.Write) || !this.Dominates(delivery.Write, id))

@@ -72,6 +72,10 @@ public class Kimigayo
         return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathFullyQualified(relative) ? path : relative;
     }
 
+    // Line breaks and tabs in an edit's text are shown as escapes, so one edit stays on one line.
+    private static string Escape(string text)
+        => text.AsSpan().IndexOfAny('\n', '\r', '\t') < 0 ? text : text.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal).Replace("\t", "\\t", StringComparison.Ordinal);
+
     // SPEC 23.4.7: message and code, the primary location, the underlined excerpt with its label, related locations, then
     // Note and Advice.
     private void Render(CheckDiagnostic diagnostic, DiagnosticSource[] sources, string baseDirectory)
@@ -117,7 +121,7 @@ public class Kimigayo
             this.consoleService.WriteLine($" = {omission}");
         }
 
-        if (diagnostic.Advice is not null || diagnostic.Note is not null)
+        if (diagnostic.Advice is not null || diagnostic.Note is not null || diagnostic.Repairs is { Length: > 0 })
         {
             this.consoleService.WriteLine();
             if (diagnostic.Note is not null)
@@ -128,6 +132,26 @@ public class Kimigayo
             if (diagnostic.Advice is not null)
             {
                 this.consoleService.WriteLine($"Advice: {diagnostic.Advice}");
+            }
+
+            // SPEC 23.3.6.8, 23.3.6.9: each candidate as its title, one line per edit and its verified and required conditions.
+            foreach (var repair in diagnostic.Repairs ?? [])
+            {
+                this.consoleService.WriteLine($"Repair: {repair.Title}");
+                foreach (var edit in repair.Edits)
+                {
+                    var path = DisplayPath(sources[edit.Source].Path, baseDirectory);
+                    var at = edit.Range is { } range ? $"{path}:{range.Start.Line + 1}:{range.Start.Character + 1}" : path;
+                    var operation = edit.Replaced is null ? $"insert '{Escape(edit.Text)}'" : edit.Text.Length == 0 ? $"delete '{Escape(edit.Replaced)}'" : $"replace '{Escape(edit.Replaced)}' with '{Escape(edit.Text)}'";
+                    this.consoleService.WriteLine($" = {at}: {operation}");
+                }
+
+                if (repair.Verified.Length > 0 || repair.Required.Length > 0)
+                {
+                    var verified = repair.Verified.Length == 0 ? null : "verified: " + string.Join(", ", repair.Verified);
+                    var required = repair.Required.Length == 0 ? null : "requires: " + string.Join("; ", repair.Required.Select(static x => x.Phrase));
+                    this.consoleService.WriteLine($" = {string.Join("; ", new[] { verified, required }.Where(static x => x is not null))}");
+                }
             }
         }
 

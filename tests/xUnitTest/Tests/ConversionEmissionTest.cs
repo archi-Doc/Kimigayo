@@ -175,22 +175,17 @@ public class ConversionEmissionTest
     public void WarmConversionAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Consumers);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var valid = true;
-        for (var i = 0; i < 128; i++)
-        {
-            valid &= c.Ownership.Analyze().IsVerified;
-            valid &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var allocated = AllocationMeasurement.Measure(
+            () =>
+            {
+                valid &= c.Ownership.Analyze().IsVerified;
+                valid &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
         Assert.True(valid);
+        Assert.Equal(0, allocated);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -214,20 +209,10 @@ public class ConversionEmissionTest
         Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
         Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionBinding);
         Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionBinding);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Bind().IsComplete);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         var complete = true;
-        for (var i = 0; i < 128; i++)
-        {
-            complete &= c.Bind().IsComplete;
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
         Assert.True(complete);
+        Assert.Equal(0, allocated);
     }
 
     [Theory]
@@ -288,6 +273,20 @@ public class ConversionEmissionTest
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
+        Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
+    }
+
+    [Theory]
+    [InlineData("func helper() -> i32 => 1\n", "")]
+    [InlineData("", "\nfunc helper() -> i32 => 1")]
+    [InlineData("struct Holder\n    var value: i32\n    var doubled: i32\n        get => 2\n", "")]
+    public void NoncompletingOperandEvidenceDoesNotDependOnDeclarationOrder(string before, string after)
+    {
+        // A named expression body or accessor checked before the conversion once fixed the structural completion's Never
+        // evidence to bound Types only, so the unbound stop() operand counted as completing and the branches mismatched.
+        var c = MinimalEmissionTest.Analyze($"{before}func stop() -> Never => loop => ()\nlet x = if false => stop()@i64 else => 300{after}");
+        Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
         Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
     }

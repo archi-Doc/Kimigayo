@@ -18,6 +18,8 @@ internal sealed partial class BodyLowering
     private int[] patternDecompositions = [];
     private int[] slotUses = [];
     private bool hasMatches;
+    private OwnershipBody? matchBody;
+    private int matchDefaultContext = -1;
 
     private void PruneMatchStorage(OwnershipBody body, EmissionFunction function, ReadOnlySpan<byte> marks)
     {
@@ -30,7 +32,10 @@ internal sealed partial class BodyLowering
                 continue;
             }
 
-            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.CompositePattern or EmissionOpcode.PatternRead or EmissionOpcode.TransferAggregate or EmissionOpcode.FillArray or EmissionOpcode.DestroyAggregate)
+            // A closure's creation or erasure writes its value into Place's slot, and a value call addresses that slot when no
+            // reference operand holds the value; a closure that is created and discarded still keeps the slot it writes.
+            if (instruction.Place >= 0 && instruction.Opcode is EmissionOpcode.LoadScalar or EmissionOpcode.StoreScalar or EmissionOpcode.MoveString or EmissionOpcode.DestroyStringIfLive or EmissionOpcode.StoreStaticString or EmissionOpcode.StringPattern or EmissionOpcode.CompositePattern or EmissionOpcode.PatternRead or EmissionOpcode.TransferAggregate or EmissionOpcode.FillArray or EmissionOpcode.DestroyAggregate or EmissionOpcode.CreateClosure or EmissionOpcode.EraseClosure or EmissionOpcode.CallValue &&
+                instruction.Place < function.SlotAddresses.Count)
             {
                 this.UseMatchStorage(function, instruction.Place);
             }
@@ -197,6 +202,8 @@ internal sealed partial class BodyLowering
                 return Fail("Unsupported or inconsistent match plan.", out failure);
             }
 
+            this.matchBody = body;
+            this.matchDefaultContext = body.Places[match.Subject].DefaultContext;
             this.matchPlaces[match.Subject] = 1;
             var initializer = this.subjectInitializers[match.Subject];
             var dispatchEdge = body.EdgeHeads[initializer];
@@ -364,7 +371,7 @@ internal sealed partial class BodyLowering
 
                     var declaration = body.Edges[entry].To;
                     var next = body.EdgeHeads[declaration];
-                    if (pattern.Acquisition != expectedAcquisition || pattern.BodySymbol is null || !body.SymbolPlaces.TryGetValue(pattern.BodySymbol, out var local) ||
+                    if (pattern.Acquisition != expectedAcquisition || pattern.BodySymbol is null || !body.TrySymbolPlaceAt(pattern.BodySymbol, declaration, out var local) ||
                         body.Operations[declaration].Kind != OwnershipOperationKind.Declare || body.Operations[declaration].Place != local ||
                         next < 0 || body.Edges[next].Next >= 0 || body.Edges[next].Kind != OwnershipEdgeKind.Normal)
                     {
@@ -435,7 +442,7 @@ internal sealed partial class BodyLowering
     }
 
     // A Pattern position's matched Type as the lowered body sees it; a monomorphized instance sees its substitution (SPEC 21.3.1).
-    private BoundType Matched(BoundType? type) => SignatureType(this, type)!;
+    private BoundType Matched(BoundType? type) => SignatureType(this, this.matchBody!.SubstituteDefaultType(type, this.matchDefaultContext))!;
 
     private bool PureMatchTest(OwnershipBody body, int id) => body.Values[id].Kind == OwnershipValueKind.None && body.Operations[id].Input == -1 &&
         (body.LoanInputs.Count == 0 || body.LoanInputs[id] == body.LoanStates[id]);
@@ -471,6 +478,8 @@ internal sealed partial class BodyLowering
 
     private bool LowerMatchOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
+        this.matchBody = body;
+        this.matchDefaultContext = body.DefaultContextAt(id);
         failure = null;
         var operation = body.Operations[id];
         if (!this.hasMatches || operation.Place < 0 || this.matchPlaces[operation.Place] != 1 || operation.Source.AttributeChain is not null)
@@ -593,6 +602,8 @@ internal sealed partial class BodyLowering
 
     private bool ValidateCandidateRead(OwnershipBody body, int id, out string? failure)
     {
+        this.matchBody = body;
+        this.matchDefaultContext = body.DefaultContextAt(id);
         failure = null;
         var operation = body.Operations[id];
         var index = body.OperationSteps[id];
@@ -614,7 +625,7 @@ internal sealed partial class BodyLowering
         // materialized there from the Subject's acquired value.
         var borrow = operation.Kind == OwnershipOperationKind.Borrow;
         if (arm.GuardEntry < 0 || operation.Place != match.Subject || operation.Source.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate ||
-            !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(SignatureType(this, operation.Source.BoundType), pattern.CandidateSymbol?.Type) ||
+            !ReferenceEquals(operation.Source.BoundSymbol, pattern.CandidateSymbol) || !ReferenceEquals(this.Matched(operation.Source.BoundType), this.Matched(pattern.CandidateSymbol?.Type)) ||
             (body.IsReachable(id) && !this.Dominates(arm.GuardEntry, id)) ||
             (borrow && (body.Values[id].Kind != OwnershipValueKind.Address || body.Values[id].Count != (scalar ? 1 : 0))) ||
             (scalar && ((!borrow && body.Values[id].Kind != OwnershipValueKind.Alias) || Input(body, id, 0) != this.subjectInitializers[match.Subject])) ||
@@ -625,7 +636,7 @@ internal sealed partial class BodyLowering
 
         if (ReferenceEquals(this.Matched(pattern.MatchedType), BoundType.String))
         {
-            var type = SignatureType(this, operation.Source.BoundType);
+            var type = this.Matched(operation.Source.BoundType);
             var protection = body.LoanStates[id];
             while (protection >= 0 && body.ComparisonLoans[protection].Guard != index)
             {

@@ -63,6 +63,12 @@ public sealed partial class OwnershipBody
             {
                 this.reservationPlaces[this.CallReservations[i].Place] = i;
             }
+
+            if (this.CallReservations[i].Loaded >= 0)
+            {
+                // The stored reference loaded for the reserved Reborrow is held in the reservation's mode.
+                this.reservationPlaces[this.CallReservations[i].Loaded] = i;
+            }
         }
     }
 
@@ -172,6 +178,16 @@ public sealed partial class OwnershipBody
             this.Operations[op + 1] is { Kind: OwnershipOperationKind.Borrow, Reservation: >= 0 } borrow && borrow.Place == read.Place &&
             ReferenceEquals(KotoHelper.UnwrapParentheses(read.Source), KotoHelper.UnwrapParentheses(borrow.Source)) ? borrow.Reservation : -1;
 
+    // SPEC 15.6.7 (PLAN G53): the reservation that still holds a Place at `point`, or -1. A call's reserved Places stay
+    // reserved through the call; a literal's reservation ends at its activation, after which the placed payload holds
+    // its Loan as an ordinary value, so a later placement that meets it meets that Loan, not a reservation.
+    private int HeldReservation(int place, int point)
+    {
+        var reservation = this.reservationPlaces[place];
+        return reservation >= 0 && this.CallReservations[reservation].Call is not InvocationKoto &&
+            this.CallReservations[reservation].Activation is >= 0 and var activation && activation < point ? -1 : reservation;
+    }
+
     // SPEC 15.6.7: a reservation protects its target, not the Loans an owned target retains on other roots. A reserved input's
     // Place that depends on such a root only through its referent's Type carries the target's retained Loan.
     private int RetainingTarget(int reservation, int root, int count)
@@ -225,16 +241,27 @@ public sealed partial class OwnershipBody
                     return false;
                 }
 
+                // A value call's owned receiver enters first, under its own source.
                 var entry = op + 1;
+                var owner = operation.Source is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Owner } valueCall } ? valueCall.Receiver : null;
+                if (owner is not null && entry < this.Operations.Count && this.Operations[entry].Kind == OwnershipOperationKind.CallEntry && ReferenceEquals(this.Operations[entry].Source, owner))
+                {
+                    entry++;
+                }
+
                 while (entry < this.Operations.Count && this.Operations[entry].Kind == OwnershipOperationKind.CallEntry && ReferenceEquals(this.Operations[entry].Source, operation.Source))
                 {
                     entry++;
                 }
 
-                if (entry == this.Operations.Count || !ReferenceEquals(this.Operations[entry].Source, operation.Source) ||
-                    (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap }
-                        ? this.Operations[entry].Kind is not (OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.UpdateBorrowed)
-                        : this.Operations[entry].Kind != OwnershipOperationKind.Call))
+                // A call activates its reserved arguments right before it is entered; a literal activates each placed exclusive
+                // reference right before it places or stores it (PLAN G53).
+                if (entry == this.Operations.Count ||
+                    (operation.Source is not InvocationKoto ? this.Operations[entry].Kind is not (OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.StoreDictionaryEntry)
+                        : !ReferenceEquals(this.Operations[entry].Source, operation.Source) ||
+                        (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap }
+                            ? this.Operations[entry].Kind is not (OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.UpdateBorrowed)
+                            : this.Operations[entry].Kind != OwnershipOperationKind.Call)))
                 {
                     return false;
                 }
@@ -264,9 +291,8 @@ public sealed partial class OwnershipBody
 
     private LoanRequirement BorrowModeAt(int place, int root, int point, LoanRequirement mode)
     {
-        var start = 0;
-        var recorded = this.storedBorrowStarts is not null && this.storedBorrowStarts.TryGetValue((place, root), out start);
-        if (mode != LoanRequirement.None && recorded && point <= start)
+        var recorded = this.HasStoredBorrowRecord(place, root);
+        if (mode != LoanRequirement.None && recorded && !this.StoredBorrowActive(place, root, point))
         {
             return LoanRequirement.None;
         }
@@ -281,9 +307,11 @@ public sealed partial class OwnershipBody
             }
         }
 
+        // The slot borrow and the loaded reference of a reserved stored-reference argument reserve every Loan they hold.
         var reservation = this.reservationPlaces[place];
         return mode == LoanRequirement.Uniq && reservation >= 0 && this.ReservationMode(reservation, point) == LoanRequirement.Ref &&
-            this.Places[place].Type.Origin is { } origin && this.OriginNamesRoot(origin, root) ? LoanRequirement.Ref : mode;
+            (this.CallReservations[reservation].Argument >= 0 || place == this.CallReservations[reservation].Loaded ||
+                (this.Places[place].Type.Origin is { } origin && this.OriginNamesRoot(origin, root))) ? LoanRequirement.Ref : mode;
     }
 
     private bool OriginNamesRoot(BoundOrigin origin, int root)
@@ -311,7 +339,7 @@ public sealed partial class OwnershipBody
             foreach (var pair in this.SymbolPlaces)
             {
                 if (pair.Value == root && ReferenceEquals(pair.Key.Declaration, origin.Binder) &&
-                    pair.Key.Slot == (origin.Kind == OriginKind.Input ? origin.InputIndex : origin.Slot) &&
+                    (origin.Kind == OriginKind.Input ? pair.Key.Slot == origin.InputIndex : Binding.SymbolOriginSlot(pair.Key) == origin.Slot) &&
                     (origin.Kind != OriginKind.Input || pair.Key.Kind == BindingSymbolKind.Parameter))
                 {
                     return true;

@@ -257,7 +257,7 @@ All allocations use the 16-byte-aligned allocator of §22.5.2. These are interna
 
 The complete payload begins at `header + 16` in every mode. `16 + payload size` is checked against 2^63 − 1 and allocation limits, and allocation failure Aborts. Payload alignment above 16 is unsupported and diagnosed before generation. There is no over-allocation, private prefix or mode-dependent payload offset. The handle's static Semantics, not the descriptor, selects the counting behavior.
 
-Every count is a `u64` with `MaxRefCount = 2^63 - 1`, including the internal weak guard. An increment at the maximum Aborts before updating; counts never wrap, and no migration happens merely to extend the maximum. An even counted-header control stores `strong << 1`; an odd control stores `sideTablePointer | 1`, and clearing only the low bit recovers the aligned address-space-0 pointer, preserving all high bits. The control of a normal unpublished object starts at zero and becomes 2 (strong = 1) when publication follows construction. A final zero is never reused.
+Every count is a `u64` with `MaxRefCount = 2^63 - 1`, including the internal weak guard. An increment at the maximum Aborts with KIMI_E_REF_COUNT (SPEC §22.5.4) before updating; counts never wrap, and no migration happens merely to extend the maximum. An even counted-header control stores `strong << 1`; an odd control stores `sideTablePointer | 1`, and clearing only the low bit recovers the aligned address-space-0 pointer, preserving all high bits. The control of a normal unpublished object starts at zero and becomes 2 (strong = 1) when publication follows construction. A final zero is never reused.
 
 The side-table strong count is 1..MaxRefCount while Alive, and zero both while Building and after final release. **There is no Building sentinel.** Only a factory holding unpublished construction authority may change zero to one, exactly once; observing zero grants no such authority. Cyclic construction starts with strong = 0 and weak = 2: one guard plus the builder's Weak. The complete lifecycle is not inferred solely from count bits.
 
@@ -286,19 +286,27 @@ all earlier weak releases -> final weak release -> free side table
 
 The strong-release guarantee must survive inline-to-table migration. These obligations cover runtime initialization, counting, cleanup calls and frees; they define no source-level concurrent payload access, thread transfer or language memory model (Appendix D.2).
 
-**Non-normative implementation candidate:**
+**Windows profile transitions.** The profile implements these transitions; `rc` performs the same transitions without atomics. Orderings use LLVM names (Relaxed is `monotonic`).
 
-| Operation | Candidate ordering |
-| --- | --- |
-| Resolve the published table from the control | Acquire |
-| Publish migration CAS | AcqRel on success, carrying earlier releases |
-| Strong/weak retain CAS | Relaxed |
-| Successful upgrade CAS | Acquire; failure Relaxed |
-| Strong/weak decrement | Release, with an Acquire fence before final destruction or free |
-| Unpublished initialization | Ordinary stores |
-| Publish cyclic strong 0 -> 1 | Release |
+| Transition | Update and success condition | `arc` ordering |
+| --- | --- | --- |
+| Creation | Unpublished header (descriptor, control 2) and payload | Ordinary stores |
+| Inline retain | Even control below the maximum: +2. Odd control: table strong retain | CAS, monotonic on success and failure |
+| Inline release | Even control: −2. Odd control: table strong release. Only a successful 2 → 0 is final | CAS, release on success and monotonic on failure; when final, an acquire fence precedes destruction and free |
+| Table resolution | The table address from an odd control | Acquire |
+| Migration (first downgrade) | Control to `table \| 1`; only success transfers count authority. On failure, an even control retries with its latest count; a table found instead frees the candidate and is used | AcqRel on success, carrying earlier releases; a found table follows table resolution |
+| Table strong retain | Strong below the maximum: +1 | CAS, monotonic |
+| `upgrade` | Strong 0: `None`; maximum: Abort; otherwise +1, and only then `table.object` is read | CAS, acquire on success and monotonic on failure |
+| Table strong release | −1; an old value of 1 is final: destruction, free, then the weak-guard release | `fetch_sub` release; when final, an acquire fence |
+| Weak retain | Weak below the maximum: +1 (`downgrade`, Weak `clone`) | CAS, monotonic |
+| Weak release | −1; an old value of 1 is final: the table free | `fetch_sub` release; when final, an acquire fence |
+| Cyclic publication | Strong 0 → 1, only by the factory holding construction authority | Release |
 
-On CAS failure, the latest representation is rechecked; a failure that discovers a table pointer still needs an Acquire observation before accessing the table. Inline decrements use a control CAS, and table decrements may use `fetch_sub`. LLVM spells Relaxed as `monotonic`, and compare-exchange orderings must satisfy its verifier constraints, including no release or acq_rel failure ordering. Alternative implementations must prove the normative arrows. Weak-memory behavior, not just possible interleavings, is validated, and generated IR and native count protocols are verified separately. Allocation and destructors have no lock-free guarantee.
+A CAS retry reuses the observed value and rechecks the representation. The header control is never updated by `atomicrmw`, because a migration may replace it with a table pointer. Compare-exchange orderings satisfy the LLVM verifier, which forbids release and acq_rel failure orderings.
+
+**Validation.** Each transition has (1) a written proof that it establishes the normative arrows above and the invariants of §21.2.3.2: one authoritative count location, destruction and free only after a successful update to zero, no header access after the free, Abort before updating at the maximum, a migration that changes no count and is never reversed, and no dereference of an expired table's object pointer; and (2) generated-IR checks of its ordering, update target, success branch and the absence of header accesses after the free. Native single-threaded tests verify the count protocols separately. Model checking and hardware stress tests are not required. Alternative implementations must prove the normative arrows.
+
+**Object publication.** Creation publishes a completed object by returning its handle to the creating thread; a normal return creates no cross-thread synchronization. A mechanism that transfers a handle to another thread belongs to Appendix D.2 and must itself supply the synchronization from publication to payload use. Allocation and destructors have no lock-free guarantee.
 
 ### 21.2.4. Value-borrow storage
 
@@ -566,7 +574,7 @@ Every environment-selected specialization's target, arguments, Constraints, inhe
 
 The complete declaration, body, selection, premise and absence dependencies are preserved and validated under [§18.7](../spec/18-modules-and-dependencies.md#187-verified-information-and-reuse). Changed selections are revalidated before generation; old proofs are never mixed with new mappings, and no incorrect shared fallback is chosen.
 
-Nested declarations share one declaration tree, with interned normalized references and reusable parent bindings; children are not cloned per instantiation, and resolving a child does not require the outer layout. Artifacts keep bindings, Constraint roles and origins, proof dependencies and selected declarations, and outer changes invalidate dependent inner proofs and plans. Adding or widening an accessible Container name on an open base can break derived declarations and requires downstream revalidation (§9.6.1). Resource-limit diagnostics are distinct from failures of the specified proof rules.
+Nested declarations share one declaration tree, with interned normalized references and reusable parent bindings; children are not cloned per instantiation, and resolving a child does not require the outer layout. Artifacts keep bindings, Constraint roles and origins, proof dependencies and selected declarations, and outer changes invalidate dependent inner proofs and plans. Adding or widening an accessible member Name on an open base can break derived declarations or unqualified uses in derived bodies (§6.2.2, §9.4) and requires downstream revalidation (§9.6.1). Resource-limit diagnostics are distinct from failures of the specified proof rules.
 
 #### 21.3.4.2. Persistence and composition
 
@@ -842,7 +850,7 @@ target triple = "x86_64-pc-windows-msvc"
 !0 = !{i32 8, !"PIC Level", i32 2}
 ```
 
-The compiler emits pre-optimization IR. O0 skips the general IR optimization pipeline and uses `llc -O0`; the default O2 uses `opt default<O2>` followed by `llc -O2`. `opt` reads CPU and features from function attributes, so they are not duplicated as `opt -mcpu/-mattr` options. `llc` and manifest settings match, and IR is verified before and after optimization.
+The compiler emits pre-optimization IR. O0 skips the general IR optimization pipeline and uses `llc -O0`, after the coroutine passes of §21.6.2 for a module with coroutines; the default O2 uses `opt default<O2>`, which includes those passes, followed by `llc -O2`. `opt` reads CPU and features from function attributes, so they are not duplicated as `opt -mcpu/-mattr` options. `llc` and manifest settings match, and IR is verified before and after optimization.
 
 LLVM performs inlining, constant propagation, dead-code elimination, SROA, mem2reg, instruction selection and register allocation. No default O3, unconditional `alwaysinline`, loop unrolling or redundant general SSA optimizer is required. Internal ABI changes by whole-module optimization are allowed only when all uses and semantics stay consistent, and the external ABI and observable storage are preserved. O0 and O2 cannot change acceptance, checks, cleanup or nontermination.
 
@@ -907,7 +915,7 @@ All constants are exact in the source format, and the ordered comparisons reject
 
 **Raw pointer operations.** Allowed pointer-Type casts use the same address-space-0 `ptr`; same-Type equality and null tests use `icmp eq`/`ne`; `usize` conversions use `ptrtoint` to `i64` and `inttoptr` from `i64`. `p + n` uses a storage-Type GEP with an `i64` index, and `p - n` uses `sub i64 0, n`; the initial form has no `inbounds` or `nsw`/`nuw`. GEP spacing is checked against the positive `stride(T)`. Zero displacement preserves null as well as other pointers. Arithmetic alone proves neither alignment nor initialization. These operations keep the unsafe allocation, provenance, mathematical-displacement and no-wrap conditions of Chapter 5, and violations need not Abort. Integer reconstruction creates no extra dereference permission, and typed access still needs a valid range, alignment, permissions, initialization and replacement legality. Runtime buffer arithmetic has its own checked contract (§22.5.3).
 
-**Addresses, raw Place borrows and raw storage.** `P@raw` yields the address that a borrow of `P` would use, with no load and no runtime Loan state; a raw Place borrow (SPEC §5.2.2) yields the computed raw Place address as an ordinary borrow pointer, and a raw Place take (SPEC §5.2.3) loads and transfers the value without changing any state. `Raw.allocate` computes `count * stride(T)` with the checked multiplication above and calls Runtime.Alloc (SPEC §22.5.2) with the alignment of `T`; an alignment above 16 is diagnosed at compile time. A zero-byte request returns, without allocating, the address of one static 16-byte-aligned zero-sized substitute (§21.2.4), which serves every `T`; `Raw.release` ignores null and that address before calling Runtime.Free, so a converted pointer to it is recognized too. `Raw.initialize` stores the value without loading or destroying the old contents. `Raw.slice` builds the Slice handle from the pointer and length without accessing the elements. `Loan<T>` occupies no storage and generates no code.
+**Addresses, raw Place borrows and raw storage.** `P@raw` yields the address that a borrow of `P` would use, with no load and no runtime Loan state; a raw Place borrow (SPEC §5.2.2) yields the computed raw Place address as an ordinary borrow pointer, and a raw Place take (SPEC §5.2.3) loads and transfers the value without changing any state. `Raw.allocate` computes `count * stride(T)` with the checked multiplication above and calls Runtime.Alloc (SPEC §22.5.2) with the alignment of `T`; an alignment above 16 is diagnosed at compile time. In a body that carries a caller's diagnostic context (SPEC §22.5.1), the generated checks and `Raw.allocate` and `Raw.release` pass that context, not their own source site, to Abort, Alloc and Free. A zero-byte request returns, without allocating, the address of one static 16-byte-aligned zero-sized substitute (§21.2.4), which serves every `T`; `Raw.release` ignores null and that address before calling Runtime.Free, so a converted pointer to it is recognized too. `Raw.initialize` stores the value without loading or destroying the old contents. `Raw.slice` builds the Slice handle from the pointer and length without accessing the elements. `Loan<T>` occupies no storage and generates no code.
 
 For proven complete payload targets, the ordinary value-borrow address and load/store/transfer rules apply. Same-concrete-Type tests may be folded only while preserving operand evaluation, acquisition, Loans and Origins. Content destruction does not end the containing allocation's lifetime, and raw pointer optimization cannot erase required dependency checks (§15.7.3).
 
@@ -941,7 +949,7 @@ A `ref/Key` argument whose referent is a Scalar may be passed physically by valu
 
 Raw access and foreign implementations receiving these borrows are bound by the same promises, as cases of the access conditions of SPEC §5.2.1 and the declaration promise of SPEC §22.3.1: raw pointers derived from `ref` cannot write its inline storage, and `uniq` permits no conflicting independent access during the call. The Scalar by-value form of a `ref` parameter above does not apply to foreign imports, which receive the referent address (SPEC §22.3.2).
 
-**Address-observed locals.** A local variable whose address is taken with `@raw` (SPEC §5.4) is address-observed: it keeps one storage slot, which is neither promoted to SSA nor reused, until its scope ends or its value is Moved, whichever comes first (SPEC §5.2.1). Missing Loan or effect verification is diagnosed before emission. Future interior mutability or concurrency requires revisiting the shared proof.
+**Address-observed locals.** A local variable whose address is taken with `@raw` (SPEC §5.4) is address-observed: it keeps one storage slot, which is neither promoted to SSA nor reused, until its scope ends or its value is Moved, whichever comes first (SPEC §5.2.1). Missing Loan or effect verification is diagnosed before emission. The `ref/V` guarantees of this section rest on SPEC §15.6.2 (Shared access grants no mutation).
 
 For other optimization attributes, defined bits and absence of `poison` are proven separately for `noundef`, including padding in coercions; the full GEP conditions for `inbounds`; and the absence of signed or unsigned overflow for `nsw`/`nuw`. `mustprogress`, `willreturn` and `loop.mustprogress` are not applied uniformly to ordinary functions or loops.
 
@@ -983,3 +991,94 @@ This backend marker is not CRT initialization state. No `dllimport`, weak or com
 The compiler's profile catalog fixes `packageId=kimi-backend-windows-x64`, `abiVersion=2`, the actual archive's SHA-256, the profile/LLVM/CPU/FP/unwind contract, and `providedSymbols=[__chkstk, memcmp, memcpy, memmove, memset]`. `packageVersion` comes from the shared compiler and backend release in `Directory.Build.props` (§20.8.7). The ABI version is updated when symbol or call contracts change. Filename or path equality is insufficient, and if version, ABI and hash are not established, no successful generation is claimed with a placeholder supply.
 
 The archive is recorded as a profile-wide link input even when no known reference currently needs it; unused archive members need not be linked. Generated `_fltused` and externally supplied symbols have separate manifest classifications (§20.8.3). Later LLVM versions may add or remove references, so actual object undefined symbols are inspected and their providers verified. Unknown or unsupplied dependencies fail adoption or linking and never receive empty stub helpers. This supply does not add to the six runtime operations or the seven Windows APIs.
+
+## 21.6. Tasks
+
+This section is the implementation contract for the asynchronous tasks of [Chapter 24](../spec/24-suspension-and-asynchronous-tasks.md) and [§22.1.3](../spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks). The physical forms below stay within the freedom of §21.4.2: the scheme is fixed per generation, not as a stable ABI.
+
+### 21.6.1. Task entries and plain instances
+
+- **Entry.** In this profile, every function with a task slot is entered with the task, a continuation, its other arguments and a result slot, and returns `i1`, where true means completed. The task is a compiler-chosen context pointer without `noalias`.
+- **Plain instances.** Plainness is computed bottom-up for each strongly connected component of the monomorphized instance graph (§21.3.1). An instance is plain when it contains no suspension intrinsic, no indirect task call and no task call to a non-plain instance. A plain instance is an ordinary function that emits no `llvm.coro.*` and always reports completion. LLVM already folds such instances at O2; the gain is O0 code size and arena traffic, and modules without coroutines skip the extra `opt` step of §21.6.2.
+- **Coroutines.** Every other instance becomes a switched-resume coroutine. Its frame represents the task frame, lives in the task's arena and never moves while live; this is a lowering obligation, and byte-transfer Moves (§21.4.5) are unchanged because a task frame is not a value. Borrow parameters of a non-plain entry get no `captures(none)`, because the task frame keeps them past the physical return.
+- **Barriers.** `TaskBoundary.park` and every waiting intrinsic are compiler barriers for the state behind shared channel handles (obligation 4 of §22.1.3.1).
+
+### 21.6.2. Coroutine lowering and the O0 step
+
+`llc -O0` cannot lower `llvm.coro.*`. A module with coroutines first runs `opt -passes=coro-early,cgscc(coro-split,coro-annotation-elide),coro-cleanup`, written without spaces because `opt` rejects them; at O2 the same passes run within the optimization pipeline. The native build performs this step (§20.8.4, §20.8.6), and its processing record lists it.
+
+Completion protocol:
+
+```llvm
+define internal i1 @g(ptr %task, ptr %cont, ptr %result) presplitcoroutine {
+  ; coro.id, coro.alloc (an arena push) and coro.begin produce %hdl.
+  %done = call i1 @wait_register(ptr %task, ptr %hdl)  ; true when no wait is needed
+  br i1 %done, label %complete, label %wait
+wait:
+  %s = call i8 @llvm.coro.suspend(token none, i1 false)
+  switch i8 %s, label %suspend [i8 0, label %complete
+                                i8 1, label %never]
+complete:
+  store i32 42, ptr %result                             ; the result goes to the caller's result slot
+  %inramp = call i1 @llvm.coro.is_in_ramp()
+  br i1 %inramp, label %end, label %transfer
+transfer:
+  call void @set_next(ptr %task, ptr %cont)             ; resume the parent directly
+  br label %end
+suspend:
+  br label %end
+end:
+  %st = phi i1 [true, %complete], [true, %transfer], [false, %suspend]
+  call void @llvm.coro.end(ptr %hdl, i1 false, token none)
+  ret i1 %st
+never:
+  unreachable                                           ; no destroy path (obligation 1)
+}
+```
+
+1. **Result.** The result goes to the result slot that the caller passes.
+2. **No destroy path.** The destroy successor of every suspend is `unreachable`. There is no final suspend: completion runs ordinary cleanup and reaches the single `coro.end`. The destroy and cleanup clones become empty at O2; at O0 their code size is recorded as a measurement.
+3. **Arena position.** The caller saves the arena position and restores it at completion, whether synchronous or resumed. A plain callee needs neither.
+4. **Parent resumption.** A resumed task frame that completes stores its continuation in the task record's `next` word, and the dispatch loop resumes it in the same step, bypassing the ready list. The ready list receives only wake-ups from waits. `llvm.coro.is_in_ramp()` tells synchronous from resumed completion, so the frame needs no flag.
+
+### 21.6.3. Embedded child frames
+
+The compiler marks a `TaskBoundary.enter` call `coro_elide_safe` only when the call is in no loop body and no `while` condition. Such a call runs at most once per task frame, and by obligation 2 its child completes before that task frame does. CoroAnnotationElide then places the child's top frame in the parent's frame, so leaf children never push.
+
+- The rule covers `join`, `joinOk`, `race`, `pipe` and `shield` without naming them, and excludes the in-loop starts of `each` and `eachReceived`. A call in a conditional branch qualifies; recursion is safe, because each recursive task frame joins its own children.
+- Ordinary task calls are never marked: sequential calls reuse one arena region, whereas embedded frames would be summed in the caller's frame.
+- Child bodies are never `noinline`; the O0 step includes the pass, so O0 and O2 agree. An internal switch may drop the attribute, and inlining a function that contains a marked call into a loop drops the mark.
+- Without the rule and obligation 2, a helper that returns before its child completes lets its frame, which holds the child's frame, be reused, and a marked call in a `while` condition makes children that are alive at the same time share one frame.
+- Functional and allocation tests never depend on elision; its own regression reads the CoroSplit remark.
+
+### 21.6.4. Frame contents and hot loops
+
+- **Lifetime markers.** In a coroutine instance, `llvm.lifetime.start` is emitted at the first initialization of a local's storage, and `llvm.lifetime.end` at the earliest proven point: scope exit, or after the last use when the storage is not address-observed and holds no destruction responsibility or live Loan (§21.5.5). For storage lent to a task call, the last use is the caller's resumption point, never the call instruction.
+- **Hot loops.** A value live across a suspension is spilled at its definition, so a loop that calls `checkpoint` loads and stores the frame on every iteration and is not vectorized. Step 1: plain functions that contain loops are not inlined into coroutine bodies, with the effect measured in `src/Benchmark`. Step 2, once step 1's gain is confirmed: loops without task calls are outlined from coroutine bodies into internal plain functions before CoroSplit.
+
+### 21.6.5. Executor, timers and I/O completion
+
+The executor is Kimi source over the task boundary. Its observable contracts are those of §22.1.3; the following is the policy of this profile.
+
+- **Executor state.** Each thread has one executor state in Kimi-internal raw storage, kept across `run` calls: the I/O completion port, created at the first association or the first blocking wait; the dequeue array and the ready-list heads; one timer structure; the arena free lists; and a stack of `run` scopes. Windows associates a handle with one completion port until the handle closes, so a port per `run` cannot work.
+- **Nested `run`.** A nested `run` pushes a scope. Wake-ups for tasks of outer scopes are held on their scope's pending list; when a scope ends, only the pending list of the scope being resumed rejoins its ready list. If the root completes without suspending, `run` returns without touching the port or the timers.
+- **Waits.** A waker is a pointer to its registration, with no reference count, generation or allocation. The ready list is an intrusive FIFO with a `queued` bit. Each registration holds a commit word that only its first commit writes; a resumed wait returns from that word, never from the task's cancellation flag, and on one thread the word needs no atomic operation.
+- **Requests.** A request sets flags along the child links, and a child started under a set flag starts with it set. It commits every still-pending timer, channel and yielded `checkpoint` registration in the subtree to cancellation, unlinks timer and channel registrations in O(1), and enqueues each such task whose `queued` bit is clear; a registration already committed is left unchanged. An I/O wait issues `CancelIoEx` and keeps its registration until its packet commits it. The child of a `shield` has a shield bit on its task record, where the walk stops; the `shield` task frame arms a grace timer node, which continues the walk into the child when it expires and is unlinked if the child completes first.
+- **Timers.** A timer node records its duration. Before each completion poll, the executor reads the counter of §22.7.1 once and converts every newly registered node to that reading plus its duration, rounded up to the next tick; the reading is taken after the call, so `sleep(task; d)` never completes early. Wait time-outs may expire early, so after every wait the executor rereads the counter and wakes only expired nodes. The millisecond timeout is rounded up and kept below `INFINITE`. A hierarchical timing wheel or an intrusive pairing heap is chosen by benchmark.
+- **I/O completion.** Each handle is associated once, with `FILE_SKIP_COMPLETION_PORT_ON_SUCCESS | FILE_SKIP_SET_EVENT_ON_HANDLE`; only handles where this succeeded are marked, and only marked handles complete an immediate success in place. On an unmarked handle a packet still arrives, so the wait registers and parks as for `ERROR_IO_PENDING`. A socket uses the mode only when its `SO_PROTOCOL_INFOW` `dwServiceFlags1` has `XP1_IFS_HANDLES`. Non-overlapped handles use synchronous reads and writes. Imports are ordinary `#LibraryImport` declarations (§22.7.1), not runtime symbols (§22.5.6).
+- **Executor round.** Dispatch a snapshot of the ready list; call `GetQueuedCompletionStatusEx` for up to 64 entries, with timeout 0 when tasks are ready, otherwise the next timer or `INFINITE`, and `alertable` 0; then map every entry to its waiter, which commits the wait, and enqueue it before running any task, because a nested `run` reuses the array.
+- **Arena.** The first chunk is taken at the first push, from the smallest class of at least max(frame + header, minimum); an overflow takes a class of at least max(2 × previous, needed), so a chain of depth d uses O(log d) chunks; an emptied top chunk is kept as one spare. A completed task returns its chunks to per-thread, per-class free lists, which persist across `run` calls and are trimmed by a cap or a high-water mark. Frame sizes exist only after CoroSplit, so the arena is not sized statically.
+
+### 21.6.6. Allocation bounds
+
+| Operation | Heap allocations |
+| --- | --- |
+| Task call | 0: an arena push, none for a plain callee |
+| One-shot children with elision | 0: frames inside the parent's frame |
+| Task start, `each` child | Pooled records and arena chunks, at most `limit` child records at once for `each`; 0 in steady state |
+| Timer, channel operation, I/O wait | 0: registrations live in the task frame; ring buffers |
+| `pipe` start | 0 for capacity 0; otherwise an arena push, 0 in steady state |
+| `shield` | 0: one grace timer node in its task frame |
+| Repeated `run` | 0 in steady state, because the per-thread state persists |
+
+O0 and O2 allocation regressions fix these bounds for a loop of task calls that crosses a chunk boundary, repeated top-level `run` calls, a read loop on reads that complete immediately, which makes no port calls, and a pipe ping-pong, which makes at most one port call per round. Frame size is a measurement bound to the O level and toolchain identity, read from CoroSplit remarks, not a check fact.

@@ -57,7 +57,10 @@ public sealed partial class Binding
             }
         }
 
-        if (!this.SolveOriginInference(inference, origins, inputs, requirement.Binder, declaringType))
+        // SPEC 15.3.7: only the implementation's call Origins are solved, also under its result premises.
+        if (!(implementation.Binder is FunctionKoto solved
+            ? this.SolveCallOriginInference(solved, inference, origins, inputs, requirement.Binder, declaringType)
+            : this.SolveOriginInference(inference, origins, inputs, requirement.Binder, declaringType)))
         {
             return ConstraintProof.Refuted;
         }
@@ -92,6 +95,11 @@ public sealed partial class Binding
         }
 
         var result = implementation.Result is { } output ? Translate(output) : null;
+        if (result is not null && implementation.Binder is FunctionKoto function && !this.ProvesResultPremises(function, result, requirement.Binder))
+        {
+            return ConstraintProof.Refuted; // SPEC 15.3.7: the implementation's result premises follow from the requirement's.
+        }
+
         var expected = requirement.Result is { } requiredOutput ? this.ContractType(requiredOutput, scope, self) : null;
         return result is null || expected is null ? ConstraintProof.Unknown : this.FitsTypeAt(result, expected, requirement.Binder) ? ConstraintProof.Proven : ConstraintProof.Refuted;
 

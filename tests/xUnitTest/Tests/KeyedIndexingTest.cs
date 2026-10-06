@@ -10,6 +10,13 @@ namespace XunitTest;
 /// the current length.</summary>
 public class KeyedIndexingTest
 {
+    [Theory]
+    [InlineData("Saved", "last")]
+    [InlineData("FromEnd", "^1")]
+    [InlineData("Narrow", "1@u8")]
+    public void BorrowedScalarArgumentsRetainTheResolvedKey(string name, string key)
+        => ScalarEmissionTest.EmitFixture("BorrowedPositionArgument" + name, "let values: [2 of i32] = [1, 2]\nlet last = ^1\nConsole.writeLine(\"\\(values[" + key + "])\")", "2\n");
+
     private const string IndexKeys =
         "let values: [4 of i32] = [10, 20, 30, 40]\nlet last = ^1\n" +
         "require values[last] == 40 and values[1@u8] == 20 and values[^4] == 10 and values[2@i64] == 30 else => $abort(\"fixed\")\n" +

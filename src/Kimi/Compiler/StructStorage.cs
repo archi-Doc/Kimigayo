@@ -9,7 +9,13 @@ internal static class StructStorage
 {
     internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto };
 
-    internal static BoundType? FieldType(BoundType type, int index) => type.StoredFields is { } fields ? fields[index] : Field(type, index).BoundType;
+    // A constructed Type's stored Field Types are its substitution of the declared ones: the storage an analysis run or an
+    // instantiation prepared, and the same substitution on demand otherwise (a generic template whose Semantics cases are
+    // substituted declares Types that no run prepares, SPEC 8.10); a nominal Type's Field Types are the declared ones.
+    internal static BoundType? FieldType(BoundType type, int index)
+        => type.StoredFields is { } fields ? fields[index]
+            : type.Kind == BoundTypeKind.Constructed && Declaration(type) is { } declaration ? declaration.CodeContext.Compilation.Binding.StoredType(Field(type, index), type)
+            : Field(type, index).BoundType;
 
     internal static StructKoto? Declaration(BoundType? type) => IsStruct(type) ? (StructKoto)type!.Symbol!.Declaration : null;
 

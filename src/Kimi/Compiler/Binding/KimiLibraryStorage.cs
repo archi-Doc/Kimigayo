@@ -6,6 +6,11 @@ namespace Kimi.Compiler;
 
 public sealed partial class KimiLibrary
 {
+    private bool ValidStorageAbort(BindingSymbol symbol, in KimiLibraryCatalog.Entry rule)
+        => symbol.CompilerFunction == rule.Function &&
+        symbol.Declaration is FunctionKoto { Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, Parameters.Count: 0, TypeConstraints.Count: 0 } function && function.Name == rule.Name &&
+        ReferenceEquals(function.Parent, this.StorageScope.Owner) && BareName(function.ReturnType, "Never");
+
     // Canonical complete signatures over the declaration's own E. Compare the ordinary binder's
     // identities and Origins, not just the spelling of Array, E or the remainder names.
     private static readonly StorageSignature[] StorageSignatures =
@@ -77,9 +82,14 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (id == KimiDeclarationId.StorageMissingDictionaryKey)
+        if (id is KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded)
         {
             return ReferenceEquals(symbol.Type, BoundType.Never);
+        }
+
+        if (id is KimiDeclarationId.StorageTryAllocateBytes or KimiDeclarationId.StorageTransferBytes)
+        {
+            return ValidBoundStorageBytes(symbol, id);
         }
 
         if (id == KimiDeclarationId.StorageDictionaryLayout)
@@ -95,11 +105,6 @@ public sealed partial class KimiLibrary
         if (id is >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice)
         {
             return ValidBoundRawOperation(symbol, id);
-        }
-
-        if (id is KimiDeclarationId.StorageReserveDictionary or KimiDeclarationId.StorageShrinkDictionary)
-        {
-            return this.ValidBoundDictionaryCapacity(symbol, id);
         }
 
         if (id is >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder)

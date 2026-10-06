@@ -11,7 +11,8 @@ public sealed partial class OwnershipAnalysis
         var binding = this.compilation.Binding;
         var getter = binding.PropertyCall(target, PropertyAccessorKind.Get);
         var setter = binding.PropertyCall(target, PropertyAccessorKind.Set);
-        if (!binding.TryGetReceiverOperation(target, out var operation) || operation.Source is null || operation.ParameterType is null)
+        if (!binding.TryGetReceiverOperation(target, out var operation) || operation.Source is null || operation.ParameterType is null ||
+            !this.SupportsUpdate(target, target.BoundType, ElementAccess.UpdateOperator(source.Akind)))
         {
             this.Unsupported(source);
             return -1;

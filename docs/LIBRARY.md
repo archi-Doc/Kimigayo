@@ -11,7 +11,7 @@ Names are relative to `Kimi`. The default alias opens its root, but not nested g
 
 Tables omit `public` and may omit `func`. Each signature includes its receiver and result; `Self` denotes the containing Type. Properties are read-only unless stated otherwise. An argument Type written as `A or B` abbreviates two overloads, not a union Type. `during` annotations identify result dependencies; they never extend storage lifetimes.
 
-This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §7. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
+This reference lists required constructors and named operations, and describes common conformances once. Concrete iterator constructors and compiler-internal helpers are not required APIs. Current source-only interfaces are noted in §9. Detailed syntax, effect bounds and compiler operations remain in the linked specification.
 
 ## 1. Foundational Types and Contracts
 
@@ -426,27 +426,30 @@ Targets must contain complete values; these operations do not repair uninitializ
 | `makeObj<T>(value: T) -> obj/T` | `T is ObjectPayload` | Creates a uniquely owned object. |
 | `makeRc<T>(value: T) -> rc/T` | `T is ObjectPayload` | Creates an object with strong count one and non-atomic reference counting. |
 | `makeArc<T>(value: T) -> arc/T` | `T is ObjectPayload` | Creates an object with strong count one and atomic reference counting. |
-| `clone<S>(value: ref/S) -> S` | S is a valid complete rc/arc handle Type. | Duplicates the strong handle without allocation, retaining the same object and view. |
+| `clone<s/T>(value: ref/(s/T)) -> s/T` | `s is rc or arc` | Duplicates the strong handle without allocation, retaining the same object and view. |
 
 Ordinary creation does not require Owned; payload dependencies survive in the object handle. Strong clone is not a deep copy or an obj duplicator. The argument borrows the handle slot, as in `Intrinsics.clone(handle@ref)`. Atomic counting alone grants no payload thread-safety guarantee.
+
+These four signatures are declared together in `src/Kimi/Library/Intrinsics.kimi`; their compiler catalog validates the
+normal factory signatures and the strong clone's single complete-Type pair separately from runtime support.
 
 ### 5.3. Weak Handles and Cyclic Construction
 
 [Specification: Weak values](spec/03-types-and-values.md#322-weak-reference-values) and [Weak operations](spec/13-operators-and-assignment.md#1359-weak-reference-operations).
 
-`struct Weak<S>` is a Non-Copy root Type, where S is a valid complete rc/arc handle Type. It always refers to a target table, has no empty initializer and does not expose the payload directly. Use `Option<Weak<S>>` for absence. Expiration does not erase its Type's dependencies.
+`struct Weak<s/T>` is a Non-Copy root Type requiring `s is rc or arc`. It always refers to a target table, has no empty initializer and does not expose the payload directly. Use `Option<Weak<s/T>>` for absence. Expiration does not erase its Type's dependencies.
 
 The following functions belong to `Intrinsics`:
 
 | Function | Guarantee |
 | --- | --- |
-| `downgrade<S>(value: ref/S) -> Weak<S>` | Creates a weak handle without retaining the payload strongly; creating the weak table may allocate. |
-| `upgrade<S>(value: ref/Weak<S>) -> Option<S>` | Retains and returns the strong handle if the target is alive; otherwise None. |
-| `clone<S>(value: ref/Weak<S>) -> Weak<S>` | Duplicates the weak handle. |
+| `downgrade<s/T>(value: ref/(s/T)) -> Weak<s/T>` | Creates a weak handle without retaining the payload strongly; creating the weak table may allocate. |
+| `upgrade<s/T>(value: ref/Weak<s/T>) -> Option<s/T>` | Retains and returns the strong handle if the target is alive; otherwise None. |
+| `clone<s/T>(value: ref/Weak<s/T>) -> Weak<s/T>` | Duplicates the weak handle. |
 | `makeRcCyclic<T, F>(build: F) -> rc/T` | Requires `T is ObjectPayload`, `T is Owned` and `F is Callable<owner, (Weak<rc/T>) -> T>`. |
 | `makeArcCyclic<T, F>(build: F) -> arc/T` | Requires `T is ObjectPayload`, `T is Owned` and `F is Callable<owner, (Weak<arc/T>) -> T>`. |
 
-Cyclic construction calls build once. Upgrading its Weak returns None while construction is in progress; the object becomes alive only after the payload and required cleanup are complete. F itself need not be Copy or Owned. Required allocation failure and reference-count overflow Abort.
+Cyclic construction calls build once. Upgrading its Weak returns None while construction is in progress; the object becomes alive only after the payload and required cleanup are complete. F itself need not be Copy or Owned. Required allocation failure Aborts, and a count increment at its maximum Aborts with `KIMI_E_REF_COUNT`.
 
 ### 5.4. Raw Storage
 
@@ -499,7 +502,44 @@ Elements are taken and destroyed with `@move` on raw Places (`_ = storage[i]@mov
 
 Each stopped interval discards its sub-microsecond fraction. Floating-point Properties may round; rawMicroseconds does not. Clock failure, nonpositive frequency, a negative/reversed counter and microsecond overflow Abort. Frequency initializes once on first clock use through the normal static initialization protocol.
 
-## 8. Current Source Differences
+## 8. Asynchronous Tasks
+
+[Specification: asynchronous tasks](spec/22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks) and [suspension and task calls](spec/24-suspension-and-asynchronous-tasks.md).
+
+All names in this section belong to `Async`. A function that may suspend begins its parameter list with the task slot `task;`, and a call passes the task as the task argument `task;`; only such task calls suspend. The tasks of a tree share the thread of its `run`. No value represents a pending computation, a running child or a suspended task frame.
+
+### 8.1. Types and Channel Endpoints
+
+| Type | Member | Guarantee |
+| --- | --- | --- |
+| `struct Cancelled` | (none) | Fieldless, Copy and Owned report of cancellation; only Kimi creates it. |
+| `enum SendFailure` | `Closed`, `Cancelled(Async.Cancelled)` | Why `send` returned its value: the receiver is closed, or cancellation. |
+| `enum Raced<A, B>`, one declaration per arity | `First(A, B)`, `Second(A, B)`; one Case per child, in order | The Case names the child that completed first; every final result is kept. |
+| `struct Sender<T>` | `send(task; self: uniq/Self, value: T) -> Result<(), (T, SendFailure)>` | `Ok(())` once the value has left into the buffer or to the receiver; otherwise `Err` returns the value with `Closed` or `Cancelled`. The value moves only on `Ok`. |
+| `struct Receiver<T>` | `receive(task; self: uniq/Self) -> Result<Option<T>, Cancelled>` | `Ok(Some(item))` removes one item; `Ok(None)` once the channel is closed and drained, and on every later call; `Err` on cancellation removes nothing. A delivered item depends on neither the receiver borrow nor the channel storage. |
+
+`pipe` creates every channel and lends its endpoints; they are operated only through `uniq/Self`. Each wait commits exactly once, by its operation or by cancellation, and returns what it committed to.
+
+### 8.2. Operations
+
+| Function | Guarantee |
+| --- | --- |
+| `run<F, R>(root: F) -> R`, `F is Callable<owner, (task;) -> R>` | Starts `root` as the root of a new task tree on the current thread and returns its result once every task of the tree has completed. The only bridge from code without a task; inside a task it suspends every task of the enclosing trees until it returns. Accesses per-thread executor state, an environment effect. |
+| `sleep(task; duration: Time.Duration) -> Result<(), Cancelled>` | `Ok(())` no earlier than `duration` after the call, by the elapsed-time counter of §7; registering the wait allocates nothing. |
+| `checkpoint(task;) -> Result<(), Cancelled>` | Reports a pending cancellation request; yields only when another task is ready or after an implementation-defined budget of calls. Reads no clock. |
+| `shield<F, R>(task; body: F ! grace: Time.Duration) -> R`, `F is Callable<owner, (task;) -> R>` | Runs `body` as a child and returns its result. A request that applies to the caller reaches the body only `grace` after the later of the request and the call, and stays pending for the caller's next observing wait. |
+| `join<A, B, RA, RB>(task; first: A, second: B) -> (RA, RB)`, `A is Callable<owner, (task;) -> RA>`, `B is Callable<owner, (task;) -> RB>` | Runs the children concurrently and returns every result after the last completes. |
+| `joinOk<A, B, TA, TB, E>(task; first: A, second: B) -> Result<(TA, TB), E>`, `A is Callable<owner, (task;) -> Result<TA, E>>`, `B is Callable<owner, (task;) -> Result<TB, E>>` | At the first `Err`, cancels the others and returns that `Err` once all complete; otherwise `Ok` of every result. Unreturned results are destroyed. |
+| `race<A, B, RA, RB>(task; first: A, second: B) -> Raced<RA, RB>`, `A is Callable<owner, (task;) -> RA>`, `B is Callable<owner, (task;) -> RB>` | At the first completion, cancels the others; once all complete, returns `Raced` naming the winner with every final result. |
+| `each<I, F>(task; items: I, child: ref/F ! limit: isize) -> Result<(), Cancelled>`, `I is Iterator`, `F is Callable<(task; I.Item) -> ()>` | Starts one child per item in `next` order, with at most `limit` running and no item taken before a child can start. Once a request applies it pulls no more and returns `Err` after joining every child. Destroys the Iterator after its last child; `limit < 1` Aborts. |
+| `eachReceived<T, F>(task; items: uniq/Receiver<T>, child: ref/F ! limit: isize) -> Result<(), Cancelled>`, `F is Callable<(task; T) -> ()>` | The same over received items until the receiver is closed and drained; a request stops receiving. `limit < 1` Aborts. |
+| `pipe<P, C, T, R>(task; producer: P, consumer: C ! capacity: isize) -> R`, `P is Callable<owner, (task; uniq/Sender<T>) -> ()>`, `C is Callable<owner, (task; uniq/Receiver<T>) -> R>` | The only channel constructor: lends one endpoint to each child and buffers `capacity` items, `0` being a rendezvous, without heap allocation in steady state. When the consumer completes, closes the receiver, cancels and joins the producer, and returns the consumer's result; buffered items are destroyed. `capacity < 0` Aborts. |
+
+`join`, `joinOk` and `race` have one overload per arity from two children up, and `Raced` has one declaration per arity. Every structured operation returns only after all its children complete. One-shot children (of `join`, `joinOk`, `race`, `pipe` and `shield`) are consumed and may have a Shared, Exclusive or Consuming body; `each` and `eachReceived` call their child concurrently through a shared borrow, which admits only a Shared body. Children need no Owned and may borrow the caller's locals; overlapping exclusive borrows are ordinary Loan conflicts.
+
+Only the structured operations above request cancellation, for the children they started; no public operation makes a request. Only `sleep`, `checkpoint`, I/O waits, `send` and `receive` observe it, and `each` checks before each pull. Cancellation never interrupts, unwinds or destroys a task frame. Apart from their children's effects, the operations other than `run` have no environment effects and are usable in `confined` implementations. Apart from `run`, every Kimi operation that may wait takes the task slot; `Console.writeLine` stays synchronous.
+
+## 9. Current Source Differences
 
 The source library currently has the following differences from the required API. These entries record public source interfaces without changing the specification.
 

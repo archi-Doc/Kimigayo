@@ -1,0 +1,15 @@
+// Fixed native finalization workload; timings belong to benchmark-object-finalization.ps1.
+struct Item
+    public let value: i32 = 7
+    drop
+        require self.value == 7 else => $abort("payload destruction")
+
+public func main()
+    var checksum: i64 = 0
+    for round in 0..1048576
+        let owner = Kimi.Intrinsics.makeRc(Item.init())
+        do
+            let copy = Kimi.Intrinsics.clone(owner@ref)
+            checksum += copy.value@i64
+        checksum += owner.value@i64
+    Console.writeLine("checksum \(checksum)")

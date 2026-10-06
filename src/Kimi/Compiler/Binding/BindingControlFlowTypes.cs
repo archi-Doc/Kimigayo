@@ -76,7 +76,8 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
             return null;
         }
 
-        return Binding.FitsType(actual, expected) || binding.FitsUnderIdentity(actual, expected, source.Node);
+        // The fit Binding judged at the result: Origin relations use the premises in scope there (SPEC 15.3.5).
+        return binding.FitsTypeAt(actual, expected, source.Node) || binding.FitsUnderIdentity(actual, expected, source.Node) || ReferenceTypes.StorageMatches(expected, actual);
     }
 
     public override ControlFlowType? InferResultType(IReadOnlyList<ControlFlowResultSource> sources)
@@ -133,6 +134,9 @@ internal sealed class BindingControlFlowTypes(Binding binding) : ControlFlowType
 
     public override MatchCoverage GetMatchCoverage(MatchKoto match, ControlFlowType? subject)
         => binding.TryGetMatch(match, out var plan) ? plan!.Coverage : default;
+
+    internal override OriginRelationFact? OriginRelation(ControlFlowResultSource source, ControlFlowType target)
+        => SemanticType(source.Type) is { } actual && SemanticType(target) is { } expected ? binding.OriginRelationOf(actual, expected, source.Node) : null;
 
     private static ControlFlowType? FlowType(BoundType? type)
         => ReferenceEquals(type, BoundType.Unit) ? ControlFlowType.Unit : ReferenceEquals(type, BoundType.Never) ? ControlFlowType.Never : ReferenceEquals(type, BoundType.Boolean) ? ControlFlowType.Boolean : type;

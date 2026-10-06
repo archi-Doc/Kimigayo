@@ -129,8 +129,24 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(source.IndexOf(marked, StringComparison.Ordinal), marked.StartsWith("during", StringComparison.Ordinal) ? 6 : marked.Length), error.Span);
         Assert.DoesNotContain("Unexpected token", error.Message, StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(error.Label));
-        Assert.False(string.IsNullOrWhiteSpace(error.Advice));
+        Assert.True(error.Repairs is not null || !string.IsNullOrWhiteSpace(error.Advice), "a repair candidate or Advice explains the repair");
         Assert.Null(error.Reason);
+    }
+
+    // SPEC 3.3.6, 23.3.6.9: the former keyword offers 'during' as a repair candidate, and no Advice repeats the edit.
+    [Fact]
+    public void TheFormerKeywordOffersDuring()
+    {
+        const string source = "func f(x: ref/i32 from a) => ()";
+        var error = Assert.Single(Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal("BorrowOriginKeyword_Kd", error.Code);
+        Assert.Null(error.Advice);
+        var repair = Assert.Single(error.Repairs!);
+        Assert.Equal("Repair.ReplaceToken", repair.Kind);
+        Assert.Equal("Replace 'from' with 'during'", repair.Title);
+        Assert.Empty(repair.Verified);
+        Assert.Empty(repair.Required);
+        Assert.Equal(new RepairEdit(0, new(18, 4), new SourceRange(new(0, 18), new(0, 22)), "during", "from"), Assert.Single(repair.Edits));
     }
 
     [Theory]

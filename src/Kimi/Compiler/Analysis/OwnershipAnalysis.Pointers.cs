@@ -11,7 +11,7 @@ public sealed partial class OwnershipAnalysis
         var type = this.Concrete(source.BoundType);
         // SPEC 5.2, 21.3.1: a generic read acquires CopyOrMove without inventing a Loan.
         // The closed ownership plan must still prove a supported pointee representation.
-        if (abstractRead && this.instance is null && type?.Kind == BoundTypeKind.Parameter)
+        if (abstractRead && this.instance is null && type?.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection)
         {
             return true;
         }
@@ -19,8 +19,9 @@ public sealed partial class OwnershipAnalysis
         // Acquisition preserves the complete pointee Type, including its internal Origins. Raw access supplies no
         // new Loan or lifetime; initialized storage and valid Copy/Move permission remain the unsafe caller's obligations.
         return ScalarTypes.Supports(type) || ReferenceTypes.IsPointer(type) || ReferenceTypes.IsBorrow(type) ||
+            (type is not null && ObjectTypes.HandleMode(type) is not null && this.SupportsType(type)) ||
             ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ||
-            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
+            (type is not null && (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type)));
     }
 
     private int PointerAddress(Koto source)
@@ -101,18 +102,11 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None && this.compilation.Binding.TryGetAdaptation(source, out var read))
         {
-            // SPEC 3.5.3, 13.5.5.1: a Scalar read through a pair layer. Owner reads the operand itself; ref and uniq load
-            // through the stored reference; the universal verification reads through a shared borrow of the operand.
-            var operand = KotoHelper.UnwrapParentheses(source);
+            // SPEC 3.5.3, 13.5.5.1: a Scalar read through a pair layer. The owner case reads the operand itself; ref and uniq
+            // load through the stored reference.
             if (layers == 0)
             {
-                return this.instance is null ? this.CopyThroughPair(source, operand, read.Type) : this.ExpressionCore(operand, PlaceUseKind.Consume, null);
-            }
-
-            if (this.instance is not null && operand is not IdentifierNameKoto)
-            {
-                var stored = this.StoredReference(operand, SemanticsKind.Ref);
-                return stored < 0 ? -1 : this.LoadThrough(source, stored, layers);
+                return this.ExpressionCore(KotoHelper.UnwrapParentheses(source), PlaceUseKind.Consume, null);
             }
         }
 
@@ -131,7 +125,7 @@ public sealed partial class OwnershipAnalysis
 
     // Loads the referent through an already evaluated reference, so that an update reads and writes the one Place
     // its target expression designates (SPEC 13.7.2).
-    private int LoadThrough(Koto source, int reference, int layers)
+    private int LoadThrough(Koto source, int reference, int layers, BoundType? referenceType = null)
     {
         if (layers <= 0)
         {
@@ -140,7 +134,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var loaded = -1;
-        for (var type = this.Concrete(source.BoundType); layers > 0; layers--)
+        for (var type = referenceType ?? this.Concrete(source.BoundType); layers > 0; layers--)
         {
             // An inner layer is read only for its address; the terminal referent is a Copy snapshot.
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
@@ -175,7 +169,7 @@ public sealed partial class OwnershipAnalysis
 
         result = this.Concrete(result)!;
         if (this.compilation.Binding.ImplicitPairAdmitted(source) != SemanticsMask.None &&
-            (this.instance is null || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
+            (!this.Substituting || this.ReferenceLayers(source.BoundType, result.Components[0]) == 1))
         {
             // SPEC 13.5.5.1, 10.2: the inner reference below a pair layer is Copied from the Place itself in the universal
             // verification and an owner instance; a ref or uniq instance loads it through the stored reference below.
@@ -189,7 +183,7 @@ public sealed partial class OwnershipAnalysis
         for (var type = this.Concrete(source.BoundType); ; type = this.Concrete(type.Components[0]))
         {
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-                this.Concrete(type.Components[0]) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } stored)
+                this.Concrete(type.Components[0]) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 } stored)
             {
                 this.Unsupported(source);
                 return -1;
@@ -211,7 +205,7 @@ public sealed partial class OwnershipAnalysis
     private bool SupportsCopySnapshot(BoundType type, Koto source)
         => this.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Proven &&
         (ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) ||
-            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
+            type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.FunctionItem or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || StructStorage.IsStruct(type) || EnumStorage.IsEnum(type));
 
     // SPEC 5.2.2: a borrow of a raw Place converts its address. The referent is a fresh anchor that no Loan of another Place
     // covers, so accesses through the result, and Reborrows from it, are checked under the result alone.
@@ -247,11 +241,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        var place = this.body.PlaceStorage.Count;
-        this.body.PlaceStorage.Add(new(place, borrow, reference, OwnershipPlaceKind.Anchor, false, AcquisitionKind.None));
-        this.placeValues.Add(-1);
-        this.resultDeclarations.Add(-1);
-        anchors.Add(place);
+        anchors.Add(this.AddPlace(new(this.body.PlaceStorage.Count, borrow, reference, OwnershipPlaceKind.Anchor, false, AcquisitionKind.None)));
     }
 
     private int LoadPointer(Koto source, int pointer)
@@ -265,7 +255,8 @@ public sealed partial class OwnershipAnalysis
 
     private int WritePointer(BinaryKoto assignment, Koto target)
     {
-        if (!this.SupportsPointerValue(target))
+        if (!this.SupportsPointerValue(target) ||
+            (assignment.Akind != KotoKind.Equals && !this.SupportsUpdate(target, target.BoundType, KotoHelper.CompoundOperation(assignment.Akind), pointer: true)))
         {
             this.Unsupported(assignment);
             return -1;
@@ -344,8 +335,8 @@ public sealed partial class OwnershipAnalysis
     {
         var type = call.BoundType;
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
-            (operation != KotoKind.Equals && type?.IsNumeric != true))
+        if (ElementAccess.PlaceCallReference(call)?.Semantics != SemanticsKind.Uniq || type is null ||
+            (operation != KotoKind.Equals && !this.SupportsUpdate(call, type, operation)))
         {
             this.Unsupported(source);
             return -1;
@@ -398,8 +389,8 @@ public sealed partial class OwnershipAnalysis
         var reference = followed.Left;
         var type = this.Concrete(followed.BoundType);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || type is null || operation == KotoKind.Invalid ||
-            (operation != KotoKind.Equals && type?.IsNumeric != true))
+        if (this.Concrete(reference.BoundType)?.Semantics != SemanticsKind.Uniq || type is null ||
+            (operation != KotoKind.Equals && !this.SupportsUpdate(followed, followed.BoundType, operation)))
         {
             this.Unsupported(source);
             return -1;

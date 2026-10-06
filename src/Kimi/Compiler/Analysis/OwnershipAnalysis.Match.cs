@@ -43,8 +43,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < plan.Positions.Count; i++)
         {
             var position = plan.Positions[i];
-            if ((position.Parent < 0 && position.MatchedType.Kind == BoundTypeKind.Parameter) ||
-                position.Acquisition == PatternAcquisition.Deferred || (position.MatchedType.Kind != BoundTypeKind.Parameter && !this.SupportsType(position.MatchedType)) ||
+            if (position.Acquisition == PatternAcquisition.Deferred || (position.MatchedType.Kind != BoundTypeKind.Parameter && !this.SupportsType(position.MatchedType)) ||
                 (position.Kind == BoundPatternKind.Binding && position.Acquisition is not (PatternAcquisition.Copy or PatternAcquisition.Borrow or PatternAcquisition.Move or PatternAcquisition.CopyOrMove)))
             {
                 return false;
@@ -309,7 +308,8 @@ public sealed partial class OwnershipAnalysis
             else
             {
                 var value = -1;
-                if (arm.Syntax.Body is ExpressionKoto && (arm.Syntax.Body is not UnitLiteralKoto || KotoHelper.IsResultRequiringSelection(syntax)))
+                // An anonymous function is an expression arm: its value is the closure it creates (SPEC 7.6, 14.2).
+                if (KotoHelper.IsBodyExpression(arm.Syntax.Body) && (arm.Syntax.Body is not UnitLiteralKoto || KotoHelper.IsResultRequiringSelection(syntax)))
                 {
                     value = this.Expression(arm.Syntax.Body);
                 }
@@ -320,7 +320,7 @@ public sealed partial class OwnershipAnalysis
 
                 if (this.flow.Nodes[arm.Syntax.Body].CanCompleteNormally)
                 {
-                    if (KotoHelper.IsResultRequiringSelection(syntax) && arm.Syntax.Body is ExpressionKoto)
+                    if (KotoHelper.IsResultRequiringSelection(syntax) && KotoHelper.IsBodyExpression(arm.Syntax.Body))
                     {
                         secured = this.WriteResult(arm.Syntax.Body, output, value);
                     }

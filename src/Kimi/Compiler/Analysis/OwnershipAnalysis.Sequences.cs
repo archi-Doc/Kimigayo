@@ -83,24 +83,28 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
+        int result;
         if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } resultType ||
             !this.SupportsCopySnapshot(resultType, source))
         {
             if (acquisition is null && source.BoundType is { } element && this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven)
             {
+                // Like a bare local, the rejected acquisition still yields its typed element: dropping it would invent an
+                // uninitialized use where the value arrives, such as a returned result.
                 this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                result = this.Temporary(source);
             }
             else
             {
                 this.Unsupported(source);
+                result = -1;
             }
-
-            this.EndComparisonLoans(depth, source);
-            this.comparisonDepth = depth;
-            return -1;
+        }
+        else
+        {
+            result = this.SequenceValue(source, source.BoundType!, SequenceOperation.Read, receiver, index: index);
         }
 
-        var result = this.SequenceValue(source, source.BoundType!, SequenceOperation.Read, receiver, index: index);
         this.EndComparisonLoans(depth, source);
         this.comparisonDepth = depth;
         return result;

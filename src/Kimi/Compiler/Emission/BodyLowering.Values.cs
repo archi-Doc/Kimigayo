@@ -29,10 +29,11 @@ internal sealed partial class BodyLowering
                 // acquired Type; the Type targets of Identity Acquisition keep their supported set. An operand read through its
                 // reference layers (SPEC 13.5.2) supplies the read Type.
                 var left = OperandType(source);
+                var context = (uint)identity.Place < (uint)body.Places.Count ? body.Places[identity.Place].DefaultContext : -1;
                 if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
-                    SignatureType(lowering, source.BoundType) is not { } type ||
+                    body.Concrete(body.SubstituteDefaultType(source.BoundType, context)) is not { } type ||
                     (source.ConversionBinding == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type) && !Binding.IsCopyOperation(source)) ||
-                    !ReferenceEquals(type, SignatureType(lowering, left)) || !ReferenceEquals(type, SignatureType(lowering, source.Right.BoundType)) ||
+                    !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(left, context))) || !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(source.Right.BoundType, context))) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {
                     return false;
@@ -45,8 +46,9 @@ internal sealed partial class BodyLowering
             var value = body.Values[id];
             var expected = value.Kind switch
             {
-                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection or OwnershipValueKind.StaticRead => 0,
-                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.ClosureErasure or OwnershipValueKind.PointerLoad or OwnershipValueKind.ContractComparison or OwnershipValueKind.RuntimeTypeTest => 1,
+                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.DefaultCall or OwnershipValueKind.DefaultRead or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection or OwnershipValueKind.StaticRead => 0,
+                OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.PointerLoad or OwnershipValueKind.ContractComparison or OwnershipValueKind.RuntimeTypeTest => 1,
+                OwnershipValueKind.ClosureErasure => value.Count is 0 or 1 ? value.Count : -1, // A Function Item has no source closure.
                 OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => 2,
                 OwnershipValueKind.PointerStore => IsScalar(ValueType(body, id)!) ? 2 : 1,
                 OwnershipValueKind.Address => value.Count is >= 0 and <= 2 ? value.Count : -1,
@@ -85,7 +87,7 @@ internal sealed partial class BodyLowering
             }
 
             if (value.Kind == OwnershipValueKind.Phi && (!scalar || operation.Kind != OwnershipOperationKind.Branch ||
-                !ReferenceEquals(ValueType(body, id), SignatureType(lowering, operation.Source.BoundType))))
+                !ReferenceEquals(ValueType(body, id), body.ConcreteAt(operation.Source.BoundType, id))))
             {
                 return false;
             }
@@ -142,7 +144,7 @@ internal sealed partial class BodyLowering
 
             if (value.Kind == OwnershipValueKind.Parameter &&
                 (operation.Kind != OwnershipOperationKind.Produce || body.Places[operation.Place].Kind != OwnershipPlaceKind.Parameter ||
-                value.Constant < 0 || value.Constant >= body.Function.Parameters.Count ||
+                value.Constant < 0 || value.Constant >= body.ParameterCount ||
                 !ReferenceEquals(operation.Source, body.Function.Parameters[(int)value.Constant].Type) ||
                 !ReferenceEquals(ValueType(body, id), SignatureType(lowering, body.Function.Parameters[(int)value.Constant].Type.BoundType))))
             {

@@ -1,3 +1,25 @@
+# Running ParseBenchmark (2026-10-04)
+
+From the repository root, after building `src/Benchmark/Benchmark.csproj` in Release:
+
+```powershell
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --filter '*ParseBenchmark*' --artifacts artifacts/benchmarks/parser
+```
+
+For a short execution check, append `--launchCount 1 --warmupCount 1 --iterationCount 1 --invocationCount 128 --unrollFactor 1`.
+This is a smoke check, not a timing baseline. Check the report for successful workload results: BenchmarkDotNet may return
+exit code zero after a generation or execution failure.
+
+The configured .NET 10 toolchain resolves `Benchmark.csproj` from its compiled source location, retaining the standard
+SDK validation, builder and executor. It does not recursively search the solution, where VS Code test profiles may
+contain inaccessible directories. Rebuild after moving the checkout. Explicit alternative toolchains keep their own
+project-discovery behavior.
+
+The current input uses the revised Playground example. Each invocation constructs a source snapshot, tokenizes and
+parses it, and clears its syntax in `finally`. It does not register repeated snapshots in the module's serialization
+history. Setup checks 128 repetitions; setup and cleanup reject diagnostics or retained source/syntax. These checks are
+outside timing. Earlier results below used a different input and entry path and are not directly comparable.
+
 # Parser optimization (2026-09-05)
 
 対象は `ParseBenchmark.Test1()`。入力とベンチマークメソッドの処理内容は変更していない。

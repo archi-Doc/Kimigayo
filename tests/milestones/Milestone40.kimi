@@ -1,0 +1,77 @@
+// Milestone 40: disjoint exclusive element access - two exclusive references to distinct elements of one collection,
+// split from its exclusive capability by tryGetPairUniq, with None for an invalid position or one element named twice.
+struct Account
+    public let name: string
+    public var balance: i32
+    public init(name: string, balance: i32)
+        self.name = name@move
+        self.balance = balance
+    public func show(self) => Console.writeLine("\(self.name) holds \(self.balance).")
+    drop => Console.writeLine("Closed \(self.name).")
+
+// Moves an amount between two distinct accounts selected by positions of any Type. The same account, a missing one
+// or an overdraft is refused; both references end before the caller uses the collection again.
+func transfer<P, Q>(accounts: uniq/Array<Account>, from: P, to: Q, amount: i32) -> bool
+    P is Position
+    Q is Position
+    match accounts.tryGetPairUniq(first: from@move, second: to@move)
+        .Some((let source, let target))
+            require source.balance >= amount else => return false
+            source.balance -= amount
+            target.balance += amount
+            return true
+        .None => return false
+
+// One pass of adjacent exchanges over a fixed array; each step holds both neighbors exclusively at once.
+func settle(values: uniq/[4 of i32]) -> i32
+    var exchanges = 0
+    var i: isize = 0
+    while i < 3
+        match values.tryGetPairUniq(first: i, second: i + 1)
+            .Some((let left, let right))
+                if left@follow > right@follow
+                    let held = left@follow
+                    left@follow = right@follow
+                    right@follow = held
+                    exchanges += 1
+            .None => $abort("Adjacent positions are distinct")
+        i += 1
+    return exchanges
+
+public func main()
+    var accounts: Array<Account> = [Account.init("Aki", 50), Account.init("Ben", 20), Account.init("Chi", 0)]
+    require transfer(accounts@uniq, 0, 2, 30) else => $abort("Transfer failed")
+    require transfer(accounts@uniq, ^1, 1@u8, 5) else => $abort("From-end transfer failed")
+    require not transfer(accounts@uniq, 1, ^2, 1) else => $abort("One account was lent twice")
+    require not transfer(accounts@uniq, 0, 3, 1) else => $abort("A missing account was accepted")
+    require not transfer(accounts@uniq, 1, 0, 100) else => $abort("An overdraft was accepted")
+    Console.writeLine("Balances \(accounts[0].balance), \(accounts[1].balance), \(accounts[2].balance).")
+
+    // Both Non-Copy elements are replaced through the pair; each old value is destroyed exactly once.
+    match accounts.tryGetPairUniq(first: ^1, second: 0)
+        .Some((let last, let first))
+            last@follow = Account.init("Dan", last.balance)
+            first@follow = Account.init("Eve", first.balance)
+        .None => $abort("Replacement pair missing")
+    accounts.append(Account.init("Fay", 5))
+    for account in accounts
+        account.show()
+
+    var readings: [4 of i32] = [40, 10, 30, 20]
+    let exchanges = settle(readings@uniq)
+    Console.writeLine("Settled \(readings[0]) \(readings[1]) \(readings[2]) \(readings[3]) after \(exchanges) exchanges.")
+    match readings.tryGetPairUniq(first: ^1, second: 3)
+        .Some(_) => $abort("One element was lent twice")
+        .None => Console.writeLine("Positions ^1 and 3 name one element.")
+
+    // Elements that are references: the pair reaches each referent, and the referents are free after the last use.
+    var low = 1
+    var high = 9
+    var limits: Array<uniq/i32> = [low@uniq, high@uniq]
+    match limits.tryGetPairUniq(first: ^1, second: 0)
+        .Some((let upper, let lower))
+            upper@follow@follow += 10
+            lower@follow@follow -= 1
+        .None => $abort("Limit pair missing")
+    Console.writeLine("Limits \(low) and \(high).")
+    Console.writeLine("Disjoint element access finished.")

@@ -21,6 +21,12 @@ public class ScalarTemporaryBorrowTest
     [InlineData("Rank", "func pick(value: i64) -> i32 => 1\nfunc pick(value: ref/i32) -> i32 => 2\nrequire pick(1) == 1 else => $abort(\"rank\")", "")]
     [InlineData("Returned", Read + "func keep(n: ref/i32) -> ref/i32 during n => n\nrequire read(keep(1)) and read(keep(one())) else => $abort(\"value\")", "called\ncalled\n")]
     [InlineData("Generic", Inspect + "inspect(1)\ninspect(1.5)\ninspect(makeValue())\nConsole.writeLine(\"done\")", "done\n")]
+
+    // The result of a selection, `do`, loop exit or short circuit is stored in its result slot at the borrow, as an argument,
+    // an explicit borrow or an interpolated value.
+    [InlineData("Join", Read + "let c = true\nrequire read(if c => 1 else => 2) and read(do => 3) and read(loop => exit 4) else => $abort(\"join\")", "called\ncalled\ncalled\n")]
+    [InlineData("ShortCircuit", "func check(b: ref/bool) -> bool => b@follow\nlet x: i32 = 4\nrequire check((x > 1 and x < 9)@ref) and not check(x > 9 or x < 0) else => $abort(\"bool\")", "")]
+    [InlineData("Interpolated", "let c = true\nlet x: i32 = 4\nConsole.writeLine(\"\\(if c => 5 else => 6) \\(do => 7) \\(x > 1 and x < 9)\")", "5 7 true\n")]
     public void ExecutesScalarTemporaryBorrows(string name, string source, string output)
     {
         var c = MinimalEmissionTest.Analyze(source);

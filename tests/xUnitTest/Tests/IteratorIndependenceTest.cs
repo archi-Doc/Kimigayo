@@ -10,12 +10,14 @@ public class IteratorIndependenceTest
 {
     private const string CleanupProgram = "struct Trace\n    public init() => ()\n    drop => Console.writeLine(\"drop\")\nstruct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: ref/i32 during source\n    var count: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public init(value: ref/i32 during source) => self.value = value\n    func advance<T>(self: uniq/Self) => self.count += 1\n    public func next(self: uniq/Self) -> Option<ref/i32 during source>\n        let trace = Trace.init()\n        self.advance<i32>()\n        return .Some(self.value)\nlet value = 42\nvar cursor = Cursor.init(value@ref)\nlet first = cursor.next()\nlet second = cursor.next()\nmatch first\n    .Some(let item) => require item == 42 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nmatch second\n    .Some(let item) => require item == 42 else => $abort(\"second\")\n    .None => $abort(\"empty\")\nConsole.writeLine(\"independent cleanup\")";
 
+    // SPEC 15.6.3: a lent item Reborrowed through the receiver is `during step`; an Iterator's item keeps `source` only because
+    // `preserves results` makes it independent of the receiver Loan, which the write then violates.
     [Theory]
-    [InlineData("Iterator", "Iterator.Item", false)]
-    [InlineData("LendingIterator", "LentItem(step)", true)]
-    public void RepeatedWriteToPublishedReferentNeedsIndependence(string contract, string item, bool valid)
+    [InlineData("Iterator", "Iterator.Item", "source", false)]
+    [InlineData("LendingIterator", "LentItem(step)", "step", true)]
+    public void RepeatedWriteToPublishedReferentNeedsIndependence(string contract, string item, string origin, bool valid)
     {
-        var source = "struct Cursor {source}\n    Self is " + contract + "\n    associate " + item + " is ref/i32 during source\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during source>\n        self.value@follow += 1\n        return .Some(self.value)";
+        var source = "struct Cursor {source}\n    Self is " + contract + "\n    associate " + item + " is ref/i32 during " + origin + "\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during " + origin + ">\n        self.value@follow += 1\n        return .Some(self.value)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         if (!valid)

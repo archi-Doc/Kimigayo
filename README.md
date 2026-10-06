@@ -115,6 +115,8 @@ For a source checkout, replace `kimi` in these examples with `dotnet src/Kimi/bi
 
 `check` accepts the same input paths as `emit` and requires no LLVM installation. It checks source semantics, including all Project dependency bodies, without generating artifacts or running the program. Direct dependency names and aliases resolve in each defining module's environment.
 
+`check <project> --Format json` checks one project through the same entry the language server uses and writes a single JSON document (`kimi.check/1`, schema in [docs/spec/schemas/check-output.schema.json](docs/spec/schemas/check-output.schema.json)) to standard output: the outcome, the source table with the SHA-256 of every input that was read, and the diagnostic records with their repair candidates, which are structured edits with their verified and required conditions. Everything else goes to standard error, and the exit code follows acceptance as in the text form.
+
 Run `restore <project.kimiproj>` before checking a project with dependencies. Restore resolves exact local Project references and writes deterministic product/test partitions to `<project>.kimi.lock.json`. Source commands validate the required lock and never rewrite it; `--locked` is supported. Source edits require rechecking, but no restore. Supported source-module bodies share final Application generation. Library `emit` produces inspection IR with no OS entry; Library native build/run, package inputs and full module/native supply records remain unfinished.
 
 See the [transitive source dependency example](docs/examples/SourceDependencies/README.md).
@@ -299,7 +301,7 @@ The [current plan](docs/dev/PLAN.md) describes ongoing work; [session history](d
 
 ## Visual Studio Code
 
-The [kimi-ext](src/kimi-ext/) extension provides diagnostics and build/run/check commands. It shares the compiler and toolchain described in this README.
+The [kimi-ext](src/kimi-ext/) extension provides syntax highlighting, diagnostics, quick fixes for the repair candidates of diagnostics (VS Code's **Quick Fix** on a diagnostic, applied to the document version the check saw), and build/run/check commands. It shares the compiler and toolchain described in this README.
 
 ### QuickStart
 
@@ -351,6 +353,12 @@ Output and input use task terminals. **Stop / Shift+F5** stops a Ctrl+F5 session
 
 Ctrl+F5 needs no `launch.json`. If another language's configuration is selected, choose a **Kimi: Build and Run** configuration instead. Its optional `program` accepts an exact `.kimi` or `.kimiproj` path, `${file}`, or a path relative to its workspace folder. Omit it for automatic selection.
 
+### Highlighting and editing
+
+The extension colors `.kimi` files and ```` ```kimi ```` fenced blocks in the Markdown editor with a TextMate grammar; no Kimi executable is needed. Keywords, comments and documentation, strings with interpolation, numbers, Attributes, directives, Semantics such as `ref/` and explicit operations such as `@move` are recognized from the text. Contextual keywords such as `during`, `get` and `of` are colored only in their usual positions, and UpperCamelCase names are colored as Types, following the naming conventions in [STYLE.md](docs/STYLE.md); an UpperCamelCase enum Case declaration is therefore shown as a Type, while a `.Case` reference is shown as a Case. The grammar does not resolve names. The Markdown preview is not colored.
+
+Kimi files indent with four spaces, as SPEC §2.2 requires; Enter indents after a header such as `func`, `if` or `match` without `=>`, and continues `///` documentation. Indented blocks fold.
+
 ### Settings and troubleshooting
 
 - **`kimi.serverPath`**: absolute executable path or a name on PATH, without arguments. Invalid paths and server errors offer **Open Settings** and **Show Output** once per unchanged setting during an extension session, shared by diagnostics and build/run/check commands. Repeated failures remain in the **Kimi** Output channel. Changing the setting allows a new notification and restarts the server; **Kimi: Restart Language Server** retries the same setting without repeating the popup. A failed connection does not automatically restart in a loop.
@@ -359,7 +367,7 @@ Ctrl+F5 needs no `launch.json`. If another language's configuration is selected,
 
 Before compilation, the extension saves the selected source, or all dirty open Kimi files for a project. Untitled files are skipped. VS Code separately saves editors through its task/debug settings; `task.saveBeforeRun: "never"` disables task-wide saving for all extensions.
 
-Tasks need an open folder; diagnostics also work in standalone editor windows. Avoid `%` in native build paths with the verified Windows linker. Completion, hover, navigation and syntax highlighting are not included. Kimi.exe manages the toolchain.
+Tasks need an open folder; diagnostics also work in standalone editor windows. Avoid `%` in native build paths with the verified Windows linker. Completion, hover and navigation are not included. Kimi.exe manages the toolchain.
 
 VS Code 1.139.1 can emit `DEP0169` (`url.parse()`) from its own CLI marketplace metadata request after installing a local VSIX ([upstream issue](https://github.com/microsoft/vscode/issues/326998)). This is outside the extension; the install script preserves the warning while awaiting an upstream fix.
 
@@ -376,7 +384,7 @@ $env:KIMI_TEST_SERVER_PATH = (Resolve-Path src/Kimi/bin/Release/net10.0/Kimi.exe
 npm --prefix src/kimi-ext run test:integration
 ```
 
-Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
+The unit tests also check the grammar against the reserved keywords of SPEC §2.5.1, the repository's Kimi sources and the Kimi examples in `docs/spec` and `docs/impl`. Integration tests use isolated VS Code profiles. Set `VSCODE_EXECUTABLE_PATH` to reuse an installed VS Code; otherwise the test runner downloads it. Compiler-dependent cases are skipped without `KIMI_TEST_SERVER_PATH`. Open this repository and select **Kimi Extension** in Run and Debug to launch its development host.
 
 The npm override for Mocha selects supported `glob` 13 while `@vscode/test-cli` still depends on Mocha 11. Keep integration tests passing when updating this override, and remove it when the upstream dependency no longer selects deprecated `glob` 10. Packaging uses the locally installed, locked `@vscode/vsce` rather than an independent `npx` download. The prepublish step bundles the extension and its runtime dependencies with esbuild, retaining license notices; the VSIX excludes tests, build tools and `node_modules`.
 

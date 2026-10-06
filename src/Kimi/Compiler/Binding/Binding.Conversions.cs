@@ -253,7 +253,7 @@ public sealed partial class Binding
 
     // SPEC 13.5.5.2: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
     private static bool BorrowsWrittenSlot(BoundType type)
-        => StructStorage.IsStruct(type) || Compiler.EnumStorage.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
+        => StructStorage.IsStruct(type) || Compiler.EnumStorage.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
             ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
@@ -261,7 +261,7 @@ public sealed partial class Binding
     {
         if (IsBarePlace(conversion.Left) && this.ProveCopy(type, conversion) != ConstraintProof.Proven)
         {
-            return this.Fail(conversion, BindingFailure.TransferRequired);
+            return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
 
         conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
@@ -310,8 +310,7 @@ public sealed partial class Binding
 
     private bool ConversionCanComplete(Koto source, BindingScope scope)
     {
-        var structural = this.resultStructure ??= new(this.ResultNeverEvidence);
-        structural.Clear();
+        var structural = this.ResultStructure();
         this.conversionEvidenceScope = scope;
         try
         {
@@ -464,7 +463,12 @@ public sealed partial class Binding
                 return Complete(conversion, actual);
             }
 
-            if (ObjectTypes.IsBorrow(pattern) && (ObjectTypes.IsOwner(actual) || ObjectTypes.IsBorrow(actual)) &&
+            if (pattern.Semantics == SemanticsKind.ObjUniq && ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref })
+            {
+                return this.FailObjectAuthority(conversion, conversion.Left);
+            }
+
+            if (ObjectTypes.IsBorrow(pattern) && (ObjectTypes.HandleMode(actual) is not null || ObjectTypes.IsBorrow(actual)) &&
                 !ReferenceEquals(actual.Components[0], pattern.Components[0]))
             {
                 return this.BindObjectUpcast(conversion, scope, actual, pattern);
@@ -485,7 +489,7 @@ public sealed partial class Binding
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
-                var storage = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.PlaceOrigin(conversion.Left));
+                var storage = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
                 Complete(conversion.Right, storage);
                 conversion.ConversionBinding = ConversionBinding.Borrow;
                 return Complete(conversion, storage);
@@ -559,6 +563,11 @@ public sealed partial class Binding
 
             if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && IsObjectSemantics(operandType.Semantics))
             {
+                if (semantics == SemanticsKind.ObjUniq && ObjectTypes.HandleMode(operandType) is { PayloadAuthority: LoanRequirement.Ref })
+                {
+                    return this.FailObjectAuthority(conversion, conversion.Left);
+                }
+
                 var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
                 {
@@ -673,7 +682,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
-        if (ObjectTypes.IsOwner(target) && (ObjectTypes.IsOwner(source) || ObjectTypes.IsBorrow(source)))
+        if (ObjectTypes.HandleMode(target) is not null && (ObjectTypes.HandleMode(source) is not null || ObjectTypes.IsBorrow(source)))
         {
             return this.BindObjectUpcast(conversion, scope, source, target);
         }

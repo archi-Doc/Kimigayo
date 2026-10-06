@@ -79,8 +79,8 @@ public static partial class Parser
         {
             var open = reader.Read().Span.Start;
             var reference = ParseType(ref reader);
-            reader.Expect(TokenKind.CloseParenthesis);
-            path = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open, reader.PreviousEnd), reference);
+            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            path = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open, Math.Max(reference.Span.End, close.End)), reference);
         }
         else
         {

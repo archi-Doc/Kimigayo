@@ -57,7 +57,7 @@ public class OwnedStoredReferenceTest
 
     [Theory]
     [InlineData("let child = item.0@follow@ref\nchange(item.0)\nrequire child == 42 else => $abort(\"child\")", true)]
-    [InlineData("both(item.0, item.0)", null)] // Rejected at preparation or activation; see PLAN G43.
+    [InlineData("both(item.0, item.0)", true)]
     [InlineData("let child = item.0@follow@uniq\nlet read = inspect(item.0)\nchild@follow = 1", false)]
     public void StoredReferenceArgumentsRespectLiveChildren(string body, bool? activation)
     {
@@ -65,6 +65,33 @@ public class OwnedStoredReferenceTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && (activation is null || x.Activation == activation));
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 15.6.7: the slot borrow and the loaded reference of a reserved stored-reference argument are reserved with it, so
+    // a later argument may still inspect the stored reference, as for a local reference, until the call activates them.
+    private const string Reserved = "func change3(target: uniq/i32, amount: i32) => target@follow = amount + 1\nfunc inspect(target: ref/i32) -> i32 => target@follow\n";
+
+    [Theory]
+    [InlineData("Let", "var value = 42\nlet item = (value@uniq, 7)\nchange3(item.0, inspect(item.0))\nrequire value == 43 else => $abort(\"changed\")")]
+    [InlineData("Var", "var value = 42\nvar item = (value@uniq, 7)\nchange3(item.0, inspect(item.0))\nrequire value == 43 else => $abort(\"changed\")")]
+    [InlineData("Sibling", "var value = 42\nlet item = (value@uniq, 7)\nchange3(item.0, item.1)\nrequire value == 8 else => $abort(\"changed\")")]
+    [InlineData("Iteration", "func run(value: uniq/i32 during a)\n    var items = [(value@move, 7)]\n    for item in items@move\n        change3(item.0, inspect(item.0))\nvar value = 42\nrun(value@uniq)\nrequire value == 43 else => $abort(\"changed\")")]
+    public void AReservedStoredReferenceStaysInspectableUntilActivation(string name, string source)
+        => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceReserved" + name, Reserved + source, string.Empty);
+
+    [Theory]
+    [InlineData("twice(item.0, item.0)", true)]
+    [InlineData("change3(item.0, poke(item.0))", true)]
+    [InlineData("change3(item.0, take(item@move))", false)]
+    [InlineData("let child = item.0@follow@ref\nchange3(item.0, inspect(item.0))\nrequire child == 1 else => $abort(\"child\")", true)]
+    public void AReservedStoredReferenceActivatesExclusively(string body, bool activation)
+    {
+        const string helpers = "func twice(target: uniq/i32, other: uniq/i32) => target@follow = 1\nfunc take(t: (uniq/i32 during a, i32)) -> i32 => 1\nfunc poke(t: uniq/i32) -> i32\n    t@follow = 3\n    return 1\n";
+        var c = MinimalEmissionTest.Analyze(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Activation == activation);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -129,6 +156,73 @@ public class OwnedStoredReferenceTest
     public void ASharedStoredReferenceStaysReadOnly()
     {
         var c = MinimalEmissionTest.Analyze("var value = 42\nlet item = (value@ref, 7)\nitem.0@follow = 99");
+        c.Binding.ReportDiagnostics();
+        c.Ownership.ReportDiagnostics();
+        var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.SharedPathAccess_Kd), error.Code);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 3.4, 13.5.5.1: a referent selected through a reference to a stored exclusive reference (`uniq/uniq/i32`,
+    // `ref/uniq/i32`) is reached through both addresses; the inner exclusive reference is not copied.
+    [Theory]
+    [InlineData("SlotWrite", "var t = (value@uniq, 2)\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire value == 5 else => $abort(\"changed\")")]
+    [InlineData("SlotCompound", "var t = (value@uniq, 2)\nlet r = t.0@uniq\nr@follow@follow += 4\nrequire value == 5 else => $abort(\"changed\")")]
+    [InlineData("SlotRead", "let t = (value@uniq, 2)\nlet r = t.0@ref\nlet seen: i32 = r@follow@follow\nrequire seen == 1 and r@follow == 1 and r == 1 else => $abort(\"read\")")]
+    [InlineData("SlotReborrow", "var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@uniq\ninner@follow = 6\nrequire value == 6 else => $abort(\"changed\")")]
+    [InlineData("LocalWrite", "var p = value@uniq\nlet q = p@uniq\nq@follow@follow = 3\nrequire value == 3 else => $abort(\"changed\")")]
+    [InlineData("LocalRead", "let p = value@uniq\nlet q = p@ref\nrequire q@follow@follow == 1 and q@follow == 1 else => $abort(\"read\")")]
+    [InlineData("Parameter", "let t = (value@uniq, 2)\nrequire read(t.0@ref) == 1 else => $abort(\"read\")")]
+    public void AReferenceToAStoredReferenceFollowsBothLayers(string name, string body)
+    {
+        const string Read = "func read(p: ref/(uniq/i32 during inner)) -> i32 => p@follow@follow\n";
+        ScalarEmissionTest.EmitFixture("OwnedStoredReferenceLayered" + name, Read + "var value = 1\n" + body, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nr@follow@follow = 5\nrequire inner == 1 else => $abort(\"inner\")", "r@follow")]
+    [InlineData("var t = (value@uniq, 2)\nlet view = t.0@follow@ref\nlet r = t.0@uniq\nr@follow@follow = 5\nrequire view == 1 else => $abort(\"view\")", "r@follow")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@uniq\nlet inner = r@follow@follow@ref\nlet other = r@follow@follow@uniq\nother@follow = 2\nrequire inner == 1 else => $abort(\"inner\")", "r@follow@follow")]
+    [InlineData("var p = value@uniq\nlet q = p@uniq\nlet peek = q@follow@follow@ref\nq@follow@follow = 3\nrequire peek == 1 else => $abort(\"peek\")", "q@follow")]
+    public void ConflictsThroughBothLayersReject(string body, string conflict)
+    {
+        var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Ownership.Result.IsVerified);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Equal(conflict, c.Ownership.Issues.First(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict).Source.ToString());
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 3.3.6: a shared borrow of a slot holding an exclusive reference (`ref/uniq/i32`) has only shared access to the
+    // referent, so two such borrows and reads through either coexist; each kept the inner reference's exclusive Loan before.
+    [Theory]
+    [InlineData("SharedLocal", "let p = value@uniq\nlet r = p@ref\nlet r2 = p@ref\nlet x: i32 = r\nrequire x == 1 and r2 == 1 and r == r2 else => $abort(\"read\")")]
+    [InlineData("SharedLocalTyped", "let p = value@uniq\nlet r: ref/uniq/i32 = p@ref\nlet r2: ref/uniq/i32 = p@ref\nrequire r == 1 and r2 == 1 else => $abort(\"read\")")]
+    [InlineData("SharedParentRead", "let p = value@uniq\nlet r = p@ref\nlet x: i32 = p\nrequire x == 1 and r == 1 else => $abort(\"read\")")]
+    [InlineData("SharedSlot", "let t = (value@uniq, 2)\nlet r = t.0@ref\nlet r2 = t.0@ref\nrequire r@follow@follow == r2@follow@follow and r == 1 else => $abort(\"read\")")]
+    public void SharedBorrowsOfAnExclusiveReferenceSlotCoexist(string name, string body)
+        => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceSharedSlot" + name, "var value = 1\n" + body, string.Empty);
+
+    [Theory]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nvalue = 5\nrequire r == 1 else => $abort(\"read\")", "value = 5")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\np@follow = 5\nrequire r == 1 else => $abort(\"read\")", "p")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nlet w = p@follow@uniq\nw@follow = 3\nrequire r == 1 else => $abort(\"read\")", "p")]
+    [InlineData("let p = value@uniq\nlet r = p@ref\nlet x: i32 = value\nrequire r == 1 else => $abort(\"read\")", "value")]
+    [InlineData("var t = (value@uniq, 2)\nlet r = t.0@ref\nt.0@follow = 7\nrequire r == 1 else => $abort(\"read\")", "t.0")]
+    public void ASharedSlotBorrowStillFreezesItsReference(string body, string conflict)
+    {
+        var c = MinimalEmissionTest.Analyze("var value = 1\n" + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.Equal(conflict, c.Ownership.Issues.First(static x => x.Failure == OwnershipFailure.ComparisonLoanConflict).Source.ToString());
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    [Fact]
+    public void ASharedOuterLayerStaysReadOnly()
+    {
+        var c = MinimalEmissionTest.Analyze("var value = 1\nvar t = (value@uniq, 2)\nlet r = t.0@ref\nr@follow@follow = 5");
         c.Binding.ReportDiagnostics();
         c.Ownership.ReportDiagnostics();
         var error = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics);

@@ -178,5 +178,16 @@ public class ObjectPayloadTest
         Assert.True(expected == c.Bind().IsComplete, Describe(c));
     }
 
+    [Theory]
+    [InlineData("contract Payload\n    Self is ObjectPayload\ncontract Shape: Payload\n", true)]
+    [InlineData("contract Payload\n    Self is ObjectPayload\ncontract Middle: Payload\ncontract Shape: Middle\n", true)]
+    [InlineData("contract Payload\ncontract Shape: Payload\n", false)]
+    public void AnInheritedObjectPayloadClauseHoldsForTheRefiningSelf(string contracts, bool expected)
+    {
+        // SPEC 8.4.7.2: the clause may be declared directly or inherited by refinement.
+        var c = CompilationTestHelper.Parse(contracts + "    func area(self: ref/Self, other: objref/Self) -> f64");
+        Assert.True(expected == c.Bind().IsComplete, Describe(c));
+    }
+
     private static string Describe(Compilation c) => c.Binding.Result + "\n" + string.Join('\n', c.Binding.Issues);
 }

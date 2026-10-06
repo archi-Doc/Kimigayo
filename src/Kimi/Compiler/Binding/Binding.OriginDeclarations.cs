@@ -23,7 +23,9 @@ public sealed partial class Binding
             if (current is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto or IsKoto { IsAssociatedConstraint: true } ||
                 current is VariableKoto || current.Akind is KotoKind.EnumCase or KotoKind.AssociatedType)
             {
-                return current;
+                // SPEC 15.3.3, 15.3.4: a Case's payload list is an inner form of the same kind; the Case, which the clauses attach to,
+                // owns the sets of all its payloads.
+                return current is { Akind: KotoKind.EnumCase, Parent: { Akind: KotoKind.EnumCase } outer } ? outer : current;
             }
         }
 
@@ -56,6 +58,16 @@ public sealed partial class Binding
 
         return true;
     }
+
+    // SPEC 15.3.5: the variance of a position nested at `inner` within a position of variance `outer`; an unused position is compared
+    // as an invariant one (FitsTypeCore).
+    private static OriginVariance ComposeVariance(OriginVariance outer, OriginVariance inner)
+        => outer == OriginVariance.Invariant || inner is OriginVariance.Invariant or OriginVariance.Unused ? OriginVariance.Invariant
+            : inner == OriginVariance.Covariant ? outer
+            : outer == OriginVariance.Covariant ? OriginVariance.Contravariant : OriginVariance.Covariant;
+
+    // SPEC 15.3.1, 23.3.6.4: a binding set that reuses a visible name failed as DuplicateBinding_Kd and declares nothing.
+    private static bool RepeatedSet(TypeSemanticsKoto set) => set.BindingFailure == BindingFailure.Duplicate;
 
     private OriginDeclaration OriginDeclarationFor(Koto owner)
     {
@@ -245,7 +257,10 @@ public sealed partial class Binding
                 var scalar = current.Origins?.ContainsKey(entry.Key) == true;
                 var value = current.Values.TryGetValue(entry.Key, out var symbol) && symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
                     (symbol.Kind != BindingSymbolKind.Local || symbol.Declaration.Span.Start <= owner.Span.Start);
-                var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(entry.Key) ?? current.OriginSets?.GetValueOrDefault(entry.Key);
+                // Like a value, a local's set is visible only to declarations that follow it (SPEC 15.3.1, 15.4.4).
+                var local = current.OriginSets?.GetValueOrDefault(entry.Key);
+                var set = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.GetValueOrDefault(entry.Key) ??
+                    (local is not null && OriginOwner(local) is { } localOwner && localOwner.Span.Start <= owner.Span.Start ? local : null);
                 if (scalar || value || (set is not null && !ReferenceEquals(set, entry.Value)))
                 {
                     this.Fail(entry.Value, BindingFailure.Duplicate);
@@ -257,15 +272,18 @@ public sealed partial class Binding
         return declaration;
     }
 
-    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier)
+    // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
+    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
     {
         scalar = null;
         carrier = null;
+        repeated = null;
         var owner = OriginOwner(use);
         if (owner is not null && !ReferenceEquals(owner, scope.Owner) &&
             this.originDeclarations.GetValueOrDefault(owner)?.Sets.TryGetValue(name, out var localSet) == true)
         {
             carrier = this.BindOriginSetType(localSet, scope);
+            repeated = RepeatedSet(localSet) ? localSet : null;
             return true;
         }
 
@@ -284,6 +302,7 @@ public sealed partial class Binding
             if (sets?.TryGetValue(name, out var set) == true)
             {
                 carrier = this.BindOriginSetType(set, current);
+                repeated = RepeatedSet(set) ? set : null;
                 return true;
             }
 
@@ -291,6 +310,7 @@ public sealed partial class Binding
                 (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
             {
                 carrier = this.BindOriginSetType(local, current);
+                repeated = RepeatedSet(local) ? local : null;
                 return true;
             }
 
@@ -333,6 +353,19 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 15.3.1, 23.3.6.4: a name that resolves to a binding set that failed as a repeat names neither that set nor the outer
+    // declaration it repeats, so the Origin it would denote, as in a clause attached to the same declaration or `during a` beside
+    // it, rests on that DuplicateBinding_Kd and reports nothing of its own; it never resolves to the outer name.
+    private void RestOnRepeatedSet(Koto use, TypeSemanticsKoto set)
+    {
+        if (use.BindingFailure == BindingFailure.None)
+        {
+            this.prerequisites[use] = (this.prerequisiteStore.Count, 1);
+            this.prerequisiteStore.Add(set);
+            this.Fail(use, BindingFailure.MissingName, true);
+        }
+    }
+
     private BoundType? BindOriginSetType(TypeSemanticsKoto syntax, BindingScope scope)
     {
         if (syntax.BoundType is { } known)
@@ -346,7 +379,7 @@ public sealed partial class Binding
             : this.BindType(syntax, scope);
     }
 
-    private BoundOrigin? PendingOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement, int slot)
+    private BoundOrigin? PendingOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement, int slot, BindingSymbol? borrowCondition)
     {
         var owner = OriginOwner(use);
         if (owner is null || !this.originDeclarations.TryGetValue(owner, out var declaration) || declaration.State != 1 ||
@@ -364,7 +397,7 @@ public sealed partial class Binding
         }
 
         var origin = this.OriginAtom(use, OriginKind.Unbound, slot);
-        declaration.Pending.Add(new(use, scope, context, requirement, slot, origin));
+        declaration.Pending.Add(new(use, scope, context, requirement, slot, origin, borrowCondition));
         return origin;
     }
 
@@ -506,7 +539,8 @@ public sealed partial class Binding
             }
             else
             {
-                completed = this.OmittedOrigin(pending.Use, pending.Scope, pending.Context, pending.Requirement, pending.Slot);
+                // SPEC 15.4.1: the slot completes as it would have without the clauses, including its Semantics condition.
+                completed = this.OmittedOrigin(pending.Use, pending.Scope, pending.Context, pending.Requirement, pending.Slot, pending.BorrowCondition);
             }
 
             if (completed is not null && !ReferenceEquals(completed, origin))
@@ -593,7 +627,7 @@ public sealed partial class Binding
                 arguments[i] = this.ResolveOrigin(type.OriginArguments[i], declaration);
             }
 
-            return this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression);
+            return this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext);
         }
         finally
         {
@@ -627,10 +661,15 @@ public sealed partial class Binding
         }
 
         OriginDeclaration? declaration = null;
-        Match(declared, actual);
+        Match(declared, actual, OriginVariance.Covariant);
         if (declaration is null)
         {
             return declared;
+        }
+
+        if (declaration.Inferred is { Count: > 0 } inferred)
+        {
+            this.MeetLocalUpperBounds(declaration, inferred);
         }
 
         declaration.Scope = scope;
@@ -651,7 +690,8 @@ public sealed partial class Binding
 
         return this.RewriteOrigins(declared, declaration);
 
-        void Match(BoundType pattern, BoundType value)
+        // `polarity` is the variance of the position within the local's Type, composed as FitsTypeCore compares it.
+        void Match(BoundType pattern, BoundType value, OriginVariance polarity)
         {
             if (pattern.Kind != value.Kind || pattern.Semantics != value.Semantics || !ReferenceEquals(pattern.Symbol, value.Symbol))
             {
@@ -660,26 +700,67 @@ public sealed partial class Binding
 
             if (pattern.Origin is { } p && value.Origin is { } a)
             {
-                Bind(p, a);
+                Bind(p, a, polarity);
             }
 
             for (var i = 0; i < Math.Min(pattern.OriginArguments.Count, value.OriginArguments.Count); i++)
             {
-                Bind(pattern.OriginArguments[i], value.OriginArguments[i]);
+                Bind(pattern.OriginArguments[i], value.OriginArguments[i], ComposeVariance(polarity, pattern.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant));
             }
 
             for (var i = 0; i < Math.Min(pattern.Components.Count, value.Components.Count); i++)
             {
-                Match(pattern.Components[i], value.Components[i]);
+                var component = pattern.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication ? (IsInvariantLayer(pattern, this) ? OriginVariance.Invariant : OriginVariance.Covariant)
+                    : pattern.Kind == BoundTypeKind.Function && pattern.Components.Count == 2 ? (i == 0 ? OriginVariance.Contravariant : OriginVariance.Covariant)
+                    : pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
+                    : OriginVariance.Covariant;
+                Match(pattern.Components[i], value.Components[i], ComposeVariance(polarity, component));
             }
         }
 
-        void Bind(BoundOrigin pending, BoundOrigin value)
+        void Bind(BoundOrigin pending, BoundOrigin value, OriginVariance polarity)
         {
             if (pending.Kind == OriginKind.Inference)
             {
                 declaration ??= this.OriginDeclarationFor(owner);
                 declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value) : value;
+                if (declaration.Relations.Count != 0)
+                {
+                    // Only a local's own clauses read the variance (MeetLocalUpperBounds, JudgeDeclaredRelation).
+                    var inferred = declaration.Inferred ??= new(ReferenceEqualityComparer.Instance);
+                    inferred[pending] = inferred.TryGetValue(pending, out var seen) && seen != polarity ? OriginVariance.Invariant : polarity;
+                }
+            }
+        }
+    }
+
+    // SPEC 15.3.6, 15.4.4: an omitted Origin at a covariant position of a local's Type is the meet of all its upper bounds, so a clause
+    // `origin y outlives x.s` bounds the inferred x.s together with the initializer, instead of requiring y to outlive the initializer's
+    // Origin. The meet only shrinks, so the passes reach a fixed point independent of clause order.
+    private void MeetLocalUpperBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred)
+    {
+        for (var pass = 0; pass <= declaration.Relations.Count; pass++)
+        {
+            var changed = false;
+            foreach (var relation in declaration.Relations)
+            {
+                if (relation.Equality || !inferred.TryGetValue(relation.Shorter, out var variance) || variance != OriginVariance.Covariant ||
+                    !declaration.Replacements.TryGetValue(relation.Shorter, out var current))
+                {
+                    continue;
+                }
+
+                var met = this.Meet(current, this.ResolveOrigin(relation.Longer, declaration));
+                if (!ReferenceEquals(met, current))
+                {
+                    declaration.Replacements[relation.Shorter] = met;
+                    changed = true;
+                }
+            }
+
+            if (!changed)
+            {
+                break;
             }
         }
     }
@@ -735,6 +816,10 @@ public sealed partial class Binding
 
         internal List<OriginRelation> Relations { get; } = new(2);
 
+        // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
+        // allocated only for a local that has such Origins and kept across binds.
+        internal Dictionary<BoundOrigin, OriginVariance>? Inferred { get; set; }
+
         internal void Reset()
         {
             this.State = 0;
@@ -743,10 +828,11 @@ public sealed partial class Binding
             this.Replacements.Clear();
             this.Pending.Clear();
             this.Relations.Clear();
+            this.Inferred?.Clear();
         }
     }
 
-    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin);
+    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
 
     private readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
 }

@@ -193,8 +193,10 @@ public class DivisionEmissionTest
         Assert.Equal(17, WindowsLowering.AbortReasons.Length);
         var count = WindowsLowering.AbortReasons.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
+        var codes = new HashSet<string>(StringComparer.Ordinal);
         foreach (var reason in WindowsLowering.AbortReasons)
         {
+            Assert.True(codes.Add(reason.Text.Split(':', 2)[0]), "Abort codes must have one canonical catalog entry.");
             Assert.Contains($"{{ ptr, i64 }} {{ ptr @__kimi_{reason.Name}_reason, i64 {reason.Text.Length} }}", ir);
             Assert.Contains($"@__kimi_{reason.Name}_reason = private constant [{reason.Text.Length} x i8] c\"{reason.Text}\"", ir);
         }
@@ -206,10 +208,12 @@ public class DivisionEmissionTest
         Assert.Equal("KIMI_E_FLOAT_CONVERSION: Floating conversion out of range", WindowsLowering.AbortReasons[WindowsLowering.FloatingConversionReason].Text);
         Assert.Equal("KIMI_E_ARG_RANGE: Argument out of range", WindowsLowering.AbortReasons[WindowsLowering.ArgumentRangeReason].Text);
         Assert.Equal("KIMI_E_FORMAT: Formatting failed", WindowsLowering.AbortReasons[WindowsLowering.FormatReason].Text);
-        Assert.Equal(15, WindowsLowering.MissingKeyReason);
+        Assert.Equal(14, WindowsLowering.MissingKeyReason);
         Assert.Equal("KIMI_E_MISSING_KEY: Dictionary key was not found", WindowsLowering.AbortReasons[WindowsLowering.MissingKeyReason].Text);
-        Assert.Equal(16, WindowsLowering.DuplicateKeyReason);
+        Assert.Equal(15, WindowsLowering.DuplicateKeyReason);
         Assert.Equal("KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key", WindowsLowering.AbortReasons[WindowsLowering.DuplicateKeyReason].Text);
+        Assert.Equal(16, WindowsLowering.ReferenceCountReason);
+        Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", WindowsLowering.AbortReasons[WindowsLowering.ReferenceCountReason].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }
@@ -265,21 +269,18 @@ public class DivisionEmissionTest
     public void WarmDivisionAnalysisAndWritingAllocateNothing()
     {
         var c = MinimalEmissionTest.Analyze(Snapshot);
-        for (var i = 0; i < 100; i++)
-        {
-            Assert.True(c.Ownership.Analyze().IsVerified);
-            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        }
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
+        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
-        for (var i = 0; i < 128; i++)
-        {
-            success &= c.Ownership.Analyze().IsVerified;
-            success &= c.Emission.WriteIr(TextWriter.Null, out _);
-        }
-
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        var bytes = AllocationMeasurement.Measure(
+            () =>
+            {
+                success &= c.Ownership.Analyze().IsVerified;
+                success &= c.Emission.WriteIr(TextWriter.Null, out _);
+            },
+            iterations: 128,
+            warmupIterations: 100);
+        Assert.Equal(0, bytes);
         Assert.True(success);
     }
 }
