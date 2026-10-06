@@ -340,7 +340,7 @@ internal sealed partial class BodyLowering
             return this.LowerStorageBytes(body, function, id, call, plan, out failure);
         }
 
-        if (kind is CompilerFunctionKind.StorageMissingDictionaryKey or CompilerFunctionKind.StorageArgumentOutOfRange or CompilerFunctionKind.StorageCountOverflow or CompilerFunctionKind.StorageAllocationSizeExceeded)
+        if (kind is CompilerFunctionKind.StorageIndexBounds or CompilerFunctionKind.StorageMissingDictionaryKey or CompilerFunctionKind.StorageArgumentOutOfRange or CompilerFunctionKind.StorageCountOverflow or CompilerFunctionKind.StorageAllocationSizeExceeded)
         {
             if (!function.Abi.CallerLocation || plan.ArgumentOperations.Length != 0 || plan.Receiver is not null || !ReferenceEquals(plan.ReturnType, BoundType.Never))
             {
@@ -349,6 +349,7 @@ internal sealed partial class BodyLowering
 
             var reason = kind switch
             {
+                CompilerFunctionKind.StorageIndexBounds => WindowsLowering.IndexBoundsReason,
                 CompilerFunctionKind.StorageMissingDictionaryKey => WindowsLowering.MissingKeyReason,
                 CompilerFunctionKind.StorageCountOverflow => WindowsLowering.IntegerOverflowReason,
                 CompilerFunctionKind.StorageAllocationSizeExceeded => WindowsLowering.AllocationSizeReason,
@@ -390,10 +391,16 @@ internal sealed partial class BodyLowering
             return Fail("Storage operation has an unsupported argument acquisition.", out failure);
         }
 
-        if (referent.Components is not [var elementType] || referent.Kind != BoundTypeKind.Array ||
+        if (referent.Components is not [var elementType] || (kind == CompilerFunctionKind.StorageBorrowUniqSlice ? referent.Symbol?.LibraryDeclaration != KimiDeclarationId.UniqSlice : referent.Kind != BoundTypeKind.Array) ||
             !this.TryGetArrayElement(elementType, out var element))
         {
             return Fail("Storage operation has an unsupported collection or element Type.", out failure);
+        }
+
+        if (kind == CompilerFunctionKind.StorageBorrowUniqSlice &&
+            (this.aggregateLayouts.Get(referent) is not { Fields.Length: 3 } view || view.Offset(0) != 0 || view.Offset(1) != 8 || view.Fields[2].Layout.Size != 0))
+        {
+            return Fail("An exclusive view must have pointer, length and erased Loan storage.", out failure);
         }
 
         if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))

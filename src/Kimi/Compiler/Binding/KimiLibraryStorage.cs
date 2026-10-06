@@ -18,6 +18,7 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.StorageBorrowShared, KimiDeclarationId.Array, SemanticsKind.Ref, KimiDeclarationId.RefRemainder),
         new(KimiDeclarationId.StorageBorrowExclusive, KimiDeclarationId.Array, SemanticsKind.Uniq, KimiDeclarationId.UniqRemainder),
         new(KimiDeclarationId.StorageOwn, KimiDeclarationId.Array, SemanticsKind.Owner, KimiDeclarationId.OwnedRemainder),
+        new(KimiDeclarationId.StorageBorrowUniqSlice, KimiDeclarationId.UniqSlice, SemanticsKind.Uniq, KimiDeclarationId.UniqRemainder),
     ];
 
     // SPEC 5.6: each Raw operation addresses storage of its own T; release and initialize return Unit, and slice returns the
@@ -82,7 +83,12 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (id is KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded)
+        if (id == KimiDeclarationId.UniqSlice)
+        {
+            return ValidBoundUniqSlice(symbol);
+        }
+
+        if (id is KimiDeclarationId.StorageIndexBounds or KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded)
         {
             return ReferenceEquals(symbol.Type, BoundType.Never);
         }
@@ -122,7 +128,7 @@ public sealed partial class KimiLibrary
             return this.ValidBoundDictionaryStorage(symbol, id);
         }
 
-        if (id is < KimiDeclarationId.StorageBorrowShared or > KimiDeclarationId.StorageOwn)
+        if (id != KimiDeclarationId.StorageBorrowUniqSlice && (id is < KimiDeclarationId.StorageBorrowShared or > KimiDeclarationId.StorageOwn))
         {
             return true;
         }
@@ -161,14 +167,21 @@ public sealed partial class KimiLibrary
             storage = input.Components[0];
         }
 
-        if (!this.BoundStorageContainer(storage, parameterId, element, 0))
+        if (!this.BoundStorageContainer(storage, parameterId, element, parameterId == KimiDeclarationId.UniqSlice ? 1 : 0))
         {
             return false;
         }
 
         var borrowing = signature.Semantics != SemanticsKind.Owner;
+        if (parameterId == KimiDeclarationId.UniqSlice &&
+            (storage.OriginArguments[0] is not { Kind: OriginKind.Parameter } source || !ReferenceEquals(source.Binder, function) || ReferenceEquals(source, input.Origin)))
+        {
+            return false;
+        }
+
         return signature.Result is { } resultId && this.BoundStorageContainer(result, resultId, element, borrowing ? 1 : 0) &&
-            (!borrowing || (input.Origin is { Kind: OriginKind.Parameter, Slot: 0 } origin && ReferenceEquals(origin.Binder, function) &&
+            (!borrowing || (input.Origin is { Kind: OriginKind.Parameter } origin && ReferenceEquals(origin.Binder, function) &&
+                (parameterId == KimiDeclarationId.UniqSlice || origin.Slot == 0) &&
                 ReferenceEquals(origin, result.OriginArguments[0])));
     }
 

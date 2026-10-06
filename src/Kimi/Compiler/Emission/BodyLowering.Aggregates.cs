@@ -39,13 +39,14 @@ internal sealed partial class BodyLowering
         // Bodies register separately; a helper used by several bodies is defined once per module.
         foreach (var helper in this.arrayHelpers.Values)
         {
+            module.NeedsArrayRuntime |= helper.Kind != ArrayHelperKind.BorrowStorage;
             if (!module.ArrayHelpers.Contains(helper))
             {
                 module.ArrayHelpers.Add(helper);
             }
         }
 
-        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed || this.arrayHelpers.Count != 0;
+        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed;
         this.arrayRuntimeUsed = false;
         foreach (var helper in this.dictionaryHelpers.Values)
         {

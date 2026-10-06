@@ -9,6 +9,9 @@ namespace XunitTest;
 public class StorageSignatureValidationTest
 {
     [Theory]
+    [InlineData(KimiDeclarationId.UniqSlice, 0)]
+    [InlineData(KimiDeclarationId.UniqSlice, 1)]
+    [InlineData(KimiDeclarationId.UniqSlice, 2)]
     [InlineData(KimiDeclarationId.RefRemainder, 0)]
     [InlineData(KimiDeclarationId.RefRemainder, 1)]
     [InlineData(KimiDeclarationId.RefRemainder, 2)]
@@ -31,6 +34,7 @@ public class StorageSignatureValidationTest
     }
 
     [Theory]
+    [InlineData(KimiDeclarationId.StorageBorrowUniqSlice)]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
@@ -48,6 +52,7 @@ public class StorageSignatureValidationTest
     }
 
     [Theory]
+    [InlineData(KimiDeclarationId.StorageBorrowUniqSlice)]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
@@ -63,6 +68,7 @@ public class StorageSignatureValidationTest
     }
 
     [Theory]
+    [InlineData(KimiDeclarationId.StorageBorrowUniqSlice)]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     public void ResultsCannotClaimStaticStorage(KimiDeclarationId id)

@@ -21,7 +21,7 @@ internal static class ElementAccess
 
     // SPEC 3.4.1: the referent of an exclusive array reference offers element replacement, without requiring a mutable
     // binding for the reference itself. Shared layers on its path are checked separately by Binding.
-    internal static bool IsExclusiveArrayElement(Koto source) => source is IndexKoto { Right: not RangeKoto, Left.BoundType: { Semantics: SemanticsKind.Uniq } receiver } &&
+    internal static bool IsExclusiveArrayElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element && AccessType(element.Left, true) is { Semantics: SemanticsKind.Uniq } receiver &&
         (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver)) && !IsSlicing(source);
 
     // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
@@ -46,7 +46,7 @@ internal static class ElementAccess
     // SPEC 4.6.6, 4.6.9: whether a selection reaches its Place through a Slice or a borrow, so that no owned root holds it.
     internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source, owners: false);
 
-    internal static bool IsSyntax(Koto source) => source is IndexKoto index ? !IsUserIndex(index) : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
+    internal static bool IsSyntax(Koto source) => source is IndexKoto index ? !IsUserIndex(index) && index.CodeContext.Compilation.Binding.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
         (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && StructStorage.IsStruct(type));
 
     // SPEC 4.6.9: receiver[key] resolved through a user Indexable conformance: the Binding synthesized its index call, and
@@ -111,13 +111,16 @@ internal static class ElementAccess
                 case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity or ConversionBinding.Literal } conversion:
                     source = conversion.Left;
                     break;
+                case InvocationKoto { Parent: IndexKoto index } call when ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call):
+                    source = index; // Both acquisition modes denote the same published element Place.
+                    break;
                 case EvaluatedKoto evaluated:
                     source = evaluated.Source; // A desugaring's evaluated operand is the value of its source.
                     break;
                 default:
                     // A constructed `^x` or range value is produced by its synthesized construction call (SPEC 4.6.2, 4.6.3).
                     var binding = source.CodeContext.Compilation.Binding;
-                    return binding.RangeValueCall(source) ?? binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
+                    return binding.ViewRangeCall(source) ?? binding.RangeValueCall(source) ?? binding.PropertyCall(source, PropertyAccessorKind.Get) ?? source;
             }
         }
     }

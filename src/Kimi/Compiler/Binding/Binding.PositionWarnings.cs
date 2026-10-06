@@ -164,7 +164,7 @@ public sealed partial class Binding
         }
 
         var owner = function.Parent;
-        if (ReferenceEquals(owner, this.Library.Slice.Declaration) || ReferenceEquals(owner, this.Library.DynamicArray.Declaration) || ReferenceEquals(owner, this.Library.FixedArrayMembers))
+        if (ReferenceEquals(owner, this.Library.Slice.Declaration) || ReferenceEquals(owner, this.Library.DynamicArray.Declaration) || ReferenceEquals(owner, this.Library.FixedArrayMembers) || owner is StructKoto { BoundSymbol.LibraryDeclaration: KimiDeclarationId.UniqSlice })
         {
             var receiver = bound.Receiver?.BoundType;
             var core = receiver is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? receiver.Components[0] : receiver;
@@ -195,7 +195,7 @@ public sealed partial class Binding
         {
             ("tryGet" or "tryGetUniq" or "remove" or "swapRemove", "index") or ("swap", "first" or "second") => LiteralRole.Element,
             ("splitAt" or "trySplitAt" or "insert", "index") => LiteralRole.Boundary,
-            ("trySlice", "range") => LiteralRole.Range,
+            ("trySlice" or "slice" or "sliceUniq", "range") => LiteralRole.Range,
             _ => null,
         };
     }

@@ -68,7 +68,8 @@ public sealed partial class OwnershipAnalysis
         // Snapshot a Copy Slice/reference, but keep an owned Array in its Place. Protect
         // the handle throughout index evaluation so it cannot be resized underneath the read.
         var keepPlace = dynamicArray || ((ReferenceTypes.IsArray(source.Left.BoundType) || ReferenceTypes.IsDictionary(source.Left.BoundType)) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq);
-        var receiver = this.Expression(source.Left, keepPlace ? PlaceUseKind.Read : PlaceUseKind.Consume);
+        var receiver = this.compilation.Binding.TryGetAdaptation(source.Left, out var acquisitionView) && acquisitionView.Kind == ExpectedAdaptationKind.SharedBorrow
+            ? this.Receiver(source.Left) : this.Expression(source.Left, keepPlace ? PlaceUseKind.Read : PlaceUseKind.Consume);
         if (dynamicArray && receiver >= 0)
         {
             this.Emit(OwnershipOperationKind.LocateReceiver, source.Left, receiver);

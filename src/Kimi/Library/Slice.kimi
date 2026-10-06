@@ -6,6 +6,14 @@ public struct Slice<T> {source}
     Self is IntoIterable
     associate IntoIterable.IteratorType is SliceIterator<T> during source
 
+    /// Returns this shared handle, preserving its original source.
+    public func slice(self: Self) -> Slice<T> during source
+        return self
+
+    public func slice<R>(self: Self, range: R) -> Slice<T> during source
+        R is PositionRange
+        return self[range]
+
     /// Starts an enumeration of the elements in index order. The iterator copies the handle, so its items keep
     /// `source` and not the borrow of the handle (SPEC 14.6.2).
     public func iterate(self: ref/Self during handle) -> SliceIterator<T> during source

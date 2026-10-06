@@ -87,7 +87,7 @@ internal static partial class LlvmModuleWriter
             // SPEC 4.6.8: a constant position proven inside a fixed array needs no runtime check.
             if (arrayRead && operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value >= 0 && operands[1].Value < operands[2].Value)
             {
-                WriteArithmeticFailure(output, constants, instruction, ProvenValid);
+                WriteArithmeticFailure(output, constants, instruction, ProvenValid, function.Abi.CallerLocation);
             }
             else
             {
@@ -105,7 +105,7 @@ internal static partial class LlvmModuleWriter
                 }
 
                 output.Write('\n');
-                WriteArithmeticFailure(output, constants, instruction, "%invalid");
+                WriteArithmeticFailure(output, constants, instruction, "%invalid", function.Abi.CallerLocation);
             }
 
             Name(output, "  %offset", id);
@@ -184,7 +184,7 @@ internal static partial class LlvmModuleWriter
                 output.Write(" = or i64 0, ");
                 WriteNumber(output, constantEnd);
                 output.Write('\n');
-                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, ProvenValid);
+                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, ProvenValid, function.Abi.CallerLocation);
             }
             else if (instruction.ScalarOperator == "SliceResolved")
             {
@@ -232,7 +232,7 @@ internal static partial class LlvmModuleWriter
                 Name(output, " = or i1 %reversed", id);
                 Name(output, ", %pastend", id);
                 output.Write('\n');
-                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid");
+                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, "%invalid", function.Abi.CallerLocation);
                 if (closed)
                 {
                     Name(output, "  %slicefinish", id);

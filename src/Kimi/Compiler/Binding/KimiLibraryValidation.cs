@@ -43,6 +43,8 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
                         KimiDeclarationId.Indexable or KimiDeclarationId.UniqIndexable => this.ValidIndexableContract(symbol, entry.Id),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
+                        KimiDeclarationId.UniqSlice => this.ValidUniqSlice(symbol),
+                        KimiDeclarationId.StorageBorrowUniqSlice => this.ValidStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Dictionary => this.ValidDictionary(symbol),
                         KimiDeclarationId.FromEnd => this.ValidFromEnd(symbol),
@@ -63,7 +65,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.InlineStorage => this.ValidInlineStorage(symbol),
                         KimiDeclarationId.StorageOwnFixed => this.ValidFixedOwningOperation(symbol),
                         KimiDeclarationId.StorageDictionaryLayout => this.ValidDictionaryLayout(symbol),
-                        KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded => this.ValidStorageAbort(symbol, rule),
+                        KimiDeclarationId.StorageIndexBounds or KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded => this.ValidStorageAbort(symbol, rule),
                         KimiDeclarationId.StorageTryAllocateBytes or KimiDeclarationId.StorageTransferBytes => this.ValidStorageBytes(symbol, entry.Id),
                         KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
                         >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
@@ -150,9 +152,20 @@ public sealed partial class KimiLibrary
 
     private static Koto? BareType(Koto? node)
     {
-        while (node is TypeSemanticsKoto { Type: not null, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } type)
+        while (true)
         {
-            node = type.Type;
+            if (node is ParenthesizedTypeKoto grouped)
+            {
+                node = grouped.Type;
+            }
+            else if (node is TypeSemanticsKoto { Type: not null, SemanticsKind: SemanticsKind.Owner, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, AttributeChain: null } type)
+            {
+                node = type.Type;
+            }
+            else
+            {
+                break;
+            }
         }
 
         return node;
@@ -204,15 +217,7 @@ public sealed partial class KimiLibrary
 
     private static VariableKoto? StorageField(DeclarationContainerKoto declaration, int ordinal)
     {
-        for (var i = 0; i < declaration.Members.Count; i++)
-        {
-            if (declaration.Members[i] is VariableKoto field && ordinal-- == 0)
-            {
-                return field;
-            }
-        }
-
-        return null;
+        return StoredField(declaration, ordinal);
     }
 
     private static bool ValidStorageField(DeclarationContainerKoto declaration, int index, VariableKind kind, string name, string type, bool allowInternal = false)
@@ -650,6 +655,7 @@ public sealed partial class KimiLibrary
         var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
         var (name, parameterName, semantics, argument) = id switch
         {
+            KimiDeclarationId.StorageBorrowUniqSlice => ("borrowStorageUniq", "value", SemanticsKind.Uniq, "UniqSlice"),
             KimiDeclarationId.StorageBorrowShared => ("borrowStorage", "value", SemanticsKind.Ref, "Array"),
             KimiDeclarationId.StorageBorrowExclusive => ("borrowStorageUniq", "value", SemanticsKind.Uniq, "Array"),
             _ => ("ownStorage", "value", SemanticsKind.Owner, "Array"),
@@ -667,7 +673,8 @@ public sealed partial class KimiLibrary
 
         return semantics == SemanticsKind.Owner
             ? BareType(parameter.Type) is GenericsKoto { TypeArguments.Count: 1 } owned && BareName(owned.Identifier, argument)
-            : BareType(parameter.Type) is TypeSemanticsKoto { Type: GenericsKoto { TypeArguments.Count: 1 } borrowed } reference && reference.SemanticsKind == semantics && BareName(borrowed.Identifier, argument);
+            : BareType(parameter.Type) is TypeSemanticsKoto reference && reference.SemanticsKind == semantics &&
+                BareType(id == KimiDeclarationId.StorageBorrowUniqSlice && BareType(reference.Type) is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Owner, OriginName: "source" } dependent ? dependent.Type : reference.Type) is GenericsKoto { TypeArguments.Count: 1 } borrowed && BareName(borrowed.Identifier, argument);
     }
 
     // SPEC 15.3.5: public struct Loan<T> stores nothing, is Copy exactly when T is Copy, and has the one safe init(value: T).

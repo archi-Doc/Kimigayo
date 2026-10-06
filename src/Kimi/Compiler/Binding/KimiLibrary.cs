@@ -67,6 +67,7 @@ public sealed partial class KimiLibrary
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
         var symbolCount = 4;
+        var fixedArrayScope = this.FixedArrayMembers is { } fixedArray ? new BindingScope(fixedArray) { Parent = this.StorageScope } : this.StorageScope;
         var sourceScopes = new Dictionary<string, BindingScope>(StringComparer.Ordinal);
         for (var i = 0; i < entries.Length; i++)
         {
@@ -80,6 +81,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Dictionary => this.DictionaryScope,
                 KimiLibraryContainer.Storage => this.StorageScope,
                 KimiLibraryContainer.Raw => this.RawScope,
+                KimiLibraryContainer.FixedArray => fixedArrayScope,
                 _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
             if (entry.Owner is { } owner)

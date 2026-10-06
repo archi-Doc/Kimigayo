@@ -17,6 +17,17 @@ internal group Storage
         internal var count: isize
         internal let loan: Loan<uniq/E during source>
 
+    /// Selects a range from an exclusive capability without copying elements or weakening its Loan.
+    internal func sliceUniq<E, R>(state: UniqRemainder<E> during source, range: R) -> UniqSlice<E> during source
+        R is PositionRange
+        let selected = match range.tryResolve(state.count)
+            .Some(let resolved) => resolved
+            .None => Storage.indexBounds()
+        var remainder = state@move
+        remainder.position += selected.start
+        remainder.count = selected.length
+        return UniqSlice<E>.init(remainder@move)
+
     /// The heap Storage and destruction responsibility transferred from an Array for its unreturned elements.
     internal struct OwnedRemainder<E>
         internal let storage: raw/E
@@ -203,6 +214,22 @@ internal group Storage
     // `E` and `length N`. The compiler looks them up for fixed-array receivers, where they are public, and records the
     // entry conformances they implement.
     internal group FixedArray
+        /// Borrows the complete contiguous storage without copying elements.
+        public func slice<E, length N>(self: ref/[N of E] during source) -> Slice<E> during source
+            return self[..]
+
+        public func slice<E, length N, R>(self: ref/[N of E] during source, range: R) -> Slice<E> during source
+            R is PositionRange
+            return self[range]
+
+        /// Borrows the complete contiguous storage exclusively, including an empty array.
+        public func sliceUniq<E, length N>(self: uniq/[N of E] during source) -> UniqSlice<E> during source
+            return UniqSlice<E>.init(Storage.borrowStorageUniq(self))
+
+        public func sliceUniq<E, length N, R>(self: uniq/[N of E] during source, range: R) -> UniqSlice<E> during source
+            R is PositionRange
+            return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
+
         /// Starts a shared enumeration of the elements in index order.
         public func iterate<E, length N>(self: ref/[N of E] during source) -> ArrayIterator<E> during source
             return ArrayIterator<E>.init(borrowStorage(self))

@@ -709,6 +709,9 @@ public sealed class ControlFlowAnalysis
                 // calls, whose arguments may themselves be synthesized `^x` constructions.
                 flow = this.Visit(rangeValue) with { Type = this.types.GetExpressionType(node) };
                 break;
+            case IndexKoto when node.CodeContext.Compilation.Binding.ViewRangeCall(node) is { } viewRange:
+                flow = this.Visit(viewRange) with { Type = this.types.GetExpressionType(node) };
+                break;
             case IndexKoto keyed when node.CodeContext.Compilation.Binding.ResolvedKeyCall(keyed) is { } resolvedKey:
                 // SPEC 4.6.4: the receiver is evaluated, then a synthesized call resolves the key against the length of that
                 // evaluated receiver; the selection completes as both do.

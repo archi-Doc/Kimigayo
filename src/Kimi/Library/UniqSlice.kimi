@@ -1,0 +1,55 @@
+/// An exclusive view of completed contiguous elements. Moving or dropping the view never moves or destroys an element.
+public struct UniqSlice<T> {source}
+    Self is UniqIndexable<isize>
+    associate Element is T
+
+    internal let storage: raw/T
+    public let length: isize
+    internal let loan: Loan<uniq/T during source>
+
+    public computed isEmpty: bool
+        get() -> bool => self.length == 0
+    public computed indices: ResolvedRange
+        get() -> ResolvedRange => (0..self.length).resolve(self.length)
+
+    internal init(state: Storage.UniqRemainder<T> during source)
+        unsafe => self.storage = state.storage + state.position
+        self.length = state.count
+        self.loan = state.loan@move
+
+    /// Lends this view's elements for shared access, retaining the borrow of this handle.
+    public func slice(self: ref/Self) -> Slice<T> during self
+        unsafe => return Raw.slice(self.storage, self.length)
+
+    public func slice<R>(self: ref/Self, range: R) -> Slice<T> during self
+        R is PositionRange
+        return self.slice()[range]
+
+    /// Reborrows this view exclusively; even an empty result retains its parent Loan.
+    public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self
+        return UniqSlice<T>.init(Storage.borrowStorageUniq(self))
+
+    public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self
+        R is PositionRange
+        return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
+
+    public func index(self: ref/Self, key: ref/isize) -> place ref/T during self
+        require key >= 0 and key < self.length else => Storage.indexBounds()
+        unsafe
+            let element = self.storage[key]@ref
+            return element@follow
+
+    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self
+        require key >= 0 and key < self.length else => Storage.indexBounds()
+        unsafe
+            let element = self.storage[key]@uniq
+            return element@follow
+
+    // Subscripts normalize Position keys once through these internal receiver functions.
+    internal func indexPosition<P>(self: ref/Self, key: P) -> place ref/T during self
+        P is Position
+        return self.index(PositionSyntax.resolved(key, self.length))
+
+    internal func indexPositionUniq<P>(self: uniq/Self, key: P) -> place uniq/T during self
+        P is Position
+        return self.indexUniq(PositionSyntax.resolved(key, self.length))

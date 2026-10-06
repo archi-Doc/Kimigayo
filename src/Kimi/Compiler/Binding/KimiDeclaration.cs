@@ -161,6 +161,21 @@ public enum KimiDeclarationId : byte
     DictionaryStorageShrinkToFit,
     DictionaryStorageClearEntries,
     StorageDestroyDictionaryEntries,
+    UniqSlice,
+    StorageBorrowUniqSlice,
+    StorageIndexBounds,
+    UniqSliceIndex,
+    UniqSliceIndexUniq,
+    UniqSliceIndexPosition,
+    UniqSliceIndexPositionUniq,
+    UniqSliceSliceRange,
+    UniqSliceSliceUniqRange,
+    ArraySliceRange,
+    ArraySliceUniqRange,
+    FixedArraySliceRange,
+    FixedArraySliceUniqRange,
+    SliceSliceRange,
+    StorageSliceUniq,
 }
 
 public enum KimiDeclarationState : byte

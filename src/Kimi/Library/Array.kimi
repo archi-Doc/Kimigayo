@@ -8,6 +8,22 @@ public struct Array<T>
     Self is IntoIterable
     associate IntoIterable.IteratorType is ArrayOwningIterator<T>
 
+    /// Borrows the complete contiguous storage without copying elements.
+    public func slice(self: ref/Self) -> Slice<T> during self
+        return self[..]
+
+    public func slice<R>(self: ref/Self, range: R) -> Slice<T> during self
+        R is PositionRange
+        return self[range]
+
+    /// Borrows the complete contiguous storage exclusively, including an empty array.
+    public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self
+        return UniqSlice<T>.init(Storage.borrowStorageUniq(self))
+
+    public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self
+        R is PositionRange
+        return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
+
     /// Starts a shared enumeration of the elements in index order.
     public func iterate(self: ref/Self during source) -> ArrayIterator<T> during source
         return ArrayIterator<T>.init(Storage.borrowStorage(self))

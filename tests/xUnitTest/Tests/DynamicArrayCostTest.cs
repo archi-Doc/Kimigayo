@@ -9,6 +9,11 @@ public class DynamicArrayCostTest
 {
     [Trait("Purpose", "Allocation")]
     [Fact]
+    public void ExclusiveViewsAndChildrenAllocateNoElementStorage()
+        => WriteCostFixture("UniqViews", "var values: [4 of i32] = [1, 2, 3, 4]\nvar i = 0\nwhile i < 128\n    var view = values.sliceUniq()\n    var child = view.sliceUniq(1..3)\n    child[0] = i\n    require child.slice()[0] == i else => $abort(\"view\")\n    i += 1", 0, 0, growth: false);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
     public void BorrowedElementUpdatesReuseTheBuffer()
         => WriteCostFixture("BorrowedWrite", "func edit(values: uniq/Array<isize>)\n    var i: isize = 0\n    while i < 1024\n        values[0] = i\n        values[1] += 1\n        i += 1\nvar values: Array<isize> = [0, 0]\nedit(values@uniq)\nrequire values[0] == 1023 and values[1] == 1024 else => $abort(\"write\")", 1, 0);
 

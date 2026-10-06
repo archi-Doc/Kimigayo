@@ -185,7 +185,7 @@ public sealed partial class OwnershipAnalysis
             var depth = this.comparisonDepth++;
             var handle = element.Left.BoundType!.Kind == BoundTypeKind.Array
                 ? this.BorrowStruct(element.Left, this.compilation.Binding.ExclusiveArrayHandle(element.Left))
-                : this.Expression(element.Left, PlaceUseKind.Read);
+                : this.Receiver(element.Left, true);
             var subscript = handle < 0 ? -1 : this.Value(this.SelectionKey(element, handle));
             var borrowedElement = handle < 0 || subscript < 0 ? -1 : this.SequenceValue(element, type, SequenceOperation.Borrow, handle, index: subscript);
             this.EndComparisonLoans(depth, element);
