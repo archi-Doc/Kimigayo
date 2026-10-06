@@ -8,4 +8,7 @@ internal sealed class HoverSnapshot(EffectHover[] effects)
 {
     /// <summary>Gets the effect descriptions owned by this snapshot.</summary>
     internal EffectHover[] Effects { get; } = effects;
+
+    /// <summary>Gets the token indexes for checked own-project source documents.</summary>
+    internal IReadOnlyDictionary<SourceIdentity, HoverDocument> Documents { get; init; } = new Dictionary<SourceIdentity, HoverDocument>();
 }

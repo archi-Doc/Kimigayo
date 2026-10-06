@@ -78,7 +78,7 @@ internal static class CheckService
 
         var presence = mode == CheckMode.Product ? ScanTestPresence(compilation) : TestPresence.Unknown;
         string? hoverFault = null;
-        var hover = collectHover ? TryCreateHover(compilation, static c => new(c.Binding.CreateCallableEffectHovers()), out hoverFault) : null;
+        var hover = collectHover ? TryCreateHover(compilation, static c => c.Binding.CreateHoverSnapshot(), out hoverFault) : null;
         return new(CheckOutcome.Completed, accepted, presence, result) { Hover = hover, HoverFault = hoverFault };
     }
 

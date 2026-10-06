@@ -14,13 +14,19 @@ public sealed partial class Binding
     // SPEC 23.3.6.5: `shown`, when given, is the one Origin the display writes, at the first borrow layer that has it, as `during
     // shownText`; a layer below another borrow layer is parenthesized, as in `uniq/(ref/i32 during static)`.
     internal static string DiagnosticTypeName(object value, BoundOrigin? shown, string? shownText)
+        => DisplayTypeName(value, shown, shownText, complete: false);
+
+    // Hover identifies the complete contextual Type, including every Origin; ordinary diagnostic spelling is unchanged.
+    internal static string HoverTypeName(BoundType type) => DisplayTypeName(type, null, null, complete: true);
+
+    private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, bool complete)
     {
         if (value is not BoundType type)
         {
             return (string)value;
         }
 
-        if (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Parameter)
+        if (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Parameter && (!complete || !type.CarriesOrigin))
         {
             return type.Name;
         }
@@ -33,7 +39,7 @@ public sealed partial class Binding
         {
             if (current.Kind == BoundTypeKind.Semantics && current.Components.Count == 1)
             {
-                var mark = shown is not null && ReferenceEquals(current.Origin, shown);
+                var mark = complete ? current.Origin is not null : shown is not null && ReferenceEquals(current.Origin, shown);
                 if (mark)
                 {
                     shown = null;
@@ -47,11 +53,23 @@ public sealed partial class Binding
                 Append(current.Components[0], true);
                 if (mark)
                 {
-                    text.Append(" during ").Append(shownText);
+                    text.Append(" during ").Append(complete ? HoverOriginName(current.Origin!) : shownText);
                     if (underBorrow)
                     {
                         text.Append(')');
                     }
+                }
+
+                return;
+            }
+
+            if (complete && current.Kind == BoundTypeKind.SemanticsApplication && current.Components.Count == 1)
+            {
+                text.Append(current.Symbol?.Pair?.Name ?? current.Symbol?.Name ?? current.Name).Append('/');
+                Append(current.Components[0]);
+                if (current.Origin is { } appliedOrigin)
+                {
+                    text.Append(" during ").Append(HoverOriginName(appliedOrigin));
                 }
 
                 return;
@@ -70,7 +88,7 @@ public sealed partial class Binding
                         text.Append(' ');
                     }
 
-                    text.Append(current.OriginArguments[i].Name);
+                    text.Append(complete ? HoverOriginName(current.OriginArguments[i]) : current.OriginArguments[i].Name);
                 }
 
                 if (current.OriginArguments.Count != 0)
@@ -164,6 +182,27 @@ public sealed partial class Binding
 
                 text.Append(current.Kind == BoundTypeKind.Tuple ? ')' : '>');
             }
+
+            if (complete && current.OriginArguments.Count != 0)
+            {
+                text.Append("{");
+                for (var i = 0; i < current.OriginArguments.Count; i++)
+                {
+                    if (i != 0)
+                    {
+                        text.Append(", ");
+                    }
+
+                    text.Append(current.Symbol?.Schema?.Origins[i].Name ?? "origin").Append(" = ").Append(HoverOriginName(current.OriginArguments[i]));
+                }
+
+                text.Append('}');
+            }
+
+            if (complete && current.Origin is { } ownOrigin)
+            {
+                text.Append(" during ").Append(HoverOriginName(ownOrigin));
+            }
         }
 
         void AppendDeclaration(BindingSymbol symbol)
@@ -178,6 +217,26 @@ public sealed partial class Binding
 
             text.Append(symbol.Name);
         }
+    }
+
+    private static string HoverOriginName(BoundOrigin origin)
+    {
+        if (origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input)
+        {
+            var display = OriginDisplay(origin, null, typeLevel: true);
+            return display.Kind == "expression" ? display.Text : "<" + display.Kind + " origin: " + display.Text + ">";
+        }
+
+        if (origin.Kind == OriginKind.Intersection)
+        {
+            return "(" + string.Join(" and ", origin.Operands.Select(HoverOriginName)) + ")";
+        }
+
+        var at = origin.Occurrence ?? origin.Binder;
+        var position = at?.CodeContext.SourceDocument?.GetPosition(at.Span.Start);
+        return position is { } location
+            ? $"<{origin.Kind.ToString().ToLowerInvariant()} origin at {location.Line + 1}:{location.Character + 1}>"
+            : $"<{origin.Kind.ToString().ToLowerInvariant()} origin>";
     }
 
     private static string DiagnosticLengthName(BoundLength length)

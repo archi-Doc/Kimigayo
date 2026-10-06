@@ -8,7 +8,11 @@ failures preserve finalized diagnostics, acceptance and TestPresence, and are lo
 use shared immutable lexical ranges with compilation-local association; `HoverCollectionTest` covers mode order, parallel
 loads and check-record invariance. Opted-in parsing also retains declaration-fragment and structural-token positions;
 shared syntax writers project headers without bodies, Property initializers or default expressions (`HoverSyntaxTest`).
-Full collection/formatting isolation, detached general declarations and Hover response
+Detached own-source token indexes now share declaration headers and documentation inputs, query contextual Copy, preserve
+associated-Type contract/specification provenance, and retain structural Type/Origin identities without a compiler graph.
+`HoverProjectionTest` covers these internal projections, source-fragment ordering, release and allocation-free lookup.
+Legacy effect Hover now prints structural Type spelling instead of record debug output. Complete effect/accessor projection,
+full collection/formatting isolation, documentation rendering and general Hover response
 rules remain in the H1–H6 track in `docs/dev/PLAN.md`.
 
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local

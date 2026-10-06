@@ -372,14 +372,19 @@ public sealed class DocumentationComment
             return existing;
         }
 
-        // Measure once, then fill exact arrays and the string in place: no
-        // builder, growing lists or intermediate copies.
-        var (lineCount, textLength) = this.ScanLines(default, null, null);
+        var created = Extract(this.Source, this.Span, this.Indent);
+        return Interlocked.CompareExchange(ref this.text, created, null) ?? created;
+    }
+
+    internal static DocumentationText Extract(SourceDocument source, SourceSpan range, int indent)
+    {
+        // Both documentation publishing and detached editor inputs use this one normalization path.
+        var (lineCount, textLength) = ScanLines(source, range, indent, default, null, null);
         var textOffsets = new int[lineCount];
         var sourceOffsets = new int[lineCount];
-        var normalized = string.Create(textLength, (this, textOffsets, sourceOffsets), static (span, state) => state.Item1.ScanLines(span, state.textOffsets, state.sourceOffsets));
-        var created = new DocumentationText(this.Source, normalized, textOffsets, sourceOffsets);
-        return Interlocked.CompareExchange(ref this.text, created, null) ?? created;
+        var normalized = string.Create(textLength, (source, range, indent, textOffsets, sourceOffsets), static (span, state) =>
+            ScanLines(state.source, state.range, state.indent, span, state.textOffsets, state.sourceOffsets));
+        return new(source, normalized, textOffsets, sourceOffsets);
     }
 
     /// <summary>Writes canonical comment prefixes without changing the extracted text.</summary>
@@ -427,13 +432,13 @@ public sealed class DocumentationComment
 
     // Walks the comment lines. With null outputs it only measures; otherwise it
     // fills the normalized text and both offset tables in the same order.
-    private (int Lines, int Length) ScanLines(Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
+    private static (int Lines, int Length) ScanLines(SourceDocument document, SourceSpan range, int indent, Span<char> output, int[]? textOffsets, int[]? sourceOffsets)
     {
-        var source = this.Source.SourceText;
-        var position = this.Span.Start;
+        var source = document.SourceText;
+        var position = range.Start;
         var lines = 0;
         var length = 0;
-        while (position <= this.Span.End)
+        while (position <= range.End)
         {
             if (lines > 0)
             {
@@ -443,11 +448,11 @@ public sealed class DocumentationComment
                 }
 
                 length++;
-                position += this.Indent;
+                position += indent;
             }
 
             position += 3;
-            if (position < this.Span.End && source[position] == ' ')
+            if (position < range.End && source[position] == ' ')
             {
                 position++;
             }
@@ -460,7 +465,7 @@ public sealed class DocumentationComment
 
             lines++;
             var end = position;
-            while (end < this.Span.End && source[end] is not ('\r' or '\n'))
+            while (end < range.End && source[end] is not ('\r' or '\n'))
             {
                 end++;
             }
@@ -471,7 +476,7 @@ public sealed class DocumentationComment
             }
 
             length += end - position;
-            if (end == this.Span.End)
+            if (end == range.End)
             {
                 break;
             }

@@ -26,13 +26,13 @@ public sealed partial class Binding
             var available = this.AvailableCallableEffects(type, call.DeclaredSignature, call.ReceiverKind, syntax);
             var text = new StringBuilder();
             text.Append("Call: ").AppendLine(syntax.ToString());
-            text.Append("Callable: ").Append(type).Append(" is Callable<");
+            text.Append("Callable: ").Append(DiagnosticTypeName(type)).Append(" is Callable<");
             if (call.ReceiverKind != SemanticsKind.Ref)
             {
                 text.Append(call.ReceiverKind == SemanticsKind.Uniq ? "uniq, " : "owner, ");
             }
 
-            text.Append(call.DeclaredSignature).AppendLine(">");
+            text.Append(DiagnosticTypeName(call.DeclaredSignature)).AppendLine(">");
             if (available.Confined)
             {
                 text.AppendLine("Available bound: confined");

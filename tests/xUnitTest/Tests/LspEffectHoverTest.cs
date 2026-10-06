@@ -26,6 +26,8 @@ public sealed class LspEffectHoverTest : IDisposable
         var record = Assert.Single(c.Binding.CreateCallableEffectHovers(), static x => x.Source.Value.EndsWith("Hello.kimi", StringComparison.Ordinal));
         Assert.Contains("Call: f()", record.Text);
         Assert.Contains("Available bound: confined", record.Text);
+        Assert.Contains("Callable: F is Callable<() -> i32>", record.Text);
+        Assert.DoesNotContain("BoundType {", record.Text);
         Assert.Contains("Available bound: preserves results", record.Text);
     }
 
