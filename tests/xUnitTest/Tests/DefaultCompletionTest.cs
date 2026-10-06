@@ -73,12 +73,13 @@ public class DefaultCompletionTest
     }
 
     [Fact]
-    public void RecursiveDefaultExpansionRemainsPending()
+    public void RecursiveDefaultUsesTheResolvedSignature()
     {
         var c = Parse("func f(x: i32 = f()) -> i32 => x\nf()");
         var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
-        Assert.NotEmpty(flow.PendingBinding);
-        Assert.False(c.Ownership.Analyze().IsVerified);
+        Assert.Empty(flow.PendingBinding);
+        Assert.Empty(flow.Issues);
+        Assert.True(c.Ownership.Analyze().IsVerified);
     }
 
     private static Compilation Parse(string source)

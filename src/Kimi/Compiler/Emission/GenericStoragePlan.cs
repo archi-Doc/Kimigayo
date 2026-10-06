@@ -156,6 +156,21 @@ internal sealed partial class GenericStoragePlan
         return true;
     }
 
+    // Evaluators use the same dependency preparation and concrete call map as ordinary generic entries, but have their own
+    // result and prefix signature and never select the enclosing function's specialization as their implementation.
+    internal bool PrepareDefault(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, DefaultGenerationPlan.Entry evaluator, out string? failure)
+    {
+        var template = this.GetTemplate(body, evaluator.Context?.Template);
+        var previous = evaluator.Context;
+        var context = previous is not null && ReferenceEquals(previous.Template, template) ? previous :
+            new CallEntry(template, evaluator.Abi, null, evaluator.Parameters, evaluator.Result, evaluator.Call.DeclaringType, evaluator.Call.TypeArguments.ToArray(), evaluator.Call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+            {
+                ConcreteCalls = new BoundCall[template.DirectCalls.Length],
+            };
+        evaluator.Context = context;
+        return this.PrepareEntryDependencies(compilation, module, layouts, evaluator.Call, template, context, 0, out failure);
+    }
+
     private static bool Fail(string reason, out string? failure)
     {
         failure = reason;
@@ -223,7 +238,7 @@ internal sealed partial class GenericStoragePlan
 
     // The template records the calls its instances forward; each instance resolves them under its substitution. The previous
     // emission's template is reused when its body and forwarded calls are unchanged.
-    private Template GetTemplate(OwnershipBody body)
+    private Template GetTemplate(OwnershipBody body, Template? prior = null)
     {
         var calls = this.directScratch;
         calls.Clear();
@@ -237,7 +252,8 @@ internal sealed partial class GenericStoragePlan
             }
         }
 
-        return this.previousTemplates.TryGetValue(body.Function, out var previous) && ReferenceEquals(previous.Body, body) &&
+        var previous = prior ?? this.previousTemplates.GetValueOrDefault(body.Function);
+        return previous is not null && ReferenceEquals(previous.Body, body) &&
             previous.DirectCalls.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(calls)) ? previous : new(body, calls.ToArray());
     }
 

@@ -17,6 +17,7 @@ internal enum AbiParameterKind : byte
     Value,
     OwnedSlot,
     SharedReference,
+    PreparedSlot,
     ResultSlot,
     Location,
     LocationLength,

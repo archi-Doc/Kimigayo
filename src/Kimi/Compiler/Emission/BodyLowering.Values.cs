@@ -46,7 +46,7 @@ internal sealed partial class BodyLowering
             var value = body.Values[id];
             var expected = value.Kind switch
             {
-                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection or OwnershipValueKind.StaticRead => 0,
+                OwnershipValueKind.None or OwnershipValueKind.Constant or OwnershipValueKind.Parameter or OwnershipValueKind.Call or OwnershipValueKind.DefaultCall or OwnershipValueKind.DefaultRead or OwnershipValueKind.StringComparison or OwnershipValueKind.Borrow or OwnershipValueKind.Element or OwnershipValueKind.PatternProjection or OwnershipValueKind.StaticRead => 0,
                 OwnershipValueKind.Alias or OwnershipValueKind.Unary or OwnershipValueKind.Convert or OwnershipValueKind.BorrowedField or OwnershipValueKind.PointerLoad or OwnershipValueKind.ContractComparison or OwnershipValueKind.RuntimeTypeTest => 1,
                 OwnershipValueKind.ClosureErasure => value.Count is 0 or 1 ? value.Count : -1, // A Function Item has no source closure.
                 OwnershipValueKind.Binary or OwnershipValueKind.BorrowedFieldWrite or OwnershipValueKind.BorrowedUpdate => 2,
@@ -144,7 +144,7 @@ internal sealed partial class BodyLowering
 
             if (value.Kind == OwnershipValueKind.Parameter &&
                 (operation.Kind != OwnershipOperationKind.Produce || body.Places[operation.Place].Kind != OwnershipPlaceKind.Parameter ||
-                value.Constant < 0 || value.Constant >= body.Function.Parameters.Count ||
+                value.Constant < 0 || value.Constant >= body.ParameterCount ||
                 !ReferenceEquals(operation.Source, body.Function.Parameters[(int)value.Constant].Type) ||
                 !ReferenceEquals(ValueType(body, id), SignatureType(lowering, body.Function.Parameters[(int)value.Constant].Type.BoundType))))
             {

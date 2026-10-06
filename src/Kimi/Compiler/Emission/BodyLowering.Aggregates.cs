@@ -473,8 +473,8 @@ internal sealed partial class BodyLowering
                 // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
                 var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
                     ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(conversion.BoundType) == sourceMode &&
-                    ReferenceEquals(SignatureType(this, conversion.Left.BoundType), place.Type) &&
-                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(SignatureType(this, conversion.BoundType), body.Places[operation.Input].Type) &&
+                    ReferenceEquals(body.ConcreteAt(conversion.Left.BoundType, id), place.Type) &&
+                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(body.ConcreteAt(conversion.BoundType, id), body.Places[operation.Input].Type) &&
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     (!upcast && !(operation.Kind == OwnershipOperationKind.Consume

@@ -136,7 +136,7 @@ internal static partial class LlvmModuleWriter
             }
             else if (instruction.ScalarOperator is not ("ArrayStorageRead" or "SliceStorageRead"))
             {
-                WriteScalar(output, constants, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation!.ComputationType }, []);
+                WriteScalar(output, constants, function, instruction with { Opcode = EmissionOpcode.LoadElement, Place = id, ScalarType = instruction.Representation!.ComputationType }, []);
             }
 
             return;

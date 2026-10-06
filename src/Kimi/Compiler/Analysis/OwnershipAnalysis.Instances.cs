@@ -44,8 +44,9 @@ public sealed partial class OwnershipAnalysis
     /// </summary>
     /// <param name="generic">The universally verified generic body.</param>
     /// <param name="call">A closed call whose substitution selects the instance.</param>
+    /// <param name="defaultParameter">The default to execute, or -1 for the ordinary function body.</param>
     /// <returns>The verified instance plan, valid until <see cref="ClearInstances"/>.</returns>
-    internal OwnershipBody? AnalyzeInstance(OwnershipBody generic, BoundCall call)
+    internal OwnershipBody? AnalyzeInstance(OwnershipBody generic, BoundCall call, int defaultParameter = -1)
     {
         if (!generic.IsVerified || this.flow is null || this.Substituting)
         {
@@ -65,7 +66,7 @@ public sealed partial class OwnershipAnalysis
         this.instanceFailed = false;
         try
         {
-            this.Build(generic.Function);
+            this.Build(generic.Function, defaultParameter);
             if (this.instanceFailed || target.IssueStorage.Count != 0 || !target.IsVerified)
             {
                 target.IsVerified = false;

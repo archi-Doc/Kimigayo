@@ -115,7 +115,7 @@ internal sealed partial class BodyLowering
                     this.referenceRoots[id] = id;
                     break;
                 case OwnershipOperationKind.Produce when value.Kind == OwnershipValueKind.Parameter:
-                    if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.Function.Parameters.Count || id != parameterStart + value.Constant ||
+                    if (place.Kind != OwnershipPlaceKind.Parameter || (ulong)value.Constant >= (ulong)body.ParameterCount || id != parameterStart + value.Constant ||
                         !ReferenceEquals(place.Source, body.Function.Parameters[(int)value.Constant].Type) || !ReferenceEquals(operation.Source, place.Source) ||
                         !ReferenceEquals(type, SignatureType(this, body.Function.Parameters[(int)value.Constant].Type.BoundType)))
                     {
@@ -190,7 +190,7 @@ internal sealed partial class BodyLowering
         // Only a reference formed from a projection uses that projection's address.
         return body.Values[root].Kind switch
         {
-            OwnershipValueKind.Parameter => new(EmissionOperandKind.Argument, body.Values[root].Constant),
+            OwnershipValueKind.Parameter => body.DefaultParameter >= 0 ? new(EmissionOperandKind.Value, root) : new(EmissionOperandKind.Argument, body.Values[root].Constant),
             _ => StringPlaceOperand(body, body.Operations[root].Place, body.Operations[root].Projection >= 0 ? body.LoanStates[root] : -1),
         };
     }

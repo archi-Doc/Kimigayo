@@ -97,6 +97,8 @@ internal sealed partial class BodyLowering
 
     internal IReadOnlyDictionary<BoundType, int>? ObjectRuntimeTypes { get; set; }
 
+    internal DefaultGenerationPlan? Defaults { get; set; }
+
     internal void ClearFunctionContext()
     {
         this.matchBody = null;
@@ -108,6 +110,7 @@ internal sealed partial class BodyLowering
         this.ComparisonHelpers = null;
         this.ObjectCalls = null;
         this.ObjectRuntimeTypes = null;
+        this.Defaults = null;
         this.flow = null;
         this.arguments.Clear();
         this.aggregateLayouts.Clear();
@@ -131,6 +134,11 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
+        if (body.Values[id].Kind == OwnershipValueKind.DefaultCall)
+        {
+            return this.LowerDefaultCall(body, function, id, out failure);
+        }
+
         var original = body.CallAt(id);
         if (operation.Source is InvocationKoto { BoundValueCall: { } valueCall } invocation)
         {

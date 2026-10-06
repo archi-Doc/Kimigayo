@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 /// Checked LLVM generation for the implemented windows-x64-v1 execution subset. Every request rechecks the
 /// latest analyses; the retained module is scratch storage, not a certificate for later compilations.
 /// </summary>
-public sealed class LlvmEmitter
+public sealed partial class LlvmEmitter
 {
     private readonly Compilation compilation;
     private readonly EmissionModule module = new();
@@ -17,6 +17,7 @@ public sealed class LlvmEmitter
     private readonly FunctionAbiPool signatures = new();
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
+    private readonly DefaultGenerationPlan defaults = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundProperty, FunctionAbi> staticGetters = new(ReferenceEqualityComparer.Instance);
     private readonly List<StaticScalarEntry> staticEntries = new();
@@ -88,6 +89,8 @@ public sealed class LlvmEmitter
         this.FailureInstance = null;
         c.Ownership.ClearInstances();
         this.generics.Clear();
+        this.defaults.Clear();
+        this.lowering.Defaults = this.defaults;
         try
         {
             var destructorOrdinal = 0;
@@ -223,13 +226,14 @@ public sealed class LlvmEmitter
 
             // Destructors can introduce further closed local Types. Drain their ordinary generic entries
             // to a fixed point, after each body has finished using the reusable layout scratch storage.
-            while (this.generics.HasPendingDestructors)
+            while (this.generics.HasPendingDestructors || this.defaults.HasPending || module.PendingEntries.Count != 0)
             {
-                if (!this.generics.PrepareDestructors(c, module, this.lowering.AggregateLayouts, out failure) ||
+                if (!this.LowerDefaults(c, module, out failure) ||
+                    !this.generics.PrepareDestructors(c, module, this.lowering.AggregateLayouts, out failure) ||
                     !this.objects.PrepareInstances(c, module, this.lowering.AggregateLayouts, this.generics, out failure) ||
                     !this.LowerInstances(c, module, out failure))
                 {
-                    this.resourceLimit = this.generics.ResourceLimitExceeded;
+                    this.resourceLimit = this.generics.ResourceLimitExceeded || this.defaults.ResourceLimitExceeded;
                     return false;
                 }
             }
@@ -262,6 +266,7 @@ public sealed class LlvmEmitter
         }
         finally
         {
+            this.resourceLimit |= this.defaults.ResourceLimitExceeded;
             // Never retain a previous parse through the active declaration-to-ABI map.
             if (!module.IsComplete && this.lowering.AggregateLayouts.ResourceLimitFailure is { } limit)
             {

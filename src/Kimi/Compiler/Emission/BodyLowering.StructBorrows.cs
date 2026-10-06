@@ -16,6 +16,15 @@ internal sealed partial class BodyLowering
     {
         Grow(ref this.materializedScalars, body.Places.Count);
         this.materializedScalars.AsSpan(0, body.Places.Count).Clear();
+        if (body.DefaultInputs is { } inputs)
+        {
+            foreach (var input in inputs)
+            {
+                var type = body.Places[input.Place].Type;
+                this.materializedScalars[input.Place] = IsScalar(type) || ReferenceTypes.IsString(type) || ReferenceEquals(type, BoundType.Unit);
+            }
+        }
+
         for (var i = 0; i < body.Operations.Count; i++)
         {
             if (body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Place: >= 0 } borrow && borrow.Place < body.Places.Count &&

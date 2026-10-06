@@ -533,7 +533,7 @@ public sealed partial class OwnershipAnalysis
         {
             // One reusable declaration scratch graph, never an executable function
             // body. Its diagnostics are retained before the next default reuses it.
-            this.body = this.caseBody ?? (this.defaultBody ??= new());
+            this.body = this.instanceBody ?? this.caseBody ?? (this.defaultBody ??= new());
         }
         else if (this.instanceBody is { } instanceBody)
         {
@@ -556,6 +556,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount), this.caseBit);
+        this.body.DefaultParameter = declarationDefault;
         this.defaultContext = -1;
         // Abstract Origin bindings affect field Types even when layout is fully
         // concrete. Prepare the same substituted metadata used by closed calls.
@@ -625,8 +626,10 @@ public sealed partial class OwnershipAnalysis
             // checking neither destroys them nor applies the callee's return contract.
             var defaultValue = function.Parameters[declarationDefault].DefaultValue!;
             var reported = this.body.IssueStorage.Count;
-            this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
-            this.Connect(this.current, this.normalExit);
+            var securedDefault = this.WriteResult(defaultValue, this.resultPlace, this.Expression(defaultValue), reported);
+            this.Cleanup(0, parameterCount, defaultValue, CleanupReason.Return);
+            this.Deliver(function, securedDefault);
+            this.Connect(this.current, this.normalExit, OwnershipEdgeKind.Return);
             this.CompleteBody(function, declarationDefault);
             return;
         }
@@ -884,7 +887,9 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.CheckAcquisition(place, acquisition);
-        var value = this.Place(source, stored.Type, OwnershipPlaceKind.Temporary, true);
+        // An explicit object upcast changes the view Type while transferring the same handle responsibility.
+        var resultType = source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } ? this.Concrete(source.BoundType)! : stored.Type;
+        var value = this.Place(source, resultType, OwnershipPlaceKind.Temporary, true);
         this.Emit(OwnershipOperationKind.Consume, source, place, value, acquisition ?? stored.Acquisition);
         return this.RegisterTemporary(value);
     }

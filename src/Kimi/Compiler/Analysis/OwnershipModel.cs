@@ -339,6 +339,12 @@ public sealed partial class OwnershipBody
 
     public bool IsConcrete { get; internal set; }
 
+    internal int DefaultParameter { get; set; } = -1;
+
+    internal int ParameterCount => this.DefaultParameter >= 0 ? this.DefaultParameter : this.Function.Parameters.Count;
+
+    internal BoundType? DeclaredResultType => this.DefaultParameter >= 0 ? this.Function.Parameters[this.DefaultParameter].Type.BoundType : this.Function.BoundSymbol?.Type;
+
     internal List<OwnershipIdentity>? Identities { get; set; }
 
     /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.9).</summary>
@@ -372,6 +378,7 @@ public sealed partial class OwnershipBody
     internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.Function = function;
+        this.DefaultParameter = -1;
         this.Instance = instance;
         this.caseBit = caseBit;
         if (this.caseStorage.Length < cases.Length)
@@ -388,6 +395,8 @@ public sealed partial class OwnershipBody
         this.OperationStorage.Clear();
         this.DefaultContexts?.Clear();
         this.DefaultSymbolPlaces?.Clear();
+        this.DefaultEvaluations?.Clear();
+        this.DefaultInputs?.Clear();
         this.EdgeStorage.Clear();
         this.EdgeHeads.Clear();
         this.IncomingEdges.Clear();
@@ -522,6 +531,8 @@ internal enum OwnershipValueKind : byte
     Constant,
     Parameter,
     Call,
+    DefaultCall,
+    DefaultRead,
     Alias,
     Convert,
     Unary,

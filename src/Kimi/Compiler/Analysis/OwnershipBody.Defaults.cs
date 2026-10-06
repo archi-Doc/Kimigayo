@@ -6,6 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
 {
+    internal readonly record struct DefaultEvaluation(int Operation, BoundCall Call, int Parameter, int Start);
+
+    internal List<DefaultEvaluation>? DefaultEvaluations { get; set; }
+
+    internal List<(int Place, int Value, int Read)>? DefaultInputs { get; set; }
+
     private List<int>? defaultLoanWork;
     private bool[] defaultLoanVisited = [];
 
@@ -122,6 +128,21 @@ public sealed partial class OwnershipBody
                 }
                 else if (operation.Place >= 0)
                 {
+                    if (value.Kind == OwnershipValueKind.DefaultCall)
+                    {
+                        var evaluation = this.DefaultEvaluations![(int)value.Constant];
+                        for (var i = 0; i < evaluation.Parameter; i++)
+                        {
+                            var input = this.DefaultInputs![evaluation.Start + i];
+                            if (NamesResultOrigin(this.Places[operation.Place].Type, this.Places[input.Place].Type))
+                            {
+                                work.Add(input.Read);
+                            }
+                        }
+
+                        continue;
+                    }
+
                     // A public result contract can retain either of several inputs. Each contributing acquisition must
                     // be checked; failure to identify a sole ancestor is not proof that a new Loan cannot escape.
                     for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
@@ -261,7 +282,7 @@ public sealed partial class OwnershipBody
         => this.Concrete(this.SubstituteDefaultType(type, this.DefaultContextAt(operation)));
 
     internal BoundCall? CallAt(int operation)
-        => this.SubstituteDefaultCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.DefaultContextAt(operation));
+        => this.Values[operation].Kind == OwnershipValueKind.DefaultCall ? null : this.SubstituteDefaultCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.DefaultContextAt(operation));
 
     internal BoundCall? SubstituteDefaultCall(BoundCall? call, int context)
     {

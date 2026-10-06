@@ -75,6 +75,15 @@ public sealed partial class OwnershipAnalysis
                 }
                 else if (complete)
                 {
+                    if (this.flow.RecursiveDefault(omitted.Expression))
+                    {
+                        place = this.EvaluateDefault(plan, this.defaultParameter, omitted.Expression);
+                        this.arguments.Add(place);
+                        slots[this.defaultParameter] = place;
+                        complete &= place >= 0;
+                        continue;
+                    }
+
                     // The explicit arguments are already acquired; the declaration expression reads those prepared slots.
                     var contexts = this.body.DefaultContexts ??= new();
                     var previousContext = this.defaultContext;
@@ -105,6 +114,45 @@ public sealed partial class OwnershipAnalysis
             this.defaultParameter = previousParameter;
             this.defaultDepth = depth;
         }
+    }
+
+    // SPEC 7.2.3: an evaluator only inspects the slots already acquired by the pending call. It takes no ownership of them;
+    // its one normal result becomes the next pending argument. Recursive evaluator entries are registered before their bodies.
+    private int EvaluateDefault(BoundCall call, int parameter, Koto expression)
+    {
+        var inputs = this.body.DefaultInputs ??= new();
+        var evaluations = this.body.DefaultEvaluations ??= new();
+        var start = inputs.Count;
+        for (var i = 0; i < parameter; i++)
+        {
+            var place = this.defaultPlaces[i];
+            if (place < 0)
+            {
+                return -1;
+            }
+
+            var value = this.Value(place);
+            var read = this.Emit(OwnershipOperationKind.Read, expression, place);
+            this.SetValue(read, OwnershipValueKind.DefaultRead, [], constant: inputs.Count);
+            this.placeValues[place] = value;
+            inputs.Add((place, value, read));
+        }
+
+        var invoke = this.Emit(OwnershipOperationKind.Call, expression);
+        this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
+        var type = this.Concrete(this.compilation.Binding.InstantiateStorageType(((FunctionKoto)call.Target.Declaration).Parameters[parameter].Type.BoundType!, call))!;
+        var result = this.Place(expression, type, OwnershipPlaceKind.Temporary, false);
+        var produce = this.Emit(OwnershipOperationKind.Produce, expression, result);
+        this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
+        this.SetValue(invoke, OwnershipValueKind.DefaultCall, [], constant: evaluations.Count);
+        evaluations.Add(new(invoke, this.body.SubstituteDefaultCall(call, this.defaultContext)!, parameter, start));
+        if (ScalarResult(type) || ReferenceTypes.IsString(type))
+        {
+            this.SetValue(produce, OwnershipValueKind.Alias, [invoke]);
+        }
+
+        this.placeValues[result] = produce;
+        return this.RegisterTemporary(result);
     }
 
     // SPEC 7.2.3: inside a default evaluated at a call, a preceding parameter, read or captured, names the slot that call

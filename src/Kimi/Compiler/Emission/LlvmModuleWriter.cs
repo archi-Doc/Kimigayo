@@ -524,7 +524,7 @@ internal static partial class LlvmModuleWriter
                     break;
 
                 default:
-                    WriteScalar(output, constants, instruction, function.GetOperands(instruction));
+                    WriteScalar(output, constants, function, instruction, function.GetOperands(instruction));
                     break;
             }
         }

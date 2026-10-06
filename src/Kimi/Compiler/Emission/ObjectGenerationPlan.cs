@@ -31,6 +31,35 @@ internal sealed class ObjectGenerationPlan
 
     internal IReadOnlyDictionary<BoundType, int> RuntimeTypes => this.runtimeTypes;
 
+    internal bool PrepareDefault(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, GenericStoragePlan.CallEntry entry, out string? failure)
+    {
+        failure = null;
+        var body = entry.Template.Body;
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            if (body.Operations[i].Source is IsKoto { BoundRuntimeTest: { } test })
+            {
+                this.RegisterType(compilation, body.ConcreteAt(test.TargetType, i)!);
+                module.NeedsObjectRuntime = true;
+            }
+
+            if (body.CallAt(i)?.Target.CompilerFunction == CompilerFunctionKind.Clone)
+            {
+                module.NeedsObjectRuntime = true;
+            }
+        }
+
+        for (var i = 0; entry.ConcreteCalls is { } calls && i < calls.Length; i++)
+        {
+            if (!this.AddCall(compilation, module, layouts, calls[i], out failure))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     internal void Clear()
     {
         this.calls.Clear();

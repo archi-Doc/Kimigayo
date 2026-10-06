@@ -84,6 +84,8 @@ public sealed class ControlFlowAnalysis
     private readonly Dictionary<IdentifierNameKoto, ControlFlowType?> names = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<DeferredBlockKoto, Flow> cleanups = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, DefaultCompletion> defaultCompletions = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Koto> activeDefaults = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Koto> recursiveDefaults = new(ReferenceEqualityComparer.Instance);
     private readonly List<FunctionKoto> deferredClosures = new();
 
     // Direct children are collected into one shared stack-like buffer instead of iterator objects.
@@ -165,6 +167,8 @@ public sealed class ControlFlowAnalysis
         this.names.Clear();
         this.cleanups.Clear();
         this.defaultCompletions.Clear();
+        this.activeDefaults.Clear();
+        this.recursiveDefaults.Clear();
         this.deferredClosures.Clear();
         this.defaultDepth = 0;
         this.childBuffer.Clear();
@@ -219,6 +223,8 @@ public sealed class ControlFlowAnalysis
 
     // An omitted default with pending completion cannot be expanded by ownership; the same finite cycle boundary applies.
     internal bool DefaultCompletionPending(Koto expression) => !this.defaultCompletions.TryGetValue(expression, out var completion) || completion.Pending;
+
+    internal bool RecursiveDefault(Koto expression) => this.recursiveDefaults.Contains(expression);
 
     // The edits that remove an Unsafe Block statement from an indented body: delete `unsafe => ` before an inline Body on the same
     // line, or delete the unsafe line and one indentation level of every line of an indented Body. No candidate when the unsafe line
@@ -1092,17 +1098,23 @@ public sealed class ControlFlowAnalysis
         var value = parameter.DefaultValue!;
         if (this.defaultCompletions.TryGetValue(value, out var cached))
         {
+            if (this.activeDefaults.Contains(value))
+            {
+                this.recursiveDefaults.Add(value);
+            }
+
             return cached;
         }
 
-        // Defaults can refer to later declarations or recursively select another
-        // omitted default. A cycle stays pending instead of expanding without bound.
-        this.defaultCompletions[value] = new(true, true);
+        // A recursive default uses its resolved signature as an ordinary recursive call does. Completion is possible,
+        // not guaranteed; generation uses a separate evaluator entry instead of expanding the declaration without bound.
+        this.defaultCompletions[value] = new(true, false);
         if (this.HasInvalidDirective(value))
         {
-            return new(true, true);
+            return this.defaultCompletions[value] = new(true, true);
         }
 
+        this.activeDefaults.Add(value);
         var parameterType = this.types.GetDeclaredType(parameter.Type);
         this.defaultDepth++;
         var flow = this.Visit(value, parameterType);
@@ -1113,6 +1125,7 @@ public sealed class ControlFlowAnalysis
 
         // Transfers belong to the declaration's internal targets, never the caller.
         var completion = new DefaultCompletion(flow.Normal, flow.Pending);
+        this.activeDefaults.Remove(value);
         this.defaultCompletions[value] = completion;
         if (--this.defaultDepth == 0)
         {

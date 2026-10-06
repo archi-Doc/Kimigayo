@@ -180,7 +180,7 @@ public sealed partial class OwnershipBody
 
         // Carried by the operation's row: a call result (Call), an acquired address (Borrow), a store (StorePointer), the
         // entries of a Dictionary literal (StoreDictionaryEntry) and a pattern binding or Subject (AcquirePattern, InitializeSubject).
-        OwnershipValueKind.Call or OwnershipValueKind.Borrow or OwnershipValueKind.Address or OwnershipValueKind.PointerStore or
+        OwnershipValueKind.Call or OwnershipValueKind.DefaultCall or OwnershipValueKind.DefaultRead or OwnershipValueKind.Borrow or OwnershipValueKind.Address or OwnershipValueKind.PointerStore or
             OwnershipValueKind.DictionaryLiteral or OwnershipValueKind.PatternProjection => ValueFlow.None,
 
         // Computed owned scalars and tests hold no reference.
@@ -1493,6 +1493,17 @@ public sealed partial class OwnershipBody
 
                         break;
                     case OperationFlow.Call:
+                        if (this.Values[id].Kind == OwnershipValueKind.DefaultCall)
+                        {
+                            var evaluation = this.DefaultEvaluations![(int)this.Values[id].Constant];
+                            for (var p = 0; p < evaluation.Parameter; p++)
+                            {
+                                Merge(operation.Place, this.DefaultInputs![evaluation.Start + p].Place, id);
+                            }
+
+                            break;
+                        }
+
                         for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
                         {
                             Merge(operation.Place, input.Place, id);
@@ -1686,7 +1697,7 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
-            if (FlowOf(operation.Kind) != OperationFlow.Call)
+            if (FlowOf(operation.Kind) != OperationFlow.Call || this.Values[id].Kind == OwnershipValueKind.DefaultCall)
             {
                 continue;
             }
@@ -3008,6 +3019,28 @@ public sealed partial class OwnershipBody
 
     private int ResultArgument(int call)
     {
+        if (this.Values[call].Kind == OwnershipValueKind.DefaultCall)
+        {
+            var evaluation = this.DefaultEvaluations![(int)this.Values[call].Constant];
+            var result = this.Places[this.Operations[call].Place].Type;
+            var sole = -1;
+            for (var i = 0; i < evaluation.Parameter; i++)
+            {
+                var input = this.DefaultInputs![evaluation.Start + i];
+                if (NamesResultOrigin(result, this.Places[input.Place].Type))
+                {
+                    if (sole >= 0)
+                    {
+                        return -1;
+                    }
+
+                    sole = input.Read;
+                }
+            }
+
+            return sole;
+        }
+
         if (this.Operations[call].Source is InvocationKoto { BoundValueCall: { } valueCall })
         {
             // SPEC 15.6.3: a value call's result descends from the one argument whose Origins it names, as an ordinary call's; a result

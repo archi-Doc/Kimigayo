@@ -260,6 +260,39 @@ internal sealed partial class BodyLowering
             return valid;
         }
 
+        if (body.Values[index].Kind == OwnershipValueKind.DefaultRead)
+        {
+            failure = null;
+            if (operation.Kind != OwnershipOperationKind.Read || operation.Place < 0 ||
+                (body.IsReachable(index) && (body.GetInputState(index, operation.Place) & PlaceState.MustInit) == 0))
+            {
+                return Fail("Default evaluation requires an initialized prepared input.", out failure);
+            }
+
+            var input = body.DefaultInputs![(int)body.Values[index].Constant];
+            var type = body.Places[input.Place].Type;
+            if ((IsScalar(type) || ReferenceTypes.IsString(type)) && !(body.DefaultParameter >= 0 && body.Places[input.Place].Kind == OwnershipPlaceKind.Parameter))
+            {
+                if (input.Value < 0 || (body.IsReachable(index) && !this.Dominates(input.Value, index)))
+                {
+                    return Fail("Prepared slot materialization requires its dominating value.", out failure);
+                }
+
+                var representation = WindowsLowering.GetValue(type)!;
+                var operand = ReferenceTypes.IsString(type) ? this.ReferenceOperand(body, input.Value) : this.PhysicalOperand(body, input.Value);
+                function.AddScalar(EmissionOpcode.StoreScalar, index, [operand], representation.ComputationType, place: input.Place, representation: representation);
+            }
+
+            return true;
+        }
+
+        if (body.DefaultParameter >= 0 && body.Values[index].Kind == OwnershipValueKind.Parameter && ReferenceTypes.IsString(ValueType(body, index)))
+        {
+            function.AddScalar(EmissionOpcode.LoadPointer, index, [new(EmissionOperandKind.Argument, body.Values[index].Constant)], "ptr", representation: WindowsLowering.StringReference);
+            failure = null;
+            return true;
+        }
+
         if (operation.Kind is OwnershipOperationKind.TestObserve or OwnershipOperationKind.TestMessage or OwnershipOperationKind.TestAbort)
         {
             return this.LowerVerification(body, function, index, out failure);
