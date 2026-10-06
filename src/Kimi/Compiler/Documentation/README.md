@@ -45,6 +45,20 @@ a language diagnostic. Published syntax is immutable; rendering never changes it
 Optional item diagnostics require selected, bound declarations and remain separate
 from compiler diagnostics. Other optional writing diagnostics are not implemented.
 
+## Editor collection
+
+LSP checks opt into collection before sources or embedded Kimi declarations are parsed.
+CLI checks leave it disabled. `KimiLibrarySources` shares immutable tokens and lazily
+captured comment candidate ranges; each compilation owns its source objects, comments,
+selection and declaration association. Loading without documentation first does not
+prevent a later collecting load, and a warmed documentation cache does not create
+comment objects in a disabled compilation. Invalid lexical results are not shared.
+
+Optional Hover projection runs after diagnostics and TestPresence are fixed, behind
+`CheckService.TryCreateHover`; its failure is logged separately from check outcomes.
+The complete editor contract is [SPEC §23.4.11](../../../../docs/spec/lsp-hover.md);
+general Hover rendering and adoption are still implementation work.
+
 ## HTML and link placement
 
 The default `ToHtml()` uses heading offset 1, LF output, HTTP/HTTPS/mailto links,

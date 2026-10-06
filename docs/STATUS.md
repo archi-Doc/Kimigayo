@@ -3,7 +3,11 @@
 **Accepted Hover contract (2026-10-06):** [SPEC §23.4.11](spec/lsp-hover.md) requires declaration/Copy/documentation Hover,
 shared diagnostic scheduling, complete participant agreement, synchronous cached rendering and labeled previous analysis.
 General Hover and these update/rendering rules are not yet implemented or verified; existing Callable effect Hover remains
-the current boundary. The implementation units are the Hover track in `docs/dev/PLAN.md`; specification intake alone establishes no support.
+the response boundary. LSP checks now opt into documentation/optional Hover collection; CLI checks skip it. Projection
+failures preserve finalized diagnostics, acceptance and TestPresence, and are logged separately. Embedded Kimi comments
+use shared immutable lexical ranges with compilation-local association; `HoverCollectionTest` covers mode order, parallel
+loads and check-record invariance. Full collection/formatting isolation, detached general declarations and Hover response
+rules remain in the H1–H6 track in `docs/dev/PLAN.md`.
 
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
 length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotation holes now use written dimensions,

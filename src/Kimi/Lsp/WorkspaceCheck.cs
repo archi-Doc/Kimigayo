@@ -305,7 +305,7 @@ internal sealed class WorkspaceCheck
             }
         }
 
-        return CheckService.Run(project, plan.Key.Target, plan.Mode, debug, source, cancellationToken);
+        return CheckService.Run(project, plan.Key.Target, plan.Mode, debug, source, cancellationToken, collectHover: true);
     }
 
     /// <summary>Runs the check to completion; every product goes to the state owner's queue.</summary>

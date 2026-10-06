@@ -393,7 +393,11 @@ public partial class Project
 
         // A command's target owns its diagnostics, so no earlier target's diagnostics can leak into it;
         // a check request shares its caller's owner.
-        var compilation = new Compilation(this.kimigayo, project, context?.Diagnostics) { IsTestBuild = prepared is not null };
+        var compilation = new Compilation(this.kimigayo, project, context?.Diagnostics)
+        {
+            IsTestBuild = prepared is not null,
+            CollectDocumentation = context?.CollectHover == true,
+        };
         if (this.FilePath is { } file)
         {
             compilation.Diagnostics.RegisterPath(file); // SPEC 23.3.6.3: the project file is consumed before every source.

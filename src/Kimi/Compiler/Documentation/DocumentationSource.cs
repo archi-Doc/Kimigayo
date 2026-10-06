@@ -35,6 +35,43 @@ public sealed class DocumentationSource
     /// <summary>Gets source-ordered comments, including unassociated candidates.</summary>
     public IReadOnlyList<DocumentationComment> Comments { get; }
 
+    internal static DocumentationSource? FromCandidates(SourceDocument document, ReadOnlySpan<Candidate> candidates)
+    {
+        if (candidates.IsEmpty)
+        {
+            return null;
+        }
+
+        var result = new DocumentationSource(document);
+        result.comments.EnsureCapacity(candidates.Length);
+        foreach (var candidate in candidates)
+        {
+            result.comments.Add(new(result, candidate.Span, candidate.Indent, candidate.Recognized));
+        }
+
+        return result;
+    }
+
+    // Snapshot lexical candidates before parsing assigns declarations or suppresses ranges. These values may be
+    // shared with another compilation; mutable comments and their source/declaration owners may not.
+    internal Candidate[] CaptureCandidates()
+    {
+        var result = new Candidate[this.comments.Count];
+        for (var i = 0; i < result.Length; i++)
+        {
+            var comment = this.comments[i];
+            result[i] = new(comment.Span, comment.Indent, comment.IsRecognized);
+        }
+
+        return result;
+    }
+
+    /// <summary>An immutable lexical range, independent of declaration selection and compilation ownership.</summary>
+    /// <param name="Span">The source range.</param>
+    /// <param name="Indent">The indentation before the comment prefix.</param>
+    /// <param name="Recognized">Whether the prefix occupies an admitted position.</param>
+    internal readonly record struct Candidate(SourceSpan Span, int Indent, bool Recognized);
+
     internal void AddLine(int start, int end)
     {
         var text = this.Source.SourceText;

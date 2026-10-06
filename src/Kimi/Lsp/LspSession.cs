@@ -551,7 +551,7 @@ internal sealed class LspSession : IDisposable
             foreach (var key in contributors)
             {
                 EffectHover? found = null;
-                foreach (var candidate in this.units[key].Result!.Output.EffectHovers)
+                foreach (var candidate in this.units[key].Result!.Output.Hover?.Effects ?? [])
                 {
                     if (candidate.Source == document.Identity && candidate.Range.Start.CompareTo(parameters.Position) <= 0 &&
                         candidate.Range.End.CompareTo(parameters.Position) > 0 &&
@@ -815,6 +815,11 @@ internal sealed class LspSession : IDisposable
         }
 
         unit.Result = result;
+        if (result.Output.HoverFault is { } hoverFault)
+        {
+            this.Log(2, $"Hover information unavailable for {result.Key.Owner}: {hoverFault}");
+        }
+
         if (previous?.Output.Outcome != result.Output.Outcome)
         {
             this.Log(3, $"{result.Key.Owner} ({result.Key.Kind}{(result.Key.Target.Length == 0 ? string.Empty : " " + result.Key.Target)}): {result.Output.Outcome}");

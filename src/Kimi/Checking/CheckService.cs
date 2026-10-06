@@ -21,12 +21,13 @@ internal static class CheckService
     /// <param name="debug">The unit's <c>Debug</c> setting.</param>
     /// <param name="inputs">The input source.</param>
     /// <param name="cancellationToken">Cancels dependency resolution.</param>
+    /// <param name="collectHover">Whether to collect documentation and optional editor information.</param>
     /// <returns>The output.</returns>
     /// <exception cref="PendingInputException">The check needs an input with an event after its base.</exception>
     /// <exception cref="OperationCanceledException">The check was cancelled; a cancelled check has no output (SPEC 23.3.3).</exception>
-    public static CheckOutput Run(Project project, string target, CheckMode mode, bool debug, CheckInputSource inputs, CancellationToken cancellationToken)
+    public static CheckOutput Run(Project project, string target, CheckMode mode, bool debug, CheckInputSource inputs, CancellationToken cancellationToken, bool collectHover = false)
     {
-        var context = new CheckContext(inputs);
+        var context = new CheckContext(inputs, collectHover);
         var location = project.FilePath;
         project.KimiOptions = new KimiOptions { Target = target, Debug = debug };
         var accepted = false;
@@ -75,10 +76,26 @@ internal static class CheckService
             return new(CheckOutcome.Blocked, false, TestPresence.Unknown, result);
         }
 
-        return new(CheckOutcome.Completed, accepted, mode == CheckMode.Product ? ScanTestPresence(compilation) : TestPresence.Unknown, result)
+        var presence = mode == CheckMode.Product ? ScanTestPresence(compilation) : TestPresence.Unknown;
+        string? hoverFault = null;
+        var hover = collectHover ? TryCreateHover(compilation, static c => new(c.Binding.CreateCallableEffectHovers()), out hoverFault) : null;
+        return new(CheckOutcome.Completed, accepted, presence, result) { Hover = hover, HoverFault = hoverFault };
+    }
+
+    // SPEC 23.4.11.6: optional projection has no authority to alter finalized diagnostics, acceptance or TestPresence.
+    // Pass state separately so the production factory is a shared static delegate, without a closure per check.
+    internal static HoverSnapshot? TryCreateHover<T>(T state, Func<T, HoverSnapshot> create, out string? fault)
+    {
+        fault = null;
+        try
         {
-            EffectHovers = compilation.Binding.CreateCallableEffectHovers(),
-        };
+            return create(state);
+        }
+        catch (Exception ex) when (ex is not (PendingInputException or OperationCanceledException))
+        {
+            fault = ex.Message;
+            return null;
+        }
     }
 
     // SPEC 23.3.3: exactly one CheckFaulted_Kd Error explains a Faulted result; earlier records are kept only when collection stayed intact.

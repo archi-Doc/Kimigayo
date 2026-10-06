@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 
@@ -57,6 +58,7 @@ public sealed partial class KimiLibrary
     private sealed class Source(string path, string text, KimiLibraryContainer container, bool signatures)
     {
         private Token[]? tokens;
+        private DocumentationSource.Candidate[]? documentation;
 
         internal string Path { get; } = path;
 
@@ -68,21 +70,40 @@ public sealed partial class KimiLibrary
 
         internal ReadOnlySpan<Token> GetTokens(CodeContext context)
         {
-            if (Volatile.Read(ref this.tokens) is { } cached)
+            var collect = context.Compilation.CollectDocumentation;
+            var cached = Volatile.Read(ref this.tokens);
+            var candidates = collect ? Volatile.Read(ref this.documentation) : null;
+            if (cached is not null && (!collect || candidates is not null))
             {
+                if (collect)
+                {
+                    context.Documentation = DocumentationSource.FromCandidates(context.SourceDocument!, candidates);
+                }
+
                 return cached;
             }
 
-            var tokenizer = new Tokenizer(context.DiagnosticCollection, context.SourceDocument!);
+            var tokenizer = new Tokenizer(context.DiagnosticCollection, context.SourceDocument!) { CollectDocumentation = collect };
             try
             {
                 tokenizer.ReadAll();
-                var parsed = tokenizer.Tokens.ToArray();
+                var parsed = cached ?? tokenizer.Tokens.ToArray();
                 // Tokens contain only immutable kinds and source offsets, never ASTs,
                 // source documents or compilation state. Invalid lexing is not cached:
                 // each compilation must receive its own source diagnostics.
-                return context.Compilation.Diagnostics.HasSyntaxErrors(context.SourceDocument!) ? parsed :
-                    Interlocked.CompareExchange(ref this.tokens, parsed, null) ?? parsed;
+                var valid = !context.Compilation.Diagnostics.HasSyntaxErrors(context.SourceDocument!);
+                if (collect)
+                {
+                    context.Documentation = tokenizer.Documentation;
+                    if (valid)
+                    {
+                        // Empty is a completed collection too. Publish only ranges; parsing below mutates its own comments.
+                        var collected = tokenizer.Documentation?.CaptureCandidates() ?? [];
+                        Interlocked.CompareExchange(ref this.documentation, collected, null);
+                    }
+                }
+
+                return valid ? Interlocked.CompareExchange(ref this.tokens, parsed, null) ?? parsed : parsed;
             }
             finally
             {
@@ -91,44 +112,9 @@ public sealed partial class KimiLibrary
         }
     }
 
-    private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
-        => kind == KimiLibraryContainer.Text ? this.Text :
-            kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
-                ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto :
-            kind is KimiLibraryContainer.WriteWindow or KimiLibraryContainer.Utf8Writer
-                ? FindDeclaration(this.Kotonoha.RootKoto, kind.ToString(), false) as DeclarationContainerKoto : null;
-
-    private void LoadSources()
+    private static void ParseSource(ref TokenReader reader, bool signatures, DeclarationContainerKoto container)
     {
-        foreach (var source in Sources.All)
-        {
-            var container = source.Container switch
-            {
-                KimiLibraryContainer.Console => this.Console,
-                KimiLibraryContainer.Intrinsics => this.Intrinsics,
-                KimiLibraryContainer.Test => this.Test,
-                KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
-                KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) as DeclarationContainerKoto,
-                KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) as DeclarationContainerKoto, // Storage.kimi is read first.
-                KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) as DeclarationContainerKoto, // Raw.kimi is read first.
-                KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
-                _ => this.FormattingContainer(source.Container),
-            };
-            if (container is null)
-            {
-                continue; // The missing Array struct is reported by validation (SourceExpected).
-            }
-
-            this.ParseSource(source, container);
-        }
-    }
-
-    private void ParseSource(Source source, DeclarationContainerKoto container)
-    {
-        var document = new SourceDocument(source.Path, source.Text);
-        var context = new CodeContext(this.Kotonoha, sourceDocument: document);
-        var reader = new TokenReader(context, document.AsSpan(), source.GetTokens(context));
-        if (!source.Signatures)
+        if (!signatures)
         {
             container.Parse(ref reader);
             return;
@@ -175,6 +161,52 @@ public sealed partial class KimiLibrary
             }
 
             container.AddLast(declaration);
+        }
+    }
+
+    private DeclarationContainerKoto? FormattingContainer(KimiLibraryContainer kind)
+        => kind == KimiLibraryContainer.Text ? this.Text :
+            kind is KimiLibraryContainer.FixedBuffer or KimiLibraryContainer.HeapBuffer
+                ? FindDeclaration(this.Text, kind.ToString(), false) as DeclarationContainerKoto :
+            kind is KimiLibraryContainer.WriteWindow or KimiLibraryContainer.Utf8Writer
+                ? FindDeclaration(this.Kotonoha.RootKoto, kind.ToString(), false) as DeclarationContainerKoto : null;
+
+    private void LoadSources()
+    {
+        foreach (var source in Sources.All)
+        {
+            var container = source.Container switch
+            {
+                KimiLibraryContainer.Console => this.Console,
+                KimiLibraryContainer.Intrinsics => this.Intrinsics,
+                KimiLibraryContainer.Test => this.Test,
+                KimiLibraryContainer.Array => FindDeclaration(this.Kotonoha.RootKoto, "Array", false) as DeclarationContainerKoto, // Array.kimi is read first.
+                KimiLibraryContainer.Dictionary => FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) as DeclarationContainerKoto,
+                KimiLibraryContainer.Storage => FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) as DeclarationContainerKoto, // Storage.kimi is read first.
+                KimiLibraryContainer.Raw => FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) as DeclarationContainerKoto, // Raw.kimi is read first.
+                KimiLibraryContainer.Root => this.Kotonoha.RootKoto,
+                _ => this.FormattingContainer(source.Container),
+            };
+            if (container is null)
+            {
+                continue; // The missing Array struct is reported by validation (SourceExpected).
+            }
+
+            this.ParseSource(source, container);
+        }
+    }
+
+    private void ParseSource(Source source, DeclarationContainerKoto container)
+    {
+        var document = new SourceDocument(source.Path, source.Text);
+        var context = new CodeContext(this.Kotonoha, sourceDocument: document);
+        var reader = new TokenReader(context, document.AsSpan(), source.GetTokens(context));
+        ParseSource(ref reader, source.Signatures, container);
+        if (context.Documentation is { } documentation)
+        {
+            documentation.SetLocation(string.Empty);
+            documentation.Finish(context.Compilation.Diagnostics.HasSyntaxErrors(document));
+            this.Kotonoha.RecordDocumentation(documentation);
         }
     }
 }

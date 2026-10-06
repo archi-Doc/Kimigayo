@@ -62,8 +62,11 @@ public sealed record CheckOutput(CheckOutcome Outcome, bool Accepted, TestPresen
     {
     }
 
-    /// <summary>Gets checked effect descriptions for editor requests; these are not diagnostic records.</summary>
-    internal EffectHover[] EffectHovers { get; init; } = [];
+    /// <summary>Gets optional detached editor information, or null when not requested or unavailable.</summary>
+    internal HoverSnapshot? Hover { get; init; }
+
+    /// <summary>Gets an optional editor-generation failure for logging, without changing the check outcome.</summary>
+    internal string? HoverFault { get; init; }
 
     /// <summary>Creates the output of a check that an input or its configuration blocked before the check entry ran (SPEC 23.3.3).</summary>
     /// <param name="code">The <c>Input</c> Error that explains it.</param>
