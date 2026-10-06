@@ -81,6 +81,8 @@ This command reports input sizes, retained record counts, iteration counts and t
 
 `src/backend/windows-x64/benchmark-p42.ps1 [-Runs 5]` times the P42 hash and generator workloads (`src/Benchmark/Kimi/HashWrapping.kimi` on wrapping Types, `HashChecked.kimi` widened and masked on checked Types) at O0 and O2 through the milestone harness (`milestone-harness.ps1 -Source -WorkRoot -Runs`: the same build and checked first run, then timing-only repetitions) and writes `summary.json`/`summary.md` under `artifacts/benchmarks/p42-hash-prng/<stamp>/`; see [WrappingArithmetic.md](../../src/Benchmark/WrappingArithmetic.md).
 
+`Benchmark --pair-cases` measures the Semantics-case runs of generic definitions (SPEC §8.10): first analysis allocation, warm analysis bytes and warm analysis and rebinding timings of the case workload shared with `GenericCaseAllocationTest` through `tests/Workloads/VerificationWorkloads.cs`, beside the stored-reference workload as a reference; see [PairCases.md](../../src/Benchmark/PairCases.md).
+
 `Benchmark --borrow-storage` measures shared inspection-only and stored-reference workloads: first analysis allocation, retained dependency-table cells, physical table bytes and warm timings; see [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md). Storage bounds and conflicting later call arguments remain regressions in `BorrowDependencyStorageTest`.
 
 `Benchmark --object-plans` measures direct and stored owning-object view analysis/emission with the same inputs as

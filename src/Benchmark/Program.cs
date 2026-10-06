@@ -15,6 +15,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--pair-cases")
+        {
+            PairCaseMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--borrow-storage")
         {
             BorrowStorageMeasurements.Run();

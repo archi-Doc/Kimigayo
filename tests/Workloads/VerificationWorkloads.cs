@@ -101,4 +101,16 @@ internal static class VerificationWorkloads
         source.Append("check()");
         return source.ToString();
     }
+
+    /// <summary>Gets the Semantics-case workload (SPEC 8.10; PLAN G75): a one-binder definition whose uniq case Reborrows a local, stores
+    /// it through an exclusive reference, captures it and passes it bare, and a two-binder definition with four cases; both valid in every
+    /// case and called with owner arguments. Shared by <c>GenericCaseAllocationTest</c> and <c>Benchmark --pair-cases</c>.</summary>
+    internal static string PairCaseFamilies =>
+        "func keep<F>(f: F) -> F => f@move\n" +
+        "func f<s/T>(value: s/T, other: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    var slot = other@move\n" +
+        "    let sref = slot@uniq\n    let child = v\n    sref@follow = child@move\n    _ = slot@follow\n    v@follow = x\n" +
+        "    var h = func [v] () -> T\n        return v@follow\n    let r = h()\n    let kept = keep(v)\n    _ = kept@follow\n    return r\n" +
+        "func g<s/T, t/U>(a: s/T, b: t/U, x: T) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n" +
+        "    var v = a@move\n    let local = v\n    _ = local@follow\n    v@follow = x\n    _ = b\n" +
+        "public func main() -> ()\n    var n: i32 = 1\n    var m: i32 = 2\n    _ = f(n, m, 9)\n    g(n, m, 9)\n";
 }
