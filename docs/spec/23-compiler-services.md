@@ -286,6 +286,8 @@ The conditions relevant to a candidate are fixed by its diagnostic and kind (the
 
 A Receiver Expression that cannot be acquired (§7.3), a colon at a transfer operand (§14.5.1), the Origin repairs of §15.3.2, §15.4.3 and §15.6.1 and `DiscardedValue_Kd` (§17.4.2) need a choice or a Loan verification, so they carry no candidates; their Advice describes the repair.
 
+Callable effect-bound declarations, selected-binding failures (UnsatisfiedEffectBound_Kd, Language, Ownership phase), input and static Loan conflicts, and the typed hover showing all contributing premises follow §8.4.10.7. Effects never choose an overload; proof failure and selected-use effect failure remain distinct records.
+
 ## 23.4. Language Server Protocol
 
 ### 23.4.1. Transport and lifecycle

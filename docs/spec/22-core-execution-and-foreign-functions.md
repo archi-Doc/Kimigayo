@@ -485,6 +485,41 @@ An asynchronous sequence is read by repeating a task call in a `loop` with `matc
 
 Apart from `Async.run`, every Kimi operation that may wait, for I/O, a timer, a channel or its own children, has a task slot and no task-free counterpart. `Console.writeLine` (§22.4) is the one exception: it stays synchronous, blocks the thread, and its implementation runs no other task (obligation 1).
 
+#### 22.1.3.7. Structured worker offload
+
+Structured computation may run on worker threads through these operations only. Their implementation, together with all asynchronous tasks, is deferred (Appendix D.5.2); these are required contracts, not a claim of support.
+
+```kimi
+public group Async
+    public func offload<F, R>(task; child: F) -> R
+        F is Callable<owner, () -> R>
+            effect confined
+        F is Transferable
+
+    public func offloadEach<I, F>(task; items: I, child: ref/F ! limit: isize) -> Result<(), Cancelled>
+        I is Iterator
+        I.Item is Transferable
+        F is Callable<(I.Item) -> ()>
+            effect confined
+        F is Transferable
+```
+
+The worker child has no task slot, runs to completion, and is joined before its public operation returns. No task executes on a worker; `confined` excludes `Async.run`, and the ordinary structured task operations never move a task tree between threads. `offload` acquires its child by value under `owner`, including cleanup of its remaining environment. `offloadEach` borrows its child shared for all worker calls, each receiving one item by value; overlapping exclusive item dependencies are ordinary Loan conflicts. Its Iterator stays on the parent thread and need not be Transferable.
+
+`offloadEach` has the `each` contract (§22.1.3.3): `limit < 1` Aborts before pulling an item; at most `limit` children run, `next` is called on the parent thread in input order only when a child can start, children need not complete in order, and the Iterator is destroyed after its last child completes. Before each pull, a request applying to the caller stops further pulls; return `Err` only after joining every started child, otherwise `Ok(())`. Worker computations neither observe cancellation nor unwind. `offload` and worker joins do not observe cancellation themselves; a request cannot discard a child's result or end its lifetime early. A timeout therefore cannot preempt a running worker computation.
+
+**Trusted-base obligation 6: worker completion.** The public operation's task frame holds the child, arguments and all their Loans until the worker finishes, and joins before that frame completes, including every cleanup path. Until join it performs no conflicting access to borrowed storage. This is an additional obligation to §22.1.3.1 because workers do not pass through `TaskBoundary.enter`. There is no running-child handle, detached child or destructor-based join. Resource failure before a worker can be started Aborts; no partially started operation may return while a child remains live.
+
+`confined` excludes environment authority (§8.4.10.2), including mutable statics, foreign calls, Console output, and raw pointers or `rc`/Weak values read from immutable statics. Captured borrows are input authority, so §24.3 separately rejects potentially affected static Loans in the operation's inputs even with this bound. Shared borrows of immutable static slots are permitted only when Transferable and ordinary Loan checking succeed. `Transferable` (§15.2.4) excludes thread-unsafe input storage. Neither guarantee replaces the other.
+
+The result `R` requires no Transferable or Owned bound. It is delivered only after join; ordinary lifetime rules reject references to worker-local storage. Non-transferable state newly created in a confined worker may be returned because no worker access survives join. Such state cannot be obtained from forbidden inputs or immutable statics, and erasure does not make hidden input storage Transferable. Later offloads still check their own inputs.
+
+**Synchronization and memory model.** All parent operations sequenced before worker start happen before the worker's accesses; all worker operations, including child cleanup and result construction, happen before the parent continues after join. Offloaded items are published before their worker starts. These edges are transitive and preserve ordinary per-thread sequencing; no order is promised between sibling workers beyond these edges, ordinary Loans and the `arc` protocol (§21.2.3.3). Safe programs admitted by these restrictions have no data races. Shared borrowing still grants no mutation of source payloads. `arc` synchronizes runtime handle state and lifetime, not arbitrary payload writes. No general atomic-ordering API, source thread creation or concurrent foreign reentry is introduced.
+
+**Static initialization.** The static-slot states and storage identity of §22.2.3–§22.2.4 are shared across threads. Exactly one thread changes Not started to Initializing and owns initialization. A different thread accessing that slot waits until initialization completes; publication of Initialized releases all initializer writes, and an access observing it acquires them before accessing the value. Access by the initializing thread Aborts with `KIMI_E_STATIC_CYCLE`. Cross-thread wait cycles may deadlock; this revision promises neither deadlock detection nor termination. Abort terminates the process and does not leave a recoverable half-initialized slot. Shutdown starts only after all structured workers join; successful initialization order is recorded consistently for reverse-order destruction, and the existing var-before-let shutdown rule remains.
+
+Offloading blocking foreign calls remains outside this contract until foreign effect declarations exist. Per-thread I/O executors and cross-thread channels remain deferred designs (Appendix D.2). Any future cross-thread channel must keep the single-commit ownership guarantees of §22.1.3.1 with an atomic commit winner; an overlapped handle stays associated with its original thread's completion port.
+
 ## 22.2. Program startup and static initialization
 
 ### 22.2.1. Startup selection
@@ -595,7 +630,7 @@ Shutdown destroys `count` in the `var` phase and `probe` in the `let` phase. The
 
 Each cleanup finishes before subsequent cleanup or Exit. Abort stops normal cleanup and unwinding and attempts diagnostics before Runtime.Exit(1) (§17.3, §22.5); secured results are then neither delivered nor separately destroyed.
 
-This revision admits one execution thread, with no source thread creation or concurrent foreign reentry. Atomic arc counts do not expand that permission; synchronization and thread transfer remain §D.2's design boundary. Tasks share that thread: every task of a tree runs on the thread of its `Async.run` (§22.1.3.3), and while a task executes a call that is not a task call, no other task of its tree that started before that call runs (§24.3).
+Execution starts on one thread; structured workers are permitted only by §22.1.3.7, whose synchronization and cross-thread static-initialization rules extend the table above. General source thread creation and concurrent foreign reentry remain deferred. Atomic arc counts do not expand that permission. Tasks share that thread: every task of a tree runs on the thread of its `Async.run` (§22.1.3.3), and while a task executes a call that is not a task call, no other task of its tree that started before that call runs (§24.3).
 
 ### 22.2.4. Static storage in inherited environments
 

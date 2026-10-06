@@ -8,6 +8,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 
 - **Generics:** the initial profile monomorphizes (§21.3.1). Generic code sharing is deferred; milestone P22 replaced the existing shared generation path.
 - **Origins and the Contract/type system** (§8, §15) remain complete requirements; implementation limits never narrow them.
+- **Async tasks and workers:** implementation is deferred by user instruction; the preserved plan is Appendix D.5.2. Callable effect bounds are an independent current implementation target.
 - **Draft files** (`draft/`) and **NativeAOT tests** need explicit instruction.
 
 ## 2. Working rules
@@ -31,7 +32,7 @@ Toolchain identity is checked during setup/update or with `kimi toolchain verify
 - **Verified state:** source `89da9e02`; Session `20261006-050738-516-session-g77-g72-g70-verified`: warning-free whole-solution Release, 17,760 functional/allocation tests, 962 related native O0/O2 executions, six original-source harness executions (P20/P26/P34), verified toolchain and stable 1,561 source/configuration plus 12 NuGet inputs. The diagnostic snapshot was recorded without a baseline comparison. Isolated fixed callable/object measurements (`artifacts/benchmarks/20261006-141431-g77-g72-g70`) have zero allocation in all 84 callable and 56 object samples (32 warm-ups, seven samples of 64 iterations); timings are retained without a speedup claim. Earlier failed runs and their repairs are in PLAN_HISTORY and the retained evidence.
 - **Main milestone:** P26 is DONE (2026-10-05); unchanged Program 26 passes Release O0/O2 and its original-source harness. G75, G77, G72 and G70 are DONE with their recorded support boundaries. The located P26 limits stay in STATUS by user decision. The next main work is the Property/object track from P24; shared-object U6 is DONE and P34/U7 awaits its completion review.
 - **Shared object track (user instruction, 2026-10-03):** rc/arc (P34) is an implementation target, run in sessions that alternate with the main milestone. U0 integrated the spec changes of [draft/Changes/2026-10-03 Shared Object Ownership Plan.md](../../draft/Changes/2026-10-03%20Shared%20Object%20Ownership%20Plan.md), whose §3 holds the design; the units are in §4.
-- **Implementation order:** P26 and G72 are DONE; next the Property/object track (P24 → P25 → P33 → P35 → P36 → OCC-X → P38), the async track A1–A4 being eligible at a position the user chooses; P34 proceeds in the alternating shared object track. Independent review repairs may proceed alongside.
+- **Implementation order:** P26 and G72 are DONE; next the Property/object track (P24 → P25 → P33 → P35 → P36 → OCC-X → P38); P34 proceeds in the alternating shared object track. Independent review repairs may proceed alongside.
 - **Milestone decisions (2026-10-04):** the decisions the remaining programs needed are integrated into SPEC and IMPL; the rules for P26, P25, P33, P34–P36 and P38 are settled, and the units they add are in §4, §6 and §7.
 - **Reviews:** Binding, Analysis, Checking, and lexing and parsing were reviewed with their defects repaired (PLAN_HISTORY); residues are G55, G47, G48 and G60 (§7).
 - **Diagnostic scope:** D0–D5 and R1–R7 are historical checkpoints, not certification of every recorder. Earlier Move/Loan evidence, condition/Place multiplicity and P33 flow-refinement classification remain open (DIAGNOSTICS §11).
@@ -87,17 +88,6 @@ rc/arc for P34 and the nonnull Option representation before P35. Design: §3 of 
 | U8 | Nonnull Option representation (IMPL §21.1.5) for the seven handle kinds and `Option<ref/T>`/`Option<uniq/T>` import arguments (from T2); handle Options stay tagged until then, recorded in STATUS | TODO | Size, alignment and stride 8; `Option<Option<R>>` and `Option<(rc/T, i32)>` stay tagged; `None`/`Some` across calls, generic functions, aggregates and FFI; only `Some` is cleaned up. Before P35. |
 
 Verified: clone results do not retain the source handle slot; obj/rc/arc factories share bounded generic/destructor discovery; direct Sealed and dynamic cleanup execute with exact lifetime bounds. U4/U5 measurements and U6/G70 content-sensitive updates are complete. Next shared-object stage: U7 completion review and the remaining milestone verification conditions.
-
-### Async track (after P26)
-
-Asynchronous tasks (SPEC Chapter 24, §22.1.3; IMPL §21.6; integrated 2026-10-04) as one series, A1 to A4 in order. None is implemented: `;` is still `SemicolonNotAllowed_Kd` and `open` a reserved keyword (STATUS). Threads (stage 3) wait for `draft/Proposals/2026-10-04 Callable Effect Bounds.md`.
-
-| ID | Unit | State | Completion condition |
-| --- | --- | --- | --- |
-| A1 | `open` as a contextual keyword (SPEC §2.5.1, §6.2.2): the inheritance modifier only immediately before `struct`, an ordinary Name elsewhere | TODO | `open struct` keeps its behavior; `file.open(...)`, `let open = 2` and members named `open` bind; misplaced `open` keeps a located diagnostic (corpus, snapshot). |
-| A2 | Task slots, rule 1 (SPEC §24.2): `task;` in the admitting lists, task arguments, one task-slot shape per group, Function Types and Callable signatures with a task slot, compatibility (§24.2.4), and `TaskSlotPosition_Kd`, `TaskArgumentMismatch_Kd`, `TaskSlotShapeMismatch_Kd` (§24.5) | TODO | Focused parsing/Binding positives and negatives with CLI/LSP records (Diagnostic Development Workflow); every other `;` keeps its syntax diagnostic; code that would suspend stops at a located Unsupported until A3. |
-| A3 | Generation (IMPL §21.6.1–§21.6.4): the status ABI (task entries return `i1`, true when completed), plain instances, switched-resume coroutine lowering with no destroy path, the O0 `opt` coroutine step, embedded child frames; task calls, rule 2 (SPEC §24.3), as suspension points with their static-Loan check | TODO | O0/O2 native fixtures complete synchronously and after resumption through the `TaskBoundary` intrinsics `enter`/`current`/`park`/`resume`; plain instances emit no coroutine; IR checks of the completion protocol; static-Loan conflicts are `ComparisonLoanConflict_Kd` at the task call. |
-| A4 | Single-thread executor in Kimigayo (`Kimi.Async`, SPEC §22.1.3.3; IMPL §21.6.5–§21.6.6): `run`, `sleep`, `checkpoint`, ready list, timers and arena | TODO | Kimigayo source over the task boundary only; nested `run`, timer order and the cancellation results of `sleep`/`checkpoint` pass O0/O2; the §21.6.6 allocation bounds hold in allocation tests; LIBRARY and STATUS updated. |
 
 ### Diagnostics track (complete)
 

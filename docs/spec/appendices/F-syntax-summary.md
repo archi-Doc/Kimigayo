@@ -225,7 +225,8 @@ ParameterName        := Name ("=>" Name)?
 ParameterList<P>      := "(" TaskSlot? (List<P> ","? | List<P>? "!" List<P> ","?)? ")"
 TaskSlot             := "task" ";" // "task" is contextual only here (§2.5.1, §24.2).
 ReceiverShorthand    := "self"
-ConstraintClause     := ConstraintSubject "is" IsRequirement
+ConstraintClause     := ConstraintSubject "is" IsRequirement CallableEffects?
+CallableEffects      := IndentedList<EffectClause>
 ConstraintSubject    := Name | "Self" | AssociatedTypeReference
 IsRequirement        := "not" Requirement | PositiveRequirement
 PositiveRequirement  := RequirementAtom ("and" RequirementUnary)*

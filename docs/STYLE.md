@@ -102,7 +102,7 @@ across fragments for style: logical order controls initializer effects and rever
 `effect` clauses. In a Contract body, place `effect Ancestor.name ...` specifications after the `associate`
 specifications they rely on ([SPEC §8.4.10](spec/08-generics-constraints-and-contracts.md#8410-requirement-effect-bounds)).
 
-`[Kimi]` Declare an effect bound only where callers need it. Adding a bound obliges every implementer; removing one
+`[Kimi]` Declare a requirement effect bound only where callers need it. Adding a bound obliges every implementer; removing one
 breaks callers that rely on it, so treat both as API changes. Do not restate a bound that an ancestor already
 declares; the restatement is valid but adds nothing.
 
@@ -110,6 +110,8 @@ declares; the restatement is valid but adds nothing.
   `drop`, functions, computed Properties with bodies, and top-level declarations. Related bodyless
   signatures or simple stored declarations may stay consecutive.
 - `[Advice]` Inside a body, separate logical steps with a blank line.
+
+`[Kimi]` Declare a Callable effect bound only where the body relies on it. Adding one restricts callers and removing one admits more; treat both as API changes (SPEC §8.4.10.7).
 
 ## 3. API design
 

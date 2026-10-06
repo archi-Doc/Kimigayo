@@ -281,6 +281,8 @@ Separately compiled, indirect and generic-requirement calls use validated public
 
 An implementation succeeds only when normal semantic checking completes and no admitted binding has a receiver violation or unproven effect. Pending call and conformance obligations remain explicit until resolved. The effect fixed point does not prove a circular conformance declaration; the normal proof deadlines and errors still apply.
 
+Receiver-preservation effect composition (§12.4.4.2) retains calls through Callable-constrained parameters against those parameters and composes them through actual arguments, including their static and capture anchors (§8.4.10.7, §15.6.4). Available Callable bounds supply the same input and environment rules as requirement bounds.
+
 #### 12.4.4.3. Implementation families
 
 An operation's public status is Proven exactly when the ordinary body and **every implementation in its closed explicit-specialization set** pass §12.4.4.2; a semantically valid family is otherwise NotProven. The set is closed after environment selection, generation and declaration collection, regardless of whether its implementations are currently called.

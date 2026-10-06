@@ -38,6 +38,8 @@ pair(3)            // first = 3, second = 2.
 pair(second: 3)    // first = 1, second = 3.
 ```
 
+Callable effect bounds do not filter or rank candidates: selected calls and function references discharge the obligations of §8.4.10.7 after effect summaries complete. A failing bound never retries selection.
+
 ## 10.2. Common adaptation at expected types
 
 This section owns the implicit adaptation of a value to a position whose expected Type is fixed: arguments, annotated initializers, assignment sources, by-value results, aggregate elements, enum payloads, defaults, and the sources of a fixed Target Result Type (arms, `yield`, `exit` and single-item bodies, §14.9.1). The expected Type comes from the declaration, the structure or ordinary common-Type inference; it is never derived backward from a borrow or a value read. §14.9.1 finds the common Type of result sources, including sources that differ only in reference layers over one read Type (§3.5.3); sources without a common Type, such as `ref/Node` and `Node`, need an annotation, or an explicit `@follow` when `Node` is Copy. The call form, explicit Type arguments and aliases do not change these rules. Positions without an expected Type use bare acquisition (§3.5), and Place results follow §7.1.1.

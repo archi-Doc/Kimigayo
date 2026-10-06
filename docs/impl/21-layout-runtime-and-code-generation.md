@@ -284,7 +284,7 @@ free object -> release weak guard
 all earlier weak releases -> final weak release -> free side table
 ```
 
-The strong-release guarantee must survive inline-to-table migration. These obligations cover runtime initialization, counting, cleanup calls and frees; they define no source-level concurrent payload access, thread transfer or language memory model (Appendix D.2).
+The strong-release guarantee must survive inline-to-table migration. These obligations cover runtime initialization, counting, cleanup calls and frees; source-level structured transfer and synchronization follow SPEC §22.1.3.7, whose implementation is deferred (Appendix D.5.2).
 
 **Windows profile transitions.** The profile implements these transitions; `rc` performs the same transitions without atomics. Orderings use LLVM names (Relaxed is `monotonic`).
 
@@ -306,7 +306,7 @@ A CAS retry reuses the observed value and rechecks the representation. The heade
 
 **Validation.** Each transition has (1) a written proof that it establishes the normative arrows above and the invariants of §21.2.3.2: one authoritative count location, destruction and free only after a successful update to zero, no header access after the free, Abort before updating at the maximum, a migration that changes no count and is never reversed, and no dereference of an expired table's object pointer; and (2) generated-IR checks of its ordering, update target, success branch and the absence of header accesses after the free. Native single-threaded tests verify the count protocols separately. Model checking and hardware stress tests are not required. Alternative implementations must prove the normative arrows.
 
-**Object publication.** Creation publishes a completed object by returning its handle to the creating thread; a normal return creates no cross-thread synchronization. A mechanism that transfers a handle to another thread belongs to Appendix D.2 and must itself supply the synchronization from publication to payload use. Allocation and destructors have no lock-free guarantee.
+**Object publication.** Creation publishes a completed object by returning its handle to the creating thread; a normal return creates no cross-thread synchronization. Structured worker start and join supply the synchronization from publication to payload use required by SPEC §22.1.3.7; other transfer mechanisms remain in Appendix D.2. Allocation and destructors have no lock-free guarantee.
 
 ### 21.2.4. Value-borrow storage
 
@@ -1082,3 +1082,5 @@ The executor is Kimi source over the task boundary. Its observable contracts are
 | Repeated `run` | 0 in steady state, because the per-thread state persists |
 
 O0 and O2 allocation regressions fix these bounds for a loop of task calls that crosses a chunk boundary, repeated top-level `run` calls, a read loop on reads that complete immediately, which makes no port calls, and a pipe ping-pong, which makes at most one port call per round. Frame size is a measurement bound to the O level and toolchain identity, read from CoroSplit remarks, not a check fact.
+
+The asynchronous-task and structured-worker implementation is deferred (Appendix D.5.2). Worker implementation must preserve SPEC §22.1.3.7's start/join happens-before edges, retain inputs and their Loans through worker completion, and use a once-protocol for static initialization with release/acquire publication and consistent shutdown ordering. These requirements do not authorize implementation before an explicit instruction.

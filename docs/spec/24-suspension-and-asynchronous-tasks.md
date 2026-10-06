@@ -11,6 +11,8 @@ func fetchBoth(task; a: ref/Url, b: ref/Url) -> Result<(Page, Page), Net.Error>
     return Async.joinOk(task; getA, getB)    // Task call: the children run concurrently.
 ```
 
+Structured workers (§22.1.3.7) run ordinary computations on other threads; a task tree itself stays on its run thread. Implementation of this chapter and workers is deferred (Appendix D.5.2).
+
 ## 24.1. Tasks and task frames
 
 - **Task.** The execution of a root that `Async.run` starts, or of a child that a task starts through the task boundary's `enter` (§22.1.3.1). A root begins a new **task tree**; a child belongs to the tree of the task that started it. A task and its descendants form its **subtree**.
