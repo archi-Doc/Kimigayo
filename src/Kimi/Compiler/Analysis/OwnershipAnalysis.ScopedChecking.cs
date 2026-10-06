@@ -37,7 +37,7 @@ public sealed partial class OwnershipAnalysis
 
     private bool SupportsCheckingPatternType(BoundType? type)
     {
-        if (ScalarDefaults.SupportsValue(type) || ReferenceEquals(type, BoundType.String))
+        if (ScalarTypes.SupportsFlowValue(type) || ReferenceEquals(type, BoundType.String))
         {
             return true;
         }

@@ -573,10 +573,9 @@ public sealed class LlvmEmitter
             {
                 var parameter = function.Parameters[i];
                 if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
-                    (parameter.DefaultValue is not null && !ScalarDefaults.Supports(function, i)) ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && parameter.Type.BoundType!.Origin is null))
                 {
-                    return "Parameters require verified value, owned-slot or shared-string representations and supported scalar defaults.";
+                    return "Parameters require verified value, owned-slot or shared-string representations.";
                 }
             }
         }

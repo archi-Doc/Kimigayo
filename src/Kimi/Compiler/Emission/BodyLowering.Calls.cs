@@ -131,22 +131,22 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
+        var original = body.CallAt(id);
         if (operation.Source is InvocationKoto { BoundValueCall: { } valueCall } invocation)
         {
             return this.LowerValueCall(body, function, constants, directory, id, invocation, valueCall, out failure);
         }
 
-        if (operation.Source is InvocationKoto { BoundCall: { } arrayPlan } arrayCall && KimiLibraryCatalog.IsArrayOperation(arrayPlan.Target.CompilerFunction))
+        if (operation.Source is InvocationKoto arrayCall && original is { } arrayPlan && KimiLibraryCatalog.IsArrayOperation(arrayPlan.Target.CompilerFunction))
         {
             return this.LowerArrayOperation(library, body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
         }
 
-        if (operation.Source is InvocationKoto { BoundCall: { Target.CompilerFunction: CompilerFunctionKind.ArrayWithCapacity } constructionPlan } constructionCall)
+        if (operation.Source is InvocationKoto constructionCall && original is { Target.CompilerFunction: CompilerFunctionKind.ArrayWithCapacity } constructionPlan)
         {
             return this.LowerArrayConstruction(body, function, constants, directory, id, constructionCall, constructionPlan, out failure);
         }
 
-        var original = body.CallAt(id);
         var generic = original is { } bound ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;
@@ -219,7 +219,7 @@ internal sealed partial class BodyLowering
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||
                 (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
-                    !ReferenceEquals(omitted.Parameter.Scope.Owner, target) || !ScalarDefaults.SupportsDelivered(omitted.ParameterType))) ||
+                    !ReferenceEquals(omitted.Parameter.Scope.Owner, target))) ||
                 acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection or ArgumentOperationKind.ReferenceRead) || acquisition.ParameterIndex != parameter ||
                 !ReferenceTypes.StorageMatches(intrinsic ? parameterType : generic?.Parameters[parameter] ?? creation?.Payload ?? target.Parameters[parameter].Type.BoundType, parameterType) ||
                 (acquisition.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead) && !ReferenceTypes.IsString(parameterType) && !ReferenceTypes.IsBorrow(parameterType)))

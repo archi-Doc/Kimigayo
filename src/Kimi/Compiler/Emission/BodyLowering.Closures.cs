@@ -55,7 +55,7 @@ internal sealed partial class BodyLowering
 
     private bool CaptureSourcePlace(OwnershipBody body, FunctionKoto closure, BindingSymbol source, int input, out int place)
     {
-        if (ScalarDefaults.InLaterDefault(closure, source))
+        if (DefaultParameters.InLaterDefault(closure, source))
         {
             place = body.Operations[input].Place;
             return (uint)place < (uint)body.Places.Count && body.Places[place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&

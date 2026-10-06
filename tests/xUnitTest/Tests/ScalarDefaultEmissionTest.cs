@@ -392,11 +392,10 @@ public class ScalarDefaultEmissionTest
         var c = MinimalEmissionTest.Analyze("func f(x: ref/i32) => ()");
         var type = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parameters.Count == 1).Parameters[0].Type.BoundType;
         Assert.True(ReferenceTypes.IsScalarBorrow(type));
-        Assert.True(ScalarDefaults.SupportsValue(type));
-        Assert.True(ScalarDefaults.SupportsResult(type));
-        Assert.True(ScalarDefaults.SupportsResult(BoundType.I32));
-        Assert.True(ScalarDefaults.SupportsResult(BoundType.Unit));
-        Assert.False(ScalarDefaults.SupportsValue(BoundType.String));
+        Assert.True(ScalarTypes.SupportsFlowValue(type));
+        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.I32));
+        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.Unit));
+        Assert.False(ScalarTypes.SupportsFlowValue(BoundType.String));
     }
 
     [Trait("Purpose", "Allocation")]

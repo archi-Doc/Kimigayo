@@ -69,7 +69,7 @@ public sealed partial class OwnershipAnalysis
                     // Declaration checking owns the rejected default. Do not execute it against the pending caller's slots
                     // and manufacture call-entry conflicts; no value is acquired from this invalid default.
                 }
-                else if (this.flow!.DefaultCompletionPending(omitted.Expression) || !ScalarDefaults.Supports(target, this.defaultParameter))
+                else if (this.flow!.DefaultCompletionPending(omitted.Expression))
                 {
                     this.Unsupported(omitted.Expression);
                 }

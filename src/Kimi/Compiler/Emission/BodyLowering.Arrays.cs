@@ -461,7 +461,7 @@ internal sealed partial class BodyLowering
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto { IsConstructor: true } target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             call.ArgumentNodes.Count != 1 || plan.ArgumentOperations.Length != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            SignatureType(this, call.BoundType) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
+            body.ConcreteAt(call.BoundType, id) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
         {
             return Fail("Array construction has an unsupported argument plan or element Type.", out failure);
         }

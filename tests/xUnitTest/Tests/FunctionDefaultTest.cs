@@ -300,6 +300,7 @@ public class FunctionDefaultTest
     // Owned aggregate results and Copy struct/enum/fixed-array entries execute in AggregateDefaultTest.
     [Theory]
     [InlineData("func both(text: string, show: (ref/string) -> () = Console.writeLine) -> () => show(text@ref)\npublic func main() -> ()\n    both(\"hi\")\n", "= Console.writeLine", "Console.writeLine")]
+    [InlineData("let show: (ref/string) -> () = Console.writeLine\nshow(\"hi\")", "= Console.writeLine", "Console.writeLine")]
     public void CalledDefaultsOutsideTheSubsetStayLocated(string source, string anchor, string text)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

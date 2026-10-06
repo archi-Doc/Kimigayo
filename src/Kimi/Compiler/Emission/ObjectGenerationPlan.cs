@@ -64,7 +64,7 @@ internal sealed class ObjectGenerationPlan
                     module.NeedsObjectRuntime = true;
                 }
 
-                if (operation.Kind != OwnershipOperationKind.Call || operation.Source is not InvocationKoto { BoundCall: { } call } ||
+                if (operation.Kind != OwnershipOperationKind.Call || body.CallAt(i) is not { } call ||
                     call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone))
                 {
                     continue;

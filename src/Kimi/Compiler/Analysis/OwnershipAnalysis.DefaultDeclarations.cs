@@ -33,7 +33,7 @@ public sealed partial class OwnershipAnalysis
             {
                 var before = this.issues.Count;
                 (this.defaultDeclarations ??= new(this)).Check(function, i, expression);
-                if (before == this.issues.Count && ScalarDefaults.Supports(function, i))
+                if (before == this.issues.Count)
                 {
                     this.Build(function, i);
                 }
@@ -83,8 +83,16 @@ public sealed partial class OwnershipAnalysis
                 case TupleLiteralKoto tuple:
                     this.VisitAcquired(tuple.Elements);
                     return;
-                case ArrayLiteralKoto array when array.BoundType?.Kind == BoundTypeKind.FixedArray:
+                case ArrayLiteralKoto array:
                     this.VisitAcquired(array.Elements);
+                    return;
+                case DictionaryLiteralKoto dictionary:
+                    foreach (var entry in dictionary.Entries)
+                    {
+                        this.Visit(entry.Key, PlaceUseKind.Consume);
+                        this.Visit(entry.Value, PlaceUseKind.Consume);
+                    }
+
                     return;
                 case BinaryKoto { Akind: KotoKind.Equals } assignment:
                     this.Visit(assignment.Left, PlaceUseKind.Read);

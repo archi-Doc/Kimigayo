@@ -881,7 +881,7 @@ public sealed partial class Binding
             for (var i = 0; i < bound.Captures.Count; i++)
             {
                 var capture = bound.Captures[i];
-                if (capture.Environment.Name == name && capture.Source is { } source && ScalarDefaults.InLaterDefault(closure, source))
+                if (capture.Environment.Name == name && capture.Source is { } source && DefaultParameters.InLaterDefault(closure, source))
                 {
                     return source;
                 }
@@ -1206,7 +1206,7 @@ public sealed partial class Binding
     {
         var declaring = contextual.Declaration!;
         var self = contextual.Name == "self";
-        var prepared = self && ScalarDefaults.InLaterDefault(node, contextual);
+        var prepared = self && DefaultParameters.InLaterDefault(node, contextual);
         var note = self ? "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)"
             : "A setter's value is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)";
         var advice = !self ? "Name it in a capture list, as in [value]"
@@ -1781,13 +1781,13 @@ public sealed partial class Binding
         var name = capture.Name;
         switch (code)
         {
-            case DiagnosticCode.InvalidAssignment_Kd when source is not null && ScalarDefaults.InLaterDefault(node, source):
+            case DiagnosticCode.InvalidAssignment_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], advice: PreparedCaptureAdvice(name), span: capture.Span);
                 break;
             case DiagnosticCode.InvalidAssignment_Kd:
                 node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], advice: "Declare the binding with var, or capture it with @ref when shared access suffices", span: capture.Span);
                 break;
-            case DiagnosticCode.TransferRequired_Kd when source is not null && ScalarDefaults.InLaterDefault(node, source):
+            case DiagnosticCode.TransferRequired_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
                 node.Report(
                     requirement,
                     code,

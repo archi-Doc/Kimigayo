@@ -338,7 +338,7 @@ public sealed partial class OwnershipAnalysis
             var name = source.Name;
             var reference = source.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
             var omitted = function.Captures is null;
-            var prepared = omitted && ScalarDefaults.InLaterDefault(function, source);
+            var prepared = omitted && DefaultParameters.InLaterDefault(function, source);
             var note = !omitted ? null : $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow" +
                 (prepared ? ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)" : string.Empty);
             var advice = !omitted ? null : prepared ? Binding.PreparedCaptureAdvice(name)
@@ -608,11 +608,6 @@ public sealed partial class OwnershipAnalysis
             if (type is not null && (ScalarResult(type) || ReferenceTypes.IsString(type)))
             {
                 this.SetValue(initialized, OwnershipValueKind.Parameter, [], constant: i);
-            }
-
-            if (declarationDefault < 0 && parameter.DefaultValue is { } defaultValue && !ScalarDefaults.Supports(function, i) && !this.InvalidDefault(function, i, defaultValue))
-            {
-                this.Unsupported(defaultValue);
             }
         }
 
@@ -1005,6 +1000,13 @@ public sealed partial class OwnershipAnalysis
 
         if (node.ErasedFunctionType is { } erased)
         {
+            if (node.BoundType?.Kind == BoundTypeKind.FunctionItem && node.BoundSymbol is { Declaration: FunctionKoto item } symbol &&
+                ((item.Body ?? item.ExpressionBody) is null || item.IsRequirement || KimiLibraryCatalog.RequiresCallerLocation(symbol)))
+            {
+                this.Unsupported(node); // The common Item erasure adapter needs an executable entry (STATUS N27c).
+                return -1;
+            }
+
             var source = this.ExpressionCore(node, PlaceUseKind.Consume, acquisition);
             if (source < 0)
             {
