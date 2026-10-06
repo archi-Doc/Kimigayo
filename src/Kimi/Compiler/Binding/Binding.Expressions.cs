@@ -711,7 +711,7 @@ public sealed partial class Binding
                 var resultType = targetResult?.Expected;
                 if (target is FunctionKoto f)
                 {
-                    resultType = this.symbols.GetValueOrDefault(f)?.Type;
+                    resultType = this.symbols.GetValueOrDefault(f)?.Type ?? resultType;
                 }
                 else if (target is PropertyAccessorKoto a)
                 {
@@ -741,7 +741,11 @@ public sealed partial class Binding
 
                 if (jump is not ContinueKoto)
                 {
-                    targetResult?.Sources.Add(actual);
+                    if (jump.Parent is not TryKoto)
+                    {
+                        targetResult?.Sources.Add(actual);
+                    }
+
                     if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node))
                     {
                         this.FailMismatch(jump, jump.Expression ?? jump, actual, resultType);

@@ -574,13 +574,18 @@ public sealed partial class Binding
 
         if (function.Body is { } block)
         {
-            // Unannotated block results still need the general result-inference pass.
             if (symbol.Type is null)
             {
-                return this.Fail(function, BindingFailure.Unsupported);
+                // The function owns its result context; nested functions and defer bodies keep their own boundaries.
+                // Survey independent return evidence before binding, then include structural end Unit in the same join.
+                var context = this.BeginResult(function, scope, null);
+                this.BindNode(block, scope);
+                symbol.Type = this.FinishResult(function, context);
             }
-
-            this.BindNode(block, scope);
+            else
+            {
+                this.BindNode(block, scope);
+            }
         }
         else if (function.ExpressionBody is { } expression)
         {
@@ -625,7 +630,7 @@ public sealed partial class Binding
         {
             // SPEC 15.8.2, 15.6.1: a result inferred from the body that borrows the call's own storage (a parameter, a body local,
             // or an environment binding the call consumes) cannot outlive the call; the relation is Refuted at that Borrow.
-            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, new(function.ExpressionBody ?? function, local, this.CallResultOrigin(function), false, null, true));
+            return this.FailExplained(ref this.originRelations, function, BindingFailure.OriginRelation, new(function.ExpressionBody ?? function.Body ?? (Koto)function, local, this.CallResultOrigin(function), false, null, true));
         }
 
         return Complete(function, plan.EnvironmentType);

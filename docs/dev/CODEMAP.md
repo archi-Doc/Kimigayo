@@ -150,6 +150,7 @@ Generic references bind their slots in `Binding.FunctionTypes.BindReferenceArgum
 `Binding.DiagnosticTypes` retains Function Item declaration qualifiers; `FunctionItemDiagnosticTest` checks public records, CLI/LSP output and nested-group designators in `ControlFlowAnalysis`.
 Shared payload authority failures retain conversion targets and rejected receiver Types in `Binding.Diagnostics`/`Binding.Calls`; `SharedObjectDiagnosticTest` covers intrinsic clone Advice and CLI/LSP output.
 
+`BindConcreteClosure` routes unannotated blocks through `BeginResult`/`FinishResult`; `FindResultEvidence`, `resultLocalEvidence` and `CallResultEvidence` survey independent source Types. `BlockClosureInferenceTest` covers boundaries, Unit/Never, borrow results, try and warm reuse.
 Contextually typed anonymous functions also use `BindConcreteClosure`; `Binding.ControlFlow.AddBodyResult` carries their erasure Type through selections. `ContextualClosureTest` covers this path and its public conversion diagnostics.
 Tuple captures use `ClosureEffects` part access, `ElementAccess.WritableRoot`/`OwnedPathRoot` and `OwnershipAnalysis.LocateElement` capture roots; `TupleCaptureTest` covers snapshots, Loans, consumption and erasure cleanup.
 Struct environments share the stored-part capture path; `ClosureEffects` reads computed accessor receiver arguments from retained property calls. `StructCaptureTest` covers captured fields/accessors, Owned erasure and destruction.

@@ -901,7 +901,8 @@ public sealed partial class Binding
             // SPEC 23.3.6.5: a closure end is related at the anonymous function's header, from `func` through the parameter list.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
             const string Owned = "Return an owned or Copied value instead of a borrow of storage that ends with the call";
-            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], advice: Owned, at: relation.At);
+            var at = relation.At is CodeBlockKoto ? BorrowSource(relation.At, relation.Longer) ?? relation.At : relation.At;
+            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], advice: Owned, at: at);
             return;
         }
 

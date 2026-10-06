@@ -333,6 +333,7 @@ public sealed partial class Binding
         this.waitingNestedCalls.Clear();
         this.nestedArgumentProbe = null;
         this.resultContexts.Clear();
+        this.resultLocalEvidence.Clear();
         this.resultCursor = 0;
         this.ResetStartup();
         this.ResetSpecializations();
