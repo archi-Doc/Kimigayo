@@ -16,6 +16,40 @@ public sealed class NativeToolchainTest : IDisposable
 
     public void Dispose() => Directory.Delete(this.directory, true);
 
+    [Fact]
+    public void NativeInputSnapshotDoesNotFollowChangesToTheOriginal()
+    {
+        var input = Path.Combine(this.directory, "input.lib");
+        File.WriteAllText(input, "first");
+        var staged = NativeToolchain.StageInput(input, Path.Combine(this.directory, "output"), out var hash);
+        Assert.Equal(ArtifactFiles.Hash(input), hash);
+        File.WriteAllText(input, "second");
+        Assert.Equal("first", File.ReadAllText(staged));
+        Assert.Equal(hash, ArtifactFiles.Hash(staged));
+        File.WriteAllText(input, "first");
+        File.WriteAllText(staged, "damaged staged copy");
+        Assert.Equal(staged, NativeToolchain.StageInput(input, Path.Combine(this.directory, "output"), out var repairedHash));
+        Assert.Equal(hash, repairedHash);
+        Assert.Equal("first", File.ReadAllText(staged));
+        Assert.Empty(Directory.EnumerateFiles(Path.GetDirectoryName(staged)!, "*.tmp"));
+    }
+
+    [Fact]
+    public async Task ManifestFailureInvalidatesPreviousSuccessBeforeLoadingTools()
+    {
+        var project = this.Create();
+        Assert.True(await project.Generate(TestContext.Current.CancellationToken));
+        var paths = ArtifactPaths.Create(project);
+        File.WriteAllText(paths.Executable, "previous executable");
+        File.WriteAllText(paths.Record, "{\"status\":\"linked\"}");
+        File.AppendAllText(paths.Ir, "; changed");
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => NativeToolchain.BuildManifest(paths.Manifest, this.directory, null, (_, _) => { }, TestContext.Current.CancellationToken));
+        Assert.Contains("IR/manifest SHA-256", error.Message);
+        using var record = JsonDocument.Parse(File.ReadAllText(paths.Record));
+        Assert.Equal("incomplete", record.RootElement.GetProperty("status").GetString());
+        Assert.Equal("previous executable", File.ReadAllText(paths.Executable));
+    }
+
     [Theory]
     [InlineData("LLVM version 22.1.8", "22.1.8")]
     [InlineData("clang version 22.1.9 (release)", "22.1.9")]

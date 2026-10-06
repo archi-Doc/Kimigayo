@@ -2,7 +2,8 @@
 param(
     [Parameter(Mandatory)] [string] $Manifest,
     [string] $ToolchainRoot = '', [string] $LlvmBin = '',
-    [string] $MismatchedLlvmBin = ''
+    [string] $MismatchedLlvmBin = '',
+    [ValidateSet('Debug', 'Release')] [string] $Configuration = 'Release'
 )
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'toolchain.ps1')
@@ -14,7 +15,7 @@ $testPath = Join-Path (Split-Path -Parent $manifestPath) ('negative-' + [guid]::
 function Expect-Failure([object] $data, [string] $bin, [string] $message) {
     $data | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $testPath -Encoding utf8
     $failed = $false
-    try { & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -ToolchainRoot $ToolchainRoot -LlvmBin $bin | Out-Null }
+    try { & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $testPath -ToolchainRoot $ToolchainRoot -LlvmBin $bin -Configuration $Configuration | Out-Null }
     catch {
         if ($_.Exception.Message -notmatch $message) { throw "Unexpected rejection: $($_.Exception.Message)" }
         $failed = $true
@@ -41,7 +42,7 @@ try {
     Expect-Failure $data $LlvmBin 'Invalid generated kernel32 identity'
     $data = $original | ConvertFrom-Json
     $data.irSha256 = '0' * 64
-    Expect-Failure $data $LlvmBin 'IR/manifest SHA-256 mismatch'
+    Expect-Failure $data $LlvmBin 'IR/manifest SHA-256.*mismatch'
     $data = $original | ConvertFrom-Json
     $data.backendSupport.artifactSha256 = '0' * 64
     Expect-Failure $data $LlvmBin 'Invalid backend supply identity'
@@ -50,14 +51,14 @@ try {
     Expect-Failure $data $LlvmBin 'Invalid backend supply identity'
     $data = $original | ConvertFrom-Json
     $data.expectedUndefinedSymbols = @(@{ symbol = 'missing'; provider = 'unknown' })
-    Expect-Failure $data $LlvmBin 'Unknown anticipated backend dependency'
+    Expect-Failure $data $LlvmBin 'Invalid backend supply identity or runtime dependency'
     $data = $original | ConvertFrom-Json
     $data.codegen.cpu = 'native'
-    Expect-Failure $data $LlvmBin 'supported windows-x64-v1'
+    Expect-Failure $data $LlvmBin 'supported Windows Application profile'
     if ($MismatchedLlvmBin) {
         $data = $original | ConvertFrom-Json
         $data.irSha256 = '0' * 64
-        Expect-Failure $data $MismatchedLlvmBin 'IR/manifest SHA-256 mismatch'
+        Expect-Failure $data $MismatchedLlvmBin 'IR/manifest SHA-256.*mismatch'
         $record = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($testPath, '.build.json')) -Raw | ConvertFrom-Json
         if ($record.toolchainVerification -cne 'not-performed' -or $null -ne $record.reportedVersionsMatched -or -not $record.unverifiedToolchain) { throw 'Incorrect unverified build record' }
     }
