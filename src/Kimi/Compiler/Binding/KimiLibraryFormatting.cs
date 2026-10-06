@@ -23,10 +23,6 @@ public sealed partial class KimiLibrary
     private static bool FormattingBorrow(Koto? node, SemanticsKind semantics, string name)
         => node is TypeSemanticsKoto type && type.SemanticsKind == semantics && FormattingName(type.Type, name);
 
-    private static bool FormattingResult(Koto? node, string success, string error)
-        => BareType(node) is GenericsKoto { TypeArguments.Count: 2 } result && BareName(result.Identifier, "Result") &&
-            FormattingValue(result.TypeArguments[0], success) && FormattingName(result.TypeArguments[1], error);
-
     private static bool FormattingValue(Koto? node, string name)
         => name == "()" ? BareType(node) is TupleTypeKoto { ElementNodes.Count: 0 } :
             name == "Slice" ? FormattingType(node) is GenericsKoto { TypeArguments.Count: 1 } slice && BareName(slice.Identifier, "Slice") && BareName(slice.TypeArguments[0], "u8") :
@@ -61,40 +57,51 @@ public sealed partial class KimiLibrary
     private static bool ValidFormattingFunction(FunctionKoto function, KimiDeclarationId id)
     {
         var generics = id == KimiDeclarationId.TextTryFormat ? 2 : id is KimiDeclarationId.TextFixed or KimiDeclarationId.TextWriter or KimiDeclarationId.TextToString or KimiDeclarationId.WriterWrite ? 1 : 0;
-        var inputs = id is KimiDeclarationId.TextTryFormat or KimiDeclarationId.FixedBufferReserve or KimiDeclarationId.HeapBufferReserve or KimiDeclarationId.WindowPush or KimiDeclarationId.WindowAppend or KimiDeclarationId.WindowLimit or KimiDeclarationId.WriterWrite ? 2 : 1;
-        if (function.GenericArguments.Count != generics || function.Parameters.Count != inputs)
+        var signature = FormattingSignatures[KimiLibraryCatalog.Index(id)]!.Value;
+        if (function.GenericArguments.Count != generics || function.Parameters.Count != signature.Inputs.Length ||
+            !FormattingSyntaxOperand(function.ReturnType, signature.Result))
         {
             return false;
         }
 
-        var first = function.Parameters[0].Type;
-        var result = function.ReturnType;
-        var second = inputs == 2 ? function.Parameters[1].Type : null;
-        return id switch
+        for (var i = 0; i < signature.Inputs.Length; i++)
         {
-            KimiDeclarationId.TextFixed => FormattingBytes(first) && FormattingName(result, "FixedBuffer"),
-            KimiDeclarationId.TextHeap => BareName(first, "isize") && FormattingName(result, "HeapBuffer"),
-            KimiDeclarationId.TextWriter => FormattingBorrow(first, SemanticsKind.Uniq, "W") && FormattingName(result, "Utf8Writer") && FormattingPremise(function, "W", "BufferWriter"),
-            KimiDeclarationId.TextUtf8 => FormattingBorrow(first, SemanticsKind.Ref, "string") && FormattingName(result, "Utf8Slice"),
-            KimiDeclarationId.TextValidateUtf8 => FormattingValue(first, "Slice") && FormattingResult(result, "Utf8Slice", "InvalidUtf8"),
-            KimiDeclarationId.TextToString => FormattingBorrow(first, SemanticsKind.Ref, "T") && BareName(result, "string") && FormattingPremise(function, "T", "Utf8Format"),
-            KimiDeclarationId.TextTryFormat => FormattingBorrow(first, SemanticsKind.Ref, "T") && FormattingBytes(second) && FormattingResult(result, "Utf8Slice", "BufferFull") && FormattingPremise(function, "T", "Utf8Format"),
-            KimiDeclarationId.TextRelease => first is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Raw } && result is null,
-            KimiDeclarationId.FixedBufferBytes or KimiDeclarationId.HeapBufferBytes => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingValue(result, "Slice"),
-            KimiDeclarationId.FixedBufferText or KimiDeclarationId.HeapBufferText => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingResult(result, "Utf8Slice", "InvalidUtf8"),
-            KimiDeclarationId.FixedBufferValidate or KimiDeclarationId.HeapBufferValidate => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && FormattingResult(result, "()", "InvalidUtf8"),
-            KimiDeclarationId.FixedBufferClear or KimiDeclarationId.HeapBufferClear => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && result is null,
-            KimiDeclarationId.FixedBufferReserve or KimiDeclarationId.HeapBufferReserve => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && BareName(second, "isize") && FormattingResult(result, "WriteWindow", "BufferFull"),
-            KimiDeclarationId.FixedBufferIntoText => BareName(first, "Self") && FormattingResult(result, "Utf8Slice", "InvalidUtf8"),
-            KimiDeclarationId.HeapBufferIntoString => BareName(first, "Self") && FormattingResult(result, "string", "InvalidUtf8"),
-            KimiDeclarationId.WindowPush => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && BareName(second, "u8") && FormattingResult(result, "()", "BufferFull"),
-            KimiDeclarationId.WindowAppend => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && FormattingValue(second, "Slice") && FormattingResult(result, "()", "BufferFull"),
-            KimiDeclarationId.WindowLimit => BareName(first, "Self") && BareName(second, "isize") && FormattingName(result, "Self"),
-            KimiDeclarationId.WindowCommit => BareName(first, "Self") && BareName(result, "isize"),
-            KimiDeclarationId.WriterWrite => FormattingBorrow(first, SemanticsKind.Uniq, "Self") && FormattingBorrow(second, SemanticsKind.Ref, "T") && FormattingResult(result, "()", "BufferFull") && FormattingPremise(function, "T", "Utf8Format"),
-            KimiDeclarationId.WriterStatus => FormattingBorrow(first, SemanticsKind.Ref, "Self") && FormattingResult(result, "()", "BufferFull"),
-            KimiDeclarationId.WriteLineUtf8 => FormattingName(first, "Utf8Slice") && result is null,
-            _ => false,
+            if (!FormattingSyntaxOperand(function.Parameters[i].Type, signature.Inputs[i]))
+            {
+                return false;
+            }
+        }
+
+        return id == KimiDeclarationId.TextWriter ? FormattingPremise(function, "W", "BufferWriter") :
+            id is not (KimiDeclarationId.TextToString or KimiDeclarationId.TextTryFormat or KimiDeclarationId.WriterWrite) || FormattingPremise(function, "T", "Utf8Format");
+    }
+
+    private static bool FormattingSyntaxOperand(Koto? type, FormattingOperand expected, bool nested = false)
+    {
+        if (expected.Error != FormattingKind.None)
+        {
+            return BareType(type) is GenericsKoto { TypeArguments.Count: 2 } result && BareName(result.Identifier, "Result") &&
+                FormattingSyntaxOperand(result.TypeArguments[0], expected with { Error = FormattingKind.None }, nested: true) &&
+                FormattingSyntaxOperand(result.TypeArguments[1], new(expected.Error), nested: true);
+        }
+
+        return expected.Kind switch
+        {
+            FormattingKind.Unit => nested ? BareType(type) is TupleTypeKoto { ElementNodes.Count: 0 } : type is null,
+            FormattingKind.ISize => BareName(type, "isize"),
+            FormattingKind.U8 => BareName(type, "u8"),
+            FormattingKind.String => BareName(type, "string"),
+            FormattingKind.RawBytes => FormattingBorrow(type, SemanticsKind.Raw, "u8"),
+            FormattingKind.Self => FormattingName(type, "Self"),
+            FormattingKind.RefSelf => FormattingBorrow(type, SemanticsKind.Ref, "Self"),
+            FormattingKind.UniqSelf => FormattingBorrow(type, SemanticsKind.Uniq, "Self"),
+            FormattingKind.RefString => FormattingBorrow(type, SemanticsKind.Ref, "string"),
+            FormattingKind.RefValue => FormattingBorrow(type, SemanticsKind.Ref, "T"),
+            FormattingKind.UniqDestination => FormattingBorrow(type, SemanticsKind.Uniq, "W"),
+            FormattingKind.UniqBytes => FormattingBytes(type),
+            FormattingKind.UniqWriter => FormattingBorrow(type, SemanticsKind.Uniq, "Utf8Writer"),
+            FormattingKind.Bytes => FormattingValue(type, "Slice"),
+            _ => FormattingName(type, KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(FormattingDeclaration(expected.Kind))].Name),
         };
     }
 
@@ -146,12 +153,12 @@ public sealed partial class KimiLibrary
             }
 
             // SPEC 8.4.10.2, utf8-formatting 1.2: reserve declares confined; format declares no bound.
-            return rule.Id == KimiDeclarationId.BufferWriter
-                ? requirement.Name == "reserve" && requirement.EffectBounds is [{ Bound: EffectBoundKind.Confined, IsSpecification: false }] &&
-                    FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Uniq, "Self") &&
-                    BareName(requirement.Parameters[1].Type, "isize") && FormattingResult(requirement.ReturnType, "WriteWindow", "BufferFull")
-                : rule.Id == KimiDeclarationId.Utf8Format && requirement.Name == "format" && requirement.EffectBounds.Count == 0 && FormattingBorrow(requirement.Parameters[0].Type, SemanticsKind.Ref, "Self") &&
-                    FormattingBorrow(requirement.Parameters[1].Type, SemanticsKind.Uniq, "Utf8Writer") && FormattingResult(requirement.ReturnType, "()", "BufferFull");
+            var signature = FormattingSignatures[KimiLibraryCatalog.Index(rule.Id)]!.Value;
+            return (rule.Id == KimiDeclarationId.BufferWriter
+                ? requirement.Name == "reserve" && requirement.EffectBounds is [{ Bound: EffectBoundKind.Confined, IsSpecification: false }]
+                : rule.Id == KimiDeclarationId.Utf8Format && requirement.Name == "format" && requirement.EffectBounds.Count == 0) &&
+                FormattingSyntaxOperand(requirement.Parameters[0].Type, signature.Inputs[0]) &&
+                FormattingSyntaxOperand(requirement.Parameters[1].Type, signature.Inputs[1]) && FormattingSyntaxOperand(requirement.ReturnType, signature.Result);
         }
 
         var dependent = rule.Id is KimiDeclarationId.FixedBuffer or KimiDeclarationId.WriteWindow or KimiDeclarationId.Utf8Writer or KimiDeclarationId.Utf8Slice;

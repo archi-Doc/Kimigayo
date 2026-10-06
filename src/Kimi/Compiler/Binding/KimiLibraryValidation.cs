@@ -30,10 +30,10 @@ public sealed partial class KimiLibrary
                     ReferenceEquals(FindDeclaration((DeclarationContainerKoto)symbol.Scope.Owner, entry.Name, symbol.Kind == BindingSymbolKind.Function, rule.Overload), symbol.Declaration) &&
                     (rule.Intrinsic != IntrinsicKind.None ? this.Valid(symbol, rule.Intrinsic) : entry.Id switch
                     {
-                        KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidUpdate(symbol, entry.Id),
-                        KimiDeclarationId.WriteLine => this.ValidWriteLine(),
-                        KimiDeclarationId.TestTempDirectory => this.ValidTempDirectory(symbol),
-                        KimiDeclarationId.MakeObj or KimiDeclarationId.MakeRc or KimiDeclarationId.MakeArc => this.ValidObjectFactory(symbol, entry.Id),
+                        KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap => this.ValidPrimitive(symbol, entry.Id),
+                        KimiDeclarationId.WriteLine => this.ValidPrimitive(symbol, entry.Id),
+                        KimiDeclarationId.TestTempDirectory => this.ValidPrimitive(symbol, entry.Id),
+                        KimiDeclarationId.MakeObj or KimiDeclarationId.MakeRc or KimiDeclarationId.MakeArc => this.ValidPrimitive(symbol, entry.Id),
                         KimiDeclarationId.Clone => this.ValidStrongClone(symbol),
                         KimiDeclarationId.Iterator => this.ValidIterator(symbol),
                         KimiDeclarationId.LendingIterator => this.ValidLendingIterator(symbol),
@@ -50,10 +50,10 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Start or KimiDeclarationId.End => this.ValidBoundary(symbol, entry.Id),
                         KimiDeclarationId.Range or KimiDeclarationId.ClosedRange => this.ValidRange(symbol, entry.Id),
                         KimiDeclarationId.ResolvedRange => this.ValidResolvedRange(symbol),
-                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit or KimiDeclarationId.ArraySwap => this.ValidArrayOperation(symbol, entry.Id),
-                        KimiDeclarationId.ArrayWithCapacity => this.ValidArrayConstructor(symbol),
-                        >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidDictionaryOperation(symbol, entry.Id),
-                        KimiDeclarationId.DictionaryIndex or KimiDeclarationId.DictionaryIndexUniq => this.ValidDictionaryOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit or KimiDeclarationId.ArraySwap => this.ValidCollectionOperation(symbol, entry.Id),
+                        KimiDeclarationId.ArrayWithCapacity => this.ValidCollectionOperation(symbol, entry.Id),
+                        >= KimiDeclarationId.DictionaryReserve and <= KimiDeclarationId.DictionaryShrinkToFit => this.ValidCollectionOperation(symbol, entry.Id),
+                        KimiDeclarationId.DictionaryIndex or KimiDeclarationId.DictionaryIndexUniq => this.ValidCollectionOperation(symbol, entry.Id),
                         >= KimiDeclarationId.RefRemainder and <= KimiDeclarationId.OwnedRemainder => this.ValidRemainder(symbol, entry.Id),
                         >= KimiDeclarationId.StorageBorrowShared and <= KimiDeclarationId.StorageOwn => this.ValidStorageOperation(symbol, entry.Id),
                         KimiDeclarationId.DictionaryRefRemainder or KimiDeclarationId.DictionaryUniqRemainder or KimiDeclarationId.DictionaryOwnedRemainder => this.ValidDictionaryRemainder(symbol, entry.Id),
@@ -308,67 +308,6 @@ public sealed partial class KimiLibrary
             form.Operands[1] is SyntaxFormKoto payload && payload.Operands.Length == (type is null ? 0 : 1) &&
             (type is null || (payload.Operands[0] is TypeSemanticsKoto { Type: null, SemanticsKind: SemanticsKind.Owner, OriginName: null, OriginExpression: null, OriginArguments: null } element && element.Identifier == type));
     }
-
-    private bool ValidUpdate(BindingSymbol symbol, KimiDeclarationId id)
-    {
-        var kind = KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)].Function;
-        var swap = id == KimiDeclarationId.Swap;
-        if (symbol.CompilerFunction != kind || !ReferenceEquals(symbol.Scope, this.IntrinsicsScope) ||
-            symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.Intrinsics) ||
-            function.Name != symbol.Name || function.Modifier != ModifierKind.Public || function.AttributeChain is not null ||
-            function.GenericArguments.Count != 1 || function.GenericArguments[0] is not GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } ||
-            function.Origins.Count != 0 || function.Parameters.Count != 2 || function.TypeConstraints.Count != 0 ||
-            function.Body is not null || function.ExpressionBody is not null || function.IsRequirement || function.IsGenerated || function.IsSpecialization)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < 2; i++)
-        {
-            var parameter = function.Parameters[i];
-            var name = swap ? (i == 0 ? "first" : "second") : (i == 0 ? "target" : "value");
-            if (parameter.InternalName != name || parameter.ExternalName != (!swap && i == 1 ? "with" : name) ||
-                function.AllowsPositionalArgument(i) != (swap || i == 0) || parameter.DefaultValue is not null || parameter.AttributeChain is not null ||
-                !Type(parameter.Type, swap || i == 0))
-            {
-                return false;
-            }
-        }
-
-        return id == KimiDeclarationId.Exchange ? Type(function.ReturnType, false) : function.ReturnType is TupleTypeKoto { ElementNodes.Count: 0 };
-
-        static bool Type(Koto? node, bool borrow) => node is TypeSemanticsKoto { OriginName: null, OriginExpression: null, OriginArguments: null, SemanticsParameter: null } type &&
-            (borrow ? type.SemanticsKind == SemanticsKind.Uniq && Type(type.Type, false) : type is { SemanticsKind: SemanticsKind.Owner, Type: null, Identifier: "T" });
-    }
-
-    private bool ValidTempDirectory(BindingSymbol symbol)
-        => symbol.CompilerFunction == CompilerFunctionKind.TestTempDirectory && ReferenceEquals(symbol.Scope, this.TestScope) &&
-            symbol.Declaration is FunctionKoto function && ReferenceEquals(function.Parent, this.Test) && function is
-            {
-                Name: "tempDirectory", Modifier: ModifierKind.Public, GenericArguments.Count: 0, Origins.Count: 0,
-                Parameters.Count: 0, TypeConstraints.Count: 0, Body: null, ExpressionBody: null, AttributeChain: null,
-                IsRequirement: false, IsGenerated: false, IsSpecialization: false,
-                ReturnType: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner, OriginExpression: null, OriginName: null, OriginArguments: null },
-            };
-
-    private bool ValidWriteLine()
-        => this.WriteLine.CompilerFunction == CompilerFunctionKind.WriteLine && ReferenceEquals(this.WriteLine.Scope, this.ConsoleScope) &&
-        this.WriteLine.Declaration is FunctionKoto function &&
-        ReferenceEquals(function.Parent, this.Console) &&
-        function.NameBoundaryIndex < 0 && function.Name == "writeLine" && function.Modifier == ModifierKind.Public &&
-        function.GenericArguments.Count == 0 && function.Origins.Count == 0 && function.Parameters.Count == 1 &&
-        function.TypeConstraints.Count == 0 && function.ReturnType is null && function.Body is null && function.ExpressionBody is null &&
-        function.AttributeChain is null && !function.IsRequirement && !function.IsGenerated && !function.IsSpecialization &&
-        function.Parameters[0] is
-        {
-            ExternalName: "text", InternalName: "text", DefaultValue: null, AttributeChain: null,
-            // SPEC 22.4: writeLine borrows its text as ref/string.
-            Type: TypeSemanticsKoto
-            {
-                Type: TypeSemanticsKoto { Type: null, Identifier: "string", SemanticsKind: SemanticsKind.Owner },
-                SemanticsKind: SemanticsKind.Ref, SemanticsParameter: null, OriginExpression: null, OriginName: null, OriginArguments: null,
-            },
-        };
 
     // SPEC 4.6.9: contract Indexable<Key> with associate Element and index(self: ref/Self, key: ref/Key) -> place ref/Element
     // during self; contract UniqIndexable<Key>: Indexable<Key> with indexUniq(self: uniq/Self, key: ref/Key) -> place uniq/Element during self.
@@ -800,56 +739,6 @@ public sealed partial class KimiLibrary
         declaration.Members.Count > first + 4 && declaration.Members[first + 4] is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Internal, Parameters.Count: 2, NameBoundaryIndex: 0, ReturnType: null, Body: not null, AttributeChain: null } constructor && // The computed length and isEmpty precede it (STYLE 2.2).
         constructor.Parameters[0] is { InternalName: "start", ExternalName: "start", DefaultValue: null } startParameter && BareName(startParameter.Type, "isize") &&
         constructor.Parameters[1] is { InternalName: "end", ExternalName: "end", DefaultValue: null } endParameter && BareName(endParameter.Type, "isize");
-
-    // SPEC 4.7.2, 4.7.4: the bodiless signature public init(! capacity: isize); the compiler allocates the Array at each construction.
-    private bool ValidArrayConstructor(BindingSymbol symbol)
-        => symbol.CompilerFunction == CompilerFunctionKind.ArrayWithCapacity &&
-        symbol.Declaration is FunctionKoto { IsConstructor: true, Modifier: ModifierKind.Public, NameBoundaryIndex: 0, ReturnType: null, Body: null, ExpressionBody: null, AttributeChain: null, Parameters.Count: 1 } function &&
-        ReferenceEquals(function.Parent, this.ArrayScope.Owner) && function.GenericArguments.Count == 0 && function.Origins.Count == 0 && function.TypeConstraints.Count == 0 &&
-        function.Parameters[0] is { ExternalName: "capacity", InternalName: "capacity", DefaultValue: null, AttributeChain: null } parameter && BareName(parameter.Type, "isize");
-
-    // SPEC 4.7.2, 4.7.4: an exclusive receiver, isize positions, T inputs and T or Option<T> results; the isize position
-    // operations are internal, and the public position entries of Array resolve a position before calling them.
-    private bool ValidArrayOperation(BindingSymbol symbol, KimiDeclarationId id)
-    {
-        var (kind, name) = id switch
-        {
-            KimiDeclarationId.ArrayReserve => (CompilerFunctionKind.ArrayReserve, "reserve"),
-            KimiDeclarationId.ArrayAppend => (CompilerFunctionKind.ArrayAppend, "append"),
-            KimiDeclarationId.ArrayInsert => (CompilerFunctionKind.ArrayInsert, "insertAt"),
-            KimiDeclarationId.ArrayPop => (CompilerFunctionKind.ArrayPop, "pop"),
-            KimiDeclarationId.ArrayRemove => (CompilerFunctionKind.ArrayRemove, "removeAt"),
-            KimiDeclarationId.ArraySwap => (CompilerFunctionKind.ArraySwap, "swapAt"),
-            KimiDeclarationId.ArrayClear => (CompilerFunctionKind.ArrayClear, "clear"),
-            _ => (CompilerFunctionKind.ArrayShrinkToFit, "shrinkToFit"),
-        };
-        if (symbol.CompilerFunction != kind || symbol.Declaration is not FunctionKoto function || !ReferenceEquals(function.Parent, this.ArrayScope.Owner) ||
-            function.NameBoundaryIndex >= 0 || function.Name != name ||
-            function.Modifier != (id is KimiDeclarationId.ArrayInsert or KimiDeclarationId.ArrayRemove or KimiDeclarationId.ArraySwap ? ModifierKind.Internal : ModifierKind.Public) ||
-            function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0 ||
-            function.Body is not null || function.ExpressionBody is not null || function.AttributeChain is not null ||
-            function.IsRequirement || function.IsGenerated || function.IsSpecialization || function.Parameters.Count == 0 ||
-            function.Parameters[0] is not { ExternalName: "self", InternalName: "self", DefaultValue: null, AttributeChain: null, Type: TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null } receiver } ||
-            !BareName(receiver.Type, "Self"))
-        {
-            return false;
-        }
-
-        var inputs = function.Parameters.Count - 1;
-        return id switch
-        {
-            KimiDeclarationId.ArrayReserve => inputs == 1 && Input(function, 1, "additional", "isize") && function.ReturnType is null,
-            KimiDeclarationId.ArrayAppend => inputs == 1 && Input(function, 1, "value", "T") && function.ReturnType is null,
-            KimiDeclarationId.ArrayInsert => inputs == 2 && Input(function, 1, "index", "isize") && Input(function, 2, "value", "T") && function.ReturnType is null,
-            KimiDeclarationId.ArrayPop => inputs == 0 && BareType(function.ReturnType) is GenericsKoto { TypeArguments.Count: 1 } option && BareName(option.Identifier, "Option") && BareName(option.TypeArguments[0], "T"),
-            KimiDeclarationId.ArrayRemove => inputs == 1 && Input(function, 1, "index", "isize") && BareName(function.ReturnType, "T"),
-            KimiDeclarationId.ArraySwap => inputs == 2 && Input(function, 1, "first", "isize") && Input(function, 2, "second", "isize") && function.ReturnType is null,
-            _ => inputs == 0 && function.ReturnType is null,
-        };
-
-        static bool Input(FunctionKoto function, int index, string name, string type)
-            => function.Parameters[index] is { DefaultValue: null, AttributeChain: null } parameter && parameter.ExternalName == name && parameter.InternalName == name && BareName(parameter.Type, type);
-    }
 
     private bool ValidCompilerGroup(GroupKoto group, BindingSymbol identity, BindingScope scope)
     {

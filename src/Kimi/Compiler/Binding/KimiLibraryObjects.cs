@@ -31,22 +31,6 @@ public sealed partial class KimiLibrary
                 f.GenericArguments[0].BoundSymbol is { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } whole } &&
                 ReferenceEquals(symbol.Type, whole) && BoundInputBorrow(f.Parameters[0].Type.BoundType, whole, SemanticsKind.Ref, f, 0));
 
-    // SPEC 13.5.8: normal factories require ObjectPayload, never a blanket Owned constraint.
-    private bool ValidObjectFactory(BindingSymbol symbol, KimiDeclarationId id)
-    {
-        ref readonly var rule = ref KimiLibraryCatalog.Entries[KimiLibraryCatalog.Index(id)];
-        var semantics = id == KimiDeclarationId.MakeObj ? SemanticsKind.Obj : id == KimiDeclarationId.MakeRc ? SemanticsKind.Rc : SemanticsKind.Arc;
-        return symbol.CompilerFunction == rule.Function && ReferenceEquals(symbol.Scope, this.IntrinsicsScope) &&
-            ReferenceEquals(symbol.Declaration.Parent, this.Intrinsics) &&
-            symbol.Declaration is FunctionKoto { NameBoundaryIndex: -1, Modifier: ModifierKind.Public, AttributeChain: null, GenericArguments.Count: 1, Parameters.Count: 1, Origins.Count: 0, TypeConstraints.Count: 1, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false } f &&
-            f.Name == rule.Name && f.GenericArguments[0] is GenericParameterKoto { Identifier: "T", SemanticsParameter: null, AttributeChain: null } &&
-            f.TypeConstraints[0] is IsKoto { IsNegated: false, IsAssociatedConstraint: false, FormationType: null, AttributeChain: null, Left: { } constrained, Right: { } required } &&
-            BareName(constrained, "T") && BareName(required, "ObjectPayload") &&
-            f.Parameters[0] is { InternalName: "value", ExternalName: "value", DefaultValue: null, AttributeChain: null } p && BareName(p.Type, "T") &&
-            f.ReturnType is TypeSemanticsKoto { SemanticsParameter: null, OriginName: null, OriginExpression: null, OriginArguments: null, Type: { } inner } result &&
-            result.SemanticsKind == semantics && BareName(inner, "T");
-    }
-
     private bool ValidStrongClone(BindingSymbol symbol)
         => symbol.CompilerFunction == CompilerFunctionKind.Clone && ReferenceEquals(symbol.Scope, this.IntrinsicsScope) &&
             ReferenceEquals(symbol.Declaration.Parent, this.Intrinsics) &&

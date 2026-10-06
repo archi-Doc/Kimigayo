@@ -9,6 +9,50 @@ namespace XunitTest;
 public class CatalogSignatureValidationTest
 {
     [Theory]
+    [InlineData(KimiDeclarationId.ArrayWithCapacity)]
+    [InlineData(KimiDeclarationId.ArrayInsert)]
+    [InlineData(KimiDeclarationId.ArrayPop)]
+    [InlineData(KimiDeclarationId.DictionaryTryInsert)]
+    [InlineData(KimiDeclarationId.DictionaryTryGet)]
+    [InlineData(KimiDeclarationId.DictionaryIndexUniq)]
+    [InlineData(KimiDeclarationId.Replace)]
+    [InlineData(KimiDeclarationId.Exchange)]
+    [InlineData(KimiDeclarationId.Swap)]
+    [InlineData(KimiDeclarationId.MakeObj)]
+    [InlineData(KimiDeclarationId.MakeRc)]
+    [InlineData(KimiDeclarationId.MakeArc)]
+    [InlineData(KimiDeclarationId.WriteLine)]
+    [InlineData(KimiDeclarationId.TestTempDirectory)]
+    [InlineData(KimiDeclarationId.Utf8Format)]
+    [InlineData(KimiDeclarationId.BufferWriter)]
+    [InlineData(KimiDeclarationId.TextFixed)]
+    [InlineData(KimiDeclarationId.TextTryFormat)]
+    [InlineData(KimiDeclarationId.WindowAppend)]
+    [InlineData(KimiDeclarationId.WriteLineUtf8)]
+    public void SourceOperandsAreCheckedBeforeBinding(KimiDeclarationId id)
+    {
+        var c = CompilationTestHelper.ParseSuccess("func malformed(value: bool) => ()");
+        var replacement = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>()).Parameters[0].Type;
+        var symbol = c.Library.GetSymbol(id)!;
+        var function = symbol.Declaration as FunctionKoto ?? (FunctionKoto)((ContractKoto)symbol.Declaration).Members[0];
+        Assert.True(c.Library.ValidateDeclarations());
+        for (var index = -1; index < function.Parameters.Count; index++)
+        {
+            var original = index < 0 ? function.ReturnType : function.Parameters[index].Type;
+            if (original is null)
+            {
+                continue;
+            }
+
+            Assert.True(function.ReplaceChild(original, replacement));
+            Assert.False(c.Library.ValidateDeclarations());
+            Assert.Same(symbol.Declaration, c.Library.InvalidDeclaration);
+            Assert.True(function.ReplaceChild(replacement, original));
+            Assert.True(c.Library.ValidateDeclarations());
+        }
+    }
+
+    [Theory]
     [InlineData(KimiDeclarationId.ArrayReserve)]
     [InlineData(KimiDeclarationId.ArrayAppend)]
     [InlineData(KimiDeclarationId.ArrayInsert)]
