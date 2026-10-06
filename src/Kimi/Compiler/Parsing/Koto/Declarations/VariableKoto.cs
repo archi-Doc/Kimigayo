@@ -67,6 +67,12 @@ public abstract class VariableKoto : DeclarationKoto
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
+        => this.WriteDeclarationTo(ref builder, headerOnly: false);
+
+    /// <summary>Writes a binding declaration without its initializer.</summary>
+    /// <param name="builder">The output.</param>
+    /// <param name="headerOnly">Whether to omit the initializer.</param>
+    protected void WriteDeclarationTo(ref IndentedStringBuilder builder, bool headerOnly)
     {
         this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
         this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
@@ -80,7 +86,7 @@ public abstract class VariableKoto : DeclarationKoto
             this.TypeKoto.WriteTo(ref builder);
         }
 
-        if (this.InitializerKoto is not null)
+        if (!headerOnly && this.InitializerKoto is not null)
         {
             builder.Append(" = ");
             this.InitializerKoto.WriteTo(ref builder);

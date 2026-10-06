@@ -663,6 +663,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         reader.Advance();
         var state = reader.TakeContext();
+        var nameSpan = reader.CurrentTokenRange;
         var declaration = Parser.ParseDeclarationContainerHeader(ref reader, tokenKind);
         if (declaration.Name is null)
         {
@@ -673,6 +674,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         var container = this.GetOrAddDeclarationContainer(declaration.Name, tokenKind, state, token.Span, declaration.GenericArguments?.Count ?? 0, reader.CodeContext);
         reader.Document(container, SourceSpan.FromBounds(token.Span.Start, reader.PreviousSyntaxEnd), state.AttributeKoto);
+        reader.Hover(container, nameSpan);
         container.AddHeader(tokenKind, state.ModifierKind, declaration.GenericArguments, declaration.Origins, state.AttributeKoto);
         container.SetBases(declaration.Bases);
 
@@ -841,6 +843,7 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
                 IsDestructor = true,
             };
             reader.Document(destructor, token.Span, context.AttributeKoto);
+            reader.Hover(destructor, token.Span);
 
             // drop accepts a common Body, without modifiers or attributes (SPEC 16.3).
             if (context.ModifierKind.Judged() != ModifierKind.NoModifier || context.AttributeKoto is not null)

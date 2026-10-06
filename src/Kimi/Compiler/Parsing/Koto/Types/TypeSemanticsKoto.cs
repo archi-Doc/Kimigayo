@@ -105,6 +105,8 @@ public sealed class TypeSemanticsKoto : TypeKoto
         {
             this.nameOrSemanticsParameter = reader.GetIdentifier(typeToken);
         }
+
+        reader.Hover(this, typeToken.Span);
     }
 
     /// <summary>Initializes a new instance of the <see cref="TypeSemanticsKoto"/> class for a synthesized bare operation target such as <c>move</c>.</summary>

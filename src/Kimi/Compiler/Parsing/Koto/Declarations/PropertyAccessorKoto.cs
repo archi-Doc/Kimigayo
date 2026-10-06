@@ -91,57 +91,12 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        builder.Append(this.AccessorText);
+        => this.WriteDeclarationTo(ref builder, headerOnly: false);
 
-        if (this.HasExplicitSignature)
-        {
-            builder.Append('(');
-            if (this.ReceiverType is { } receiverType)
-            {
-                builder.Append("self: ");
-                receiverType.WriteTo(ref builder);
-            }
-
-            if (this.ValueType is { } valueType)
-            {
-                if (this.ReceiverType is not null)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                builder.Append("value: ");
-                valueType.WriteTo(ref builder);
-            }
-
-            builder.Append(')');
-        }
-
-        if (this.ReturnType is { } returnType)
-        {
-            builder.Append(" -> ");
-            returnType.WriteTo(ref builder);
-        }
-
-        if (OriginClauses.Get(this).Count != 0)
-        {
-            builder.AppendLine();
-            builder.IncrementIndent();
-            OriginClauses.Write(this, ref builder, false);
-            this.Body?.WriteTo(ref builder);
-            builder.DecrementIndent();
-        }
-        else if (this.Body is CodeBlockKoto block)
-        {
-            block.WriteIndentedTo(ref builder);
-        }
-        else if (this.Body is not null)
-        {
-            builder.Append(" => ");
-            this.Body.WriteTo(ref builder);
-        }
-    }
+    /// <summary>Writes the accessor contract without its body.</summary>
+    /// <param name="builder">The output.</param>
+    internal void WriteHeaderTo(ref IndentedStringBuilder builder)
+        => this.WriteDeclarationTo(ref builder, headerOnly: true);
 
     internal void SetBody(Koto? body)
     {
@@ -223,5 +178,62 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
 
         this.Body = newKoto;
         return true;
+    }
+
+    private void WriteDeclarationTo(ref IndentedStringBuilder builder, bool headerOnly)
+    {
+        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
+        builder.Append(this.AccessorText);
+
+        if (this.HasExplicitSignature)
+        {
+            builder.Append('(');
+            if (this.ReceiverType is { } receiverType)
+            {
+                builder.Append("self: ");
+                receiverType.WriteTo(ref builder);
+            }
+
+            if (this.ValueType is { } valueType)
+            {
+                if (this.ReceiverType is not null)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                builder.Append("value: ");
+                valueType.WriteTo(ref builder);
+            }
+
+            builder.Append(')');
+        }
+
+        if (this.ReturnType is { } returnType)
+        {
+            builder.Append(" -> ");
+            returnType.WriteTo(ref builder);
+        }
+
+        if (OriginClauses.Get(this).Count != 0)
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+            OriginClauses.Write(this, ref builder, false);
+            if (!headerOnly)
+            {
+                this.Body?.WriteTo(ref builder);
+            }
+
+            builder.DecrementIndent();
+        }
+        else if (!headerOnly && this.Body is CodeBlockKoto block)
+        {
+            block.WriteIndentedTo(ref builder);
+        }
+        else if (!headerOnly && this.Body is not null)
+        {
+            builder.Append(" => ");
+            this.Body.WriteTo(ref builder);
+        }
     }
 }

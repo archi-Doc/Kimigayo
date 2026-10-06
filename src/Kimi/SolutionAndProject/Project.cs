@@ -397,6 +397,7 @@ public partial class Project
         {
             IsTestBuild = prepared is not null,
             CollectDocumentation = context?.CollectHover == true,
+            CollectHover = context?.CollectHover == true,
         };
         if (this.FilePath is { } file)
         {

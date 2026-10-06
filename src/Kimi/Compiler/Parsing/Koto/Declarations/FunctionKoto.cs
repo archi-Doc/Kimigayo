@@ -418,200 +418,12 @@ public sealed class FunctionKoto : DeclarationKoto
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
-    {
-        if (this.IsGenerated)
-        {
-            this.Body?.WriteTo(ref builder);
-            return;
-        }
+        => this.WriteDeclarationTo(ref builder, headerOnly: false);
 
-        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
-        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
-        if (this.IsSpecialization)
-        {
-            builder.Append("specialize ");
-        }
-
-        if (!this.IsDestructor && !this.IsConstructor)
-        {
-            builder.Append(Constants.FuncKeyword);
-            builder.AppendSpace();
-        }
-
-        builder.Append(this.Name);
-
-        if (this.Captures is { } captures)
-        {
-            builder.Append('[');
-            for (var i = 0; i < captures.Length; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                if (captures[i].IsMutable)
-                {
-                    builder.Append("var ");
-                }
-
-                builder.Append(captures[i].Name);
-                if (captures[i].Operation is { } operation)
-                {
-                    builder.Append('@');
-                    builder.Append(operation);
-                }
-            }
-
-            builder.Append(']');
-        }
-
-        if (this.IsDestructor)
-        {
-            if (this.ExpressionBody is not null)
-            {
-                builder.Append(" => ");
-                this.ExpressionBody.WriteTo(ref builder);
-            }
-            else
-            {
-                this.Body?.WriteIndentedTo(ref builder);
-            }
-
-            return;
-        }
-
-        if (this.genericArguments is { Count: > 0 } genericArguments)
-        {
-            builder.Append('<');
-            for (var i = 0; i < genericArguments.Count; i++)
-            {
-                if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                genericArguments[i].WriteTo(ref builder);
-            }
-
-            builder.Append('>');
-        }
-
-        var multilineParameters = false;
-        if (this.parameters is { } declaredParameters)
-        {
-            for (var i = 0; i < declaredParameters.Count; i++)
-            {
-                if (declaredParameters[i].DefaultValue is { } value && KotoHelper.ContainsBody(value))
-                {
-                    multilineParameters = true;
-                    break;
-                }
-            }
-        }
-
-        builder.Append('(');
-        if (multilineParameters)
-        {
-            builder.AppendLine();
-            builder.IncrementIndent();
-        }
-
-        if (this.parameters is { } parameters)
-        {
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                if (multilineParameters && i > 0)
-                {
-                    // Both separators belong outside any preceding default's indented body.
-                    builder.AppendLine();
-                }
-
-                if (i == this.NameBoundaryIndex)
-                {
-                    builder.Append(i == 0 || multilineParameters ? "! " : " ! ");
-                }
-                else if (i > 0)
-                {
-                    builder.AppendCommaAndSpace();
-                }
-
-                var parameter = parameters[i];
-                if (parameter.AttributeChain is not null)
-                {
-                    Parser.UnparseAttribute(parameter.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
-                }
-
-                builder.Append(parameter.ExternalName);
-                if (!parameter.ExternalName.Equals(parameter.InternalName, StringComparison.Ordinal))
-                {
-                    builder.Append(" => ");
-                    builder.Append(parameter.InternalName);
-                }
-
-                if (parameter.Type.Akind != KotoKind.InferredType)
-                {
-                    builder.Append(": ");
-                    parameter.Type.WriteTo(ref builder);
-                }
-
-                if (parameter.DefaultValue is not null)
-                {
-                    builder.Append(" = ");
-                    parameter.DefaultValue.WriteTo(ref builder);
-                }
-            }
-        }
-
-        if (multilineParameters)
-        {
-            builder.AppendLine();
-            builder.DecrementIndent();
-        }
-
-        builder.Append(')');
-        if (this.BaseInitializer is not null)
-        {
-            builder.Append(" : ");
-            this.BaseInitializer.WriteTo(ref builder);
-        }
-
-        if (this.ReturnType is not null)
-        {
-            builder.Append(" -> ");
-            this.ReturnType.WriteTo(ref builder);
-        }
-
-        if (this.ExpressionBody is not null)
-        {
-            builder.Append(" => ");
-            this.ExpressionBody.WriteTo(ref builder);
-        }
-        else if (this.typeConstraints is { Count: > 0 } || this.effectBounds is { Count: > 0 } || OriginClauses.Get(this).Count != 0)
-        {
-            builder.AppendLine();
-            builder.IncrementIndent();
-            OriginClauses.Write(this, ref builder, false);
-            foreach (var constraint in this.TypeConstraints)
-            {
-                constraint.WriteTo(ref builder);
-                builder.AppendLine();
-            }
-
-            foreach (var effect in this.EffectBounds)
-            {
-                effect.WriteTo(ref builder);
-                builder.AppendLine();
-            }
-
-            this.Body?.WriteTo(ref builder);
-            builder.DecrementIndent();
-        }
-        else
-        {
-            this.Body?.WriteIndentedTo(ref builder);
-        }
-    }
+    /// <summary>Writes the published signature without bodies or default expressions.</summary>
+    /// <param name="builder">The output.</param>
+    internal void WriteHeaderTo(ref IndentedStringBuilder builder)
+        => this.WriteDeclarationTo(ref builder, headerOnly: true);
 
     internal void RefreshStaticInitializer()
     {
@@ -838,5 +650,218 @@ public sealed class FunctionKoto : DeclarationKoto
 
         parameter.Type.Parent = this;
         this.Adopt(parameter.DefaultValue);
+    }
+
+    private void WriteDeclarationTo(ref IndentedStringBuilder builder, bool headerOnly)
+    {
+        if (this.IsGenerated && !headerOnly)
+        {
+            this.Body?.WriteTo(ref builder);
+            return;
+        }
+
+        this.WriteAttributeChainTo(ref builder, KotoWriteOptions.AppendLineFeed);
+        this.Modifier.WriteTo(ref builder, KotoWriteOptions.AppendSpace);
+        if (this.IsSpecialization)
+        {
+            builder.Append("specialize ");
+        }
+
+        if (!this.IsDestructor && !this.IsConstructor)
+        {
+            builder.Append(Constants.FuncKeyword);
+            builder.AppendSpace();
+        }
+
+        builder.Append(this.Name);
+
+        if (this.Captures is { } captures)
+        {
+            builder.Append('[');
+            for (var i = 0; i < captures.Length; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                if (captures[i].IsMutable)
+                {
+                    builder.Append("var ");
+                }
+
+                builder.Append(captures[i].Name);
+                if (captures[i].Operation is { } operation)
+                {
+                    builder.Append('@');
+                    builder.Append(operation);
+                }
+            }
+
+            builder.Append(']');
+        }
+
+        if (this.IsDestructor)
+        {
+            if (headerOnly)
+            {
+                OriginClauses.Write(this, ref builder);
+                return;
+            }
+
+            if (this.ExpressionBody is not null)
+            {
+                builder.Append(" => ");
+                this.ExpressionBody.WriteTo(ref builder);
+            }
+            else
+            {
+                this.Body?.WriteIndentedTo(ref builder);
+            }
+
+            return;
+        }
+
+        if (this.genericArguments is { Count: > 0 } genericArguments)
+        {
+            builder.Append('<');
+            for (var i = 0; i < genericArguments.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                genericArguments[i].WriteTo(ref builder);
+            }
+
+            builder.Append('>');
+        }
+
+        var multilineParameters = false;
+        if (!headerOnly && this.parameters is { } declaredParameters)
+        {
+            for (var i = 0; i < declaredParameters.Count; i++)
+            {
+                if (declaredParameters[i].DefaultValue is { } value && KotoHelper.ContainsBody(value))
+                {
+                    multilineParameters = true;
+                    break;
+                }
+            }
+        }
+
+        builder.Append('(');
+        if (multilineParameters)
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+        }
+
+        if (this.parameters is { } parameters)
+        {
+            for (var i = 0; i < parameters.Count; i++)
+            {
+                if (multilineParameters && i > 0)
+                {
+                    // Both separators belong outside any preceding default's indented body.
+                    builder.AppendLine();
+                }
+
+                if (i == this.NameBoundaryIndex)
+                {
+                    builder.Append(i == 0 || multilineParameters ? "! " : " ! ");
+                }
+                else if (i > 0)
+                {
+                    builder.AppendCommaAndSpace();
+                }
+
+                var parameter = parameters[i];
+                if (parameter.AttributeChain is not null)
+                {
+                    Parser.UnparseAttribute(parameter.AttributeChain, ref builder, KotoWriteOptions.AppendSpace);
+                }
+
+                builder.Append(parameter.ExternalName);
+                if (!parameter.ExternalName.Equals(parameter.InternalName, StringComparison.Ordinal))
+                {
+                    builder.Append(" => ");
+                    builder.Append(parameter.InternalName);
+                }
+
+                if (parameter.Type.Akind != KotoKind.InferredType)
+                {
+                    builder.Append(": ");
+                    parameter.Type.WriteTo(ref builder);
+                }
+
+                if (parameter.DefaultValue is not null)
+                {
+                    builder.Append(" = ");
+                    if (headerOnly)
+                    {
+                        builder.Append("<default omitted>");
+                    }
+                    else
+                    {
+                        parameter.DefaultValue.WriteTo(ref builder);
+                    }
+                }
+            }
+        }
+
+        if (multilineParameters)
+        {
+            builder.AppendLine();
+            builder.DecrementIndent();
+        }
+
+        builder.Append(')');
+        if (!headerOnly && this.BaseInitializer is not null)
+        {
+            builder.Append(" : ");
+            this.BaseInitializer.WriteTo(ref builder);
+        }
+
+        if (this.ReturnType is not null)
+        {
+            builder.Append(" -> ");
+            this.ReturnType.WriteTo(ref builder);
+        }
+
+        if (!headerOnly && this.ExpressionBody is not null)
+        {
+            builder.Append(" => ");
+            this.ExpressionBody.WriteTo(ref builder);
+        }
+        else if (this.typeConstraints is { Count: > 0 } || this.effectBounds is { Count: > 0 } || OriginClauses.Get(this).Count != 0)
+        {
+            builder.AppendLine();
+            builder.IncrementIndent();
+            OriginClauses.Write(this, ref builder, false);
+            foreach (var constraint in this.TypeConstraints)
+            {
+                constraint.WriteTo(ref builder);
+                builder.AppendLine();
+            }
+
+            foreach (var effect in this.EffectBounds)
+            {
+                effect.WriteTo(ref builder);
+                builder.AppendLine();
+            }
+
+            if (!headerOnly)
+            {
+                this.Body?.WriteTo(ref builder);
+            }
+
+            builder.DecrementIndent();
+        }
+        else if (!headerOnly)
+        {
+            this.Body?.WriteIndentedTo(ref builder);
+        }
     }
 }

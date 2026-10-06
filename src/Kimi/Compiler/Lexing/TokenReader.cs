@@ -234,6 +234,16 @@ public ref partial struct TokenReader
         }
     }
 
+    internal readonly void Hover(Koto syntax, SourceSpan token)
+    {
+        if (!this.InExcludedSyntax && !this.IsExcluded && this.CodeContext.SourceDocument is { } source)
+        {
+            this.compilation.RecordHover(syntax, source, token);
+        }
+    }
+
+    internal readonly SourceSpan TokenSpanAt(int position) => this.tokens[position].Span;
+
     #endregion
 
     /// <summary>

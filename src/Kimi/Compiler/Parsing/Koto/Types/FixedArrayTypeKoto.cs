@@ -15,6 +15,7 @@ public sealed class FixedArrayTypeKoto : TypeKoto
         this.ElementType = element;
         this.Adopt(length);
         this.Adopt(element);
+        reader.Hover(this, new(span.Start, 1));
     }
 
     /// <inheritdoc/>

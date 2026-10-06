@@ -6,7 +6,9 @@ General Hover and these update/rendering rules are not yet implemented or verifi
 the response boundary. LSP checks now opt into documentation/optional Hover collection; CLI checks skip it. Projection
 failures preserve finalized diagnostics, acceptance and TestPresence, and are logged separately. Embedded Kimi comments
 use shared immutable lexical ranges with compilation-local association; `HoverCollectionTest` covers mode order, parallel
-loads and check-record invariance. Full collection/formatting isolation, detached general declarations and Hover response
+loads and check-record invariance. Opted-in parsing also retains declaration-fragment and structural-token positions;
+shared syntax writers project headers without bodies, Property initializers or default expressions (`HoverSyntaxTest`).
+Full collection/formatting isolation, detached general declarations and Hover response
 rules remain in the H1–H6 track in `docs/dev/PLAN.md`.
 
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
