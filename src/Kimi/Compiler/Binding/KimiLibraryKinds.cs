@@ -89,6 +89,7 @@ public enum CompilerFunctionKind : byte
     StorageTransferBytes,
     StorageIndexBounds,
     StorageBorrowUniqSlice,
+    StorageSetArrayLength,
     RawAllocate,
     RawRelease,
     RawInitialize,

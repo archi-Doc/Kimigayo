@@ -167,8 +167,8 @@ public class CoreCatalogTest
         // Private caller-context metadata recognizes another fifteen ordinary source bodies and one failure primitive, and the
         // located Dictionary capacity (G20) six DictionaryStorage bodies over four private primitives in place of two bridges.
         // UniqSlice adds its record/projection, one bounds primitive and twelve located source bodies.
-        Assert.Equal(161, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(166, c.Library.Declarations.Length);
+        Assert.Equal(164, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(169, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

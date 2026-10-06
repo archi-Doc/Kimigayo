@@ -6,6 +6,21 @@ namespace Kimi.Compiler;
 
 public sealed partial class KimiLibrary
 {
+    private bool ValidArrayLength(BindingSymbol symbol)
+        => symbol.CompilerFunction == CompilerFunctionKind.StorageSetArrayLength &&
+            symbol.Declaration is FunctionKoto { Name: "setArrayLength", Modifier: ModifierKind.Internal | ModifierKind.Unsafe, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0, ReturnType: null } function &&
+            ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
+            function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] &&
+            function.Parameters is [var value, var length] && PlacementInput(value, "value") && PlacementInput(length, "length") && BareName(length.Type, "isize") &&
+            BareType(value.Type) is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: "a", OriginArguments: null } reference &&
+            BareType(reference.Type) is GenericsKoto { TypeArguments: [var element] } array && BareName(array.Identifier, "Array") && BareName(element, "E");
+
+    private bool ValidBoundArrayLength(BindingSymbol symbol)
+        => symbol.Declaration is FunctionKoto { GenericArguments: [{ BoundType: { Kind: BoundTypeKind.Parameter } element }], Parameters: [var value, var length] } function &&
+            value.Type.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Symbol: null, OriginArguments.Count: 0, Components: [var array], Origin: { Kind: OriginKind.Parameter, Slot: 0 } origin } &&
+            ReferenceEquals(origin.Binder, function) && this.BoundStorageContainer(array, KimiDeclarationId.Array, element, 0) &&
+            ReferenceEquals(length.Type.BoundType, BoundType.ISize) && (symbol.Type is null || ReferenceEquals(symbol.Type, BoundType.Unit));
+
     private bool ValidStorageAbort(BindingSymbol symbol, in KimiLibraryCatalog.Entry rule)
         => symbol.CompilerFunction == rule.Function &&
         symbol.Declaration is FunctionKoto { Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, Parameters.Count: 0, TypeConstraints.Count: 0 } function && function.Name == rule.Name &&
@@ -83,6 +98,11 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
+        if (id == KimiDeclarationId.StorageSetArrayLength)
+        {
+            return this.ValidBoundArrayLength(symbol);
+        }
+
         if (id == KimiDeclarationId.UniqSlice)
         {
             return ValidBoundUniqSlice(symbol);

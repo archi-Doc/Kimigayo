@@ -4,6 +4,9 @@
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
+// Publishes completed elements within the existing allocation. The caller proves the length is in capacity
+// and every new element is initialized; this primitive neither reads nor destroys any element.
+internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)
 internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
     K is Equatable
 internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a

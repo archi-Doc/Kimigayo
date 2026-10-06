@@ -14,6 +14,13 @@ public struct Slice<T> {source}
         R is PositionRange
         return self[range]
 
+    /// Copies the elements in order into independent storage, retaining only their inner dependencies.
+    public func toArray(self: Self) -> Array<T>
+        T is Copy
+        var result = Array<T>.init(capacity: self.length)
+        result.appendCopies(self)
+        return result@move
+
     /// Starts an enumeration of the elements in index order. The iterator copies the handle, so its items keep
     /// `source` and not the borrow of the handle (SPEC 14.6.2).
     public func iterate(self: ref/Self during handle) -> SliceIterator<T> during source

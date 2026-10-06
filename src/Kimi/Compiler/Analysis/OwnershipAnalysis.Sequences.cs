@@ -185,7 +185,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && receiver is BinaryKoto stored &&
-            ElementAccess.IsSyntax(stored) && !Binding.IsGetterResult(stored) && (stored is not MemberAccessKoto field || !this.SpecialField(field)))
+            (ElementAccess.IsSyntax(stored) || (stored is MemberAccessKoto borrowedField && ElementAccess.BorrowedPathRoot(borrowedField) is not null)) &&
+            !Binding.IsGetterResult(stored) && !this.SpecialField(stored))
         {
             // SPEC 4.6.1: collection fields and elements are inspected through their shared Place, without attempting to
             // Copy or Move the Non-Copy handle. An element borrowed through it keeps the Origin of that borrow.

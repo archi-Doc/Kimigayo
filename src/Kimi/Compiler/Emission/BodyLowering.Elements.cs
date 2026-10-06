@@ -349,18 +349,18 @@ internal sealed partial class BodyLowering
             !ReferenceEquals(root.BoundSymbol, body.Operations[body.ComparisonLoans[plan.Loan].Read].Source.BoundSymbol) ||
             body.Places[plan.Root] is not { Kind: OwnershipPlaceKind.Local, Mutable: true } ||
             body.Places[write.Input] is not { Kind: OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result, Acquisition: AcquisitionKind.Copy or AcquisitionKind.Move } input ||
-            !ReferenceEquals(input.Type, element) ||
-            !(ScalarTypes.Supports(element) || ReferenceEquals(element, BoundType.Unit) || ReferenceEquals(element, BoundType.String) || this.aggregateLayouts.Get(element) is not null) ||
+            !ReferenceTypes.StorageMatches(input.Type, element) ||
+            !(IsScalar(element) || ReferenceEquals(element, BoundType.Unit) || ReferenceEquals(element, BoundType.String) || this.aggregateLayouts.Get(element) is not null) ||
             (IsScalar(element) ? body.Values[plan.Write] is not { Kind: OwnershipValueKind.Alias, Count: 1 }
                 : body.Values[plan.Write].Kind != OwnershipValueKind.None))
         {
-            return Fail("Element replacement requires writable local storage and a secured supported input of its exact Type.", out failure);
+            return Fail("Element replacement requires writable local storage and a secured input with matching storage.", out failure);
         }
 
         var source = write.Source;
         var value = IsScalar(element) ? Input(body, plan.Write, 0) : -1;
         if (IsScalar(element) && ((uint)value >= (uint)body.Operations.Count ||
-            ValuePlace(body.Operations[value]) != write.Input || !ReferenceEquals(ValueType(body, value), element)))
+            ValuePlace(body.Operations[value]) != write.Input || !ReferenceTypes.StorageMatches(ValueType(body, value), element)))
         {
             return Fail("Element replacement has no matching input value.", out failure);
         }
@@ -377,7 +377,9 @@ internal sealed partial class BodyLowering
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
             !ReferenceEquals(WrittenPlace(assignment.Left), target) || !ReferenceEquals(SignatureType(this, source.BoundType), BoundType.Unit) ||
-            !ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right)) ||
+            (!ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right)) &&
+                !(KotoHelper.UnwrapParentheses(assignment.Right) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrowed &&
+                    ReferenceEquals(SignatureType(this, borrowed.BoundType), input.Type) && ReferenceEquals(input.Source, ElementAccess.ValueSource(borrowed.Left)))) ||
             (IsScalar(element) && value >= body.ComparisonLoans[plan.Loan].Read))
         {
             return Fail("Simple element assignment must secure its RHS before locating the destination.", out failure);

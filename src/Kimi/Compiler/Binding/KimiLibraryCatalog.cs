@@ -201,6 +201,9 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.FixedArraySliceUniqRange, "sliceUniq", KimiLibraryContainer.FixedArray, SourceFunction: true, CallerLocation: true, Overload: 1),
         new(KimiDeclarationId.SliceSliceRange, "slice", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "Slice", Overload: 1),
         new(KimiDeclarationId.StorageSliceUniq, "sliceUniq", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageSetArrayLength, "setArrayLength", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSetArrayLength),
+        new(KimiDeclarationId.SliceToArray, "toArray", SourceFunction: true, CallerLocation: true, Owner: "Slice"),
+        new(KimiDeclarationId.ArrayAppendCopies, "appendCopies", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
     ];
 
@@ -210,7 +213,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageBorrowUniqSlice;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageSetArrayLength;
 
     internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice;
 

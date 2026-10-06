@@ -176,6 +176,9 @@ public enum KimiDeclarationId : byte
     FixedArraySliceUniqRange,
     SliceSliceRange,
     StorageSliceUniq,
+    StorageSetArrayLength,
+    SliceToArray,
+    ArrayAppendCopies,
 }
 
 public enum KimiDeclarationState : byte

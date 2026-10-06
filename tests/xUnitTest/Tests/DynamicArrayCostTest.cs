@@ -8,6 +8,25 @@ namespace XunitTest;
 public class DynamicArrayCostTest
 {
     [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(17)]
+    [InlineData(1024)]
+    public void SliceCopiesAllocateAtMostOnceWithoutGrowthTransfers(int count)
+        => WriteCostFixture("SliceCopy" + count, "let values: [" + count + " of i32] = [" + count + " of 7]\nlet copy = values.slice().toArray()\nrequire copy.length == " + count + " else => $abort(\"length\")", count == 0 ? 0 : 1, 0);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AppendingCopiesRetainsPreallocatedStorage()
+        => WriteCostFixture("AppendCopiesReserved", "let values: [3 of i32] = [1, 2, 3]\nvar copied = Array<i32>.init(capacity: 32)\nvar i = 0\nwhile i < 8\n    copied.appendCopies(values.slice())\n    i += 1\nrequire copied.length == 24 and copied[23] == 3 else => $abort(\"copies\")", 1, 0);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ZeroSizedSliceCopiesAllocateNothing()
+        => WriteCostFixture("SliceCopyZeroSized", "let values: [1024 of ()] = [1024 of ()]\nlet copied = values.slice().toArray()\nrequire copied.length == 1024 else => $abort(\"length\")", 0, 0);
+
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void ExclusiveViewsAndChildrenAllocateNoElementStorage()
         => WriteCostFixture("UniqViews", "var values: [4 of i32] = [1, 2, 3, 4]\nvar i = 0\nwhile i < 128\n    var view = values.sliceUniq()\n    var child = view.sliceUniq(1..3)\n    child[0] = i\n    require child.slice()[0] == i else => $abort(\"view\")\n    i += 1", 0, 0, growth: false);

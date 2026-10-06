@@ -45,6 +45,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.UniqSlice => this.ValidUniqSlice(symbol),
                         KimiDeclarationId.StorageBorrowUniqSlice => this.ValidStorageOperation(symbol, entry.Id),
+                        KimiDeclarationId.StorageSetArrayLength => this.ValidArrayLength(symbol),
                         KimiDeclarationId.Array => this.ValidArray(symbol),
                         KimiDeclarationId.Dictionary => this.ValidDictionary(symbol),
                         KimiDeclarationId.FromEnd => this.ValidFromEnd(symbol),
