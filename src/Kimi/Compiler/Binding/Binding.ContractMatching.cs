@@ -553,10 +553,16 @@ public sealed partial class Binding
                     var available = this.AvailableCallableEffects(normalized.Subject!, normalized.RequiredType!, receiver, premises);
                     for (var e = 0; e < clause.EffectBounds.Count; e++)
                     {
-                        if (!(clause.EffectBounds[e].Bound == EffectBoundKind.Confined ? available.Confined : available.Preserves))
+                        var bound = clause.EffectBounds[e];
+                        if (this.effectBoundRejections?.ContainsKey(bound) == true || IsRecovery(bound, out _))
+                        {
+                            continue; // An invalid item declares no obligation for the implementation.
+                        }
+
+                        if (!(bound.Bound == EffectBoundKind.Confined ? available.Confined : available.Preserves))
                         {
                             proof = CombineProof(proof, ConstraintProof.Refuted, true);
-                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, clause.EffectBounds[e], requirement));
+                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, bound, requirement));
                         }
                     }
                 }

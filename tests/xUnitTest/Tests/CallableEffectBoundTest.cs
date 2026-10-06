@@ -201,6 +201,30 @@ public class CallableEffectBoundTest
     }
 
     [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(true, true)]
+    public void AnInvalidImplementationBoundAddsNoCompatibilityObligation(bool invalid, bool independent)
+    {
+        const string Header = "contract Runner\n    func run<F>(self: ref/Self, callback: F) -> i32\n        F is Callable<owner, () -> i32>\n" +
+            "struct Worker\n    Self is Runner\n    public func run<F>(self: ref/Self, callback: F) -> i32\n        F is Callable<owner, () -> i32>\n";
+        var source = Header + (invalid ? "            effect preserves results\n" : string.Empty) +
+            "        return callback@move()\npublic func main() => ()\n" + (independent ? "func broken() -> i32 => true\n" : string.Empty);
+        var records = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal((invalid ? 1 : 0) + (independent ? 1 : 0), records.Length);
+        if (invalid)
+        {
+            var bound = Assert.Single(records, static record => record.Code == "InvalidEffectBound_Kd");
+            Assert.Contains("ref or uniq", bound.Label);
+        }
+
+        if (independent)
+        {
+            Assert.Single(records, static record => record.Code == "TypeMismatch_Kd");
+        }
+    }
+
+    [Theory]
     [InlineData("apply<G>", true)]
     [InlineData("apply", true)]
     [InlineData("apply<G>", false)]
