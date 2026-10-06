@@ -219,8 +219,17 @@ public sealed partial class OwnershipAnalysis
             result = this.Temporary(source, projection: projection);
             if (allowMove && acquisition is null && this.body.Places[result].Acquisition != AcquisitionKind.Copy)
             {
-                // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move.
-                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                // SPEC 3.5: a bare element never Moves; write values[i]@move or pair.0@move. A bare element storing an exclusive
+                // reference, the exclusive case of a pair element included, would Reborrow (SPEC 15.1.5), which element paths do not
+                // support yet (STATUS), as the concrete element does not.
+                if (this.body.Places[result].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
+                {
+                    this.Unsupported(source);
+                }
+                else
+                {
+                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                }
             }
 
             if (allowMove && acquisition == AcquisitionKind.Move && this.body.Places[result].Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove &&

@@ -12,6 +12,14 @@ internal sealed partial class BodyLowering
     private int[] elementOutputs = [];
     private bool hasElements;
 
+    // SPEC 8.10, 13.5.5.1: the Place an assignment writes: its left side, below a pair layer's follow that selects the operand
+    // itself in an owner case or instance; the reference cases write through WriteReferent and never reach an element write.
+    private static Koto WrittenPlace(Koto left)
+    {
+        left = KotoHelper.UnwrapParentheses(left);
+        return left is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair ? KotoHelper.UnwrapParentheses(pair.Left) : left;
+    }
+
     private static EmissionOperand StringPlaceOperand(OwnershipBody body, int place, int loan)
         => loan >= 0 && body.ComparisonLoans[loan].Projection is >= 0 and var projection
             ? new(EmissionOperandKind.ElementAddress, body.Projections[projection].Operation)
@@ -381,7 +389,7 @@ internal sealed partial class BodyLowering
             last = value;
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
-            !ReferenceEquals(KotoHelper.UnwrapParentheses(assignment.Left), target) || !ReferenceEquals(SignatureType(this, source.BoundType), BoundType.Unit) ||
+            !ReferenceEquals(WrittenPlace(assignment.Left), target) || !ReferenceEquals(SignatureType(this, source.BoundType), BoundType.Unit) ||
             !ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right)) ||
             (IsScalar(element) && value >= body.ComparisonLoans[plan.Loan].Read))
         {

@@ -943,8 +943,9 @@ public sealed partial class Binding
             else if (actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source))
             {
                 // SPEC 3.5, 10.1: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not acquired by value, and
-                // the candidate that needs the Copy is inapplicable.
-                if (this.ProveCopy(actual, source) != ConstraintProof.Proven)
+                // the candidate that needs the Copy is inapplicable. A bare pair-layer Place whose every admitted case Copies or
+                // Reborrows is acquired by each case as its case Type is (SPEC 8.9, 8.10).
+                if (this.ProveCopy(actual, source) != ConstraintProof.Proven && !(TryPairLayer(actual, out _, out _) && this.BareAcquisition(actual, source, out _) == SemanticsMask.None))
                 {
                     this.transferRequired = true;
                     this.acquisitionPlace = source;

@@ -82,8 +82,9 @@ public sealed partial class Binding
         return admitted != SemanticsMask.None && (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0 ? admitted : SemanticsMask.None;
     }
 
-    // SPEC 13.5.5.1: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability,
-    // uniq grants Write also through a let slot but never through a shared path, and ref grants Read only.
+    // SPEC 13.5.5.1: the weakest capability over the admitted cases. Owner inherits the operand Place's own capability (a write
+    // needs an assignable Place, such as an inline element of a writable root), uniq grants Write also through a let slot but
+    // never through a shared path, and ref grants Read only.
     private bool PairCapability(ConversionKoto followed, BindingScope? scope, bool exclusive)
         => this.PairCapability(followed.Left, this.PairAdmitted(followed), scope, exclusive);
 
@@ -96,7 +97,7 @@ public sealed partial class Binding
 
         return (admitted & SemanticsMask.Ref) == 0 &&
             ((admitted & SemanticsMask.Uniq) == 0 || !ReachedThroughShared(operand)) &&
-            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(operand) : this.BorrowablePlace(operand, scope, true)));
+            ((admitted & SemanticsMask.Owner) == 0 || (scope is null ? Writable(operand) || ElementAccess.WritableRoot(operand) is not null : this.BorrowablePlace(operand, scope, true)));
     }
 
     // SPEC 7.3, 13.5.5.1: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
