@@ -41,6 +41,28 @@ public sealed partial class Binding
 {
     private ClosureEffects? closureEffects;
 
+    // Header probes supply omitted inputs without committing parameter bindings or visiting the body. A written
+    // result's elision depends on those inputs, so it is rebound for each fixed context and at commitment.
+    private FunctionKoto? closureHeader;
+    private BoundType? closureHeaderInputs;
+
+    private BoundType? ClosureResultType(FunctionKoto function, BoundType inputs, BindingScope scope)
+    {
+        var previous = this.closureHeader;
+        var previousInputs = this.closureHeaderInputs;
+        this.closureHeader = function;
+        this.closureHeaderInputs = inputs;
+        try
+        {
+            return function.ReturnType is { } result ? this.BindType(result, scope) : null;
+        }
+        finally
+        {
+            this.closureHeader = previous;
+            this.closureHeaderInputs = previousInputs;
+        }
+    }
+
     // Set only while TryCandidate asks whether a rejected candidate applies once its closure argument's minimum receiver is permitted.
     private bool permitClosureReceivers;
 
@@ -320,14 +342,14 @@ public sealed partial class Binding
                 types[i] = parameter;
             }
 
-            var result = function.ReturnType is { } written ? this.BindType(written, scope) : restated.Components[1];
+            var result = function.ReturnType is not null ? this.ClosureResultType(function, inputs, scope) : restated.Components[1];
             if (result is null)
             {
                 return this.Fail(function, BindingFailure.TypeMismatch);
             }
 
             var parameters = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]), expected);
+            return this.FailMismatch(function, function, this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType)), expected);
         }
         finally
         {
@@ -337,7 +359,7 @@ public sealed partial class Binding
 
     private bool ClosureSignatureFits(FunctionKoto function, BoundType expected, bool openResult = false)
     {
-        if (expected.Kind != BoundTypeKind.Function)
+        if (expected.Kind != BoundTypeKind.Function || ResultModeOf(function.ReturnType) != expected.ResultMode)
         {
             return false;
         }
@@ -366,7 +388,7 @@ public sealed partial class Binding
             }
         }
 
-        return openResult || function.ReturnType is null || ReferenceEquals(this.BindType(function.ReturnType, scope), expected.Components[1]);
+        return openResult || function.ReturnType is null || ReferenceEquals(this.ClosureResultType(function, inputs, scope), expected.Components[1]);
     }
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
@@ -523,13 +545,16 @@ public sealed partial class Binding
         var symbol = this.symbols[function];
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
-        symbol.Type = function.ReturnType is { } annotation ? this.BindType(annotation, scope) : openResult ? null : expected?.Components[1];
         symbol.HeaderBound = true;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             this.symbols[function.Parameters[i]].Type = expected is not null && function.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType } inferred
                 ? Complete(inferred, expected.Components[0].Components[i]) : this.BindType(function.Parameters[i].Type, scope);
         }
+
+        symbol.Type = function.ReturnType is { } annotation
+            ? expected is null ? this.BindType(annotation, scope) : this.ClosureResultType(function, expected.Components[0], scope)
+            : openResult ? null : expected?.Components[1];
 
         if (function.Captures is { } captures)
         {
@@ -591,6 +616,11 @@ public sealed partial class Binding
         {
             var result = this.RequireType(expression, scope, symbol.Type);
             symbol.Type ??= result;
+            if (function.ReturnType is PlaceResultKoto place && !ReferenceEquals(result, BoundType.Never))
+            {
+                var placeItem = expression is CodeBlockKoto { IsExpressionBody: true, Items.Count: 1 } single ? single.Items[0] : expression;
+                this.CheckPlaceResultOperand(placeItem, place, ReferenceEquals(placeItem, expression) ? function : expression);
+            }
         }
 
         if (symbol.Type is null)
@@ -612,7 +642,7 @@ public sealed partial class Binding
             }
 
             var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type]);
+            plan.Signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type], resultMode: ResultModeOf(function.ReturnType));
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;

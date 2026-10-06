@@ -280,7 +280,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Kind != b.Kind || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression, aBinder, bBinder) || a.Components.Count != b.Components.Count || a.LengthArguments.Length != b.LengthArguments.Length)
+        if (a.Kind != b.Kind || a.ResultMode != b.ResultMode || a.Semantics != b.Semantics || a.Length != b.Length || !SameLengthSignature(a.LengthExpression, b.LengthExpression, aBinder, bBinder) || a.Components.Count != b.Components.Count || a.LengthArguments.Length != b.LengthArguments.Length)
         {
             return false;
         }
@@ -1092,8 +1092,9 @@ public sealed partial class Binding
 
     private void BindHeader(BindingSymbol symbol)
     {
-        if (symbol.HeaderBound || symbol.Resolving)
+        if (symbol.HeaderBound || symbol.Resolving || symbol.Declaration is FunctionKoto { IsAnonymous: true })
         {
+            // An anonymous header belongs to its fixed expression context, including on a later binding pass.
             return;
         }
 

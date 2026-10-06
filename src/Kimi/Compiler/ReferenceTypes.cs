@@ -77,7 +77,7 @@ internal static class ReferenceTypes
         }
 
         // Primitive Types are singletons distinguished by name only, so two different instances never share storage.
-        if (formal.Kind == BoundTypeKind.Primitive || formal.Kind != actual.Kind || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
+        if (formal.Kind == BoundTypeKind.Primitive || formal.Kind != actual.Kind || formal.ResultMode != actual.ResultMode || formal.Symbol != actual.Symbol || formal.Semantics != actual.Semantics ||
             formal.Length != actual.Length || !ReferenceEquals(formal.LengthExpression, actual.LengthExpression) ||
             !formal.LengthArguments.AsSpan().SequenceEqual(actual.LengthArguments) || formal.Components.Count != actual.Components.Count)
         {

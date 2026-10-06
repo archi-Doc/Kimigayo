@@ -256,6 +256,12 @@ public sealed partial class Binding
         }
 
         var result = signature.Components[1];
+        if (PlaceExpected(signature.ResultMode, expected) is { } stored)
+        {
+            return this.FitsStructurallyAt(result.Components[0], this.ContractType(stored, scope), call)
+                ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+        }
+
         return expected is not null && !this.FitsStructurallyAt(result, expected, call) && this.ExpectedAdaptation(call, result, expected, recordPair: false) is null
             ? CandidateApplicability.Inapplicable : CandidateApplicability.Applicable;
     }

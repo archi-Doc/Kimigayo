@@ -648,12 +648,12 @@ public sealed partial class Binding
 
             var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));
             var declaredSignature = signature;
-            signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result]);
+            signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result], resultMode: signature.ResultMode);
             call.ValueCallStorage ??= new();
             call.ValueCallStorage.Set(call.Method, signature, operations.AsSpan(0, count), declaredSignature);
             call.ValueCallStorage.ReceiverKind = receiver;
             call.IsValueCall = true;
-            return Complete(call, signature.Components[1]);
+            return Complete(call, signature.ResultMode == FunctionResultMode.Value ? result : result.Components[0]);
         }
         finally
         {

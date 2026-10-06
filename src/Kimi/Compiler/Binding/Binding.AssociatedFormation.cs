@@ -188,11 +188,11 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (node is FunctionKoto or PropertyAccessorKoto)
+            if (node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto)
             {
                 for (var i = 0; i < InputCount(node); i++)
                 {
-                    if (BoundInputType(node, i) is { } input && this.ProvesBorrowedTypeLifetime(input, type, outer, use))
+                    if (this.BoundInputType(node, i) is { } input && this.ProvesBorrowedTypeLifetime(input, type, outer, use))
                     {
                         return true;
                     }

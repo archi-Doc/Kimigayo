@@ -113,16 +113,23 @@ public class OriginRelationDiagnosticTest
         Assert.EndsWith("@ref", Text(source, error.Span), StringComparison.Ordinal);
     }
 
-    // SPEC 15.6.5: only a finite Origin that must outlive a fixed one is Refuted. An annotated local's omitted Origin is an inferred
-    // region, so a borrow fitted to it is a chain between body Origins, the located limit, never a Language record; it was "requires
-    // the borrow x@ref outlives the omitted Origin of Inference, which is false" (review of 2549bce2).
+    // SPEC 15.4.4: the local's initializer completes its omitted Origin before a later anonymous header reads it.
+    // Eager declaration-header binding used to retain the unresolved local slot and report UnsupportedOwnership.
     [Fact]
-    public void AnInferredLocalRegionIsNeverRefuted()
+    public void AnAnnotatedLocalOriginCompletesBeforeTheClosureHeader()
     {
         var source = "public func main() -> ()\n    let x: i32 = 4\n    let r: ref/i32 = x@ref\n    let f = func (n: ref/i32 during r) -> i32 => n@follow\n    require f(x@ref) == 4 else => $abort(\"v5\")\n";
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.NotEmpty(errors);
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsupportedOwnership_Kd), x.Code));
+        Assert.Empty(errors);
+        ScalarEmissionTest.EmitFixture("ClosureCompletedLocalOrigin", source, string.Empty);
+    }
+
+    [Fact]
+    public void ACompletedLocalOriginStillKeepsTheArgumentLoan()
+    {
+        const string Source = "func change(n: uniq/i32) -> i32\n    n@follow = 7\n    return 0\npublic func main() -> ()\n    var x: i32 = 4\n    let r: ref/i32 = x@ref\n    let f = func (n: ref/i32 during r, ignored: i32) -> i32 => n@follow\n    let value = f(x@ref, change(x@uniq))\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
     // SPEC 7.6.1, 15.6.1: an anonymous function has no origin clauses, so Advice for its input writes the Origin on that input.

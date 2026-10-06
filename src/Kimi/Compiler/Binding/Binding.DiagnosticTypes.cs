@@ -163,7 +163,7 @@ public sealed partial class Binding
             if (current.Kind == BoundTypeKind.Function && current.Components.Count == 2)
             {
                 Append(current.Components[0]);
-                text.Append(" -> ");
+                text.Append(current.ResultMode == FunctionResultMode.Value ? " -> " : " -> place ");
                 Append(current.Components[1]);
                 return;
             }

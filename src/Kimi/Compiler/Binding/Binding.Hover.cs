@@ -555,7 +555,7 @@ public sealed partial class Binding
             }
 
             var text = new StringBuilder("type;");
-            text.Append((int)type.Kind).Append(',').Append((int)type.Semantics).Append(',').Append(type.Length).Append(';');
+            text.Append((int)type.Kind).Append(',').Append((int)type.Semantics).Append(',').Append((int)type.ResultMode).Append(',').Append(type.Length).Append(';');
             AppendKey(text, type.Name);
             text.Append(type.Components.Count).Append(',').Append(type.OriginArguments.Count).Append(',').Append(type.LengthArguments.Length).Append(';');
             var parts = new HoverKey[4 + type.Components.Count + type.OriginArguments.Count + type.LengthArguments.Length];

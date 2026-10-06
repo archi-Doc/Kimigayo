@@ -33,9 +33,6 @@ public sealed partial class Binding
 
     private static string InputName(Koto owner, int index) => owner is FunctionKoto f ? f.Parameters[index].InternalName : index == 0 ? "self" : "value";
 
-    private static BoundType? BoundInputType(Koto owner, int index)
-        => owner is PropertyAccessorKoto accessor ? index == 0 ? Accessor(accessor).Receiver : Accessor(accessor).Input : InputType(owner, index)?.BoundType;
-
     private static int CompareOrigins(BoundOrigin a, BoundOrigin b)
     {
         if (ReferenceEquals(a, b))
@@ -146,6 +143,11 @@ public sealed partial class Binding
 
         return false;
     }
+
+    private BoundType? BoundInputType(Koto owner, int index)
+        => ReferenceEquals(owner, this.closureHeader) && InputType(owner, index) is SyntaxFormKoto { Akind: KotoKind.InferredType }
+            ? this.closureHeaderInputs!.Components[index]
+            : owner is PropertyAccessorKoto accessor ? index == 0 ? Accessor(accessor).Receiver : Accessor(accessor).Input : InputType(owner, index)?.BoundType;
 
     private BoundOrigin OriginAtom(Koto binder, OriginKind kind, int slot, string? name = null)
     {
@@ -608,7 +610,7 @@ public sealed partial class Binding
             var inputCount = InputCount(context.Owner);
             for (var i = 0; i < inputCount; i++)
             {
-                var type = BoundInputType(context.Owner, i);
+                var type = this.BoundInputType(context.Owner, i);
                 if (type?.Origin is not { } input || (!IsBorrow(type.Semantics) && type.Kind != BoundTypeKind.SemanticsApplication))
                 {
                     continue;
@@ -636,7 +638,7 @@ public sealed partial class Binding
                 {
                     for (var i = 0; i < inputCount; i++)
                     {
-                        if (BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) != ConstraintProof.Proven)
+                        if (this.BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) != ConstraintProof.Proven)
                         {
                             this.Fail(use, BindingFailure.MissingOrigin);
                             return null;
@@ -662,7 +664,7 @@ public sealed partial class Binding
             var count = InputCount(context.Owner);
             for (var i = 0; i < count; i++)
             {
-                var input = BoundInputType(context.Owner, i);
+                var input = this.BoundInputType(context.Owner, i);
                 if (input?.Kind == BoundTypeKind.SemanticsApplication)
                 {
                     input = input.Components[0];

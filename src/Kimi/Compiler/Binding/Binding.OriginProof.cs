@@ -235,11 +235,13 @@ public sealed partial class Binding
                     return true;
                 }
 
-                if (node is FunctionKoto or PropertyAccessorKoto)
+                if (node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto)
                 {
+                    // A Function Type quantifies well-formed inputs just as a declaration does. Their intrinsic
+                    // relations are assumptions only while checking that signature, never in the enclosing body.
                     for (var i = 0; i < InputCount(node); i++)
                     {
-                        if (BoundInputType(node, i) is { } input && this.ProvesTypeOriginPremise(input, longer, shorter, use))
+                        if (this.BoundInputType(node, i) is { } input && this.ProvesTypeOriginPremise(input, longer, shorter, use))
                         {
                             return true;
                         }

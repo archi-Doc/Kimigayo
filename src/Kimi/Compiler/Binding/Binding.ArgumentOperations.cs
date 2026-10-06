@@ -341,8 +341,6 @@ public sealed partial class Binding
         };
     }
 
-    // SPEC 7.1.1: whether the expression is the operand of a return, or the single-item body, of a function with a
-    // place uniq/T result; only there does an owned Place adapt to an exclusive expectation without @uniq.
     // An Origin that a function's signature introduces, over its receiver or parameters, rather than a body-local borrow.
     private static bool SignatureOrigin(BoundOrigin origin)
     {
@@ -361,8 +359,6 @@ public sealed partial class Binding
 
         return false;
     }
-
-    private static bool IsExclusivePlaceResultSource(Koto node) => ResultFunction(node) is { ReturnType: PlaceResultKoto { IsExclusive: true } };
 
     // The function whose result the expression is: the operand of a return, or the single-item body.
     private static FunctionKoto? ResultFunction(Koto node)
@@ -521,12 +517,16 @@ public sealed partial class Binding
             return null; // SPEC 10.2: a transferred reference is not corrected by a later adaptation.
         }
 
-        if (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } &&
-            actual.Semantics == SemanticsKind.Owner && Compatible(actual, expected.Components[0]) && IsBarePlace(node) &&
-            IsExclusivePlaceResultSource(node) && PathAuthority(node) != SemanticsKind.Ref)
+        if (expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
+            this.FitsStructurallyAt(actual, expected.Components[0], node) && IsBarePlace(node) &&
+            ResultFunction(node) is { ReturnType: PlaceResultKoto } &&
+            (expected.Semantics == SemanticsKind.Ref || PathAuthority(node) != SemanticsKind.Ref))
         {
-            // SPEC 7.1.1: the operand of a place uniq/T result designates a Place that is borrowed exclusively.
-            return new(ExpectedAdaptationKind.ExclusiveBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [actual], origin: this.PlaceOrigin(node)));
+            // SPEC 7.1.1: publish the complete slot, even when it stores a reference. Acquiring its stored reference
+            // would lose one layer and conflate the Place Origin with the stored value's independent Origins.
+            return new(
+                expected.Semantics == SemanticsKind.Uniq ? ExpectedAdaptationKind.ExclusiveBorrow : ExpectedAdaptationKind.SharedBorrow,
+                this.InternType(BoundTypeKind.Semantics, null, expected.Semantics, [actual], origin: this.PlaceOrigin(node)));
         }
 
         if (!this.AdaptInput(node, expected, actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||

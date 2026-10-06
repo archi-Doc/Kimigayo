@@ -1053,6 +1053,12 @@ public sealed class ControlFlowAnalysis
                 }
 
                 break;
+            case GenericsKoto generic:
+                // Bound Type/length arguments, including Origin names, are compile-time syntax. Only the
+                // referenced expression is evaluated; traversing the arguments invents runtime pending values.
+                flow = generic.Identifier is { } identifier ? this.Visit(identifier) : new(true, ControlFlowType.Unit);
+                flow = flow with { Type = this.types.GetExpressionType(generic) };
+                break;
             default:
                 flow = this.VisitChildSequence(node);
                 flow = flow with { Type = this.types.GetExpressionType(node) ?? this.InferLocalType(node) };

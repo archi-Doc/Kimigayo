@@ -6,6 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    internal static FunctionResultMode ResultModeOf(Koto? result)
+        => result is PlaceResultKoto place ? place.IsExclusive ? FunctionResultMode.PlaceUniq : FunctionResultMode.PlaceRef : FunctionResultMode.Value;
+
+    private static BoundType? PlaceExpected(FunctionResultMode mode, BoundType? expected)
+        => mode == FunctionResultMode.Value ? null : expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? expected.Components[0] : expected;
+
     // SPEC 10.6: the last reference slot that only per-call Origins of S would satisfy, as (Type parameter, parameters of S as bits,
     // whether S's own positions bind every slot, so that a wrapper's call infers them), and why the last candidate's slots did not bind
     // from S, with the slot when one is known; BindFunctionReference clears both before it checks a candidate and reads them for a single one.
@@ -253,7 +259,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (depth > 32 || written.Kind != binding.Kind || !ReferenceEquals(written.Symbol, binding.Symbol) || written.Semantics != binding.Semantics ||
+        if (depth > 32 || written.Kind != binding.Kind || written.ResultMode != binding.ResultMode || !ReferenceEquals(written.Symbol, binding.Symbol) || written.Semantics != binding.Semantics ||
             written.Length != binding.Length || !ReferenceEquals(written.LengthExpression, binding.LengthExpression) || !ReferenceEquals(written.ClosureContext, binding.ClosureContext) || !written.LengthArguments.AsSpan().SequenceEqual(binding.LengthArguments) ||
             written.Components.Count != binding.Components.Count || written.OriginArguments.Count != binding.OriginArguments.Count || !Omitted(written.Origin, binding.Origin))
         {
@@ -359,7 +365,7 @@ public sealed partial class Binding
             }
 
             return failed || !changed ? type
-                : this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+                : this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
         }
         finally
         {
@@ -1078,6 +1084,11 @@ public sealed partial class Binding
     // `container` with `arguments` bound, or those of the Function Item `item`.
     private bool ContractFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType? container, BoundType? item, BoundType?[]? arguments, Span<BoundArgumentOperation> operations, BoundOrigin[] origins, BoundOrigin[] inputs, bool explain = false, BoundLength?[]? lengths = null)
     {
+        if (ResultModeOf(function.ReturnType) != required.ResultMode)
+        {
+            return false;
+        }
+
         var parameters = required.Components[0];
         var generic = function.GenericArguments.Count;
         var inputCount = InputOriginCount(function);
@@ -1160,7 +1171,7 @@ public sealed partial class Binding
             }
 
             var result = this.BindType(function.ReturnType, scope, new(TypePosition.Result, function));
-            return result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result]);
+            return result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType));
         }
         finally
         {

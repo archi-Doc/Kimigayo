@@ -38,6 +38,9 @@ public sealed class BoundCall
     /// <summary>Gets the complete return type after substitution.</summary>
     public BoundType ReturnType { get; private set; } = null!;
 
+    /// <summary>Gets the result category committed with the selected contract.</summary>
+    public FunctionResultMode ResultMode { get; internal set; }
+
     /// <summary>Gets the explicit receiver when member-call syntax supplies it.</summary>
     public Koto? Receiver { get; private set; }
 
@@ -77,6 +80,7 @@ public sealed class BoundCall
     {
         this.Target = target;
         this.ReturnType = result;
+        this.ResultMode = target.Declaration is FunctionKoto function ? Binding.ResultModeOf(function.ReturnType) : FunctionResultMode.Value;
         this.Receiver = receiver;
         this.ConformingType = conformingType;
         this.TupleOperator = false;
@@ -1058,6 +1062,7 @@ public sealed partial class Binding
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
             (call.CallStorage ??= new()).Set(this.CompilerRequirementTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            call.CallStorage.ResultMode = ResultModeOf(selected.ReturnType);
             if (selected.IsRequirement)
             {
                 // A requirement reached through a receiver's Contracts names the reference that supplied it; a comparison
@@ -1066,7 +1071,7 @@ public sealed partial class Binding
                     callee is ComparisonCalleeKoto ? winner.Scope.Owner.BoundSymbol : null;
             }
 
-            if (selected.ReturnType is PlaceResultKoto && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)
+            if (call.CallStorage.ResultMode != FunctionResultMode.Value && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)
             {
                 // SPEC 7.1.1: the call designates the published Place; its Type is the stored Type, and the plan keeps the reference.
                 return Complete(call, published.Components[0]);
@@ -1386,9 +1391,7 @@ public sealed partial class Binding
         // Established input types cannot change; expectations only fill unresolved slots.
         // SPEC 7.1.1, 10.3: a Place result publishes its stored Type; the use position borrows or reads it, so the
         // expectation is compared with the referent and the Place result's own Origin is never matched against it.
-        var placeExpected = function.ReturnType is PlaceResultKoto && expected is not null
-            ? expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? expected.Components[0] : expected
-            : null;
+        var placeExpected = PlaceExpected(ResultModeOf(function.ReturnType), expected);
         var expectedStructure = true; // SPEC 10.8: the slot-free structure of a result that keeps an unsolved slot is still checked.
         if (placeExpected is not null && function.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } placePattern)
         {
@@ -2258,7 +2261,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (pattern.Kind != actual.Kind || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
+        if (pattern.Kind != actual.Kind || pattern.ResultMode != actual.ResultMode || pattern.Symbol != actual.Symbol || pattern.Semantics != actual.Semantics ||
             !(lengths is not null && pattern.Kind == BoundTypeKind.FixedArray ? this.InferLength(pattern, actual, function, lengths) : pattern.Length == actual.Length && ReferenceEquals(pattern.LengthExpression, actual.LengthExpression)) ||
             (!inferOrigins && evidence is null && !ReferenceEquals(pattern.Origin, actual.Origin)) || pattern.OriginArguments.Count != actual.OriginArguments.Count || pattern.Components.Count != actual.Components.Count || pattern.LengthArguments.Length != actual.LengthArguments.Length || (pattern.Components.Count == 0 && pattern.LengthArguments.Length == 0))
         {

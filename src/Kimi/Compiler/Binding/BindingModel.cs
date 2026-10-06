@@ -23,6 +23,14 @@ public enum BindingMode : byte
     Final,
 }
 
+/// <summary>The result category of a Function contract, independent of its physical return Type.</summary>
+public enum FunctionResultMode : byte
+{
+    Value,
+    PlaceRef,
+    PlaceUniq,
+}
+
 /// <summary>Classifies a declaration independently of its syntax spelling.</summary>
 public enum BindingSymbolKind : byte
 {
@@ -319,12 +327,13 @@ public sealed record BoundType : ControlFlowType
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
 
-    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null)
+    internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, FunctionResultMode resultMode = FunctionResultMode.Value)
         : base(name)
     {
         this.Kind = kind;
         this.Symbol = symbol;
         this.Semantics = semantics;
+        this.ResultMode = resultMode;
         this.Components = components ?? [];
         this.Length = length;
         this.Origin = origin;
@@ -384,6 +393,9 @@ public sealed record BoundType : ControlFlowType
     public BindingSymbol? Symbol { get; }
 
     public SemanticsKind Semantics { get; }
+
+    /// <summary>Gets the result category; non-Function Types always use Value.</summary>
+    public FunctionResultMode ResultMode { get; }
 
     public IReadOnlyList<BoundType> Components { get; }
 

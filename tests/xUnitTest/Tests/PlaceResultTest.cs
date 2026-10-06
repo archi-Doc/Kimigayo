@@ -46,8 +46,6 @@ public class PlaceResultTest
     [InlineData("func bad(values: ref/Array<i32>) -> place ref/i32 during values\n    return if true => values[0] else => values[1]", DiagnosticCode.PlaceRequired_Kd)]
     [InlineData("func bad() -> place ref/i32 during static => 42", DiagnosticCode.PlaceRequired_Kd)]
     [InlineData("func make() -> Array<i32> => [1]\nfunc bad() -> place ref/i32 during static\n    return make()[0]", DiagnosticCode.UnsatisfiedOriginRelation_Kd)]
-    [InlineData(First + "let f: (ref/Array<i32>) -> place ref/i32 = first", DiagnosticCode.UnsupportedBinding_Kd)]
-    [InlineData("let g = func (values: ref/Array<i32>) -> place ref/i32 => values[0]", DiagnosticCode.UnsupportedBinding_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -74,19 +72,12 @@ public class PlaceResultTest
     private const string ViaCallable = "func first(values: ref/Array<i32>) -> place ref/i32 during values\n    return values[0]\n\n" +
         "func viaCallable<F>(action: ref/F, values: ref/Array<i32>) -> i32\n    F is Callable<(ref/Array<i32>) -> place ref/i32>\n    return action(values)\n\n";
 
-    // SPEC 7.1.1, 23.3.6.1, 23.3.6.4: a Place result in a Function Type, a Callable signature or an anonymous header is one located
-    // UnsupportedBinding_Kd at that Type; the Callable clause, its function and a call through F rest on it instead of adding
-    // InvalidConstraint_Kd and NotCallable_Kd records (N26a).
     [Theory]
-    [InlineData(ViaCallable + "public func main() -> ()\n    let a: Array<i32> = [3, 4]\n    Console.writeLine(\"\\(first(a@ref))\")\n    let item = first\n    Console.writeLine(\"\\(item(a@ref))\")\n    Console.writeLine(\"\\(viaCallable(first, a@ref))\")\n    let f: (ref/Array<i32>) -> place ref/i32 = first\n    Console.writeLine(\"\\(f(a@ref))\")\n", "place ref/i32", "place ref/i32")]
-    [InlineData(ViaCallable + "public func main() -> ()\n    let values: Array<i32> = [4]\n    require viaCallable(first, values) == 4 else => $abort(\"p\")\n", "place ref/i32", null)]
-    [InlineData("public func main() -> ()\n    let values: Array<i32> = [4, 5]\n    let first = func (v: ref/Array<i32>) -> place ref/i32 => v[0]\n    require first(values@ref) == 4 else => $abort(\"a\")\n", "place ref/i32", null)]
-    public void PlaceResultSignaturesAreOneUnsupportedRecord(string source, string first, string? second)
-    {
-        var errors = DiagnosticCorpus.Check(source).Diagnostics;
-        Assert.All(errors, static x => Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), x.Code));
-        Assert.Equal(second is null ? [first] : [first, second], errors.Select(x => x.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-    }
+    [InlineData(ViaCallable + "public func main() -> ()\n    let a: Array<i32> = [3, 4]\n    Console.writeLine(\"\\(first(a@ref))\")\n    let item = first\n    Console.writeLine(\"\\(item(a@ref))\")\n    Console.writeLine(\"\\(viaCallable(first, a@ref))\")\n    let f: (ref/Array<i32>) -> place ref/i32 = first\n    Console.writeLine(\"\\(f(a@ref))\")\n")]
+    [InlineData(ViaCallable + "public func main() -> ()\n    let values: Array<i32> = [4]\n    require viaCallable(first, values) == 4 else => $abort(\"p\")\n")]
+    [InlineData("public func main() -> ()\n    let values: Array<i32> = [4, 5]\n    let first = func (v: ref/Array<i32>) -> place ref/i32 => v[0]\n    require first(values@ref) == 4 else => $abort(\"a\")\n")]
+    public void PlaceResultSignaturesAreSupported(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
 
     // A misspelled Type name in a Callable clause keeps its MissingName record as the clause's prerequisite.
     [Fact]

@@ -199,7 +199,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var result = this.Temporary(call);
+        var result = plan.Signature.ResultMode == FunctionResultMode.Value ? this.Temporary(call) : this.ReferenceTemporary(call, plan.ReturnType);
         this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
         // An instance's `(T) -> T` returns its substituted T.
         if (this.Concrete(plan.ReturnType) is { } returned && ScalarResult(returned))

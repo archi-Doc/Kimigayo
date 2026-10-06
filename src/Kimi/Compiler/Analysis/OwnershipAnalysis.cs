@@ -993,6 +993,11 @@ public sealed partial class OwnershipAnalysis
         {
             this.Block(unsafeBlock.Body);
         }
+        else if (KotoHelper.UnwrapParentheses(node) is InvocationKoto call && ElementAccess.IsPlaceCall(call))
+        {
+            // SPEC 7.1.1: an unacquired Place statement performs the call but reads and destroys no stored value.
+            this.Call(call);
+        }
         else
         {
             this.Expression(node);

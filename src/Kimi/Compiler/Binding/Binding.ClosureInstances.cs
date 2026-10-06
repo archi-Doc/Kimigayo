@@ -74,7 +74,7 @@ public sealed partial class Binding
             }
 
             return changed || context is not null
-                ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments)
+                ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, context, type.LengthArguments, type.ResultMode)
                 : type;
         }
         finally

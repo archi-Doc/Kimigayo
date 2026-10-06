@@ -27,12 +27,12 @@ internal static class ElementAccess
     // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
     // reference the callee returns, with that reference's capabilities and Origin; its Type is the stored Type.
     internal static bool IsPlaceCall(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { BoundCall.Target.Declaration: FunctionKoto { ReturnType: PlaceResultKoto } };
+        => PlaceCallReference(source) is not null;
 
     // The reference a Place call returns physically (ref/T or uniq/T with the published Origin), or null.
     internal static BoundType? PlaceCallReference(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is InvocationKoto { BoundCall: { } plan } && plan.Target.Declaration is FunctionKoto { ReturnType: PlaceResultKoto } &&
-            plan.ReturnType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } reference ? reference : null;
+        => KotoHelper.UnwrapParentheses(source) is InvocationKoto call ? call.BoundValueCall is { Signature.ResultMode: not FunctionResultMode.Value } value
+            ? value.ReturnType : call.BoundCall is { ResultMode: not FunctionResultMode.Value } plan ? plan.ReturnType : null : null;
 
     // SPEC 4.6.9: a receiver whose selected Place is reached by a dynamic key or through a reference: a Slice, a dynamic
     // Array, a Dictionary or a borrow.

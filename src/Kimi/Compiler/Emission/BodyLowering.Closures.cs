@@ -259,7 +259,7 @@ internal sealed partial class BodyLowering
         var signature = SignatureType(this, plan.Signature);
         var returnType = SignatureType(this, plan.ReturnType);
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
-            !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || IsPartReceiver(body.Places[operation.Input], receiver)) || !ReferenceEquals(call.BoundType, plan.ReturnType) ||
+            !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || IsPartReceiver(body.Places[operation.Input], receiver)) || !ReferenceEquals(ElementAccess.PlaceCallReference(call) ?? call.BoundType, plan.ReturnType) ||
             plan.Arguments.Length != call.ArgumentNodes.Count ||
             !(ScalarTypes.Supports(returnType) || ReferenceTypes.IsPointer(returnType) || ReferenceTypes.IsBorrow(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
         {
