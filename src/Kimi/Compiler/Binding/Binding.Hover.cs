@@ -562,8 +562,10 @@ public sealed partial class Binding
             parts[0] = this.SymbolIdentity(type.Symbol);
             parts[1] = this.OriginIdentity(type.Origin);
             parts[2] = this.LengthIdentity(type.LengthExpression);
-            // Closure storage is not a public Type component. Its declaration still identifies the hidden environment.
-            parts[3] = this.BinderIdentity(type.ClosureContext?.Target.Declaration);
+            // Hidden storage still depends on the complete static context, even when the public signature is unchanged.
+            parts[3] = type.ClosureContext is { } context
+                ? new("closure context", [this.SymbolIdentity(context.Target), this.CallIdentity(context)])
+                : HoverKey.Missing;
             var index = 4;
             foreach (var component in type.Components)
             {

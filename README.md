@@ -367,7 +367,7 @@ Kimi files indent with four spaces, as SPEC §2.2 requires; Enter indents after 
 
 Before compilation, the extension saves the selected source, or all dirty open Kimi files for a project. Untitled files are skipped. VS Code separately saves editors through its task/debug settings; `task.saveBeforeRun: "never"` disables task-wide saving for all extensions.
 
-Tasks need an open folder; diagnostics also work in standalone editor windows. Avoid `%` in native build paths with the verified Windows linker. Completion, hover and navigation are not included. Kimi.exe manages the toolchain.
+Tasks need an open folder; diagnostics and Hover also work in standalone editor windows. Hover shows declarations, contextual Copy/effect information and documentation, including supported links. It uses the diagnostic check's quiet period; while an update is pending, untouched tokens may show labeled previous analysis. New information appears on the next Hover request. Completion and definition navigation are not included. Avoid `%` in native build paths with the verified Windows linker. Kimi.exe manages the toolchain.
 
 VS Code 1.139.1 can emit `DEP0169` (`url.parse()`) from its own CLI marketplace metadata request after installing a local VSIX ([upstream issue](https://github.com/microsoft/vscode/issues/326998)). This is outside the extension; the install script preserves the warning while awaiting an upstream fix.
 

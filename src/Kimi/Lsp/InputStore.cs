@@ -475,4 +475,11 @@ internal sealed class InputStore
             }
         }
     }
+
+    /// <summary>Releases every retained input and dependent after the session has ended.</summary>
+    internal void Clear()
+    {
+        this.entries.Clear();
+        Volatile.Write(ref this.changedAfterBase, ImmutableHashSet<InputKey>.Empty);
+    }
 }

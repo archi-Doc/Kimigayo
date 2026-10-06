@@ -147,6 +147,19 @@ internal sealed partial class LspSession : IDisposable
 
         this.documents.Clear();
         this.documentsByUri.Clear();
+        this.units.Clear();
+        this.projects.Clear();
+        this.contributors.Clear();
+        this.sent.Clear();
+        this.repairs.Clear();
+        this.contributions.Clear();
+        this.orderedContributions.Clear();
+        this.changedReports.Clear();
+        this.undeterminedOwners.Clear();
+        this.hoverParticipants.Clear();
+        this.hoverTestDecisions.Clear();
+        this.discovery = null;
+        this.store.Clear();
     }
 
     /// <summary>Starts the pending check when its deadline has passed and the worker is free (SPEC 23.4.6).</summary>

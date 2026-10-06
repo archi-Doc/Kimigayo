@@ -9,6 +9,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--hover")
+        {
+            HoverMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--view-plans")
         {
             CompilerPlanMeasurements.Run(views: true);

@@ -134,6 +134,47 @@ suite('Kimi extension integration', () => {
     assert.equal(errors.length, 1, errors.join('\n'));
     assert.ok(errors.some(error => error.includes('Could not start') && error.includes('invalid.exe')));
   });
+  test('shows server Hover Markdown and opens its mapped source-relative link without trusting commands', async function () {
+    const server = process.env.KIMI_TEST_SERVER_PATH;
+    if (!server) {
+      this.skip();
+    }
+    await configure(server!);
+    const file = path.join(root, 'Hover.kimi');
+    const guide = path.join(root, 'guide #%.md');
+    await writeFile(guide, '# Intro\n\nGuide body.\n');
+    await writeFile(file, '/// See [guide](guide%20%23%25.md#intro) and [blocked](command:run).\nstruct Sample\npublic func main() => ()\n');
+    const uri = vscode.Uri.file(file);
+    await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(uri));
+    let hover: vscode.Hover | undefined;
+    const expires = Date.now() + 15000;
+    while (Date.now() < expires) {
+      const values = await vscode.commands.executeCommand<vscode.Hover[]>('vscode.executeHoverProvider', uri, new vscode.Position(1, 8));
+      hover = values?.[0];
+      if (hover) {
+        break;
+      }
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    assert.ok(hover, 'No compiler Hover reached VS Code');
+    assert.ok(hover.range?.isEqual(new vscode.Range(1, 7, 1, 13)), JSON.stringify(hover.range));
+    const contents = hover.contents[0];
+    assert.ok(contents instanceof vscode.MarkdownString);
+    assert.ok(contents.value.includes('```kimi\nstruct Sample\n```'), contents.value);
+    assert.ok(contents.value.includes('Copy: No'), contents.value);
+    assert.ok(!contents.isTrusted, 'Compiler documentation must not enable trusted Markdown execution');
+    assert.ok(!contents.value.includes('command:run'), contents.value);
+    const match = contents.value.match(/\[guide\]\(<([^>]+)>\)/);
+    assert.ok(match, contents.value);
+    const destination = vscode.Uri.parse(match[1]);
+    assert.equal(destination.scheme, 'file');
+    assert.equal(destination.fsPath, vscode.Uri.file(guide).fsPath);
+    assert.equal(destination.fragment, 'intro');
+    await vscode.commands.executeCommand('vscode.open', destination);
+    assert.equal(vscode.window.activeTextEditor?.document.uri.fsPath, vscode.Uri.file(guide).fsPath);
+    await vscode.commands.executeCommand('workbench.action.closeAllEditors');
+    assert.deepEqual(errors, []);
+  });
   test('recovers automatically after settings changes and publishes and clears diagnostics', async function () {
     const server = process.env.KIMI_TEST_SERVER_PATH;
     if (!server) {

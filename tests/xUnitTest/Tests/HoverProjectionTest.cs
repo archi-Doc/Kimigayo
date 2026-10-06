@@ -5,6 +5,7 @@ using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Documentation;
 using Kimi.Compiler.Parsing;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -59,6 +60,34 @@ public sealed class HoverProjectionTest
         Assert.Same(name, At(snapshot, callStart + 4));
         Assert.Equal(-1, Document(snapshot).Find(callStart + 5));
         Assert.Equal(-1, Document(snapshot).Find(callStart + 7));
+    }
+
+    [Fact]
+    public void HiddenClosureContextsKeepLengthSubstitutionsInAgreement()
+    {
+        const string text = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n    return action(value)\nfunc inspect<T>(value: T) => ()\nfunc main()\n    _ = identity([1, 2])\n    _ = identity([3])\n    inspect(7)\n";
+
+        HoverInfo ProjectContext(int index)
+        {
+            var compilation = Create(text);
+            Assert.True(compilation.Bind().IsComplete);
+            var nodes = KotoTree.Walk(compilation.Kotonoha.RootKoto).ToArray();
+            var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous).BoundClosure!.EnvironmentType!;
+            var calls = nodes.OfType<InvocationKoto>().Where(static x => x.BoundCall?.Target.Name == "identity").Select(static x => x.BoundCall!).ToArray();
+            var closed = compilation.Binding.InstantiateStorageType(closure, calls[index])!;
+            Assert.Empty(closed.Components); // The varying length is only in the hidden instantiation context.
+            var inspect = Assert.Single(nodes.OfType<InvocationKoto>(), static x => x.BoundCall?.Target.Name == "inspect");
+            var selected = inspect.BoundCall!;
+            selected.Set(selected.Target, selected.ReturnType, null, [0], [closed]);
+            return At(compilation.Binding.CreateHoverSnapshot(), text.LastIndexOf("inspect(", StringComparison.Ordinal));
+        }
+
+        var first = ProjectContext(0);
+        var same = ProjectContext(0);
+        var different = ProjectContext(1);
+        Assert.Equal(first.Use, different.Use);
+        Assert.True(new HoverAgreement().Equal(new(default, first), new(default, same)));
+        Assert.False(new HoverAgreement().Equal(new(default, first), new(default, different)));
     }
 
     [Fact]
