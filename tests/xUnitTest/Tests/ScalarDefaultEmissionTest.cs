@@ -242,7 +242,6 @@ public class ScalarDefaultEmissionTest
 
     [Theory]
     [InlineData("func f(x: i32 = (label scope: do\n    let n = \"a\"\n    exit to scope 1\n)) => ()\nf(3)")]
-    [InlineData("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (label scope: do\n    let n = helper(\"a\")\n    exit to scope n\n)) => ()\nf(3)")]
     public void SuppliedDefaultsStillRejectUnsupportedLocalEffects(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -251,11 +250,12 @@ public class ScalarDefaultEmissionTest
     }
 
     [Fact]
-    public void UnexecutedDefaultArmStillRequiresSupportedEffects()
+    public void UnexecutedDefaultArmStillRejectsPreparedMoves()
     {
-        // SPEC 7.2.3: every default is checked at declaration time; a string-argument call is still unsupported.
-        var c = MinimalEmissionTest.Analyze("func helper(s: string) -> i32 => 1\nfunc f(x: i32 = (if true => 1 else => helper(\"a\"))) => ()\nf(3)");
-        Assert.True(c.Binding.Result.IsComplete);
+        // SPEC 7.2.3: every default is checked at declaration time, even a branch that never executes.
+        var c = MinimalEmissionTest.Analyze("func helper(s: string) -> i32 => 1\nfunc f(s: string, x: i32 = (if true => 1 else => helper(s@move))) => ()\nf(\"a\", 3)");
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -378,7 +378,6 @@ public class ScalarDefaultEmissionTest
 
     [Theory]
     [InlineData("func f(x: string, y: string = x) => ()\nf(\"a\", \"b\")")]
-    [InlineData("func helper(r: ref/i32) -> i32 => 1\nfunc f(x: i32, y: i32 = helper(x@ref)) => ()\nf(2, 3)")]
     public void UnsupportedDefaultBodiesRemainRejectedEvenWhenSupplied(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

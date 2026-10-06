@@ -193,19 +193,6 @@ internal sealed partial class BodyLowering
             }
         }
 
-        // Defaults in this subset contain no calls. Cache the following call once; receiver and prepared-argument
-        // borrow checks then validate against its explicit acquired argument slots, in every body.
-        Grow(ref this.elementNextCalls, body.Operations.Count);
-        var nextCall = -1;
-        for (var i = body.Operations.Count - 1; i >= 0; i--)
-        {
-            this.elementNextCalls[i] = nextCall;
-            if (body.Operations[i].Kind == OwnershipOperationKind.Call)
-            {
-                nextCall = i;
-            }
-        }
-
         if (!this.hasElements && !preparedCopies)
         {
             return body.ElementUpdates.Count == 0 || Fail("Element updates require projection plans.", out failure);

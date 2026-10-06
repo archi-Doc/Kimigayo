@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>The executable default-expression subset: scalar computations, and erased common Function values whose
+/// <summary>The executable default-expression subset: scalar and string computations, and erased common Function values whose
 /// environments retain no Loan of a prepared argument.</summary>
 internal static class ScalarDefaults
 {
@@ -59,16 +59,16 @@ internal static class ScalarDefaults
     /// <returns>Whether lowering delivers the default.</returns>
     internal static bool SupportsDelivered(BoundType? type) => SupportsResult(type) || IsErasedResult(type);
 
-    /// <summary>Gets whether a default supplies a value of this Type to its parameter: a Scalar or Unit, which no Loan can escape with.</summary>
+    /// <summary>Gets whether a default supplies a Scalar, Unit or owned string, none of which retains a Loan of a prepared argument.</summary>
     /// <param name="type">The parameter Type.</param>
     /// <returns>Whether the Type is a supported default result.</returns>
-    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit);
+    internal static bool SupportsResult(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String);
 
     /// <summary>Gets whether a default expression may compute or read a value of this Type: a supported result, or a safe
     /// reference to one, such as a binding of a shared Subject (SPEC 15.1.6).</summary>
     /// <param name="type">The expression Type.</param>
     /// <returns>Whether the Type is readable inside a default.</returns>
-    internal static bool SupportsValue(BoundType? type) => SupportsResult(type) ||
+    internal static bool SupportsValue(BoundType? type) => ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
         (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } && SupportsValue(type.Components[0]));
 
     internal static bool SupportsPatternValue(BoundType? type)
@@ -98,6 +98,8 @@ internal static class ScalarDefaults
 
         return true;
     }
+
+    private static bool SupportsExpressionType(BoundType? type) => SupportsValue(type) || ReferenceEquals(type, BoundType.String) || ReferenceTypes.IsString(type);
 
     private static bool IsErasedResult(BoundType? type) => type is { Kind: BoundTypeKind.Function, ContainsParameter: false };
 
@@ -176,14 +178,14 @@ internal static class ScalarDefaults
     private static bool SupportsExpression(Koto expression, FunctionKoto function, int parameterIndex)
     {
         if (expression.AttributeChain is not null || expression.BindingState != BindingState.Resolved ||
-            (!SupportsValue(expression.BoundType) && !ReferenceEquals(expression.BoundType, BoundType.Never)))
+            (!SupportsExpressionType(expression.BoundType) && !ReferenceEquals(expression.BoundType, BoundType.Never)))
         {
             return false;
         }
 
         return expression switch
         {
-            NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto => true,
+            NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto or StringLiteralKoto => true,
             UnitLiteralKoto or TupleLiteralKoto { Elements.Count: 0 } or TupleTypeKoto { ElementNodes.Count: 0 } => true,
             IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter } symbol } =>
                 ReferenceEquals(symbol.Scope.Owner, function) && symbol.Slot < parameterIndex,
@@ -207,6 +209,8 @@ internal static class ScalarDefaults
             ConversionKoto conversion when conversion.ConversionBinding is ConversionBinding.Identity or ConversionBinding.Literal or
                 ConversionBinding.Integer or ConversionBinding.Floating or ConversionBinding.Numeric =>
                 SupportsExpression(conversion.Left, function, parameterIndex),
+            ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Ref } conversion =>
+                SupportsExpression(conversion.Left, function, parameterIndex),
             UnaryKoto unary when unary.Akind is KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.Not =>
                 SupportsExpression(unary.Operand, function, parameterIndex),
             UnaryKoto unary when unary.Akind is KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement =>
@@ -222,14 +226,14 @@ internal static class ScalarDefaults
         };
     }
 
-    // SPEC 7.2.3: a default may call an ordinary function (effects included) whose value arguments are
-    // themselves supported default expressions; the scalar result is independent of the prepared slots.
-    // Receivers, borrowed arguments, callable values and nested omitted defaults keep their guards, since
+    // SPEC 7.2.3: a default may call an ordinary function (effects included), or format text, with value arguments and temporary
+    // shared inspections of supported expressions; its scalar or string result is independent of the prepared slots.
+    // Receivers, exclusive arguments, callable values and nested omitted defaults keep their guards, since
     // one call prepares one frame of pending slots.
     private static bool SupportsCall(InvocationKoto invocation, BoundCall call, FunctionKoto function, int parameterIndex)
     {
         if (invocation.IsValueCall || call.Receiver is not null || !call.DefaultArguments.IsEmpty ||
-            call.Target.CompilerFunction != CompilerFunctionKind.None || call.Target.Declaration is not FunctionKoto { IsAnonymous: false } ||
+            call.Target.CompilerFunction is not (CompilerFunctionKind.None or CompilerFunctionKind.TextToString) || call.Target.Declaration is not FunctionKoto { IsAnonymous: false } ||
             call.ArgumentOperations.Length != invocation.ArgumentNodes.Count)
         {
             return false;
@@ -237,7 +241,8 @@ internal static class ScalarDefaults
 
         for (var i = 0; i < invocation.ArgumentNodes.Count; i++)
         {
-            if (call.ArgumentOperations[i].Kind != ArgumentOperationKind.Value || !SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
+            if ((call.ArgumentOperations[i].Kind != ArgumentOperationKind.Value && call.ArgumentOperations[i].ParameterType?.Semantics != SemanticsKind.Ref) ||
+                !SupportsExpression(invocation.ArgumentNodes[i], function, parameterIndex))
             {
                 return false;
             }

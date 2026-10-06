@@ -86,6 +86,7 @@ internal sealed partial class BodyLowering
         Grow(ref this.checks, count);
 
         this.PrepareConversions(body);
+        this.PrepareCallIndex(body);
         if (!this.PrepareStringComparisons(body, out failure) || !this.PrepareReferences(body, out failure))
         {
             return false;

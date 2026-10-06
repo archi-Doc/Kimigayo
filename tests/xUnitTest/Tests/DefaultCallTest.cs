@@ -35,14 +35,9 @@ public class DefaultCallTest
         => ScalarEmissionTest.EmitFixture("DefaultCallGeneric", Generic, "Default index evaluated.\n");
 
     [Fact]
-    public void BorrowingCallDefaultsStayGuardedWithoutInternalIssues()
-    {
-        // A default call with a borrowed argument is still recorded as unsupported; the partial graph it
-        // leaves must not cascade into an internal invariant issue (SPEC 21.3.5).
-        var c = MinimalEmissionTest.Analyze("func g(r: ref/i32) -> isize => 0\nfunc f(x: i32, i: isize = g(x@ref)) -> isize => i\ndo\n    let n = f(1)\n    require n == 0 else => $abort(\"n\")\n    Console.writeLine(\"ok\")");
-        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        Assert.False(c.Ownership.Result.IsVerified);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Internal);
-    }
+    public void BorrowingCallDefaultsInspectPreparedSlots()
+        => ScalarEmissionTest.EmitFixture(
+            "DefaultCallSharedInspection",
+            "func g(r: ref/i32) -> isize => 0\nfunc f(x: i32, i: isize = g(x@ref)) -> isize => i\ndo\n    let n = f(1)\n    require n == 0 else => $abort(\"n\")\n    Console.writeLine(\"ok\")",
+            "ok\n");
 }

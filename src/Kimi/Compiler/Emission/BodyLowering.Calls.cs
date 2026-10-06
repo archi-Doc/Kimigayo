@@ -12,6 +12,22 @@ internal sealed partial class BodyLowering
     private ControlFlowAnalysis? flow;
     private int[] parameterArguments = [];
 
+    // SPEC 7.2.3: reads and borrows in defaults name acquired slots of a pending call. Index calls once, before validating
+    // references or aggregate storage; a default may itself call other functions before the enclosing call enters.
+    private void PrepareCallIndex(OwnershipBody body)
+    {
+        Grow(ref this.elementNextCalls, body.Operations.Count);
+        var nextCall = -1;
+        for (var i = body.Operations.Count - 1; i >= 0; i--)
+        {
+            this.elementNextCalls[i] = nextCall;
+            if (body.Operations[i].Kind == OwnershipOperationKind.Call)
+            {
+                nextCall = i;
+            }
+        }
+    }
+
     private bool ValidateCallArgumentStorage(OwnershipBody body, int entry, int call, out string? failure)
     {
         failure = null;
