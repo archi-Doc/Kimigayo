@@ -31,7 +31,7 @@ public class GenericTypeArgumentBindingTest
         Assert.Same(argument, Assert.Single(call.BoundCall!.TypeArguments.ToArray()));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Same(argument, Assert.Single(f.Parameters[0].Type.BoundType!.Components));
-        Verify(Reload(c));
+        Verify(CompilationTestHelper.Reload(c));
         var builder = default(IndentedStringBuilder);
         try
         {
@@ -63,7 +63,7 @@ public class GenericTypeArgumentBindingTest
             Assert.False(c.Bind().IsComplete);
             var diagnostic = use.StartsWith("take", StringComparison.Ordinal) ? callExpected ?? expected : expected;
             Assert.Contains(c.Binding.Issues, x => x.Code == diagnostic);
-            Assert.False(Reload(c).Bind().IsComplete);
+            Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
         }
     }
 
@@ -79,7 +79,7 @@ public class GenericTypeArgumentBindingTest
         var element = Assert.Single(array.Components);
         Assert.Equal(SemanticsKind.Ref, element.Semantics);
         Assert.Same(type.Contains("static", StringComparison.Ordinal) ? BoundOrigin.Static : f.BoundSymbol!.Schema!.Origins[0].Origin, element.Origin);
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -123,27 +123,11 @@ public class GenericTypeArgumentBindingTest
         }));
     }
 
-    private static Compilation Reload(Compilation c)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Parse(string.Empty);
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
-        return restored;
-    }
-
     private static FunctionKoto Function(Compilation c, string name)
         => c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == name);
 
     private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("arguments.kimi", source));
-        return c;
-    }
+        => CompilationTestHelper.Parse(source, "arguments.kimi");
 
     private static string Describe(Compilation c) => string.Join("; ", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

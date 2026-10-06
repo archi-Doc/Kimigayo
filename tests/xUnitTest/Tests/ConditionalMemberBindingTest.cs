@@ -401,17 +401,7 @@ public class ConditionalMemberBindingTest
     }
 
     private static Compilation Parse(string source, bool allowDiagnostics = false)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        if (!allowDiagnostics)
-        {
-            Assert.Empty(TestDiagnostics.Of(c));
-        }
-
-        return c;
-    }
+        => allowDiagnostics ? CompilationTestHelper.Parse(source) : CompilationTestHelper.ParseSuccess(source);
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

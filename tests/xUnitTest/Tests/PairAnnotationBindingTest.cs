@@ -17,7 +17,7 @@ public class PairAnnotationBindingTest
     {
         var c = Parse($"func f<s/T>(value: {type}) => ()");
         Verify(c);
-        Verify(Reload(c));
+        Verify(CompilationTestHelper.Reload(c));
         var builder = default(IndentedStringBuilder);
         try
         {
@@ -68,7 +68,7 @@ public class PairAnnotationBindingTest
     {
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     // The same signature serves a value and a borrow: the slot binds `a` only for the borrow instance.
@@ -102,7 +102,7 @@ public class PairAnnotationBindingTest
     {
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -122,7 +122,7 @@ public class PairAnnotationBindingTest
         var c = Parse($"func f<s/T>(value: {type}) => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -166,25 +166,8 @@ public class PairAnnotationBindingTest
         Assert.Equal(Function(plain).BoundSymbol!.Type!.Origin?.Kind, Function(clause).BoundSymbol!.Type!.Origin?.Kind);
     }
 
-    private static Compilation Reload(Compilation c)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Parse(string.Empty);
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
-        return restored;
-    }
-
     private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("annotation.kimi", source));
-        Assert.Empty(TestDiagnostics.Of(c));
-        return c;
-    }
+        => CompilationTestHelper.ParseSuccess(source, "annotation.kimi");
 
     private static FunctionKoto Function(Compilation c)
         => c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single();

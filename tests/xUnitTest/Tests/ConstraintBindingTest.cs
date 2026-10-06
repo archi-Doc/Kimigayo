@@ -253,17 +253,7 @@ public class ConstraintBindingTest
     }
 
     private static Compilation Parse(string source, bool allowParserErrors = false)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        if (!allowParserErrors)
-        {
-            Assert.Empty(TestDiagnostics.Of(c));
-        }
-
-        return c;
-    }
+        => allowParserErrors ? CompilationTestHelper.Parse(source) : CompilationTestHelper.ParseSuccess(source);
 
     private static FunctionKoto Function(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name);
 

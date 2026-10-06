@@ -98,9 +98,7 @@ public class ProvisionalContractPremiseBindingTest
 
     private static Compilation Parse(string source)
     {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
+        var c = CompilationTestHelper.Parse(source, "Hello.kimi");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         return c;
     }

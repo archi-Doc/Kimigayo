@@ -64,7 +64,7 @@ public class TypeArityBindingTest
         var c = Parse(declarations + "\n" + use);
         Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Theory]
@@ -82,7 +82,7 @@ public class TypeArityBindingTest
         var c = Parse(source);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == expected);
-        var restored = Reload(c);
+        var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         Assert.Contains(restored.Binding.Issues, x => x.Code == expected);
     }
@@ -100,7 +100,7 @@ public class TypeArityBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(2, c.Kotonoha.RootKoto.NestedContainers.Count);
         Assert.All(c.Kotonoha.RootKoto.NestedContainers, x => Assert.Equal(2, x.Members.Count));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
         var builder = default(IndentedStringBuilder);
         try
         {
@@ -152,24 +152,8 @@ public class TypeArityBindingTest
         }));
     }
 
-    private static Compilation Reload(Compilation c)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Parse(string.Empty);
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
-        return restored;
-    }
-
     private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("arity.kimi", source));
-        return c;
-    }
+        => CompilationTestHelper.Parse(source, "arity.kimi");
 
     private static string Describe(Compilation c) => string.Join("; ", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

@@ -22,7 +22,7 @@ public class OriginFragmentBindingTest
             var c = Create();
             AddFragments(c, $"struct S{header}", $"struct S{header}", reverse);
             Verify(c);
-            Verify(Reload(c));
+            Verify(CompilationTestHelper.Reload(c));
             var builder = default(IndentedStringBuilder);
             try
             {
@@ -64,7 +64,7 @@ public class OriginFragmentBindingTest
             AddFragments(c, first, second, reverse);
             Assert.False(c.Bind().IsComplete);
             Assert.Equal(BindingFailure.Duplicate, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BindingFailure);
-            Assert.False(Reload(c).Bind().IsComplete);
+            Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
         }
     }
 
@@ -85,7 +85,7 @@ public class OriginFragmentBindingTest
         var c = Create();
         AddFragments(c, "struct S {a, b}\n    origin a outlives b", "struct S {a, b}", reverse);
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(Reload(c).Bind().IsComplete);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
         c.Kotonoha.AddSource(new SourceDocument("third.kimi", "struct S {a, b}\n    origin a outlives b"));
         Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
     }
@@ -131,16 +131,5 @@ public class OriginFragmentBindingTest
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
         return c;
-    }
-
-    private static Compilation Reload(Compilation c)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Create();
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
-        return restored;
     }
 }

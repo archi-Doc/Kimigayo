@@ -160,13 +160,7 @@ public class PairCaseTypeTest
     }
 
     private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("cases.kimi", source));
-        Assert.Empty(TestDiagnostics.Of(c));
-        return c;
-    }
+        => CompilationTestHelper.ParseSuccess(source, "cases.kimi");
 
     private static FunctionKoto Function(Compilation c, string name)
         => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => !x.IsAnonymous && x.Name == name);

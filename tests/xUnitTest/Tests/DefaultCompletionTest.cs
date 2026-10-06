@@ -84,9 +84,7 @@ public class DefaultCompletionTest
 
     private static Compilation Parse(string source)
     {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        var c = CompilationTestHelper.Parse(source);
         Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues));
         return c;
     }
