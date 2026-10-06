@@ -29,6 +29,15 @@ public class ArrayAnnotationHoleTest
     [InlineData("InnerOrigins", "let a = 1\nlet b = 2\nlet values: [_ of ref/i32] = [a@ref, b@ref]\nrequire values[1] == 2 else => $abort(\"origins\")")]
     [InlineData("ArgumentEvidence", "func identity<T>(value: T) -> T => value@move\nlet original: [2 of i32] = [1, 2]\nlet values: [_ of i32] = identity(original)\nrequire values[1] == 2 else => $abort(\"argument\")")]
     [InlineData("NestedBorrow", "let values: [_ of _] = [[1], [2, 3]]\nlet tail = values[1][..]\nrequire tail[1] == 3 else => $abort(\"view\")")]
+    [InlineData("ConditionalShape", "let values: [_ of [_ of _]] = if true => [[1, 2]] else => [[3, 4]]\nrequire values[0][1] == 2 else => $abort(\"shape\")")]
+    [InlineData("MatchShape", "let value: u8 = 7\nlet values: [_ of [_ of _]] = match value\n    let found => [[1, found@follow]]\nrequire values[0][1] == 7 else => $abort(\"pattern\")")]
+    [InlineData("BlockShape", "let values: [_ of [_ of _]] = label result: do\n    let value: u8 = 7\n    exit to result [[1, value]]\nrequire values[0][1] == 7 else => $abort(\"block\")")]
+    [InlineData("NestedSelectionShape", "let value: u8 = 7\nlet values: [_ of [_ of _]] = if true => match value\n    let found => [[1, found@follow]]\nelse => [[2, value]]\nrequire values[0][1] == 7 else => $abort(\"nested\")")]
+    [InlineData("ConditionalDynamicRows", "let values: [_ of _] = if true => [[1], [2, 3]] else => [[4], [5, 6]]\nrequire values[1].length == 2 else => $abort(\"dynamic\")")]
+    [InlineData("ConditionalNumericEvidence", "let value: u8 = 7\nlet values: [_ of _] = if true => [1, 2] else => [value, 3]\nlet typed: [2 of u8] = values\nrequire typed[1] == 2 else => $abort(\"type\")")]
+    [InlineData("ConditionalEmpty", "let known: [0 of i64] = []\nlet values: [_ of _] = if true => [] else => known\nrequire values.length == 0 else => $abort(\"empty\")")]
+    [InlineData("LoopShape", "let values: [_ of _] = label result: loop\n    let value: u8 = 7\n    exit to result [1, value]\nrequire values[1] == 7 else => $abort(\"loop\")")]
+    [InlineData("NeverArm", "let values: [_ of _] = if true => [1, 2] else => $abort(\"never\")\nrequire values[1] == 2 else => $abort(\"value\")")]
     public void WrittenShapePropagatesAndHolesUseInitializerEvidence(string name, string source)
         => ScalarEmissionTest.EmitFixture("ArrayAnnotationHole" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
 
@@ -56,10 +65,11 @@ public class ArrayAnnotationHoleTest
         Assert.False(compilation.Emission.WriteIr(output, out _));
     }
 
-    [Fact]
-    public void RebindingAndReloadPreserveWrittenHolesAndRecomputeTheirTypes()
+    [Theory]
+    [InlineData("let values: [_ of [_ of i64]] = [[1], [2]]")]
+    [InlineData("let values: [_ of [_ of _]] = if true => [[1], [2]] else => [[3], [4]]")]
+    public void RebindingAndReloadPreserveWrittenHolesAndRecomputeTheirTypes(string source)
     {
-        const string source = "let values: [_ of [_ of i64]] = [[1], [2]]";
         var compilation = MinimalEmissionTest.Analyze(source);
         var variable = compilation.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single();
         var shape = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
@@ -68,14 +78,16 @@ public class ArrayAnnotationHoleTest
         Assert.True(compilation.Bind().IsComplete);
         var reloaded = CompilationTestHelper.Reload(compilation);
         Assert.True(reloaded.Bind().IsComplete);
-        Assert.Equal(source, variable.ToString());
+        Assert.Equal(source.Replace(" else", "\nelse", StringComparison.Ordinal), variable.ToString());
     }
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmNestedHoleInferenceAllocatesNothing()
+    [Theory]
+    [InlineData("let value: u8 = 2\nlet values: [_ of [_ of _]] = [[1], [value]]")]
+    [InlineData("let values: [_ of [_ of _]] = label result: do\n    let value: u8 = 2\n    exit to result if true => [[1], [value]] else => [[value], [1]]")]
+    public void WarmNestedHoleInferenceAllocatesNothing(string source)
     {
-        var compilation = MinimalEmissionTest.Analyze("let value: u8 = 2\nlet values: [_ of [_ of _]] = [[1], [value]]");
+        var compilation = MinimalEmissionTest.Analyze(source);
         for (var i = 0; i < 100; i++)
         {
             Assert.True(compilation.Bind().IsComplete);

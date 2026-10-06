@@ -1,4 +1,11 @@
 // Milestone 7: fixed arrays, nested for loops, and cross-loop transfers.
+func zeros<T>() -> [3 of T]
+    T is PrimitiveInteger
+    return [3 of 0]
+
+func writeFlag(target: uniq/bool, value: bool)
+    target@follow = value
+
 public func main()
     var matrix: [3 of [4 of i32]] = [
         [1, 2, 3, 4],
@@ -29,3 +36,24 @@ public func main()
         rowTotal = rowTotal + rowView[index]
     require rowTotal == 20 else => $abort("Unexpected slice total")
     Console.writeLine("Borrowed row total is 20.")
+
+    // Only written fixed dimensions constrain the literals; a leaf hole permits dynamic rows.
+    let inferred: [_ of [_ of _]] = if total == 42 => [[1, 2], [3, 4]] else => [[5, 6], [7, 8]]
+    let ragged: [_ of _] = [[1], [2, 3]]
+    let wide: [_ of i64] = zeros()
+    let empty: [_ of i32] = []
+    let fromBlock: [_ of _] = label result: do
+        let value: u8 = 7
+        exit to result [1, value]
+    require inferred.length == 2 and inferred[1][0] == 3 else => $abort("Fixed shape inference failed")
+    require ragged[1].length == 2 and wide.length == 3 and wide[2] == 0 and empty.length == 0 else => $abort("Initializer evidence failed")
+    require fromBlock[1] == 7 else => $abort("Block result inference failed")
+
+    // A borrowed writer need not read the old bool representation. Write every element before copying it.
+    unsafe
+        var flags: [2 of bool] = noinit
+        writeFlag(flags[0]@uniq, true)
+        writeFlag(flags[1]@uniq, false)
+        let copied = flags
+        require copied[0] and not copied[1] else => $abort("Skipped initialization failed")
+    Console.writeLine("Inferred arrays and noinit writes verified.")

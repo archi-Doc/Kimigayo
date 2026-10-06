@@ -5,7 +5,11 @@ length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotat
 literal counts and complete initializer Types, including symbolic lengths and known generic result expectations.
 Unknown or inconsistent evidence is a located Language diagnostic; inner literals without a written fixed dimension
 remain dynamic Arrays (`ArrayAnnotationHoleTest`, `ArrayAnnotationDiagnosticTest`). Warm successful and failed
-rebinding allocate nothing. Scalar `noinit` now retains dedicated syntax, checks the local var/annotation/element
+rebinding allocate nothing. Written dimensions also reach `if`/`match` branches and `do`/`loop` transfers when the
+element Type is a hole; Pattern bindings and block locals supply evidence in their own scopes. Empty result sources
+without an element Type and conflicting dimensions retain located inference diagnostics, including CLI/LSP output.
+Programs 7 and 27 exercise inference, borrowed `noinit` writes, child/Moved exclusive views and independent copies.
+Scalar `noinit` now retains dedicated syntax, checks the local var/annotation/element
 requirements at Binding, uses the ordinary Unsafe permission check and completes ordinary ownership construction
 without initial stores. PrimitiveInteger and Wrapping<T> definitions prove eligibility from Constraints. No per-element
 state or extra read restriction is introduced; read-before-write examples are checked for acceptance only, never run.

@@ -768,6 +768,8 @@ public sealed partial class Binding
                 return this.BindArrayFill(fill, scope, expected);
             case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array }:
                 return this.BindContextualArrayLiteral(array, scope, expected);
+            case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingArrayElementCause(array) is { } holeCause:
+                return this.CompleteDependent(array, holeCause);
             case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
                 return this.CompleteDependent(array, arrayCause);
             case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):

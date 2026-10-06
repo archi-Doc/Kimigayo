@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundLength> inferredArrayLengths = new();
+    private readonly Dictionary<Koto, Koto> arrayInferenceShapes = new(ReferenceEqualityComparer.Instance);
     private Dictionary<Koto, ArrayInferenceFailure>? arrayInferenceFailures;
 
     private enum ArrayInferenceProblem : byte
@@ -43,6 +44,21 @@ public sealed partial class Binding
                 return syntax;
             }
         }
+    }
+
+    private Koto? MissingArrayElementCause(ArrayLiteralKoto literal)
+    {
+        if (!this.arrayInferenceShapes.TryGetValue(literal, out var shape))
+        {
+            return null;
+        }
+
+        while (shape is FixedArrayTypeKoto array)
+        {
+            shape = ArrayShapeSyntax(array.ElementType);
+        }
+
+        return IsArrayHole(shape) && shape.BindingState == BindingState.Invalid ? shape : null;
     }
 
     private BoundType? BindArrayFill(ArrayLiteralKoto fill, BindingScope scope, BoundType? expected)
@@ -165,15 +181,15 @@ public sealed partial class Binding
 
     // Only a known leaf supplies an expectation. `_` alone does not demand another fixed dimension or select an element
     // Type for an otherwise unconstrained generic call. Ordinary candidate inference receives the written structure.
-    private BoundType? ArrayAnnotationExpectation(Koto shape, BindingScope scope)
+    private BoundType? ArrayAnnotationExpectation(Koto shape, BindingScope scope, BoundType? inferredElement = null)
     {
         shape = ArrayShapeSyntax(shape);
         if (shape is not FixedArrayTypeKoto array)
         {
-            return IsArrayHole(shape) ? null : this.BindType(shape, scope);
+            return IsArrayHole(shape) ? inferredElement : this.BindType(shape, scope);
         }
 
-        if (this.ArrayAnnotationExpectation(array.ElementType, scope) is not { } element)
+        if (this.ArrayAnnotationExpectation(array.ElementType, scope, inferredElement) is not { } element)
         {
             return null;
         }
@@ -284,6 +300,11 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         if (shape is FixedArrayTypeKoto array && source is ArrayLiteralKoto literal)
         {
+            if (literal.Elements.Count == 0)
+            {
+                this.arrayInferenceShapes[literal] = shape;
+            }
+
             var length = literal.FillLength is { } fill ? this.BindLength(fill, scope) : this.InternLength(KotoKind.NumberLiteral, literal.Elements.Count);
             if (length is null || !this.InferArrayLength(array, length, source))
             {
@@ -313,7 +334,16 @@ public sealed partial class Binding
             return true;
         }
 
-        var actual = this.BindNode(source, scope, this.ArrayAnnotationExpectation(shape, scope));
+        var expectation = this.ArrayAnnotationExpectation(shape, scope);
+        var target = source is LabeledKoto label ? label.Target : source;
+        if (expectation is null && shape is FixedArrayTypeKoto && target is not TryKoto && target is IfKoto or MatchKoto or DoKoto or LoopKoto)
+        {
+            // Preserve written dimensions through result-producing syntax even when its leaf Type is a hole. Result
+            // inference gathers the same array evidence after Pattern bindings exist, then fits the ordinary bodies.
+            this.arrayInferenceShapes[target] = shape;
+        }
+
+        var actual = this.BindNode(source, scope, expectation);
         if (actual is null)
         {
             failed = source;

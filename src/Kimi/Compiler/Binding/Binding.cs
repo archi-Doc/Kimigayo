@@ -331,6 +331,7 @@ public sealed partial class Binding
         this.receiverOperations.Clear();
         this.adaptations.Clear();
         this.inferredArrayLengths.Clear();
+        this.arrayInferenceShapes.Clear();
         this.arrayInferenceFailures?.Clear();
         this.noInitFailures?.Clear();
         this.ResetSyntheticCalls();

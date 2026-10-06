@@ -4,6 +4,8 @@ A few lines per session. Evidence lives in commits and `artifacts/verify/` (earl
 
 ## Sessions
 
+- 2026-10-06 fixed-array/view audit: result expressions with an element hole retain written fixed dimensions, scoped local/Pattern evidence and precise inference failures. Programs 7 and 27 now exercise the accepted revision together: generic/nested inference, borrowed Scalar `noinit` writes, child/Moved UniqSlice handles and Slice.toArray storage/element dependencies. Unit `20261006-141000-599-unit-fixed-array-view-audit` passes 457 tests, 330 native O0/O2 executions and four original-program executions with verified toolchain. Session `20261006-141205-434-session-fixed-array-view-audit` passes all 18,065 tests and warning-free whole-solution Release; both retain 1,586 stable source/configuration and 12 NuGet inputs. CLI/LSP output and zero-allocation inference reuse reviewed; feedback failures and audit notes remain in `artifacts/verify/fixed-array-view-audit`. No SPEC/draft revision or NativeAOT execution.
+
 | Date | Summary |
 | --- | --- |
 | 2026-10-06 | **G72 Semantics cases:** defaults now use the same admitted-case enumeration as function bodies, including unused/supplied defaults and case-specific prepared Reborrows. The latter report one cause with case Evidence, Note and related binder; CLI/server and strict warm-allocation/reload checks pass. Unit `20261006-032017-007-unit-g72-cases`: warning-free Release, 654 tests, 590 native O0/O2 executions, stable 1,555 inputs. The initial style-warning failure and all focused reproducers remain in evidence. Recursive omitted evaluation, G70 and Session remain. |

@@ -16,6 +16,9 @@ public class ArrayAnnotationDiagnosticTest(ITestOutputHelper output)
     [InlineData("let values: [_ of [_ of i32]] = []", "_", "no fixed-array length", "[]")]
     [InlineData("let values: [_ of [_ of _]] = [[1], [2, 3]]", "[2, 3]", "length 2 but earlier initializer evidence established 1", "_")]
     [InlineData("let dynamic = [1, 2]\nlet values: [_ of i32] = dynamic@move", "dynamic@move", "initializer has Array<i32>", "[_ of i32]")]
+    [InlineData("let values: [_ of [_ of _]] = if true => [[1]] else => [[2, 3]]", "[2, 3]", "length 2 but earlier initializer evidence established 1", "_")]
+    [InlineData("let values: [_ of _] = if true => [] else => []", "_", "no element Type", "if true => [] else => []")]
+    [InlineData("let dynamic = [1, 2]\nlet values: [_ of _] = if true => [1, 2] else => dynamic@move", "dynamic@move", "initializer has Array<i32>", "[_ of _]")]
     public void HoleFailuresKeepTheirCauseLocationAndContextInPublicOutputs(string source, string text, string reason, string relatedText)
     {
         var path = Path.GetFullPath("ArrayAnnotationDiagnostic.kimi");
@@ -40,6 +43,9 @@ public class ArrayAnnotationDiagnosticTest(ITestOutputHelper output)
     [Theory]
     [InlineData("let values: [_ of i32] = missing()", "UnresolvedBinding_Kd")]
     [InlineData("let values: [_ of _] = []\nlet wrong: i32 = true", "ArrayAnnotationInference_Kd,TypeMismatch_Kd")]
+    [InlineData("let values: [_ of _] = if true => [] else => []\nlet wrong: i32 = true", "ArrayAnnotationInference_Kd,TypeMismatch_Kd")]
+    [InlineData("let values: [_ of _] = if true => [1] else => missing()", "UnresolvedBinding_Kd")]
+    [InlineData("let values: [_ of [_ of _]] = if true => [[1]] else => [[2, 3]]\nlet wrong: i32 = true", "ArrayAnnotationInference_Kd,TypeMismatch_Kd")]
     public void FailedEvidenceAndIndependentErrorsAreNotMisreported(string source, string codes)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -51,6 +57,7 @@ public class ArrayAnnotationDiagnosticTest(ITestOutputHelper output)
     [InlineData("let values: [_ of i32] = []")]
     [InlineData("let values: [_ of [2 of i32]] = []")]
     [InlineData("let values: [_ of [_ of _]] = [[1, 2], [3, 4]]")]
+    [InlineData("let values: [_ of [_ of _]] = if true => [[1, 2]] else => [[3, 4]]")]
     public void SufficientConsistentEvidenceIsAccepted(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

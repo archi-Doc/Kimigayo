@@ -21,7 +21,7 @@ and in [STATUS.md](../../docs/STATUS.md).
 | [Milestone4](Milestone4.kimi) | `struct`, `init`, fields, whole-value Move, owned parameters, `drop` |
 | [Milestone5](Milestone5.kimi) | `uniq`/`ref`, returned borrow, `during`, scope and destruction lifetimes |
 | [Milestone6](Milestone6.kimi) | Value-producing `loop`, guarded `match`, `continue`, named `exit`, `yield`, `require` |
-| [Milestone7](Milestone7.kimi) | Two-dimensional fixed arrays, nested `for`, cross-loop transfers, Slice reads |
+| [Milestone7](Milestone7.kimi) | Fixed-array inference, borrowed `noinit` writes, nested `for`, cross-loop transfers, Slice reads |
 | [Milestone8](Milestone8.kimi) | Groups nested in a struct, generic struct/function, generic Copy/Move acquisition |
 | [Milestone9](Milestone9.kimi) | Length/type parameters, Copy constraint, callbacks/capture, generic enum, borrowed storage |
 | [Milestone10](Milestone10.kimi) | Generic enum/Tuple patterns, guards, value-producing loop/match/if, cross-loop transfers |
@@ -41,7 +41,7 @@ and in [STATUS.md](../../docs/STATUS.md).
 | [Milestone24](Milestone24.kimi) | Non-Copy setter replacement, a borrowed getter, a consuming function and a standard-operation Contract witness |
 | [Milestone25](Milestone25.kimi) | Inline base construction, inherited standard Properties and Type members, whole-derived Move and layered destruction |
 | [Milestone26](Milestone26.kimi) | Generic compound captures, external borrowed captures, shared/exclusive/consuming Callable and owning function-value erasure |
-| [Milestone27](Milestone27.kimi) | Saved position/range resolution, nested/sub-Slice views, splitting, empty views, backing/element Origins, and user Place results through `Indexable`/`UniqIndexable` |
+| [Milestone27](Milestone27.kimi) | Saved bounds, shared/exclusive child views, Move, Slice.toArray, `noinit` view writes, backing/element Origins, and user Places |
 | [Milestone28](Milestone28.kimi) | User IntoIterable/Iterator mappings, owned elements, continue/early-exit cleanup and retained external element borrows |
 | [Milestone29](Milestone29.kimi) | Dynamic `Array<T>` reserve/append/insert/remove/pop/clear, indexed replacement of Non-Copy elements, owning iteration with early exit |
 | [Milestone30](Milestone30.kimi) | User/generic comparison Contracts, borrow/Tuple composition, retained witnesses and NaN-reflexive equality through specialization |
@@ -191,7 +191,7 @@ collections in a useful single Application. Full Package distribution, Mod host
 integration, the test runner, and comprehensive FFI/platform integration are
 separate product work. Unintroduced/deferred features in
 [Appendix D](../../docs/spec/appendices/D-deferred-features.md) are excluded, including
-mutable-element Slice, Cursor Contracts, virtual/override members and runtime
+additional UniqSlice APIs, Cursor Contracts, virtual/override members and runtime
 Contract Views. "Complete generics" means the adopted specification, not future
 generic forms. ObjectCallCompatible's same-build inference, use-time enforcement and
 publication ([effect verification](../../docs/spec/12-expressions.md#12442-effect-verification))
@@ -300,7 +300,7 @@ and publication are in scope; its release comparison stays deferred.
 | 24 / 16–19, 23 | Replace a Non-Copy value through a setter and return a borrowed view through a getter; use a Contract Property requirement. | Receiver consumption through an `into` function, discarded setter inputs, temporary-borrow escape, conflicting Loans, invalid shared extraction and incompatible requirement operations. | Exact old/input/result destruction, getter-temporary lifetime, standard-operation witness identity and permitted bridges; no hidden Copy or storage exposure through a Contract. |
 | 25 / 17, 23–24 | Construct a derived value, access inherited members/Properties and destroy complete derived/base storage. | Base initialization order/completeness, inherited access, prohibited redeclarations and invalid Partial Moves; separate early-transfer/Abort construction cases. | Base offsets and declaring-receiver projection, stable member mappings, one construction/destruction responsibility per layer. |
 | 26 / 12, 14, 16, 18–22 | Capture a compound/generic value and an external borrow, then invoke through the required Callable mode; separately demonstrate permitted function-value erasure. | Shared/exclusive/consuming calls, nested captures, function items, moved closures, escaping dependencies and erasure without required Copy/Owned evidence. | Environment layout, direct versus common entries, capture destruction, no per-call environment allocation; optional erasure allocation accounted separately. |
-| 27 / 7, 13, 16, 19 | Resolve saved positions and ranges and retain nested/sub-Slice views of external backing storage; publish user Places through `Indexable`/`UniqIndexable` and forward one through a generic Constraint. | Empty/full/from-end bounds, one-time bound evaluation and Abort order; reject conflicting mutation, escaping views and Non-Copy indexed acquisition; reject Take, bare Non-Copy reads and shared-path updates of published Places, and Place results over ending storage. | O(1) views/metadata, no element copying or Slice backing allocation, full nested-Type/Origin/Loan preservation; Place results use the reference ABI. Mutable-element Slice remains excluded. |
+| 27 / 7, 13, 16, 19 | Resolve saved bounds; retain shared/exclusive child views; Move exclusive handles, copy Slice elements into independent Arrays and write through views of `noinit` storage; publish user Places through `Indexable`/`UniqIndexable`. | Empty/full/from-end bounds, one-time evaluation and Abort order; reject conflicting mutation, escaping views, Non-Copy indexed acquisition and shared-path updates; preserve inner element dependencies after copying. | O(1) view formation without element copying or backing allocation; Slice.toArray has independent storage and its specified allocation bound. Place results use the reference ABI; Slice stays shared. |
 | 28 / 13, 18–19, 27 | Implement user Iterable/Iterator protocols, yield owned or externally borrowed elements, then stop early. | Exhaustion, continue/exit/return, correct associated Element/Iterator equality, retained previous borrowed results; reject lending results and missing capability proofs. | Receiver acquisition once, exact yielded/unyielded responsibilities and reverse remaining-element cleanup; no hidden element clone. |
 | 29 / 17–18, 27–28 | Grow, insert, replace and remove Non-Copy Array elements; consume an iterator and stop early. | Empty/pop/clear, directional indices, capacity/no-op paths, live and empty-Slice conflicts, retained borrowed contents, normal argument abandonment and Abort. | Count internal allocations; verify within-capacity/no-op/removal guarantees, reverse current-index cleanup, growth amortization and shrink failure preserving original placement. |
 | 30 / 19, 21 | Compare user Types through Equatable/Comparable and generic calls, including composed Tuple/borrow comparisons. | Missing/incompatible conformance, equality/order agreement, operand order and no Non-Copy consumption; built-in floating comparison versus NaN-reflexive Equatable mapping. | Retained requirement mappings and specialization preserving comparison meaning; no pointer-identity substitute or synthesized user equality. |
@@ -585,6 +585,7 @@ Row finished.
 Row finished.
 Matrix total is 42.
 Borrowed row total is 20.
+Inferred arrays and noinit writes verified.
 ```
 
 Normal row completion, `continue to rows`, and `exit to rows` each run the row's
@@ -594,6 +595,10 @@ Copy its i32 elements for arithmetic. Direct Slice iteration would instead yield
 `ref/i32`; safe references cannot be converted to owned integers with `@i32`.
 Fixed-array storage and Slice creation need no extra heap allocation for element
 storage.
+
+The added inference checks cover nested fixed dimensions through `if`, block-local numeric evidence through a
+labeled `do`, dynamic inner rows under a leaf hole, an empty array and a generic result fitted from `i64`.
+The `noinit` bool array is initialized through scalar exclusive-reference calls before its whole-array Copy.
 
 As separate rejection exercises, change the outer length to 2 without removing
 a row, or attempt to write an element through the Slice. To exercise runtime
@@ -611,13 +616,10 @@ dotnet build Kimigayo.slnx -c Release --no-restore
 ./src/backend/windows-x64/test-milestone7.ps1 -Configuration Release
 ```
 
-The script covers the unchanged program,
-byte-identical renamed O0/O2 copies, alternate arithmetic, outer exit instead of
-continue, normal exhaustion, matrix/Slice bounds Abort, and thirteen invalid
-inputs rejected before emission. It checks LLVM verification, linking, exact native
-stdout/stderr and exit codes, plus both CLI `run` forms. Successful output is the
-five lines above, stderr is empty and exit is 0. Bounds failures report the exact
-source position and `KIMI_E_INDEX_BOUNDS`, then exit 1. Reports and source/compiler/
+The harness builds the current original source once at O0 and O2 and executes each binary once, checking exact
+stdout/stderr and exit codes. Related functional, rejection and allocation cases live in the xUnit suites, including
+`ArrayAnnotationHoleTest`, `ArrayAnnotationDiagnosticTest` and `NoInitTest`. Successful output is the six lines above,
+stderr is empty and exit is 0. Reports and source/compiler/
 build identities are retained under `artifacts/verify/milestone7/<configuration>/<run-id>/`.
 Debug is supported; NativeAOT is not used.
 
@@ -1503,7 +1505,11 @@ shares the reference-write boundary, STATUS); `names[0]@ref` keeps one reference
 from one search; and the generic `firstPlace` forwards a Place result through the
 Contract requirement without acquiring a value, for `Pair<i32>` and `Pair<string>`.
 
-Expected stdout (verified natively at O0/O2; 97 Debug harness checks):
+Exclusive-view checks add relative child bounds, mutation through a `let` exclusive reference, a moved handle,
+empty shared children and independent copies from fixed and dynamic storage. Copying a view of references preserves
+the element Origins while releasing the outer storage Loan. A `noinit` array is written through a view before copying.
+
+Expected stdout (the original-source harness checks O0/O2):
 
 ```text
 Start evaluated.
@@ -1516,6 +1522,7 @@ Last text.
 Slice Origins preserved.
 Pair second.
 Pair replaced.
+Exclusive views and independent copies verified.
 ```
 
 Separate checks: full/empty/closed ranges, `FromEnd` construction, zero-sized elements,
@@ -1526,7 +1533,7 @@ view (including an empty one), Non-Copy indexed Move, Slice element writes and
 element-Type covariance. Check that resolving metadata adds no storage Loan;
 views and reslices preserve the original Loan footprint and nested Origins.
 Measure O(1) view operations without backing allocation or element copying.
-Mutable-element Slice remains outside this milestone.
+Slice remains shared; the added UniqSlice cases exercise exclusive element access separately.
 
 Place checks: a bare read of a Non-Copy published Place, `@move` of a published
 Place, an update through `index` alone (a `let` pair or a `ref/Pair` receiver),
