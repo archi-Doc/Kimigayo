@@ -20,7 +20,8 @@ internal sealed record HoverDocumentation(
     string? ModId,
     int AdditionOrder,
     SourceSpan DeclarationSpan,
-    DocumentationMarkdownParameter[] Parameters);
+    DocumentationMarkdownParameter[] Parameters,
+    HoverPlacement? Placement = null);
 
 internal sealed record HoverDeclaration(
     string Kind,

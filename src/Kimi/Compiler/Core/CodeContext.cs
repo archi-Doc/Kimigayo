@@ -134,7 +134,7 @@ public sealed class CodeContext
             var sourceContext = new CodeContext(this.Kotonoha, diagnostics, sourceDocument) { Documentation = tokenizer.Documentation };
             var reader = new TokenReader(sourceContext, ref tokenizer);
             parentKoto.Parse(ref reader);
-            sourceContext.Documentation?.SetLocation(this.Compilation.Project.Directory, producingModId, additionOrder);
+            sourceContext.Documentation?.SetLocation(this.Kotonoha.SourceDirectory, producingModId, additionOrder);
             sourceContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.Kotonoha.RecordDocumentation(sourceContext.Documentation);
         }

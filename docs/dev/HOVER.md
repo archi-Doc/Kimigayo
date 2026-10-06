@@ -13,6 +13,9 @@ they do not change language guarantees or mark pending work as supported.
   availability checks; ordinary checks pass no collector and allocate no provenance list.
 - Function and Property syntax writers also write body-free headers. Verified accessor metadata supplements implicit
   operations. A missing named-function result means Unit; it is not inferred from the body.
+- Documentation inputs retain immutable partial placement maps. Editor links reuse profile validation and logical
+  resolution, then encode physical path data separately from URL query/fragment. External mappings establish no neighbor
+  placement; conflicting mappings and embedded sources have no physical destination. Resolution performs no I/O.
 - The session's adoption, synchronous comparison/rendering cache and edit-history mapping are the next implementation unit.
 
 ## Deterministic limits
@@ -41,6 +44,8 @@ Focused tests cover token positions, shared headers, associated Types and split 
 embedded documentation inputs, generated constructors, effect premises, implicit accessor/result contracts, recursive
 formatting limits, compiler-graph release and allocation-free binary lookup. Related effect functional and allocation
 regressions must remain unchanged when the optional evidence collector is absent.
+`HoverLinkTest` covers admitted schemes, unsupported destinations, root escape, one-time UTF-8 decoding, literal percent/hash
+file names, URL suffixes, exact external placement and dependency-local documentation bases.
 
 Pending: actual Markdown/plaintext outputs and navigation, shared-check adoption/history, bounded cache/reuse checks,
 allocation and throughput measurements for requests, and final whole-solution Session verification. Record measurement

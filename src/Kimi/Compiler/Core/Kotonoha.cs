@@ -71,6 +71,9 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     internal IReadOnlyList<DiagnosticKey>? OmittedDeclarations => this.omittedDeclarations;
 
+    [IgnoreMember]
+    internal string SourceDirectory => this.Url.Length == 0 ? this.Compilation.Project.Directory : Path.IsPathFullyQualified(this.Url) ? Path.GetDirectoryName(this.Url) ?? string.Empty : string.Empty;
+
     private List<Documentation.DocumentationSource>? documentationSources;
 
     [IgnoreMember]
@@ -272,7 +275,7 @@ public sealed partial class Kotonoha
             codeContext.Documentation = tokenizer.Documentation;
             var tokenReader = new TokenReader(codeContext, ref tokenizer);
             this.RootKoto.Parse(ref tokenReader);
-            codeContext.Documentation?.SetLocation(this.Compilation.Project.Directory, modId, additionOrder);
+            codeContext.Documentation?.SetLocation(this.SourceDirectory, modId, additionOrder);
             codeContext.Documentation?.Finish(this.Compilation.Diagnostics.HasSyntaxErrors(sourceDocument));
             this.RecordDocumentation(codeContext.Documentation);
         }

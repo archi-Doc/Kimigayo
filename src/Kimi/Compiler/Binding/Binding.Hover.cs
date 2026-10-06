@@ -21,6 +21,7 @@ public sealed partial class Binding
         private readonly Dictionary<Koto, HoverInfo?> descriptions = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<Koto, List<DocumentationComment>> comments = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<Koto, List<HoverOrigin>> origins = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<Kotonoha, HoverPlacement> placements = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<(BoundType Type, BindingScope Scope), ConstraintProof> copies = new();
         private readonly Dictionary<BoundType, HoverDeclaration> builtinTypes = new(ReferenceEqualityComparer.Instance);
         private readonly Dictionary<BoundType, string> typeNames = new(ReferenceEqualityComparer.Instance);
@@ -349,7 +350,7 @@ public sealed partial class Binding
                 foreach (var comment in selected)
                 {
                     var location = comment.Owner;
-                    documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters));
+                    documentation.Add(new(comment.Source, comment.Span, comment.Indent, this.Project(syntax), location.LogicalName, location.ModId, location.AdditionOrder, comment.DeclarationSpan, parameters, this.Placement(syntax.Kotonoha)));
                 }
             }
 
@@ -397,6 +398,39 @@ public sealed partial class Binding
 
         private string Project(Koto syntax)
             => syntax.Kotonoha.Url.Length != 0 ? syntax.Kotonoha.Url : binding.compilation.Project.FilePath ?? binding.compilation.Project.Directory;
+
+        private HoverPlacement Placement(Kotonoha module)
+        {
+            if (ReferenceEquals(module, binding.compilation.Library.Kotonoha))
+            {
+                return HoverPlacement.Unsupported;
+            }
+
+            if (!this.placements.TryGetValue(module, out var placement))
+            {
+                var files = new SortedDictionary<string, string?>(StringComparer.Ordinal);
+                foreach (var source in module.DocumentationSources)
+                {
+                    if (source.LogicalName is { } logical && Path.IsPathFullyQualified(source.Source.Path))
+                    {
+                        if (files.TryGetValue(logical, out var existing) && !SourceIdentity.PathComparer.Equals(existing, source.Source.Path))
+                        {
+                            files[logical] = null; // Conflicting placement is unsupported, not an arrival-order choice.
+                        }
+                        else
+                        {
+                            files.TryAdd(logical, source.Source.Path);
+                        }
+                    }
+                }
+
+                var root = module.SourceDirectory;
+                placement = new(Path.IsPathFullyQualified(root) ? root : null, files.ToArray());
+                this.placements.Add(module, placement);
+            }
+
+            return placement;
+        }
 
         private static string Owner(Koto syntax)
         {
