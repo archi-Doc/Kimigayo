@@ -487,8 +487,8 @@ internal sealed partial class BodyLowering
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     (!upcast && !(operation.Kind == OwnershipOperationKind.Consume
-                        ? FitsValue(place.Type, body.Places[operation.Input].Type, operation.Source)
-                        : FitsValue(body.Places[operation.Input].Type, place.Type, operation.Source))) ||
+                        ? this.FitsStoredValue(place, body.Places[operation.Input], operation.Source)
+                        : this.FitsStoredValue(body.Places[operation.Input], place, operation.Source))) ||
                     (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && this.slotResultPlaces[operation.Input] == 0 &&
                     !(body.Places[operation.Input].Kind == OwnershipPlaceKind.Result && (IsScalar(place.Type) || ReferenceEquals(place.Type, BoundType.Unit)))) ||
                     (operation.Kind == OwnershipOperationKind.PayloadPlacement && this.payloadOwners[place.Id] < 0) ||

@@ -7,6 +7,10 @@ namespace Verification;
 // Linked into tests and benchmarks so their language inputs cannot drift apart.
 internal static class VerificationWorkloads
 {
+    internal const string ExclusiveViews = "var values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\nview[^1] = 9\nrequire view[1..][0] == 9 else => $abort(\"value\")";
+
+    internal const string SliceCopies = "let values: [3 of i32] = [1, 2, 3]\nlet copy = values.slice().toArray()\nrequire copy[1] == 2 else => $abort(\"copy\")";
+
     internal const string ContextualFunctionReference = "func choose(value: i32) -> i32 => value + 1\nfunc choose(value: bool) -> bool => value\nfunc apply<T, F>(value: T, action: ref/F) -> T\n    F is Callable<(T) -> T>\n    return action(value@move)\nlet result = apply(41, choose)";
 
     internal const string GenericFunctionReference = "func identity<T>(value: T) -> T => value@move\nfunc apply<T, F>(value: T, action: ref/F) -> T\n    F is Callable<(T) -> T>\n    return action(value@move)\nlet erased: (i32) -> i32 = identity\nlet result = apply(41, identity) + erased(1)";

@@ -2,7 +2,9 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -11,6 +13,56 @@ namespace XunitTest;
 
 public class UniqSliceTest(ITestOutputHelper output)
 {
+    [Fact]
+    public void CompleteElementTypesAreInvariantAndSourceOriginsMayShorten()
+    {
+        var c = MinimalEmissionTest.Analyze("var values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()");
+        Assert.True(c.Binding.Result.IsComplete);
+        var symbol = c.Library.GetSymbol(KimiDeclarationId.UniqSlice)!;
+        Assert.Equal(OriginVariance.Invariant, Assert.Single(symbol.Schema!.GenericSlots).OriginVariance);
+        var source = Assert.Single(symbol.Schema.Origins);
+        Assert.Equal(OriginVariance.Covariant, source.Variance);
+        Assert.Equal(LoanRequirement.Uniq, source.LoanRequirement);
+        var view = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>(), static x => x.NameKoto.IdentifierName == "view");
+        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(view.BoundType!, view));
+        // Ordinary local Origins are not proven to outlive static; the common Owned proof remains Unknown.
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(view.BoundType!, view));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ChildViewsCannotOutliveTheirParentHandle(bool child)
+    {
+        var source = "func make(values: uniq/[2 of i32]) -> UniqSlice<i32> during values\n" +
+            (child ? "    var parent = values.sliceUniq()\n    return parent.sliceUniq()" : "    return values.sliceUniq()") + "\n()";
+        var check = DiagnosticCorpus.Check(source);
+        Assert.Equal(child, check.Diagnostics.Any(static x => x.Severity == DiagnosticSeverity.Error));
+        if (child)
+        {
+            var error = Assert.Single(check.Diagnostics);
+            Assert.Equal("UnsatisfiedOriginRelation_Kd", error.Code);
+            Assert.Equal("parent.sliceUniq()", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+            Assert.Null(error.Repairs);
+            DiagnosticOutputTestHelper.Single(check, "requires the borrow parent outlives values, which is false", output);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OwnedConstraintsDoNotEraseViewDependencies(bool view)
+    {
+        var source = "func consume<T>(value: T)\n    T is Owned\n    ()\nvar values = [1, 2]\n" +
+            (view ? "var view = values.sliceUniq()\nconsume(view@move)" : "consume(values@move)");
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(!view, c.Emission.WriteIr(TextWriter.Null, out _));
+        if (view)
+        {
+            Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        }
+    }
+
     [Theory]
     [InlineData("var values = [1, 2]\nlet read = values[true]")]
     [InlineData("var values = [1, 2]\nvar view = values.sliceUniq()\nlet read = view[true]")]
@@ -145,7 +197,7 @@ public class UniqSliceTest(ITestOutputHelper output)
     [Fact]
     public void WarmViewPhasesAllocateNothing()
     {
-        var c = MinimalEmissionTest.Analyze("var values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\nview[^1] = 9\nrequire view[1..][0] == 9 else => $abort(\"value\")");
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.ExclusiveViews);
         var valid = true;
         var bytes = AllocationMeasurement.Measure(
             () =>

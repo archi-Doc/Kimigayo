@@ -235,6 +235,17 @@ test('colors contextual keywords only in their contexts', () => {
   expectNoScope('let total = value', 'value', 'storage');
 });
 
+test('colors noinit only as the whole unparenthesized declaration initializer', () => {
+  for (const declaration of ['var values: [2 of i32] = noinit', 'let values = noinit', 'unsafe => var values: [2 of bool] = noinit // write before reading']) {
+    expectScope(declaration, 'noinit', 'keyword.other.noinit');
+  }
+  for (const expression of ['let noinit = 3', 'let value = (noinit)', 'let value = group.noinit', 'let value = noinit + 1', 'value = noinit', 'use(noinit)', '// var value = noinit', 'let text = "noinit"']) {
+    expectNoScope(expression, 'noinit', 'keyword.other.noinit');
+  }
+  expectScope('var values: [_ of i32] = noinit', '_', 'variable.language.wildcard');
+  expectScope('var values: [2 of i32] = noinit', '2', 'constant.numeric');
+});
+
 test('colors directives, Attributes, explicit operations and Composition Root operations', () => {
   expectScope('#if windows', '#if', 'keyword.control.directive');
   expectScope('    #case _', '#case', 'keyword.control.directive');

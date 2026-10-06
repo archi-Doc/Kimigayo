@@ -296,4 +296,21 @@ internal sealed partial class BodyLowering
             binding == ConversionBinding.Numeric &&
             ((FloatingTypes.Supports(source) && ScalarTypes.Width(target, 64) is > 0 and <= 64) ||
             (FloatingTypes.Supports(target) && ScalarTypes.Width(source, 64) is > 0 and <= 64));
+
+    private bool FitsStoredValue(OwnershipPlace source, OwnershipPlace target, Parsing.Koto use)
+    {
+        if (FitsValue(source.Type, target.Type, use))
+        {
+            return true;
+        }
+
+        // A generic body's published premises prove its transfer before substitution. Caller-local Origins need not
+        // be related in that declaration's scope; retain the proof only for the exact substituted storage Types.
+        var declaredSource = source.Source.BoundType;
+        var declaredTarget = target.Kind == OwnershipPlaceKind.Result && target.Source is Parsing.FunctionKoto function
+            ? function.ReturnType?.BoundType : target.Source.BoundType;
+        return this.instance is not null && declaredSource is not null && declaredTarget is not null &&
+            ReferenceEquals(SignatureType(this, declaredSource), source.Type) && ReferenceEquals(SignatureType(this, declaredTarget), target.Type) &&
+            ReferenceTypes.StorageMatches(source.Type, target.Type) && this.instanceBinding!.FitsTypeAt(declaredSource, declaredTarget, use);
+    }
 }

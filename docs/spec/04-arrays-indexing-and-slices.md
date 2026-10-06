@@ -724,7 +724,7 @@ A direct fixed-array element is a built-in projection selected with the same inp
 
 The operation splits the receiver's exclusive capability through the standard storage boundary (§22.1.2.5). The references may be used independently and keep the source collection borrowed under the ordinary Loan rules until their last uses. No conflicting whole-collection access, reallocation, destruction or Move is permitted while either reference remains live. The result keeps element-internal dependencies as well as its source dependency. The operation takes O(1) time, allocates nothing, changes no element, length, capacity or order, and calls no element copy, comparison or destructor.
 
-This API adds no inference from runtime inequalities to ordinary indexing: two separately formed exclusive element borrows still require the specified static non-overlap proof (§15.6.2). It introduces no exclusive Slice and grants no new capability to shared receivers.
+This API adds no inference from runtime inequalities to ordinary indexing: two separately formed exclusive element borrows still require the specified static non-overlap proof (§15.6.2). Shared receivers gain no new capability.
 
 ### 4.6.11. Shared and exclusive view methods
 

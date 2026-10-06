@@ -101,6 +101,10 @@ This command reports input sizes, retained record counts, iteration counts and t
 `StoredObjectViewTest`; fixed conditions and the command are in [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md).
 Allocation assertions remain in the normal Unit/Session suite; timing samples remain opt-in.
 
+`Benchmark --view-plans` measures Binding, ownership and emission for the exclusive-view and Slice-copy inputs
+shared with `UniqSliceTest` and `SliceToArrayTest`; fixed conditions and native measurement commands are in
+[Views.md](../../src/Benchmark/Views.md).
+
 ## Native fixtures
 
 `verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit codes, dependency checks and divergent-fixture timeouts are unchanged.

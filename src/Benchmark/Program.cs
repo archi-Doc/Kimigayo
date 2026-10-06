@@ -9,6 +9,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--view-plans")
+        {
+            CompilerPlanMeasurements.Run(views: true);
+            return;
+        }
+
         if (args.Length > 0 && args[0] is "--object-plans" or "--callable-plans")
         {
             CompilerPlanMeasurements.Run(args[0] == "--callable-plans");
@@ -75,6 +81,7 @@ public class Program
             typeof(DocumentationMarkdownBenchmark),
             typeof(ParseBenchmark),
             typeof(BindingBenchmark),
+            typeof(KimiLibraryBenchmark),
             typeof(PatternBindingBenchmark),
             typeof(StartupBindingBenchmark),
             typeof(OwnershipAnalysisBenchmark),

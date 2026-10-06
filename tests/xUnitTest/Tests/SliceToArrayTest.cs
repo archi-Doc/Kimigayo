@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Verification;
 using Xunit;
 
 namespace XunitTest;
@@ -58,7 +59,7 @@ public class SliceToArrayTest
     [Fact]
     public void WarmCopyPhasesReuseStorage()
     {
-        var c = MinimalEmissionTest.Analyze("let values: [3 of i32] = [1, 2, 3]\nlet copy = values.slice().toArray()\nrequire copy[1] == 2 else => $abort(\"copy\")");
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.SliceCopies);
         var valid = true;
         var bytes = AllocationMeasurement.Measure(
             () =>
