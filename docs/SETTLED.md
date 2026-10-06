@@ -176,6 +176,13 @@
 - **Proposed fix:** Let the task slot distinguish overloads, as parameter count does.
 - **Why not applied:** A forgotten `task;` would then silently select the blocking variant instead of reporting a missing task argument, and one operation would have two forms (Principle 1). As with receiver shapes (§7.3), one function group has one task-slot shape (§24.2.3), so a call's need for the task argument follows from its Name; code without a task uses `Async.run` at its boundary.
 
+## A separate Hover scheduler or mandatory asynchronous renderer
+
+- **Problem:** Hover must remain available while diagnostic checks wait, without repeating expensive comment rendering or delaying server events unnecessarily.
+- **Example:** An edit changes a declaration comment but leaves diagnostics empty. A renderer driven only by diagnostic notifications would never refresh it; starting a new check on every Hover would bypass the quiet period.
+- **Proposed fix:** Add a Hover-specific interval, advance checks on requests, remove caching, or require asynchronous rendering before measuring it.
+- **Why not applied:** SPEC §23.4.11 shares check scheduling and refreshes on adoption/revalidation independently of notifications. One labeled previous set bridges pending checks. Synchronous, bounded requests reuse strict agreement and rendering results; cache removal adds repeated work, and mandatory asynchronous jobs add state before a measured need. Later concurrency changes require actual responsiveness evidence. Setting-specific fields are not merged, mandatory contract/effect evidence is not truncated, and display text is not a machine semantic API.
+
 ## Running full CI before integration into main
 
 - **Problem:** The full build and test workflow is expensive. Additional triggers repeat that work while changes are still being developed.

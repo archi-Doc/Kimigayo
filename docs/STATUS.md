@@ -1,5 +1,10 @@
 # Kimigayo Implementation Status
 
+**Accepted Hover contract (2026-10-06):** [SPEC §23.4.11](spec/lsp-hover.md) requires declaration/Copy/documentation Hover,
+shared diagnostic scheduling, complete participant agreement, synchronous cached rendering and labeled previous analysis.
+General Hover and these update/rendering rules are not yet implemented or verified; existing Callable effect Hover remains
+the current boundary. The implementation units are the Hover track in `docs/dev/PLAN.md`; specification intake alone establishes no support.
+
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
 length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotation holes now use written dimensions,
 literal counts and complete initializer Types, including symbolic lengths and known generic result expectations.
