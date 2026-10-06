@@ -2,23 +2,91 @@ name: Build and Test
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build:
-
+  managed:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-
     steps:
     - uses: actions/checkout@v6
-    - name: Setup .NET Core
-      uses: actions/setup-dotnet@v5
+    - uses: actions/setup-dotnet@v5
       with:
         dotnet-version: 10.0.x
-    - name: Install dependencies
-      run: dotnet restore
-    - name: Build
-      run: dotnet build --configuration Release --no-restore
-    - name: Test
-      run: dotnet test --project tests/xUnitTest/xUnitTest.csproj --configuration Release --no-build --no-restore --minimum-expected-tests 1 --parallel none
+    - run: dotnet restore
+    - run: dotnet build --configuration Release --no-restore --no-incremental -warnaserror
+    - run: dotnet test --project tests/xUnitTest/xUnitTest.csproj --configuration Release --no-build --no-restore --minimum-expected-tests 1 --parallel none
+
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+    - uses: actions/checkout@v6
+    - uses: actions/setup-dotnet@v5
+      with:
+        dotnet-version: 10.0.x
+    - uses: actions/setup-node@v4
+      with:
+        node-version: 24
+        cache: npm
+        cache-dependency-path: src/kimi-ext/package-lock.json
+    - uses: actions/cache@v4
+      id: llvm
+      with:
+        path: toolchain
+        key: llvm-windows-x64-${{ hashFiles('src/backend/windows-x64/profile.json') }}
+    - name: Install pinned LLVM tools
+      if: steps.llvm.outputs.cache-hit != 'true'
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $profile = Get-Content src/backend/windows-x64/profile.json -Raw | ConvertFrom-Json
+        if ($profile.llvmVersion -ne '22.1.8') { throw 'Update the CI archive digest with the adopted LLVM profile.' }
+        $archive = Join-Path $env:RUNNER_TEMP 'llvm.tar.xz'
+        $expanded = Join-Path $env:RUNNER_TEMP 'kimi-llvm'
+        Invoke-WebRequest 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/clang%2Bllvm-22.1.8-x86_64-pc-windows-msvc.tar.xz' -OutFile $archive
+        if ((Get-FileHash $archive -Algorithm SHA256).Hash -ne 'd96c2cc1736f4eb7fa43cb9bbdf56d93551a9ae0a9aadb9c99c3c3b2b712a234') { throw 'LLVM archive checksum mismatch.' }
+        New-Item -ItemType Directory -Path $expanded | Out-Null
+        tar -xf $archive -C $expanded --strip-components=1
+        if ($LASTEXITCODE -ne 0) { throw 'LLVM extraction failed.' }
+        ./src/backend/windows-x64/setup.ps1 -LlvmBin (Join-Path $expanded 'bin')
+    - run: dotnet restore
+    - name: Compiler, allocation and native O0/O2 regressions
+      run: ./scripts/verify.ps1 -Mode Session -Fixtures '*.ll' -VerifyToolchain -Name ci
+    - name: PowerShell native worker regressions
+      run: ./tests/scripts/NativeFixtureRunnerTest.ps1
+    - name: Native CLI integration
+      run: ./src/backend/windows-x64/test-cli.ps1 -Configuration Release
+    - name: Extension locked dependencies and unit tests
+      run: |
+        npm --prefix src/kimi-ext ci
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        npm --prefix src/kimi-ext test
+    - name: Extension integration with managed compiler
+      run: |
+        $env:KIMI_TEST_SERVER_PATH = (Resolve-Path src/Kimi/bin/Release/net10.0/Kimi.exe).Path
+        npm --prefix src/kimi-ext run test:integration
+    - uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: windows-verification
+        path: |
+          artifacts/verify/**/summary.json
+          artifacts/verify/**/verification.json
+          artifacts/verify/**/results.json
+          artifacts/verify/**/*.log
+          artifacts/verify/**/*.xml
+          artifacts/verify/**/inputs-*.json
+          artifacts/backend/windows-x64/verification.json
+        retention-days: 14
