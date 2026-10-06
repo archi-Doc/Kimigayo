@@ -4,7 +4,6 @@ using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Diagnostics;
-using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -34,21 +33,8 @@ public class ArrayAnnotationDiagnosticTest(ITestOutputHelper output)
         Assert.Contains(record.Reason!, x => x.Name == "reason" && x.Value.Contains(reason, StringComparison.Ordinal));
         Assert.Contains(record.Related!, x => x.Span is { } span && source.Substring(span.Start, span.Length) == relatedText);
 
-        var console = new DiagnosticContractTest.DiagnosticConsole();
-        new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains(reason, console.Text, StringComparison.Ordinal);
-        var identity = SourceIdentity.FromPath(path);
         var check = new CheckOutput(CheckOutcome.Completed, false, TestPresence.No, result);
-        foreach (var related in new[] { false, true })
-        {
-            var sent = Assert.Single(WorkspaceCheck.Place(check, [identity], identity, related)[identity]);
-            Assert.Equal(record.Display!.Range, sent.Range);
-            Assert.Equal(record.Code, sent.Code);
-            Assert.Contains(reason, sent.Message, StringComparison.Ordinal);
-            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
-        }
-
-        output.WriteLine(console.Text);
+        DiagnosticOutputTestHelper.Single(check, reason, output);
     }
 
     [Theory]

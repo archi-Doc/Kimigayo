@@ -366,6 +366,9 @@ public enum KotoKind : byte
     /// <summary>A requirement effect bound: an effect clause or an effect specification.</summary>
     EffectBound,
 
+    /// <summary>A declaration directive skipping initial Scalar-array stores.</summary>
+    NoInit,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }

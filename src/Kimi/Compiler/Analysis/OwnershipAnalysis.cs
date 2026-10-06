@@ -964,7 +964,12 @@ public sealed partial class OwnershipAnalysis
 
             this.locals.Add(new(id, field, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, field, id);
-            if (field.InitializerKoto is { } initializer)
+            if (field.InitializerKoto is NoInitKoto directive)
+            {
+                // SPEC 4.3.4: ordinary complete construction, with no initializer value to acquire and no element stores.
+                this.Emit(OwnershipOperationKind.Produce, directive, id);
+            }
+            else if (field.InitializerKoto is { } initializer)
             {
                 var reported = this.body.IssueStorage.Count;
                 var value = this.Expression(initializer);

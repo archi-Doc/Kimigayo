@@ -5,7 +5,12 @@ length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotat
 literal counts and complete initializer Types, including symbolic lengths and known generic result expectations.
 Unknown or inconsistent evidence is a located Language diagnostic; inner literals without a written fixed dimension
 remain dynamic Arrays (`ArrayAnnotationHoleTest`, `ArrayAnnotationDiagnosticTest`). Warm successful and failed
-rebinding allocate nothing. `noinit`, UniqSlice, view methods and Slice.toArray remain pending.
+rebinding allocate nothing. Scalar `noinit` now retains dedicated syntax, checks the local var/annotation/element
+requirements at Binding, uses the ordinary Unsafe permission check and completes ordinary ownership construction
+without initial stores. PrimitiveInteger and Wrapping<T> definitions prove eligibility from Constraints. No per-element
+state or extra read restriction is introduced; read-before-write examples are checked for acceptance only, never run.
+`NoInitTest` covers all compiler phases, CLI/LSP records, zero-sized arrays, store-only borrowed calls, raw writes and
+zero-allocation warm phases. UniqSlice, view methods and Slice.toArray remain pending.
 
 Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required behavior; limits listed here never narrow it. The plan and milestone order are in [PLAN.md](dev/PLAN.md). Earlier dated records are in git (`git show 32324537:STATUS.md`).
 

@@ -1,0 +1,9 @@
+let rows: [_ of [_ of i32]] = [[1, 2], [3, 4]]
+
+func fill(values: uniq/[3 of i32], value: i32)
+    for index in values.indices => values[index] = value
+
+unsafe
+    var buffer: [3 of i32] = noinit
+    fill(buffer@uniq, 7)
+    Console.writeLine("\(rows.length) \(buffer[2])")

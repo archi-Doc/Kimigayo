@@ -689,7 +689,7 @@ public sealed class ControlFlowAnalysis
         {
             this.CheckUnsafePermission(node);
         }
-        else if (requiresUnsafe is null && node is ExpressionKoto)
+        else if (requiresUnsafe is null && node is ExpressionKoto or NoInitKoto)
         {
             // An operation whose need is unknown may use the permission, so the enclosing block is not reported as unused.
             this.unsafeUncertain = true;

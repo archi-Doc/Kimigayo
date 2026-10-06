@@ -497,6 +497,12 @@
     Label="found {0}"
     Advice="Use explicit Type arguments or an annotated intermediate when inference is incomplete; calls and member selection bind before try"
 
+  + Name="InvalidNoInit_Kd"
+    Category="Language"
+    Message="noinit requires a local var with an explicit fixed-array Type and a proven owner Scalar element"
+    Evidence="reason:Text"
+    Label="{0}"
+
   + Name="ArrayAnnotationInference_Kd"
     Category="Language"
     Message="A local fixed-array annotation requires consistent length and element evidence"

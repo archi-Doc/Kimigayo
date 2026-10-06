@@ -366,6 +366,14 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Produce:
+                if (operation.Source is NoInitKoto directive && directive.Parent is FieldKoto declaration &&
+                    ReferenceEquals(declaration.InitializerKoto, directive) && ReferenceEquals(place.Source, declaration) &&
+                    place.Kind == OwnershipPlaceKind.Local && place.Type.Kind == BoundTypeKind.FixedArray &&
+                    ScalarTypes.Supports(place.Type.Components[0]))
+                {
+                    break; // Construction completes without reading or storing an element (SPEC 4.3.4).
+                }
+
                 if (place.Type.Kind == BoundTypeKind.FunctionItem && ReferenceEquals(operation.Source.BoundSymbol, place.Type.Symbol))
                 {
                     break; // A resolved Item has no runtime payload to initialize.
