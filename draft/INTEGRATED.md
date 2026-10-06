@@ -30,6 +30,7 @@ All folders are direct children of `draft`, so moving a document between them ke
 
 | 文書 | 状態 | 取り込み先・証跡 |
 | --- | --- | --- |
+| `2026-10-05 Fixed Arrays and Slices.md` | 取り込み済み | 2026-10-06: §3.1 → SPEC §4.3.1 / §10.5; §3.2 → §4.3.4 / §2.5 / §5.2, §5.6 / §12 / §14.3.3 / §15.1 / §16.3.2 / IMPL §21.5; §3.3 → §3.5.1 / §4.6.11 / §15.3.5 / §22.1; §3.4 → §4.6.6.1. §1–2 are superseded background; §4–5 rationale and scope are reflected in the intake; §6 documentation plan is completed in SPEC, LIBRARY, STYLE and Appendices D/E/F; §7 implementation/verification plan is retained as active work in PLAN and pending support in STATUS. All proposed language rules are incorporated, with no rejected or transferred items. The unchanged proposal moves to Changes and is frozen; integration does not imply implementation support. |
 | `2026-09-10 Core Terminology.md` | 取り込み済み | 2026-09-14 の SPEC 分割時点で反映（第 3 章） |
 | `2026-09-10 Property Semantics.md` | 取り込み済み | 第 11 章（`Design/2026-09-10 Properties.md` を経由） |
 | `2026-09-11 Branch Body Syntax and Match Exhaustiveness.md` | 取り込み済み | 後続の `Design/2026-09-12 Control flow.md` を経て第 14 章 |

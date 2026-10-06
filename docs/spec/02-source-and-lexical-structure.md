@@ -261,7 +261,7 @@ The complete spelling `_` is a reserved token, not a Name. Longer Names such as 
 | --- | --- |
 | Runtime Pattern | Wildcard (§14.8.1) |
 | `#case _` | Final catch-all with existing placement/count restrictions (§19) |
-| `[N of _]` | Existing element inference in an initialized local annotation (§4) |
+| `[_ of T]`, `[N of _]`, `[_ of _]` | Length and/or element inference in an initialized local fixed-array annotation, recursively through written nesting (§4.3.1) |
 | `_ = expression` | Explicit discard statement (§14.2.4) |
 | for binding or Tuple binding element | Unnamed iteration binding (§14.6.1) |
 
@@ -293,6 +293,7 @@ A reserved keyword cannot be a Name. A contextual keyword is recognized only in 
 | Explicit value operations | `move`, `copy` and `follow` immediately after `@`, as the [transfer and copy operations](13-operators-and-assignment.md#1353-defined-adaptations) `E@move` and `E@copy` and the [follow operation](13-operators-and-assignment.md#13551-follow) `E@follow`; `wrap` and `bits` immediately after `@` and followed by an adjacent `<`, as the [wrapping and bit conversions](13-operators-and-assignment.md#1354-numeric-conversions-and-literals) `E@wrap<U>` and `E@bits<U>`. |
 | Semantics categories | `value`, `valueborrow`, `object`, `objectborrow`, `borrow`, `owning`, `reference` in Semantics requirements; see [category sets](03-types-and-values.md#33-type-semantics). |
 | Contextual bindings and operations | `self`, `value`, `storage` under the receiver and accessor rules (§9.2, Chapter 11); `abort` after `$`. |
+| Initialization directive | `noinit` only as the entire unparenthesized initializer of a declaration, before ordinary name lookup; eligibility is checked afterward (§4.3.4). |
 | Fixed arrays and lengths | `of` between length and element Type in `[N of T]`, or length and value in fill construction `[N of value]`; `length` only at the start of a generic parameter declaration, followed by its Name. |
 
 Further notes on individual keywords:

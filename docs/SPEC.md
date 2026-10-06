@@ -28,7 +28,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 ### Part II. Types, values, and sequences
 
 - [3. Types and values](spec/03-types-and-values.md)
-- [4. Arrays, indexing, and slices](spec/04-arrays-indexing-and-slices.md)
+- [4. Arrays, indexing, and slices](spec/04-arrays-indexing-and-slices.md): local fixed-array holes, `noinit`, shared/exclusive views and copying into Array.
 - [5. Raw pointers and unsafe memory](spec/05-raw-pointers-and-unsafe-memory.md)
 
 ### Part III. Declarations and static semantics
@@ -116,7 +116,7 @@ This table indexes the required declarations of [§22.1](spec/22-core-execution-
 | Declaration container | Declarations / functions | Reference |
 | --- | --- | --- |
 | `Kimi` | Intrinsic Contracts: `Copy`, `Owned`, `Callable`, `Sealed`, `ObjectPayload`, `PrimitiveInteger`; closed Contracts: `Position`, `PositionRange` | [§8.4.7](spec/08-generics-constraints-and-contracts.md#847-intrinsic-and-closed-contracts) |
-| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<s/T>`, `Array<T>`, `FromEnd<T>`, `Start`, `End`, `Range<S, E>`, `ClosedRange<S, E>`, `ResolvedRange`, `RangeIterator<T>`, `ClosedRangeIterator<T>`, `Slice<T>`, `Dictionary<K,V>`, `Loan<T>`; Contracts: `Equatable`, `Comparable`, `LendingIterator`, `Iterator`, `Iterable`, `UniqIterable`, `IntoIterable`, `Indexable<Key>`, `UniqIndexable<Key>` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), [§22.1.2 iteration and indexing](spec/22-core-execution-and-foreign-functions.md#2212-iteration-and-storage) |
+| `Kimi` | Types: `Option<T>`, `Result<T,E>`, `Weak<s/T>`, `Array<T>`, `FromEnd<T>`, `Start`, `End`, `Range<S, E>`, `ClosedRange<S, E>`, `ResolvedRange`, `RangeIterator<T>`, `ClosedRangeIterator<T>`, `Slice<T>`, `UniqSlice<T>`, `Dictionary<K,V>`, `Loan<T>`; Contracts: `Equatable`, `Comparable`, `LendingIterator`, `Iterator`, `Iterable`, `UniqIterable`, `IntoIterable`, `Indexable<Key>`, `UniqIndexable<Key>` | [§22.1 declaration shapes and member requirements](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations), [§22.1.2 iteration and indexing](spec/22-core-execution-and-foreign-functions.md#2212-iteration-and-storage) |
 | `Kimi.Iteration` | `OwningIterator<I>`, `BorrowingIterator<I>`; `owning`, `borrowing` | [§22.1.2.3 standard adapters](spec/22-core-execution-and-foreign-functions.md#22123-standard-adapters) |
 | `Kimi.Raw` | `allocate`, `release`, `initialize`, `slice` | [§5.6 raw storage operations](spec/05-raw-pointers-and-unsafe-memory.md#56-raw-storage-operations) |
 | `Kimi.Windows`, `Kimi.Time` | Windows counter imports; `Duration`, `Stopwatch` | [§22.7 Windows APIs and elapsed time](spec/22-core-execution-and-foreign-functions.md#227-windows-apis-and-elapsed-time) |

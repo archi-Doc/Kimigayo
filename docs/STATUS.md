@@ -1,5 +1,10 @@
 # Kimigayo Implementation Status
 
+**Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
+length holes, `noinit`, UniqSlice, view methods and Slice.toArray. This intake alone establishes no implementation support;
+implementation and focused verification of these additions are pending. Earlier fixed-array/Slice support below retains
+its recorded boundary until the corresponding units pass.
+
 Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required behavior; limits listed here never narrow it. The plan and milestone order are in [PLAN.md](dev/PLAN.md). Earlier dated records are in git (`git show 32324537:STATUS.md`).
 
 ## Summary

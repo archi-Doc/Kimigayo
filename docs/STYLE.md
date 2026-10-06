@@ -296,6 +296,8 @@ func firstIndex<T, F>(values: Slice<T>, matching: ref/F) -> Option<isize>
 
 ### 4.5. Raw pointers and unsafe code
 
+`[Kimi]` Prefer ordinary initialization. Use `noinit` only for an eligible Scalar fixed array when later code writes every value before reading it, and explain that responsibility. Choose `slice` for shared access, `sliceUniq` for exclusive access, and `slice().toArray()` for an independent shallow Copy. Do not add conversion-name aliases for these operations.
+
 - `[Kimi]` Spell an address whose referent the code does not access as `raw/()`, and compute byte offsets
   on `raw/u8`; convert to the element pointer with `@raw/T` only where elements are accessed
   ([SPEC §5](spec/05-raw-pointers-and-unsafe-memory.md)).
