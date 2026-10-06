@@ -22,7 +22,7 @@ public sealed partial class Binding
     // SPEC 10.8: an Origin that the evidence's own binder quantifies, such as a per-call input, never becomes the solution of an Origin
     // inside a slot. The slot keeps the structure and Semantics, and each such Origin is replaced by an open region of the call (SPEC
     // 15.3.6): a local region that holds no Loans, is never displayed, and that other evidence for the slot fills.
-    internal static bool HasOpenOrigin(BoundType type)
+    internal static bool HasOpenOrigin(BoundType type, bool evidenceOnly = false)
     {
         if (!type.CarriesOrigin)
         {
@@ -44,7 +44,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (HasOpenOrigin(type.Components[i]))
+            if (HasOpenOrigin(type.Components[i], evidenceOnly))
             {
                 return true;
             }
@@ -52,16 +52,16 @@ public sealed partial class Binding
 
         return false;
 
-        static bool IsOpen(BoundOrigin origin)
+        bool IsOpen(BoundOrigin origin)
         {
-            if (origin.Open)
+            if (origin.Open && (!evidenceOnly || !origin.IsLocalInput))
             {
                 return true;
             }
 
             for (var i = 0; i < origin.Operands.Count; i++)
             {
-                if (origin.Operands[i].Open)
+                if (origin.Operands[i].Open && (!evidenceOnly || !origin.Operands[i].IsLocalInput))
                 {
                     return true;
                 }
@@ -281,11 +281,11 @@ public sealed partial class Binding
         }
     }
 
-    private BoundOrigin OpenOrigin(Koto source, int key)
+    private BoundOrigin OpenOrigin(Koto source, int key, bool localInput = false)
     {
         if (!this.openOrigins.TryGetValue((source, key), out var origin))
         {
-            this.openOrigins.Add((source, key), origin = new(OriginKind.Inference, source, key) { Open = true, InputIndex = -1 });
+            this.openOrigins.Add((source, key), origin = new(OriginKind.Inference, source, key) { Open = true, InputIndex = -1, IsLocalInput = localInput });
         }
 
         return origin;

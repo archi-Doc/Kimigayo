@@ -596,10 +596,11 @@ public sealed partial class Binding
             return origin;
         }
 
-        if (context.Position == TypePosition.Parameter && context.Owner is FunctionKoto { IsAnonymous: true })
+        if (context.Position == TypePosition.Parameter && (context.Owner is FunctionKoto { IsAnonymous: true } ||
+            (context.Owner is FunctionTypeKoto && OriginOwner(context.Owner) is VariableKoto { InitializerKoto: not null, TypeKoto: { } annotation } && IsWithin(context.Owner, annotation))))
         {
-            // SPEC 15.3.4: nested anonymous input slots are body regions fixed once at the expression, never per-call inputs.
-            return this.OpenOrigin(use, aggregateSlot);
+            // SPEC 15.3.4: nested anonymous/local Function input slots are body regions fixed once, never per-call inputs.
+            return this.OpenOrigin(use, aggregateSlot, localInput: true);
         }
 
         if (context.Position == TypePosition.Local && context.Owner is VariableKoto { InitializerKoto: not null })

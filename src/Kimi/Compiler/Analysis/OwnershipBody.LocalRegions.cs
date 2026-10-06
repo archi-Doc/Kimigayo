@@ -107,6 +107,27 @@ public sealed partial class OwnershipBody
             }
 
             var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+            {
+                foreach (var update in this.contentUpdates)
+                {
+                    if (update.Operation != id || !this.TypeKeepsRoot(update.Type, root))
+                    {
+                        continue;
+                    }
+
+                    if (update.Target == holder)
+                    {
+                        return Transfer(id, update.Incoming, slot, this.loanSlots[holder]);
+                    }
+
+                    if (update.Result == holder || (update.Swap && update.Incoming == holder))
+                    {
+                        return Transfer(id, update.Target, slot, this.loanSlots[holder]);
+                    }
+                }
+            }
+
             var retained = -1;
             var writes = false;
             for (var r = this.retentionStarts[id]; r < this.retentionStarts[id + 1]; r++)

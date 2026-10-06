@@ -314,6 +314,10 @@ public sealed partial class OwnershipBody
             }
         }
 
+        this.PrepareCheckingBorrowEdges();
+        this.PrepareContentPredecessors();
+        this.referentCache.Clear();
+        this.referentTargets.Clear();
         this.PrepareBorrowDefinitions();
         this.PrepareContentUpdates(count);
         this.PrepareRetentions();
@@ -349,8 +353,6 @@ public sealed partial class OwnershipBody
         }
 
         this.PrepareSlicePaths();
-        this.PrepareCheckingBorrowEdges();
-        this.PrepareContentPredecessors();
         this.PrepareStoredBorrowActivity();
         this.borrowLive.Reset(OwnershipStorage.Cells(liveWidth, this.Operations.Count, 1, "borrow liveness"));
         bool changed;
@@ -1374,19 +1376,7 @@ public sealed partial class OwnershipBody
         this.borrowDefinitions.AsSpan(0, this.Places.Count).Fill(-1);
         for (var id = 0; id < this.Operations.Count; id++)
         {
-            var defined = this.Operations[id] switch
-            {
-                { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
-                { Kind: OwnershipOperationKind.UpdateBorrowed, Place: >= 0 } update => update.Place,
-                { Kind: OwnershipOperationKind.Consume, Input: >= 0, Acquisition: AcquisitionKind.Move } moved when ReferenceTypes.IsBorrow(this.Places[moved.Input].Type) => moved.Input,
-                { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
-                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,
-                { Kind: OwnershipOperationKind.InitializeSubject, Place: >= 0 } subject => subject.Place,
-                { Kind: OwnershipOperationKind.AcquirePattern, Input: >= 0 } binding => binding.Input,
-                { Kind: OwnershipOperationKind.Produce, Place: >= 0 } item when this.Values[id].Kind == OwnershipValueKind.Sequence => item.Place,
-                { Kind: OwnershipOperationKind.PayloadPlacement, Place: >= 0 } placement => placement.Place,
-                _ => -1,
-            };
+            var defined = this.ReferenceDefinition(id);
 
             if (defined >= 0)
             {
@@ -1676,41 +1666,10 @@ public sealed partial class OwnershipBody
     // holder of the reference keeps what is stored through it.
     private int StoredReferent(int pointer, int holder)
     {
-        for (var remaining = this.Values.Count; remaining > 0 && (uint)pointer < (uint)this.Values.Count; remaining--)
+        var targets = this.CurrentReferents(pointer);
+        if (!targets.Unknown && targets.Count == 1)
         {
-            var operation = this.Operations[pointer];
-            var node = this.Values[pointer];
-            if (operation.Kind == OwnershipOperationKind.Borrow && node.Kind == OwnershipValueKind.Address)
-            {
-                if (operation.Place >= 0 && operation.Input >= 0 && this.Places[operation.Input].Type.Components is [var addressed] &&
-                    ReferenceEquals(addressed, this.Places[operation.Place].Type))
-                {
-                    return operation.Place;
-                }
-
-                if (node.Count != 1)
-                {
-                    break;
-                }
-
-                pointer = this.ValueOperands[node.Start];
-                continue;
-            }
-
-            if (node.Kind == OwnershipValueKind.Alias && node.Count == 1)
-            {
-                pointer = this.ValueOperands[node.Start];
-                continue;
-            }
-
-            if (operation.Kind == OwnershipOperationKind.Read && operation.Place >= 0 && ReferenceTypes.IsBorrow(this.Places[operation.Place].Type) &&
-                this.borrowDefinitions[operation.Place] is >= 0 and var definition && definition < pointer)
-            {
-                pointer = definition;
-                continue;
-            }
-
-            break;
+            return this.referentTargets[targets.Start];
         }
 
         // A loaded or received reference addresses the Place its Origin names when that is a slot of this body storing the
@@ -1805,6 +1764,18 @@ public sealed partial class OwnershipBody
 
         void AddTargets(int pointer, int holder, int stored, BoundType storage, int operation, int read, bool complete)
         {
+            var targets = this.CurrentReferents(pointer);
+            if (!targets.Unknown && targets.Count > 0)
+            {
+                for (var i = 0; i < targets.Count; i++)
+                {
+                    var current = this.referentTargets[targets.Start + i];
+                    this.retentions.Add((current, operation, stored, storage, read, complete && targets.Count == 1));
+                }
+
+                return;
+            }
+
             var target = this.StoredReferent(pointer, holder);
             if (target != holder && Binding.FitsStructuralPart(this.Places[target].Type, storage))
             {

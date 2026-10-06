@@ -308,6 +308,17 @@ public sealed partial class Binding
 
         BoundOrigin Resolve(BoundOrigin origin)
         {
+            if (origin.Kind == OriginKind.Intersection)
+            {
+                var resolved = BoundOrigin.Static;
+                for (var i = 0; i < origin.Operands.Count; i++)
+                {
+                    resolved = this.Meet(resolved, Resolve(origin.Operands[i]));
+                }
+
+                return resolved;
+            }
+
             if (!IsLocalRegion(origin))
             {
                 return origin;

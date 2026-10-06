@@ -858,7 +858,7 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = function.Parameters[i];
-            this.BindType(parameter.Type, scope);
+            this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
             if (parameter.DefaultValue is { } value)
             {
                 this.defaultBindingDepth++;

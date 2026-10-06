@@ -69,6 +69,11 @@ public sealed partial class OwnershipBody
             // An opaque referent is represented by its reference holder. Its outer storage Loan survives writes through it;
             // only the stored Type's internal dependencies participate in replacing contents (SPEC 15.7.3).
             var holder = this.Places[place].Type;
+            if (!this.IsExclusiveBorrowInput(root) && this.Function.CodeContext.Compilation.Binding.HasRegionBounds(holder))
+            {
+                continue; // Local-region content transfers use the same per-value CFG flow as direct writes.
+            }
+
             if (root == place || (!Binding.FitsStructuralPart(holder, storage) && holder.Origin is { } origin && this.OriginNamesRoot(origin, root)) || (this.IsExclusiveBorrowInput(root)
                 ? this.NamedOriginRequirement(storage, this.Places[root].Type.Origin!) == LoanRequirement.None
                 : this.borrowDependencies[(place * count) + root] == LoanRequirement.None))

@@ -129,8 +129,11 @@ public sealed class BoundOrigin
 
     internal int TargetSlot { get; init; }
 
-    // SPEC 10.8, 15.3.6: an inferred local region that stands for a known call signature's own Origin in a slot solution. It holds no
-    // Loans and is never displayed; Binder is the argument whose signature supplied it, so each call site has its own region.
+    // A nested anonymous/local Function input is fixed in its enclosing body, never a temporary signature-evidence stand-in.
+    internal bool IsLocalInput { get; init; }
+
+    // SPEC 10.8, 15.3.6: an inferred region, either temporary signature evidence or a body-local omitted Origin.
+    // Its binder and slot give stable identity; local constraints and value flow determine the actual Loans.
     internal bool Open { get; init; }
 
     internal BindingSymbol? BorrowCondition { get; set; }

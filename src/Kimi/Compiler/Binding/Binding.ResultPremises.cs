@@ -49,7 +49,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (function.Origins.Count == 0 || HasOpenOrigin(required))
+        if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
             if (!CallableSignatureFits(signature, required, SignatureOwner(item)))
             {
@@ -243,7 +243,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (function.Origins.Count == 0 || HasOpenOrigin(required))
+        if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
             return this.ConversionContractFailure(signature, required, function, at, use) ?? this.ConditionContractFailure(function, signature, required, at, use);
         }

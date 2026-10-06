@@ -363,7 +363,7 @@ public sealed partial class Binding
                 }
             }
 
-            return !ReferenceEquals(origin.Binder, callee) && FixedInBodyOrigin(origin, use);
+            return FixedOrigin(origin) && !ReferenceEquals(origin.Binder, callee) && FixedInBodyOrigin(origin, use);
         }
     }
 
