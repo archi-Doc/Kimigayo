@@ -220,6 +220,9 @@ internal enum BindingFailure : byte
 
     // SPEC 8.4.10.1, 8.4.10.6: an effect item that declares no bound of its Contract.
     InvalidEffectBound,
+
+    // SPEC 4.3.1: an initialized local annotation obtains every written hole from consistent initializer evidence.
+    ArrayAnnotationInference,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

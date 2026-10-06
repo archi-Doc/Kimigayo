@@ -303,7 +303,17 @@ public static partial class Parser
     private static Koto ParseFixedArrayType(ref TokenReader reader)
     {
         var start = reader.Read().Span.Start;
-        var length = ParseArrayLength(ref reader);
+        Koto length;
+        if (reader.AllowArrayElementInference && reader.CurrentTokenKind == TokenKind.Underscore)
+        {
+            length = new TypeSemanticsKoto(ref reader, reader.Read());
+            reader.HasInferredArrayElement = true;
+        }
+        else
+        {
+            length = ParseArrayLength(ref reader);
+        }
+
         if (reader.IsCurrentIdentifier("of"))
         {
             reader.Advance();

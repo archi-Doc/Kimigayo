@@ -105,7 +105,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || !ReferenceEquals(actual.ClosureContext, expected.ClosureContext) || actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
+        var inferredLength = expected.Kind == BoundTypeKind.FixedArray && expected.Length < 0;
+        if (actual.Kind != expected.Kind || actual.Semantics != expected.Semantics || !ReferenceEquals(actual.Symbol, expected.Symbol) || !ReferenceEquals(actual.ClosureContext, expected.ClosureContext) || (!inferredLength && (actual.Length != expected.Length || !ReferenceEquals(actual.LengthExpression, expected.LengthExpression))) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
         {
             return false;
         }

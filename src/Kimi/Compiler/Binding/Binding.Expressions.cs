@@ -392,6 +392,11 @@ public sealed partial class Binding
         }
 
         var actual = this.BindNodeCore(node, scope, expected);
+        if (expected is not null && actual is not null && HasArrayLengthHole(expected))
+        {
+            expected = this.CompleteArrayExpectation(expected, actual);
+        }
+
         if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
         {
             // SPEC 8.3: the expression has the one Type that the identity premises of its scope make of its Types.
@@ -761,6 +766,8 @@ public sealed partial class Binding
                 return this.BindArrayFill(fill, scope, expected);
             case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array }:
                 return this.BindContextualArrayLiteral(array, scope, expected);
+            case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
+                return this.CompleteDependent(array, arrayCause);
             case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:

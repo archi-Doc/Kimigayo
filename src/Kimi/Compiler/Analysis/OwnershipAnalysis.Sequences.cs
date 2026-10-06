@@ -183,12 +183,12 @@ public sealed partial class OwnershipAnalysis
             return projection < 0 ? -1 : this.body.Projections[projection].Root;
         }
 
-        if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && receiver is MemberAccessKoto field &&
-            !Binding.IsGetterResult(field) && !this.SpecialField(field) && ElementAccess.BorrowedPathRoot(field) is not null)
+        if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && receiver is BinaryKoto stored &&
+            ElementAccess.IsSyntax(stored) && !Binding.IsGetterResult(stored) && (stored is not MemberAccessKoto field || !this.SpecialField(field)))
         {
-            // SPEC 4.6.1: a collection field reached through a reference is shared-borrowed in place for the operation; an
-            // element borrowed through it keeps the Origin of that borrow.
-            return this.BorrowStruct(field, this.compilation.Binding.SharedReference(source.BoundType, elementOrigin));
+            // SPEC 4.6.1: collection fields and elements are inspected through their shared Place, without attempting to
+            // Copy or Move the Non-Copy handle. An element borrowed through it keeps the Origin of that borrow.
+            return this.BorrowStruct(stored, this.compilation.Binding.SharedReference(source.BoundType, elementOrigin));
         }
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)

@@ -6,6 +6,26 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly Dictionary<Koto, BoundLength> inferredArrayLengths = new();
+    private Dictionary<Koto, ArrayInferenceFailure>? arrayInferenceFailures;
+
+    private enum ArrayInferenceProblem : byte
+    {
+        Element,
+        Length,
+        LengthConflict,
+        FixedArrayRequired,
+    }
+
+    private readonly record struct ArrayInferenceFailure(ArrayInferenceProblem Problem, Koto Related, BoundLength? Expected = null, BoundLength? Actual = null, BoundType? Type = null);
+
+    // A negative length exists only in an initializer expectation, never in a completed Type. There is no inference
+    // variable or inverse length solver: literal counts and complete result Types supply each written length hole.
+    private static bool HasArrayLengthHole(BoundType type)
+        => type.Kind == BoundTypeKind.FixedArray && (type.Length < 0 || HasArrayLengthHole(type.Components[0]));
+
+    private static bool IsArrayHole(Koto syntax) => syntax is TypeSemanticsKoto { Type: null, Identifier: "_" };
+
     private static Koto ArrayShapeSyntax(Koto syntax)
     {
         while (true)
@@ -77,12 +97,12 @@ public sealed partial class Binding
             }
         }
 
-        if (expected.Kind == BoundTypeKind.FixedArray && (expected.LengthExpression is not null || expected.Length != literal.Elements.Count))
+        if (expected.Kind == BoundTypeKind.FixedArray && (expected.LengthExpression is not null || (expected.Length >= 0 && expected.Length != literal.Elements.Count)))
         {
             return this.Fail(literal, BindingFailure.TypeMismatch);
         }
 
-        return Complete(literal, complete ? this.InternType(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Length) : null);
+        return Complete(literal, complete ? this.InternType(expected.Kind, expected.Symbol, expected.Semantics, [element ?? expected.Components[0]], expected.Kind == BoundTypeKind.FixedArray ? literal.Elements.Count : expected.Length) : null);
     }
 
     private void InferArrayAnnotation(Koto syntax, Koto initializer, BindingScope scope)
@@ -93,26 +113,107 @@ public sealed partial class Binding
             return;
         }
 
+        var lengthHole = false;
         while (hole is FixedArrayTypeKoto array)
         {
+            lengthHole |= IsArrayHole(array.Length);
             hole = ArrayShapeSyntax(array.ElementType);
         }
 
-        if (hole is not TypeSemanticsKoto { Type: null, Identifier: "_" })
+        if (!lengthHole && !IsArrayHole(hole))
         {
             return;
         }
 
         BoundType? established = null;
         BoundType? literalDefault = null;
-        if (this.ArrayElementEvidence(syntax, initializer, scope, ref established, ref literalDefault) && (established ?? literalDefault) is { } element)
+        var gathered = this.ArrayElementEvidence(syntax, initializer, scope, ref established, ref literalDefault, out var failed);
+        if (IsArrayHole(hole))
         {
-            Complete(hole, element);
+            if (gathered && (established ?? literalDefault) is { } element)
+            {
+                Complete(hole, element);
+            }
+            else
+            {
+                if (failed is not null)
+                {
+                    this.CompleteDependent(hole, failed);
+                }
+                else
+                {
+                    this.FailExplained(ref this.arrayInferenceFailures, hole, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Element, initializer));
+                }
+            }
         }
-        else
+
+        for (var shape = ArrayShapeSyntax(syntax); shape is FixedArrayTypeKoto array; shape = ArrayShapeSyntax(array.ElementType))
         {
-            this.Fail(hole, BindingFailure.MissingType, true);
+            if (IsArrayHole(array.Length) && !this.inferredArrayLengths.ContainsKey(array.Length))
+            {
+                if (failed is not null)
+                {
+                    this.CompleteDependent(array.Length, failed);
+                }
+                else
+                {
+                    this.FailExplained(ref this.arrayInferenceFailures, array.Length, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Length, initializer));
+                }
+            }
         }
+    }
+
+    // Only a known leaf supplies an expectation. `_` alone does not demand another fixed dimension or select an element
+    // Type for an otherwise unconstrained generic call. Ordinary candidate inference receives the written structure.
+    private BoundType? ArrayAnnotationExpectation(Koto shape, BindingScope scope)
+    {
+        shape = ArrayShapeSyntax(shape);
+        if (shape is not FixedArrayTypeKoto array)
+        {
+            return IsArrayHole(shape) ? null : this.BindType(shape, scope);
+        }
+
+        if (this.ArrayAnnotationExpectation(array.ElementType, scope) is not { } element)
+        {
+            return null;
+        }
+
+        var length = IsArrayHole(array.Length) ? this.inferredArrayLengths.GetValueOrDefault(array.Length) : this.BindLength(array.Length, scope);
+        return this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length is null ? -1 : length.IsConstant ? length.Value : 0, lengthExpression: length is { IsConstant: false } ? length : null);
+    }
+
+    private bool InferArrayLength(FixedArrayTypeKoto array, BoundLength length, Koto source)
+    {
+        if (!IsArrayHole(array.Length))
+        {
+            return true;
+        }
+
+        if (length.IsConstant && length.Value < 0)
+        {
+            return true; // An empty contextual literal with an unknown nested dimension supplies no length evidence.
+        }
+
+        if (this.inferredArrayLengths.TryGetValue(array.Length, out var previous) && !ReferenceEquals(previous, length))
+        {
+            this.FailExplained(ref this.arrayInferenceFailures, source, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.LengthConflict, array.Length, previous, length));
+            return false;
+        }
+
+        this.inferredArrayLengths[array.Length] = length;
+        Complete(array.Length, BoundType.ISize);
+        return true;
+    }
+
+    private BoundType CompleteArrayExpectation(BoundType expected, BoundType actual)
+    {
+        if (!HasArrayLengthHole(expected) || actual.Kind != BoundTypeKind.FixedArray)
+        {
+            return expected;
+        }
+
+        var element = this.CompleteArrayExpectation(expected.Components[0], actual.Components[0]);
+        return this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], expected.Length < 0 ? actual.Length : expected.Length, lengthExpression: expected.Length < 0 ? actual.LengthExpression : expected.LengthExpression);
     }
 
     // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
@@ -176,15 +277,23 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool ArrayElementEvidence(Koto shape, Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault)
+    private bool ArrayElementEvidence(Koto shape, Koto source, BindingScope scope, ref BoundType? established, ref BoundType? literalDefault, out Koto? failed)
     {
+        failed = null;
         shape = ArrayShapeSyntax(shape);
         source = KotoHelper.UnwrapParentheses(source);
         if (shape is FixedArrayTypeKoto array && source is ArrayLiteralKoto literal)
         {
+            var length = literal.FillLength is { } fill ? this.BindLength(fill, scope) : this.InternLength(KotoKind.NumberLiteral, literal.Elements.Count);
+            if (length is null || !this.InferArrayLength(array, length, source))
+            {
+                failed = length is null ? literal.FillLength : source;
+                return false;
+            }
+
             for (var i = 0; i < literal.Elements.Count; i++)
             {
-                if (!this.ArrayElementEvidence(array.ElementType, literal.Elements[i], scope, ref established, ref literalDefault))
+                if (!this.ArrayElementEvidence(array.ElementType, literal.Elements[i], scope, ref established, ref literalDefault, out failed))
                 {
                     return false;
                 }
@@ -193,15 +302,21 @@ public sealed partial class Binding
             return true;
         }
 
-        if (shape is TypeSemanticsKoto { Type: null, Identifier: "_" } && IsUnfittedLiteral(source))
+        if (shape is not FixedArrayTypeKoto && !IsArrayHole(shape))
+        {
+            return true; // Ordinary contextual Binding will fit known leaves after all lengths are established.
+        }
+
+        if (IsArrayHole(shape) && IsUnfittedLiteral(source))
         {
             literalDefault ??= this.LiteralDefault(source);
             return true;
         }
 
-        var actual = this.BindNode(source, scope);
+        var actual = this.BindNode(source, scope, this.ArrayAnnotationExpectation(shape, scope));
         if (actual is null)
         {
+            failed = source;
             return false;
         }
 
@@ -216,7 +331,14 @@ public sealed partial class Binding
         {
             if (actual.Kind != BoundTypeKind.FixedArray)
             {
-                this.Fail(source, BindingFailure.TypeMismatch);
+                this.FailExplained(ref this.arrayInferenceFailures, source, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.FixedArrayRequired, nested, Type: actual));
+                failed = source;
+                return false;
+            }
+
+            if (!this.InferArrayLength(nested, actual.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, actual.Length), source))
+            {
+                failed = source;
                 return false;
             }
 
@@ -224,13 +346,20 @@ public sealed partial class Binding
             shape = ArrayShapeSyntax(nested.ElementType);
         }
 
-        if (established is not null && !ReferenceEquals(established, actual))
+        if (!IsArrayHole(shape))
         {
-            this.Fail(source, BindingFailure.TypeMismatch);
+            return true;
+        }
+
+        var common = established is null ? actual : this.CommonOriginType(established, actual);
+        if (common is null)
+        {
+            this.FailMismatch(source, source, actual, established!);
+            failed = source;
             return false;
         }
 
-        established = actual;
+        established = common;
         return true;
     }
 }

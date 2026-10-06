@@ -125,11 +125,11 @@ public sealed partial class Binding
                 text.Append('[');
                 if (current.LengthExpression is { } length)
                 {
-                    AppendLength(length);
+                    AppendDiagnosticLength(text, length);
                 }
                 else
                 {
-                    text.Append(current.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    text.Append(current.Length < 0 ? "_" : current.Length.ToString(System.Globalization.CultureInfo.InvariantCulture));
                 }
 
                 text.Append(" of ");
@@ -178,34 +178,41 @@ public sealed partial class Binding
 
             text.Append(symbol.Name);
         }
+    }
 
-        void AppendLength(BoundLength length)
+    private static string DiagnosticLengthName(BoundLength length)
+    {
+        var text = new StringBuilder();
+        AppendDiagnosticLength(text, length);
+        return text.ToString();
+    }
+
+    private static void AppendDiagnosticLength(StringBuilder text, BoundLength length)
+    {
+        if (length.Parameter is { } parameter)
         {
-            if (length.Parameter is { } parameter)
+            text.Append(parameter.Name);
+        }
+        else if (length.IsConstant)
+        {
+            text.Append(length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+        else
+        {
+            text.Append('(');
+            if (length.Operation is KotoKind.PrefixMinus or KotoKind.PrefixPlus)
             {
-                text.Append(parameter.Name);
-            }
-            else if (length.IsConstant)
-            {
-                text.Append(length.Value.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                text.Append(length.Operation == KotoKind.PrefixMinus ? '-' : '+');
+                AppendDiagnosticLength(text, length.Left!);
             }
             else
             {
-                text.Append('(');
-                if (length.Operation is KotoKind.PrefixMinus or KotoKind.PrefixPlus)
-                {
-                    text.Append(length.Operation == KotoKind.PrefixMinus ? '-' : '+');
-                    AppendLength(length.Left!);
-                }
-                else
-                {
-                    AppendLength(length.Left!);
-                    text.Append(length.Operation switch { KotoKind.Plus => " + ", KotoKind.Minus => " - ", KotoKind.Asterisk => " * ", KotoKind.Slash => " / ", _ => " % " });
-                    AppendLength(length.Right!);
-                }
-
-                text.Append(')');
+                AppendDiagnosticLength(text, length.Left!);
+                text.Append(length.Operation switch { KotoKind.Plus => " + ", KotoKind.Minus => " - ", KotoKind.Asterisk => " * ", KotoKind.Slash => " / ", _ => " % " });
+                AppendDiagnosticLength(text, length.Right!);
             }
+
+            text.Append(')');
         }
     }
 }

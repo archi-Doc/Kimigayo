@@ -259,6 +259,11 @@ public sealed partial class Binding
 
     private bool InferLength(BoundType pattern, BoundType actual, Koto binder, BoundLength?[] arguments)
     {
+        if (actual.Length < 0)
+        {
+            return true; // A local annotation's length hole supplies no evidence for a callee's length parameter.
+        }
+
         var supplied = actual.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, actual.Length);
         if (pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, binder))
         {
@@ -368,6 +373,12 @@ public sealed partial class Binding
 
     private BoundLength? BindLength(Koto syntax, BindingScope scope)
     {
+        if (IsArrayHole(syntax))
+        {
+            this.Consulted(syntax);
+            return this.inferredArrayLengths.GetValueOrDefault(syntax);
+        }
+
         BoundType? type = null;
         if (!this.LengthTypeEvidence(syntax, scope, ref type) ||
             !this.EvaluateLength(syntax, scope, type ?? BoundType.ISize, out var value, out var symbolic))

@@ -2158,6 +2158,13 @@ public sealed partial class Binding
                 return false;
             }
 
+            if (HasArrayLengthHole(actual))
+            {
+                // An incomplete annotation cannot become a generic argument. Established argument evidence is checked
+                // against it at the ordinary result fit; without such evidence the slot remains unsolved.
+                return arguments[slot] is not { } establishedArray || FitsStructurally(establishedArray, actual);
+            }
+
             // SPEC 10.2.1: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
             // argument is then value-read.
             if (!structural && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&

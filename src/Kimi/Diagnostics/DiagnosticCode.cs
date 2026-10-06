@@ -23,6 +23,7 @@ public enum DiagnosticCode
     InvalidOriginBinding_Kd,
     MissingOriginBinding_Kd,
     InvalidTypeFormation_Kd,
+    ArrayAnnotationInference_Kd,
     InvalidConstraint_Kd,
     InvalidSelfClause_Kd,
     ClosedContractConformance_Kd,

@@ -475,6 +475,11 @@ public sealed partial class Binding
 
         var suppliedValue = types.Count > 0;
         var common = context.Expected;
+        if (common is not null && suppliedValue && HasArrayLengthHole(common))
+        {
+            common = this.CompleteArrayExpectation(common, types[0]);
+        }
+
         BoundType? failed = null;
         if (common is null)
         {

@@ -1,9 +1,11 @@
 # Kimigayo Implementation Status
 
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
-length holes, `noinit`, UniqSlice, view methods and Slice.toArray. This intake alone establishes no implementation support;
-implementation and focused verification of these additions are pending. Earlier fixed-array/Slice support below retains
-its recorded boundary until the corresponding units pass.
+length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotation holes now use written dimensions,
+literal counts and complete initializer Types, including symbolic lengths and known generic result expectations.
+Unknown or inconsistent evidence is a located Language diagnostic; inner literals without a written fixed dimension
+remain dynamic Arrays (`ArrayAnnotationHoleTest`, `ArrayAnnotationDiagnosticTest`). Warm successful and failed
+rebinding allocate nothing. `noinit`, UniqSlice, view methods and Slice.toArray remain pending.
 
 Implemented support and limits, by area. [SPEC.md](SPEC.md) defines required behavior; limits listed here never narrow it. The plan and milestone order are in [PLAN.md](dev/PLAN.md). Earlier dated records are in git (`git show 32324537:STATUS.md`).
 
