@@ -2,7 +2,7 @@
 
 [Specification index](../SPEC.md)
 
-A fixed array `[N of T]` has a compile-time length `N` and a complete element Type `T`, including Semantics and Origins. A dynamic `Array<T>` owns variable-length storage, and `Slice<T>{source}` is a shared borrowed view. Their [indexing and slicing](#46-indexing-and-slicing) rules are defined together.
+A fixed array `[N of T]` has a compile-time length `N` and a complete element Type `T`, including Semantics and Origins. A dynamic `Array<T>` owns variable-length storage, and `Slice<T>{source}` / `UniqSlice<T>{source}` are shared / exclusive borrowed views. Their [indexing and slicing](#46-indexing-and-slicing) rules are defined together.
 
 ## 4.1. Fixed-array identity and layout
 
@@ -61,39 +61,80 @@ Constant accessibility is checked at the definition. A private constant need not
 
 ## 4.3. Initialization and inference
 
-With an expected fixed-array Type, an array literal constructs that Type and must contain exactly `N` elements; there is no padding or truncation. Elements are acquired in source order under the ordinary acquisition rules (§3.5). A local binding annotation may use `[N of _]`, recursively for nested arrays, to infer only the element Type from its initializer; a unique Type is required at the declaration. The placeholder is forbidden in lengths, signatures and explicit generic arguments.
+### 4.3.1. Local fixed-array annotations
 
-Without a fixed-array expectation, an independent array literal constructs an Array. A literal in a call argument remains subject to candidate-local fitting under [length-argument inference](#44-function-length-parameters) and is not first defaulted to Array. An empty literal requires an expected element Type. Numeric element defaults follow ordinary inference.
+With an expected fixed-array Type, an array literal constructs that Type and must contain exactly `N` elements; there is no padding or truncation. Elements are acquired in source order under the ordinary acquisition rules (§3.5).
 
-An independent literal may form an Array with safe-borrow elements. Complete element Types and their Origins are inferred and preserved under the ordinary local rules; permitted Origin shortening applies without merging distinct Loans. A fixed-array expectation still selects a fixed array, for example `let views: [2 of ref/i32] = [x@ref, y@ref]` for initialized integer locals `x` and `y`.
+An initialized local `let` or `var` may write `_` for the length, element Type, or both in a fixed-array annotation. Apply the rule recursively only to fixed-array structure actually written in the annotation. The initializer must determine every hole uniquely at the declaration:
 
-An annotation-only declaration remains Uninitialized: there is no zero fill or default element construction. Initial construction requires a whole-array initializer or one whole-array assignment; element-by-element writes into an unconstructed array are forbidden. After construction has completed and a Partial Move has occurred, missing elements may be reinitialized through eligible static Move Paths with ordinary write permissions. Whole-value reads and borrows require completeness.
+- A length hole takes the literal's element count or an established length of the initializer's fixed-array Type. A known element Type supplies an expectation, including to inference through a function's public signature.
+- An element hole uses the ordinary element evidence and numeric-default rules. A hole alone does not request another fixed-array dimension: an inner literal without a written fixed-array expectation constructs `Array<T>`.
+- Evidence from all elements must agree. A mismatch in written fixed-array structure is an error, never a fallback to dynamic storage.
+- Do not use later statements, a callee's implementation body, a dynamic Array's runtime length, or inverse evaluation of a length expression. Acquisition, Origins and candidate resolution retain their ordinary rules.
 
-**Fill construction.** `[Length of value]` always constructs a fixed array, with or without an expected Type; an `Array<T>` expectation is a Type mismatch, not a conversion. `Length` follows §4.2, including parentheses around a compound length. The element Type follows the ordinary expectation and literal rules and must be Copy. `value` is evaluated and acquired exactly once, even for length zero, and then copied into all `N` elements; a bare Place is acquired by Copy. Fill construction introduces neither generator/default construction nor borrowing of uninitialized storage. Fill-store elimination follows the [formatting optimization rules](utf8-formatting.md#6-optimization-and-output) and must preserve the evaluation and acquisition of `value`.
+Holes are forbidden in uninitialized declarations, signatures, Fields, static storage and explicit generic arguments. Function length parameters retain `<length N>` (§4.4).
+
+Without a fixed-array expectation, an independent array literal constructs an Array. A call-argument literal keeps candidate-local fitting under §4.4 instead of first defaulting to Array. An empty literal requires a known element Type. Safe-borrow element Types and their Origins are preserved; permitted Origin shortening does not merge distinct Loans.
+
+```kimi
+var values: [_ of i32] = [1, 2, 3] // [3 of i32].
+let inferred: [_ of _] = [1, 2, 3] // [3 of i32].
+let empty: [_ of i32] = []         // [0 of i32].
+let dynamic = [1, 2, 3]           // Array<i32>.
+let rows: [_ of _] = [[1], [2, 3]] // [2 of Array<i32>].
+let matrix: [_ of [_ of f32]] = [[1.0, 2.0], [3.0, 4.0]] // [2 of [2 of f32]].
+// let unknown: [_ of _] = []                 // Error: no element Type.
+// let ragged: [_ of [_ of _]] = [[1], [2, 3]] // Error: conflicting inner lengths.
+// let wrong: [3 of i32] = [1, 2]             // Error: element count.
+
+func zeros<T>() -> [3 of T]
+    T is PrimitiveInteger
+    return [3 of 0]
+
+let wide: [_ of i64] = zeros() // T = i64 from the annotation; length 3 from the signature.
+```
+
+### 4.3.2. Ordinary initial construction
+
+An annotation-only declaration remains Uninitialized: there is no zero fill or default element construction. Initial construction requires a whole-array initializer or one whole-array assignment; element writes into an unconstructed array are forbidden. After completed construction and a Partial Move, eligible static Move Paths may be reinitialized under ordinary write permissions. Whole-value reads and borrows require completeness.
+
+```kimi
+let pending: [2 of i32]
+pending = [1, 2] // Whole initial construction; pending[0] = 1 cannot construct it.
+```
+
+### 4.3.3. Fill construction
+
+`[Length of value]` constructs a fixed array with or without an expected Type; an `Array<T>` expectation is a mismatch, not a conversion. `Length` follows §4.2, including parentheses around a compound expression. The element Type follows ordinary expectation and literal rules and must be Copy. Evaluate and acquire `value` exactly once, even for length zero, then copy it into all elements; a bare Place is acquired by Copy. This adds neither generator/default construction nor borrowing of uninitialized storage. [Fill-store elimination](utf8-formatting.md#6-optimization-and-output) must preserve evaluation and acquisition of `value`.
 
 ```kimi
 let zeros: [64 of u8] = [64 of 0]
-let flags = [8 of false] // [8 of bool], without a fixed-array expectation.
-let cells: [(W * H) of u8] = [(W * H) of 0]
+let flags = [8 of false] // [8 of bool].
 ```
+
+### 4.3.4. Skipping initial stores with `noinit`
+
+`noinit` is an initialization directive, not a value. Recognize it when the entire initializer after a declaration's `=` is the unparenthesized word `noinit`, before looking up a same-named variable. Check eligibility afterward; an ineligible directive is not reinterpreted as a name. Elsewhere it is an ordinary identifier: `(noinit)` and qualified names are expressions.
+
+The directive requires a local `var`, an explicit fixed-array annotation without holes, and an Unsafe Block. The direct element Type, after aliases are resolved, must be an `owner` Scalar: an integer, wrapping integer, floating-point Type, `bool` or `char`. References, raw pointers, user Types and nested arrays do not qualify. Length zero is permitted. A generic definition must prove eligibility from existing Constraints, such as `PrimitiveInteger`; `Copy` alone is insufficient, and no Scalar Contract is introduced.
+
+The declaration completes construction and marks the ordinary whole array Initialized, while omitting its initial element stores. No special Type, continuing state, provenance flag or per-element initialization tracking attaches to it or to derived values. All later Type, access, assignment, acquisition, Loan, Origin, raw-memory and destruction rules are the ordinary rules for an initialized array.
+
+**Programmer obligation.** Write a valid value before reading an element. A read before that write is undefined behavior; detection is not required. This holds through functions, references, views and raw pointers. Residual bits are not a write, including for `bool` and `char`. Copy, Move and by-value passing of the whole array read all its elements. Later operations require only their ordinary Unsafe permission.
+
+Simple element assignment, address formation, borrowing, `slice` / `sliceUniq`, metadata access and Scalar-array destruction do not read the old elements and are valid immediately. Optimizations and calling conventions must preserve these defined operations: they cannot introduce extra element reads or require referent-value validity before the source program does (§21.5.5).
 
 ```kimi
-let a: [4 of i32] = [1, 2, 3, 4]
-let inferred: [4 of _] = [1, 2, 3, 4] // [4 of i32]
-let dynamic = [1, 2, 3, 4]            // Array<i32>
-let empty: [0 of i32] = []
-let wrong: [3 of i32] = [1, 2]        // Error: element count.
-let unknown: [0 of _] = []            // Error: unknown element Type.
-let pending: [2 of i32]
-pending = [1, 2] // Whole initial construction; pending[0] = 1 cannot construct it.
-
-let matrix: [3 of [4 of f32]] = [
-    [1.0, 2.0, 3.0, 4.0],
-    [5.0, 6.0, 7.0, 8.0],
-    [9.0, 10.0, 11.0, 12.0],
-]
-let cell = matrix[1][2] // f32 value 7.0; each dimension is checked separately.
+unsafe
+    var buffer: [3 of i32] = noinit
+    var view = buffer.sliceUniq()
+    view[0] = 10
+    view[1] = 20
+    view[2] = 30
+    let copied = view.slice().toArray() // Every element was written before this read.
 ```
+
+The directive uses its enclosing Unsafe Block's permission (§14.3.3). Compiler services retain its source position and resolved array Type under the ordinary snapshot rules (§23); this does not require tracking subsequent element writes. Diagnostics must not offer adding `unsafe` or `noinit` as an unconditional repair.
 
 ## 4.4. Function length parameters
 
@@ -160,7 +201,7 @@ Array is Non-Copy and accepts any valid complete element Type with a representab
 
 The element position preserves Origin variance, and nested variance composes normally, while `uniq/Array<T>` remains invariant in its complete Referent Type. No covariance between different element Cores is added. The Kimi dynamic mutation operations (§4.7) require exclusive access to the whole Array, whether or not they reallocate.
 
-**Mutation boundary.** A Slice never grants element mutation (§4.6.5). Initialized array elements are mutated through authorized access to the owning array, a `uniq` borrow of the whole array, an exclusive element Place selected by indexing (§4.6.9) or exclusive enumeration `for element in values@uniq` (§14.6.2). To process a mutable subrange, pass an exclusive borrow of the whole array plus bounds and index the array, or iterate saved indices while accessing each element. Bounds validation, active Loans and ordinary initialization checks still apply, and no public disjoint mutable subviews are implied.
+**Mutation boundary.** Slice grants no element mutation. Use authorized whole-array access, an exclusive element Place, exclusive enumeration (§14.6.2), or an [exclusive view](#4611-shared-and-exclusive-view-methods). All forms retain ordinary bounds, initialization and Loan checks.
 
 ```kimi
 var values: [4 of i32] = [10, 20, 30, 40]
@@ -173,14 +214,15 @@ let middle: Slice<i32> = values[1..3] // Infer the borrow of values' storage.
 
 ### 4.6.1. Access and length metadata
 
-The built-in indexing operations apply to `[N of T]`, `Array<T>` and `Slice<T>`. Element indexing accepts a position of any Type satisfying `Position`, and range indexing a range of any Type satisfying `PositionRange` (§4.6.2–§4.6.4). Dictionary indexing takes keys instead. Every single-element index expression, including one on a user Type, resolves through the [Indexable Contracts](#469-indexable-contracts); on the three sequence Types a position is first resolved to an `isize` element position. [Raw pointers](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing) keep signed `isize` offsets without safe sequence bounds checks and accept no other position or range Type. String indexing units are not introduced.
+The built-in indexing operations apply to `[N of T]`, `Array<T>`, `Slice<T>` and `UniqSlice<T>`. Element indexing accepts a position of any Type satisfying `Position`, and range indexing a range of any Type satisfying `PositionRange` (§4.6.2–§4.6.4). Dictionary indexing takes keys instead. Every single-element index expression, including one on a user Type, resolves through the [Indexable Contracts](#469-indexable-contracts); on these sequence Types a position is first resolved to an `isize` element position. [Raw pointers](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing) keep signed `isize` offsets without safe sequence bounds checks and accept no other position or range Type. String indexing units are not introduced.
 
 | Core | Meaning |
 | --- | --- |
 | Integers, `FromEnd<T>`, `Start`, `End` | Copy, Owned positions: from the start, from the end, the start boundary and the end boundary; retain no target |
 | `Range<S, E>`, `ClosedRange<S, E>` | Copy, Owned half-open and closed intervals of positions; iterable when both boundaries have one integer Type |
 | `ResolvedRange` | Copy, Owned half-open interval of positions validated against a length; iterable |
-| `Slice<T>{source}` | Copy shared view, independent of `T`'s Copy capability; retains the backing Origin and shared Loan |
+| `Slice<T>{source}` | Copy shared view; retains its backing Origin and shared Loan |
+| `UniqSlice<T>{source}` | Non-Copy exclusive view; retains its backing Origin and exclusive Loan (§4.6.11) |
 
 These names are not keywords; `::Kimi.End`, for example, disambiguates a hidden alias. Prefix `^` and range syntax always construct the designated Types from the Kimi Kotonoha, never same-named user Types.
 
@@ -188,13 +230,14 @@ These names are not keywords; `::Kimi.End`, for example, disambiguates a hidden 
 
 When a function call rejects a range because its shape differs from a parameter's concrete range Type, its diagnostic identifies the compared argument and candidate parameter Types. Advice is conditional on the function's required capability: a function that only resolves a range for slicing can accept `R is PositionRange`; enumeration requires the appropriate `Iterable`, `UniqIterable` or `IntoIterable` entry and its Item constraints; boundary access requires the appropriate concrete range Type. A function's intent is not inferred from its name or a rejected call alone. The changed body must be verified before offering an automatic repair (§23.5).
 
-**Length metadata.** Fixed arrays, Array and Slice provide public read-only `length: isize` and `indices: ResolvedRange`; Array and Slice also provide `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
+**Length metadata.** Fixed arrays, Array, Slice and UniqSlice provide public read-only `length: isize` and `indices: ResolvedRange`; Array, Slice and UniqSlice also provide `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
 
 | Receiver | Acquisition |
 | --- | --- |
 | Fixed array | Check shared access and use the Type-level `N` without reading elements |
 | Array | Share access during the operation and read its current length |
 | Slice | Copy the handle and read its stored length, without reading backing elements |
+| UniqSlice | Share the handle during the operation and read its stored length, without reading backing elements |
 
 The returned integers, Booleans and `ResolvedRange` values acquire no receiver or source Origin or Loan; this does not release existing Loans. `x.indices` means `(..).resolve(x.length)`: a snapshot of `[0, L)` at acquisition. Resizing an Array does not update a saved snapshot; later accesses check the length current at that time.
 
@@ -477,7 +520,7 @@ let b = ^(-1)..sideEffect()  // Range<FromEnd<isize>, isize>; construction succe
 let c = values[(-1)..]       // Evaluates the receiver and the boundary, then Aborts in resolution.
 ```
 
-**Receivers.** The built-in access receiver is located once, whatever its form and whether the range is written directly or saved: an existing Place is used where it is, and only an owned temporary is materialized in a Temporary Place. The receiver is neither copied into a temporary nor borrowed as a whole for the operation, so a large array is not copied and the remaining elements after a Partial Move stay directly accessible. While its index is evaluated, modification, destruction, Move and reallocation of that storage are prohibited; shared reads remain allowed, as in `values[values.length - 1]`. For a chained element Copy, the located root is protected through all index evaluations and the final element Copy, and that Copy is acquired before later surrounding operands are evaluated; intermediate arrays are not copied. A temporary receiver keeps its ordinary enclosing-expression lifetime. A write establishes its exclusive Loan after resolving bounds and checks existing Loans. The receiver and boundaries are never reevaluated. For a Slice, the handle is copied first; reassigning the original handle does not change the acquired view.
+**Receivers.** The built-in access receiver is located once, whatever its form and whether the range is written directly or saved: an existing Place is used where it is, and only an owned temporary is materialized in a Temporary Place. Direct array element access neither copies the array into a temporary nor borrows it as a whole, so a large array is not copied and the remaining elements after a Partial Move stay directly accessible. While its index is evaluated, modification, destruction, Move and reallocation of that storage are prohibited; shared reads remain allowed, as in `values[values.length - 1]`. For a chained element Copy, the located root is protected through all index evaluations and the final element Copy, and that Copy is acquired before later surrounding operands are evaluated; intermediate arrays are not copied. A temporary receiver keeps its ordinary enclosing-expression lifetime. A write establishes its exclusive Loan after resolving bounds and checks existing Loans. The receiver and boundaries are never reevaluated. For a Slice, the handle is copied first; reassigning the original handle does not change the acquired view. UniqSlice instead borrows its handle in the mode required by §4.6.11; it never copies the owning handle.
 
 **Writes and updates.** [Simple assignment](13-operators-and-assignment.md#1371-simple-assignment) and [compound assignment](13-operators-and-assignment.md#1372-compound-assignment) secure their right-hand side before locating the indexed target; compound assignment then checks bounds, reads the old value, computes and writes back, once each. Increment and decrement use the same target and Loan rules. An arithmetic failure prevents writeback. The right-hand side runs before the target Loan begins; any Loans retained by its secured result must be compatible with the later target access. The exclusive Loan of an element write lasts from bounds resolution through old-value destruction and placement. [Exchange operations](15-ownership-and-lifetime-analysis.md#157-whole-value-updates) evaluate their arguments left to right and reserve each target under §15.6.7 before activating all targets at entry; `Kimi.Intrinsics.swap` requires static non-overlap, not merely a runtime `i != j`.
 
@@ -511,7 +554,7 @@ let lasting = owned[..]
 inspect(lasting)         // Borrows an owning local.
 ```
 
-A `var` Slice permits only handle reassignment, and `uniq/Slice<T>` exclusively borrows the handle, not its elements. Mutable Slices, implicit conversion to owning arrays, safe raw-pointer construction, Slice equality and implicit elementwise comparison are not introduced.
+A `var` Slice permits only handle reassignment, and `uniq/Slice<T>` exclusively borrows the handle, not its elements. Exclusive element access uses the distinct UniqSlice Type (§4.6.11). Implicit conversion to owning arrays, safe raw-pointer construction, Slice equality and implicit elementwise comparison are not introduced.
 
 ### 4.6.6. Slice operations and element results
 
@@ -523,6 +566,8 @@ For `s: Slice<T>`, members receive and Copy the handle by value. Element and par
 | `s.indices: ResolvedRange` | Read-only snapshot under the metadata rules |
 | `s[index]` | The element Place `place ref/T during s.source`; `index` is a position of any Type (§4.6.9) |
 | `s[range]` | `Slice<T>` retaining `s.source`; `range` is a range of any Type, resolved against the current length (§4.6.4) |
+| `s.slice()`, `s.slice(range)` | Shared views under §4.6.11; retain `source` |
+| `s.toArray()`, `T is Copy` | Independent owning storage under §4.6.6.1 |
 | `s.tryGet(index)` | `tryGet<P>(self: Self, index: P) -> Option<ref/T during source>` with `P is Position`; `None` unless `index` resolves to an element position |
 | `s.trySlice(range)` | `trySlice<R>(self: Self, range: R) -> Option<Slice<T> during source>` with `R is PositionRange`; `None` when `range` does not resolve |
 | `s.splitAt(index)` | `splitAt<P>(self: Self, index: P) -> (Slice<T> during source, Slice<T> during source)` with `P is Position`; resolves `index` once to `p` and returns `(s[..p], s[p..])` |
@@ -571,6 +616,19 @@ let first = shared[0]
 shared[0] = 20 // Error: Slice elements are read-only.
 ```
 
+#### 4.6.6.1. Copying into an owning Array
+
+`toArray(self: Self) -> Array<T>` requires `T is Copy`. Copy each element exactly once, in index order, into independent element storage with the same length. This is neither deep cloning nor implicit ownership transfer. The result need not retain the Slice's outer borrow, but keeps every dependency inside `T`. It reads all elements, including the programmer obligations of §4.3.4.
+
+The operation is O(n). Secure capacity at least equal to the length before copying; do not grow storage during construction. There is at most one allocation for element storage, and none for an empty Slice. Allocation failure follows the ordinary Array rules. Capacity construction and `appendCopies` may share this implementation; bulk copies are permitted only when they preserve Copy, Origin and Loan semantics.
+
+```kimi
+var values: [3 of i32] = [1, 2, 3]
+let copy = values.slice(1..).toArray()
+values[1] = 20 // The outer Slice Loan is no longer needed by copy.
+require copy[0] == 2 else => $abort("independent storage")
+```
+
 ### 4.6.7. Slice iteration and nested Origins
 
 `Slice` conforms to `Iterable`, `UniqIterable` and `IntoIterable`. In every mode, including for Copy elements, the item is `ref/T during source`, in index order (§14.6.2). The iterator holds a handle and a position, not owned elements, so exclusive enumeration lends only the handle and the elements stay shared. Items borrow the backing slots, not the iterator's receiver or Storage, so they may be retained across later `next` calls. The iterator is a standard Iterator (§22.1.2.3–4).
@@ -605,7 +663,7 @@ For a fixed Type binding, let `n` be the number of live elements or entries at t
 
 For a Dictionary, `n` is the number of live entries, not the capacity: no capacity scan or element-reference array is built at creation, and sparse Dictionaries keep the bound. Owning iterators obey the same bounds for their traversal management; holding and transferring the source storage, transferring and cleaning up elements, and the results and body the user retains are charged separately. User iterators have no required complexity. Iteration never materializes an array of iteration values first.
 
-A Slice's semantic representation keeps the backing-element location or equivalent provenance, a nonnegative `isize` length, and static Origins and Loans. Element spacing is `stride(T)`. Empty Slices and zero-sized elements keep source provenance. No universal pointer-plus-length ABI, runtime lifetime tag or pointer to a disappearing handle variable is required. Implementations use logical counts and positions rather than subtracting element pointers to recover a length, and never form invalid pointers before checking.
+A Slice or UniqSlice's semantic representation keeps the backing-element location or equivalent provenance, a nonnegative `isize` length, and static Origins and Loans. Element spacing is `stride(T)`. Empty views and zero-sized elements keep source provenance. No universal pointer-plus-length ABI, runtime lifetime tag or pointer to a disappearing handle variable is required. Implementations use logical counts and positions rather than subtracting element pointers to recover a length, and never form invalid pointers before checking.
 
 Positions and ranges store only their boundaries: `Start` and `End` are zero-sized, and the direction of a position and the shape of a range are static, so resolution branches on neither. The half-open range iterator keeps no end flag.
 
@@ -648,11 +706,13 @@ A shared path cannot satisfy an exclusive requirement. Ordinary functions and ge
 | --- | --- | --- | --- |
 | `Array<E>`, `[N of E]` element | A position, resolved to an element position `q: isize` | `place ref/E` for reads, `place uniq/E` for updates | `a` |
 | `Dictionary<K, V>` element | `K` as `ref/K` | `place ref/V` for reads, `place uniq/V` for updates; absence Aborts | `a`, never the key |
+| `UniqSlice<E>` element | A position, resolved to `q: isize` | `place ref/E` or `place uniq/E` under the path capability | `a` |
 | `Slice<E>` element | A position, resolved to an element position `q: isize` | `place ref/E during s.source` | `s` |
 | `Array<E>`, `[N of E]` range | A range, by value | An ordinary `Slice<E>` | The element storage |
+| `UniqSlice<E>` range | A range, by value | An ordinary shared `Slice<E>` | `a` and the original source |
 | `Slice<E>` range | A range, by value | An ordinary `Slice<E>` | `s` |
 
-Array and fixed arrays conform to `UniqIndexable<isize>`, Dictionary to `UniqIndexable<K>`, and Slice to `Indexable<isize>`; conformances distinguished by Type arguments and their associated Types are identified under §8.4.9. Out-of-range indices (§4.6.4) and absent keys (§4.7.3) Abort; the try-prefixed operations return `Option` values instead. The Slice implementation publishes `during self.source`, which is stronger than the required `during self`; a generic `S is Indexable<Key>` assumes only the requirement. Range indexing is not part of the Indexable family: it forms a Slice, whose temporary storage is not a Place inside the collection, and no whole-range assignment exists (§4.6.5).
+Array, fixed arrays and UniqSlice conform to `UniqIndexable<isize>`, Dictionary to `UniqIndexable<K>`, and Slice to `Indexable<isize>`; conformances distinguished by Type arguments and their associated Types are identified under §8.4.9. Out-of-range indices (§4.6.4) and absent keys (§4.7.3) Abort; the try-prefixed operations return `Option` values instead. The Slice implementation publishes `during self.source`, which is stronger than the required `during self`; a generic `S is Indexable<Key>` assumes only the requirement. Range indexing is not part of the Indexable family: it forms a Slice, whose temporary storage is not a Place inside the collection, and no whole-range assignment exists (§4.6.5).
 
 **Position normalization.** On the concrete sequence Types, `x[k]` with `k` of a Type satisfying `Position` resolves `k` to an element position `q` and performs the `Indexable<isize>` indexing `x[q]`; a failed resolution Aborts. The element Place, its capabilities and the choice of `index` or `indexUniq` follow the rules above, and the normalization check and the `Indexable<isize>` bounds check are one check. The key is read as its value (§3.5.3) and resolved before the element access, so it keeps no borrow: `indexes[indexes[0]] = x` and `indexes.remove(indexes[0])` are valid. Normalization applies only to concrete sequence Types: a generic `S is Indexable<Key>` and every other Type select `Indexable<Key>` by the key's own Type, so `s[^1]` or an `i32` key is unavailable through `S is Indexable<isize>`.
 
@@ -664,7 +724,54 @@ A direct fixed-array element is a built-in projection selected with the same inp
 
 The operation splits the receiver's exclusive capability through the standard storage boundary (§22.1.2.5). The references may be used independently and keep the source collection borrowed under the ordinary Loan rules until their last uses. No conflicting whole-collection access, reallocation, destruction or Move is permitted while either reference remains live. The result keeps element-internal dependencies as well as its source dependency. The operation takes O(1) time, allocates nothing, changes no element, length, capacity or order, and calls no element copy, comparison or destructor.
 
-This API adds no inference from runtime inequalities to ordinary indexing: two separately formed exclusive element borrows still require the specified static non-overlap proof (§15.6.2). It introduces no exclusive Slice and grants no new capability to shared receivers.
+This API adds no inference from runtime inequalities to ordinary indexing: two separately formed exclusive element borrows still require the specified static non-overlap proof (§15.6.2). Shared receivers gain no new capability.
+
+### 4.6.11. Shared and exclusive view methods
+
+Every `slice` / `sliceUniq` entry has a no-argument whole-view overload and a range overload with `range: R`, `R is PositionRange`. `Self` below is the providing Type; a fixed-array member is generic over its element and length.
+
+| Provider | Shared operation | Exclusive operation |
+| --- | --- | --- |
+| `[N of T]`, `Array<T>` | `slice(self: ref/Self) -> Slice<T> during self` | `sliceUniq(self: uniq/Self) -> UniqSlice<T> during self` |
+| `Slice<T>{source}` | `slice(self: Self) -> Slice<T> during source` | None |
+| `UniqSlice<T>{source}` | `slice(self: ref/Self) -> Slice<T> during self` | `sliceUniq(self: uniq/Self) -> UniqSlice<T> during self` |
+
+Range overloads keep the same receiver and result contracts. Evaluate the receiver and range once each in ordinary call order, resolve against the current view length, and Abort on invalid bounds (§4.6.4). Range subscripting always forms a shared Slice: `x[r]` has the meaning of `x.slice(r)`. A view's indices start at zero, reslicing is relative to that view, and nested arrays are never flattened.
+
+#### 4.6.11.1. `UniqSlice` operations and acquisition
+
+`UniqSlice<T>{source}` is an ordinary Non-Copy value that exclusively borrows a completed contiguous array region. It owns no elements and destroys none when dropped. Neither Copy nor Owned is required of `T`; preserve all Origins and Loans inside its complete Type. Arrays declared with `noinit` are completed arrays under §4.3.4.
+
+| Member or operation | Contract |
+| --- | --- |
+| `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Read-only metadata, without reading elements |
+| `index(self: ref/Self, key: ref/isize) -> place ref/T during self` | The shared `Indexable<isize>` entry |
+| `indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self` | The `UniqIndexable<isize>` entry |
+| `view[position]` | Position normalization and capability selection under §4.6.9 |
+| `view[range]`, `view.slice(...)`, `view.sliceUniq(...)` | The view methods above |
+
+An element may be read, replaced or borrowed with the required authority; it cannot be Moved out leaving a hole. A named owning local needs `var` for exclusive operations. A `let` storing `uniq/UniqSlice<T>` still permits exclusive access through that reference under the ordinary rules; any shared path denies it. Assignment through a temporary exclusive view in the same expression is permitted, without extending a temporary's lifetime.
+
+Owning UniqSlice values gain no implicit Copy, Move, Reborrow or conversion to Slice. Write `view@move` to transfer the value, `view.sliceUniq(...)` for a child exclusive view, and `view.slice(...)` for a shared view. Method receivers use ordinary receiver borrowing. Empty views remain Non-Copy and retain their Loan.
+
+```kimi
+var values: [3 of i32] = [1, 2, 3]
+values.sliceUniq(0..3)[0] = 10
+var view = values.sliceUniq()
+let reference = view@uniq
+reference[0] = 20 // The reference is immutable; its referent remains exclusively accessible.
+// let frozen = values.sliceUniq()
+// frozen[0] = 30 // Error: a named owning let supplies no exclusive receiver.
+// values[0..3][0] = 40 // Error: range subscripting forms a shared view.
+```
+
+#### 4.6.11.2. Dependency and cost guarantees
+
+The complete `T` is invariant. `source` may be shortened under ordinary borrow rules, never lengthened, without duplicating exclusive authority. A child view depends on the original storage and the current borrow of its parent handle. While that borrow is needed, conflicting parent uses are prohibited. Creating a shared child neither releases nor weakens the original exclusive array Loan; writes remain prohibited while that child is live.
+
+An array-derived view borrows the whole array. Different ranges or runtime inequalities do not prove disjointness. Conflicting mutation, reallocation, Move and destruction of the source remain forbidden. Views of temporary arrays retain only the ordinary expression lifetime. Stored views preserve their dependencies under §15.4; they do not extend the source lifetime.
+
+Formation and reslicing take O(1) time, perform no element copies and allocate no heap storage, including for empty and zero-sized-element views. Representation follows §4.6.8. UniqSlice has no iteration conformance, dedicated disjoint split, new try-prefixed operations or public arbitrary-pointer constructor in this profile. Existing APIs on the other sequence Types remain available. It has no `toArray` method: use `view.slice().toArray()`. No `toSlice`, `toUniqSlice` or `toSliceUniq` aliases are provided.
 
 ## 4.7. Dynamic collection mutation
 

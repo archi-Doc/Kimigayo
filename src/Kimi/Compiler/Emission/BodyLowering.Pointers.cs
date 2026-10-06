@@ -112,14 +112,16 @@ internal sealed partial class BodyLowering
             type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
             (type.Semantics == SemanticsKind.Ref || (storedReference.Semantics == SemanticsKind.Uniq && pointerType.Semantics == SemanticsKind.Uniq)) &&
             ReferenceEquals(storedReference.Components[0], type.Components[0]); // SPEC 15.6.2: a shared layer grants no exclusive load.
+        // Origins were checked before emission; a replacement may shorten dependencies without changing storage.
+        var sameStorage = pointerType is { Components: [var storedType] } && (store ? ReferenceTypes.StorageMatches(storedType, type) : ReferenceEquals(storedType, type));
         var referent = pointerType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
-            (ReferenceEquals(pointerType.Components[0], type) || sharedRead) &&
+            (sameStorage || sharedRead) &&
             (store ? pointerType.Semantics == SemanticsKind.Uniq && ReferenceEquals(sourceType, pointerType) : place.Acquisition == AcquisitionKind.Copy);
         if ((place.Kind != OwnershipPlaceKind.Temporary && (!store || place.Kind != OwnershipPlaceKind.Result)) ||
             place.Acquisition is not (AcquisitionKind.Copy or AcquisitionKind.Move) ||
-            (!referent && !ReferenceEquals(sourceType, type)) ||
+            (!referent && !(store ? ReferenceTypes.StorageMatches(sourceType, type) : ReferenceEquals(sourceType, type))) ||
             pointerType is null || !(referent || ReferenceTypes.IsPointer(pointerType)) ||
-            (!ReferenceEquals(pointerType.Components[0], type) && !sharedRead) || (body.IsReachable(id) && !this.Dominates(address, id)))
+            (!sameStorage && !sharedRead) || (body.IsReachable(id) && !this.Dominates(address, id)))
         {
             return Fail("Pointer access requires a matching pointee and a dominating address.", out failure);
         }

@@ -392,6 +392,11 @@ public sealed partial class Binding
         }
 
         var actual = this.BindNodeCore(node, scope, expected);
+        if (expected is not null && actual is not null && HasArrayLengthHole(expected))
+        {
+            expected = this.CompleteArrayExpectation(expected, actual);
+        }
+
         if (actual is { ContainsParameter: true } && this.SubstituteIdentityPremises(actual, scope) is var substituted && !ReferenceEquals(substituted, actual))
         {
             // SPEC 8.3: the expression has the one Type that the identity premises of its scope make of its Types.
@@ -579,6 +584,8 @@ public sealed partial class Binding
                 return function.IsAnonymous ? this.BindClosure(function, scope, expected) : this.BindFunction(function, scope);
             case VariableKoto variable:
                 return this.BindVariable(variable, scope);
+            case NoInitKoto directive:
+                return this.BindNoInit(directive, scope, expected);
             case AliasKoto alias:
                 this.AliasTarget(alias);
                 return null;
@@ -761,6 +768,10 @@ public sealed partial class Binding
                 return this.BindArrayFill(fill, scope, expected);
             case ArrayLiteralKoto array when expected is { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array }:
                 return this.BindContextualArrayLiteral(array, scope, expected);
+            case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingArrayElementCause(array) is { } holeCause:
+                return this.CompleteDependent(array, holeCause);
+            case ArrayLiteralKoto { Elements.Count: 0 } array when expected is null && this.MissingExpectationCause(array) is { } arrayCause:
+                return this.CompleteDependent(array, arrayCause);
             case ArrayLiteralKoto array when expected is null && array.Elements.Count != 0 && !IsCallArgument(array):
                 return this.BindIndependentArrayLiteral(array, scope);
             case PropertyAccessorKoto accessor:
@@ -910,6 +921,11 @@ public sealed partial class Binding
     private BoundType? BindVariableCore(VariableKoto variable, BindingScope scope)
     {
         var symbol = this.symbols[variable];
+        if (variable.InitializerKoto is NoInitKoto directive && !this.CheckNoInitDeclaration(directive, variable))
+        {
+            return this.CompleteDependent(variable, directive);
+        }
+
         if (symbol.Resolving)
         {
             return this.Fail(variable, BindingFailure.Cycle, true);
@@ -921,7 +937,7 @@ public sealed partial class Binding
         }
 
         symbol.Resolving = true;
-        if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is { } annotation && variable.InitializerKoto is { } arrayInitializer)
+        if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is { } annotation && variable.InitializerKoto is { } arrayInitializer and not NoInitKoto)
         {
             this.InferArrayAnnotation(annotation, arrayInitializer, scope);
         }

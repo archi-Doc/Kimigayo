@@ -343,14 +343,7 @@ public class MatchOwnershipTest
     private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(b => b.Function.Name == "f");
 
     private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.True(TestDiagnostics.Of(c).Length == 0, string.Join("\n", TestDiagnostics.Of(c).Select(i => i.ToString())));
-        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(i => $"{i.Code}: {i.Node}")));
-        return c;
-    }
+        => CompilationTestHelper.BindSuccess(source);
 
     private static string Describe(Compilation c) => string.Join("\n", c.Ownership.Issues.Select(i => $"{i.Failure} ({i.Source.GetType().Name}): {i.Source}")) +
         string.Join("\n", c.Ownership.ControlFlow!.Issues.Select(i => i.Message));

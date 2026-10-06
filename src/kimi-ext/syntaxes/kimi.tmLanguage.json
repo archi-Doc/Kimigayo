@@ -8,6 +8,7 @@
     { "include": "#directives" },
     { "include": "#strings" },
     { "include": "#characters" },
+    { "include": "#noinit-declarations" },
     { "include": "#contextual" },
     { "include": "#declarations" },
     { "include": "#keywords" },
@@ -22,6 +23,18 @@
     { "include": "#punctuation" }
   ],
   "repository": {
+    "noinit-declarations": {
+      "begin": "(?<![\\w.])(let|var)\\b(?=[^=\\r\\n]*=\\s*noinit\\s*(?://|$))",
+      "beginCaptures": { "1": { "name": "storage.type.binding.kimi" } },
+      "end": "(?<=\\bnoinit)(?=\\s*(?://|$))|$",
+      "patterns": [
+        {
+          "match": "(?<==)\\s*(noinit)(?=\\s*(?://|$))",
+          "captures": { "1": { "name": "keyword.other.noinit.kimi" } }
+        },
+        { "include": "$self" }
+      ]
+    },
     "comments": {
       "patterns": [
         {

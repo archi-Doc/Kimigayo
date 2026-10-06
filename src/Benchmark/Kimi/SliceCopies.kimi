@@ -1,0 +1,8 @@
+let values: [1024 of i32] = [1024 of 1]
+var checksum: isize = 0
+var i = 0
+while i < 10000
+    let copied = values.slice().toArray()
+    checksum += copied.length + copied[0]@isize
+    i += 1
+Console.writeLine("checksum \(checksum)")

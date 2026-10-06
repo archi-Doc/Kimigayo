@@ -102,9 +102,10 @@ public sealed partial class Binding
 
     // SPEC 7.3, 13.5.5.1: a ref/Self or uniq/Self receiver selected through a pair layer is acquired as p@follow@ref or
     // p@follow@uniq; an exclusive receiver needs the weakest admitted Write capability.
-    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType adapted)
+    private bool TryPairReceiver(Koto source, BoundType pattern, BoundType actual, BindingScope scope, out BoundType adapted, out ArgumentOperationKind kind, bool record)
     {
         adapted = actual;
+        kind = ArgumentOperationKind.Value;
         if (pattern is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
         {
             return false;
@@ -117,13 +118,33 @@ public sealed partial class Binding
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
 
-        if (admitted == SemanticsMask.None || target is null || !FitsType(target, pattern.Components[0]) || !this.PairCapability(source, admitted, scope, exclusive))
+        if (admitted == SemanticsMask.None || target is null || !this.PairCapability(source, admitted, scope, exclusive))
         {
             return false;
         }
 
-        this.implicitPairFollows[source] = admitted;
-        adapted = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [target], origin: this.PairOrigin(source, actual, admitted));
+        if (FitsType(target, pattern.Components[0]))
+        {
+            adapted = this.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
+            kind = ArgumentOperationKind.Borrow;
+        }
+        else if (!exclusive && target is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref } &&
+            this.SharedReferenceThroughLayers(target, pattern.Components[0], out _) is { } inner)
+        {
+            // The inner shared reference Copies in every admitted case and keeps only its own dependencies.
+            adapted = inner;
+            kind = ArgumentOperationKind.ReferenceRead;
+        }
+        else
+        {
+            return false;
+        }
+
+        if (record)
+        {
+            this.implicitPairFollows[source] = admitted;
+        }
+
         return true;
     }
 

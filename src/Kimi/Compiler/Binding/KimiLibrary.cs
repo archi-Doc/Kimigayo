@@ -39,9 +39,9 @@ public sealed partial class KimiLibrary
         this.DictionaryAppendSlot = (FunctionKoto)FindDeclaration(dictionaryStorage, "appendSlot", true)!;
         this.DictionaryInitialize = (FunctionKoto)FindDeclaration(dictionaryStorage, "initialize", true)!;
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
-        this.DictionaryFind = (FunctionKoto)FindDeclaration(dictionaryStorage, "find", true)!;
+        this.DictionaryFind = (FunctionKoto)FindDeclaration(dictionaryStorage, "findEntry", true)!;
         this.DictionaryRequireAbsent = (FunctionKoto)FindDeclaration(dictionaryStorage, "requireAbsent", true)!;
-        this.DictionaryClear = (FunctionKoto)FindDeclaration(dictionaryStorage, "clear", true)!;
+        this.DictionaryClear = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearEntries", true)!;
         this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
         this.DictionaryShrink = (FunctionKoto)FindDeclaration(dictionaryStorage, "shrinkToFit", true)!;
         this.DictionaryReserveStorage = (FunctionKoto)FindDeclaration(dictionaryStorage, "reserve", true)!;
@@ -67,6 +67,7 @@ public sealed partial class KimiLibrary
         var entries = KimiLibraryCatalog.Entries;
         this.declarations = new KimiDeclaration[entries.Length];
         var symbolCount = 4;
+        var fixedArrayScope = this.FixedArrayMembers is { } fixedArray ? new BindingScope(fixedArray) { Parent = this.StorageScope } : this.StorageScope;
         var sourceScopes = new Dictionary<string, BindingScope>(StringComparer.Ordinal);
         for (var i = 0; i < entries.Length; i++)
         {
@@ -80,6 +81,7 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Dictionary => this.DictionaryScope,
                 KimiLibraryContainer.Storage => this.StorageScope,
                 KimiLibraryContainer.Raw => this.RawScope,
+                KimiLibraryContainer.FixedArray => fixedArrayScope,
                 _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
             if (entry.Owner is { } owner)

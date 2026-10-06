@@ -30,6 +30,7 @@ public sealed partial class LlvmEmitter
     internal LlvmEmitter(Compilation compilation)
     {
         this.compilation = compilation;
+        this.lowering.RequireDictionaryOperation = (find, key, value) => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(find, key, value));
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
         this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
     }
@@ -177,11 +178,9 @@ public sealed partial class LlvmEmitter
             module.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
             module.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
             module.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
-            module.DictionaryFind = this.functions.GetValueOrDefault(c.Library.DictionaryFind);
             module.DictionaryRequireAbsent = this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent);
             module.DictionaryReserveStorage = this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage);
             module.DictionaryAppend = this.functions.GetValueOrDefault(c.Library.DictionaryAppend);
-            module.DictionaryClear = this.functions.GetValueOrDefault(c.Library.DictionaryClear);
             module.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
@@ -226,10 +225,10 @@ public sealed partial class LlvmEmitter
 
             // Destructors can introduce further closed local Types. Drain their ordinary generic entries
             // to a fixed point, after each body has finished using the reusable layout scratch storage.
-            while (this.generics.HasPendingDestructors || this.defaults.HasPending || module.PendingEntries.Count != 0)
+            while (this.generics.HasPendingSourceCalls || this.defaults.HasPending || module.PendingEntries.Count != 0)
             {
                 if (!this.LowerDefaults(c, module, out failure) ||
-                    !this.generics.PrepareDestructors(c, module, this.lowering.AggregateLayouts, out failure) ||
+                    !this.generics.PrepareSourceCalls(c, module, this.lowering.AggregateLayouts, out failure) ||
                     !this.objects.PrepareInstances(c, module, this.lowering.AggregateLayouts, this.generics, out failure) ||
                     !this.LowerInstances(c, module, out failure))
                 {

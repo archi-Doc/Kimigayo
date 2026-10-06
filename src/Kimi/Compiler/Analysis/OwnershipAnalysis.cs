@@ -964,7 +964,12 @@ public sealed partial class OwnershipAnalysis
 
             this.locals.Add(new(id, field, this.registrationSequence++));
             this.Emit(OwnershipOperationKind.Declare, field, id);
-            if (field.InitializerKoto is { } initializer)
+            if (field.InitializerKoto is NoInitKoto directive)
+            {
+                // SPEC 4.3.4: ordinary complete construction, with no initializer value to acquire and no element stores.
+                this.Emit(OwnershipOperationKind.Produce, directive, id);
+            }
+            else if (field.InitializerKoto is { } initializer)
             {
                 var reported = this.body.IssueStorage.Count;
                 var value = this.Expression(initializer);
@@ -1071,6 +1076,11 @@ public sealed partial class OwnershipAnalysis
         if (this.compilation.Binding.IndexerCall(node, false) is { } indexer)
         {
             return this.Expression(indexer, use, acquisition); // SPEC 4.6.9: receiver[key] through a user conformance reads the published Place.
+        }
+
+        if (this.compilation.Binding.ViewRangeCall(node) is { } viewRange)
+        {
+            return this.Expression(viewRange, use, acquisition);
         }
 
         if (this.compilation.Binding.RangeValueCall(node) is { } rangeValue)
@@ -1262,7 +1272,7 @@ public sealed partial class OwnershipAnalysis
                 return this.CreateSlice(slice);
             case IndexKoto element when element.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array:
                 return this.ReadSlice(element, acquisition);
-            case IndexKoto element when ReferenceTypes.IsArray(element.Left.BoundType) || ReferenceTypes.IsDynamicArray(element.Left.BoundType) || ReferenceTypes.IsDictionary(element.Left.BoundType):
+            case IndexKoto element when ReferenceTypes.IsArray(ElementAccess.AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType) || ReferenceTypes.IsDictionary(element.Left.BoundType):
                 return this.ReadSlice(element, acquisition);
             case BinaryKoto element when ElementAccess.IsSyntax(element):
                 return this.ElementValue(element, use, acquisition);

@@ -330,6 +330,10 @@ public sealed partial class Binding
         this.ResetSpecializations();
         this.receiverOperations.Clear();
         this.adaptations.Clear();
+        this.inferredArrayLengths.Clear();
+        this.arrayInferenceShapes.Clear();
+        this.arrayInferenceFailures?.Clear();
+        this.noInitFailures?.Clear();
         this.ResetSyntheticCalls();
         this.pairFollows.Clear();
         this.implicitPairFollows.Clear();
@@ -572,6 +576,40 @@ public sealed partial class Binding
         {
             // The recorded missing Name of the Constraint is its prerequisite.
             issue.Node.ReportDerived(requirement, [cause.KeyOf(DiagnosticRequirement.Binding(cause.BindingFailure))]);
+        }
+        else if (issue.Failure == BindingFailure.NoInit)
+        {
+            var variable = (VariableKoto)issue.Node.Parent!;
+            var reason = this.noInitFailures![issue.Node] switch
+            {
+                NoInitProblem.LocalVar => "the declaration is not a local var",
+                NoInitProblem.Holes => "the annotation contains a length or element Type hole",
+                NoInitProblem.Element => $"owner Scalar is not proven for element {DiagnosticTypeName(variable.TypeKoto!.BoundType!.Components[0])}",
+                _ => "the declaration requires an explicit fixed-array Type annotation",
+            };
+            issue.Node.Report(
+                requirement,
+                issue.Code,
+                evidence: [reason],
+                related: [("declaration", variable.TypeKoto ?? variable.NameKoto, "declaration requiring initialization")],
+                note: "noinit skips stores but completes construction; the programmer must write a valid value before any element read, including a whole-array Copy or Move");
+        }
+        else if (issue.Failure == BindingFailure.ArrayAnnotationInference)
+        {
+            var fact = this.arrayInferenceFailures![issue.Node];
+            var reason = fact.Problem switch
+            {
+                ArrayInferenceProblem.Element => "the initializer supplies no element Type for this hole",
+                ArrayInferenceProblem.Length => "the initializer supplies no fixed-array length for this hole",
+                ArrayInferenceProblem.LengthConflict => $"this dimension has length {DiagnosticLengthName(fact.Actual!)} but earlier initializer evidence established {DiagnosticLengthName(fact.Expected!)}",
+                _ => $"the annotation requires a fixed array here, but the initializer has {DiagnosticTypeName(fact.Type!)}",
+            };
+            issue.Node.Report(
+                requirement,
+                issue.Code,
+                evidence: [reason],
+                related: [("context", fact.Related, fact.Problem is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation")],
+                advice: "Supply consistent initializer evidence or write the missing length or element Type explicitly; a dynamic Array's runtime length is not fixed-array evidence");
         }
         else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
         {
@@ -949,6 +987,8 @@ public sealed partial class Binding
                     BindingFailure.OriginRelation => this.OriginRelationCode(node),
                     BindingFailure.OriginContract => DiagnosticCode.UnprovenOriginContract_Kd,
                     BindingFailure.InvalidEffectBound => DiagnosticCode.InvalidEffectBound_Kd,
+                    BindingFailure.ArrayAnnotationInference => DiagnosticCode.ArrayAnnotationInference_Kd,
+                    BindingFailure.NoInit => DiagnosticCode.InvalidNoInit_Kd,
                     BindingFailure.SharedBindingAssignment => DiagnosticCode.SharedBindingAssignment_Kd,
                     BindingFailure.ExclusiveBindingAssignment => DiagnosticCode.ExclusiveBindingAssignment_Kd,
                     BindingFailure.SharedPathAccess => DiagnosticCode.SharedPathAccess_Kd,

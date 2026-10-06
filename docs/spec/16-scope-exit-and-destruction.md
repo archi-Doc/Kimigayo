@@ -216,6 +216,8 @@ During drop (conceptual storage operations):
 
 ### 16.3.2. Field cleanup
 
+Dropping Slice or UniqSlice ends only the view's responsibility, never that of its backing elements (§4.6). Destruction of a Scalar fixed array reads no elements, including one declared with `noinit` (§4.3.4); it uses the ordinary completed-array cleanup rules.
+
 A complete struct layer is destroyed by running its own `drop`, completing that body's Scope Exit, then destroying its own Fields in reverse **logical** declaration order, and finally destroying the direct base recursively. The Fields and base are complete and Initialized when `drop` starts, and a normal `return` does not skip them. Computed Properties add no components, and cleanup invokes no accessors. Splitting, generated declarations and physical layout cannot change this order except through the defined logical ordering.
 
 ```kimi

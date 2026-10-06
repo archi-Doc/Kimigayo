@@ -9,6 +9,9 @@ namespace XunitTest;
 public class StorageSignatureValidationTest
 {
     [Theory]
+    [InlineData(KimiDeclarationId.UniqSlice, 0)]
+    [InlineData(KimiDeclarationId.UniqSlice, 1)]
+    [InlineData(KimiDeclarationId.UniqSlice, 2)]
     [InlineData(KimiDeclarationId.RefRemainder, 0)]
     [InlineData(KimiDeclarationId.RefRemainder, 1)]
     [InlineData(KimiDeclarationId.RefRemainder, 2)]
@@ -31,6 +34,8 @@ public class StorageSignatureValidationTest
     }
 
     [Theory]
+    [InlineData(KimiDeclarationId.StorageBorrowUniqSlice)]
+    [InlineData(KimiDeclarationId.StorageSetArrayLength)]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
@@ -40,7 +45,7 @@ public class StorageSignatureValidationTest
         Assert.True(c.Bind().IsComplete);
         var symbol = c.Library.GetSymbol(id)!;
         var function = (FunctionKoto)symbol.Declaration;
-        var parameter = function.Parameters[^1];
+        var parameter = function.Parameters[0];
         var type = parameter.Type.BoundType!;
         parameter.Type.BoundType = ReplaceElement(type, function.GenericArguments[0].BoundType!);
         Assert.False(c.Library.ValidateBoundDeclarations());
@@ -48,6 +53,7 @@ public class StorageSignatureValidationTest
     }
 
     [Theory]
+    [InlineData(KimiDeclarationId.StorageBorrowUniqSlice)]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     [InlineData(KimiDeclarationId.StorageOwn)]
@@ -63,6 +69,7 @@ public class StorageSignatureValidationTest
     }
 
     [Theory]
+    [InlineData(KimiDeclarationId.StorageBorrowUniqSlice)]
     [InlineData(KimiDeclarationId.StorageBorrowShared)]
     [InlineData(KimiDeclarationId.StorageBorrowExclusive)]
     public void ResultsCannotClaimStaticStorage(KimiDeclarationId id)
@@ -85,6 +92,28 @@ public class StorageSignatureValidationTest
         declaration.Members.OfType<FunctionKoto>().Single(x => x.IsDestructor).IsDestructor = false;
         Assert.False(c.Library.ValidateDeclarations());
         Assert.Same(declaration, c.Library.InvalidDeclaration);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ArrayLengthPublicationRequiresIsizeAndUnit(bool result)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete);
+        var symbol = c.Library.GetSymbol(KimiDeclarationId.StorageSetArrayLength)!;
+        var function = (FunctionKoto)symbol.Declaration;
+        if (result)
+        {
+            symbol.Type = BoundType.I32;
+        }
+        else
+        {
+            function.Parameters[1].Type.BoundType = BoundType.I32;
+        }
+
+        Assert.False(c.Library.ValidateBoundDeclarations());
+        Assert.Same(function, c.Library.InvalidDeclaration);
     }
 
     private static BoundType ReplaceElement(BoundType type, BoundType element)

@@ -8,5 +8,6 @@ public unsafe func release<T>(storage: raw/T)
 /// Moves `value` into live, aligned, writable storage that holds no initialized value, destroying nothing.
 public unsafe func initialize<T>(storage: raw/T, value: T)
 /// Forms a shared Slice of `length` elements starting at `storage`; the caller fixes the result Origin `s`. When `length` is
-/// positive, `storage` is nonnull and aligned and the elements are initialized and valid, and they are not written for `s`.
+/// positive, `storage` is nonnull and aligned for completed contiguous storage, which is not written for `s`. Formation
+/// reads no element; the programmer must write valid values before reading any noinit elements through this view.
 public unsafe func slice<T>(storage: raw/T, length: isize) -> Slice<T> during s

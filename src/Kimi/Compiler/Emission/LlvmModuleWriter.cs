@@ -87,8 +87,9 @@ internal static partial class LlvmModuleWriter
         if (module.NeedsArrayRuntime)
         {
             output.Write(ArrayRuntime);
-            WriteArrayHelpers(module, output);
         }
+
+        WriteArrayHelpers(module, output);
 
         if (module.NeedsFormattingRuntime)
         {

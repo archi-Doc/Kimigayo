@@ -12,7 +12,7 @@ public sealed partial class KimiLibrary
     // SPEC UTF-8 formatting 1.2-1.5 and 22.4: complete bound signatures of the compiler-implemented
     // formatting operations and Contract requirements. An operand's Origin names the input whose Origin
     // it carries (its own index for an input's own elided Origin) or the Self Type's source parameter.
-    private static readonly FormattingSignature[] FormattingSignatures =
+    private static readonly FormattingSignature?[] FormattingSignatures = IndexSignatures<FormattingSignature>(
     [
         new(KimiDeclarationId.Utf8Format, new(FormattingKind.Unit, Error: FormattingKind.BufferFull), [new(FormattingKind.RefSelf), new(FormattingKind.UniqWriter)]),
         new(KimiDeclarationId.BufferWriter, new(FormattingKind.WriteWindow, 0, FormattingKind.BufferFull), [new(FormattingKind.UniqSelf), new(FormattingKind.ISize)]),
@@ -43,7 +43,8 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.WriterWrite, new(FormattingKind.Unit, Error: FormattingKind.BufferFull), [new(FormattingKind.UniqSelf), new(FormattingKind.RefValue)]),
         new(KimiDeclarationId.WriterStatus, new(FormattingKind.Unit, Error: FormattingKind.BufferFull), [new(FormattingKind.RefSelf)]),
         new(KimiDeclarationId.WriteLineUtf8, new(FormattingKind.Unit), [new(FormattingKind.Utf8Slice, 0)]),
-    ];
+    ],
+    static signature => signature.Id);
 
     private enum FormattingKind : byte
     {
@@ -130,61 +131,56 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundFormattingSignature(BindingSymbol symbol, KimiDeclarationId id, KimiLibraryContainer container)
     {
-        foreach (var signature in FormattingSignatures)
+        if (FormattingSignatures[KimiLibraryCatalog.Index(id)] is not { } signature)
         {
-            if (signature.Id != id)
-            {
-                continue;
-            }
-
-            FunctionKoto function;
-            BindingSymbol? self;
-            BoundType? result;
-            if (symbol.Declaration is ContractKoto { Members: [FunctionKoto requirement] })
-            {
-                function = requirement;
-                self = symbol;
-                result = requirement.BoundSymbol?.Type;
-                if (symbol.Contract is not { Requirements: [var bound] } || !ReferenceEquals(bound, requirement.BoundSymbol))
-                {
-                    return false;
-                }
-            }
-            else if (symbol.Declaration is FunctionKoto declaration)
-            {
-                function = declaration;
-                self = container switch
-                {
-                    KimiLibraryContainer.FixedBuffer => this.GetSymbol(KimiDeclarationId.FixedBuffer),
-                    KimiLibraryContainer.HeapBuffer => this.GetSymbol(KimiDeclarationId.HeapBuffer),
-                    KimiLibraryContainer.WriteWindow => this.GetSymbol(KimiDeclarationId.WriteWindow),
-                    KimiLibraryContainer.Utf8Writer => this.GetSymbol(KimiDeclarationId.Utf8Writer),
-                    _ => null,
-                };
-                result = symbol.Type;
-            }
-            else
-            {
-                return false;
-            }
-
-            if (function.Parameters.Count != signature.Inputs.Length || !this.BoundFormattingOperand(result, signature.Result, function, self, -1))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < signature.Inputs.Length; i++)
-            {
-                if (!this.BoundFormattingOperand(function.Parameters[i].Type.BoundType, signature.Inputs[i], function, self, i))
-                {
-                    return false;
-                }
-            }
-
             return true;
         }
 
-        return true; // Types and other catalog families have their own checks.
+        FunctionKoto function;
+        BindingSymbol? self;
+        BoundType? result;
+        if (symbol.Declaration is ContractKoto { Members: [FunctionKoto requirement] })
+        {
+            function = requirement;
+            self = symbol;
+            result = requirement.BoundSymbol?.Type;
+            if (symbol.Contract is not { Requirements: [var bound] } || !ReferenceEquals(bound, requirement.BoundSymbol))
+            {
+                return false;
+            }
+        }
+        else if (symbol.Declaration is FunctionKoto declaration)
+        {
+            function = declaration;
+            self = container switch
+            {
+                KimiLibraryContainer.FixedBuffer => this.GetSymbol(KimiDeclarationId.FixedBuffer),
+                KimiLibraryContainer.HeapBuffer => this.GetSymbol(KimiDeclarationId.HeapBuffer),
+                KimiLibraryContainer.WriteWindow => this.GetSymbol(KimiDeclarationId.WriteWindow),
+                KimiLibraryContainer.Utf8Writer => this.GetSymbol(KimiDeclarationId.Utf8Writer),
+                _ => null,
+            };
+            result = symbol.Type;
+        }
+        else
+        {
+            return false;
+        }
+
+        if (function.Parameters.Count != signature.Inputs.Length || !this.BoundFormattingOperand(result, signature.Result, function, self, -1))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < signature.Inputs.Length; i++)
+        {
+            if (!this.BoundFormattingOperand(function.Parameters[i].Type.BoundType, signature.Inputs[i], function, self, i))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private bool BoundFormattingOperand(BoundType? type, FormattingOperand expected, FunctionKoto function, BindingSymbol? self, int input)

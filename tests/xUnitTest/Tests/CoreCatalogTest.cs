@@ -166,8 +166,9 @@ public class CoreCatalogTest
         // the Wrapping<T> stub (SPEC 3.1.1.1) and the private i64 address primitive.
         // Private caller-context metadata recognizes another fifteen ordinary source bodies and one failure primitive, and the
         // located Dictionary capacity (G20) six DictionaryStorage bodies over four private primitives in place of two bridges.
-        Assert.Equal(144, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(149, c.Library.Declarations.Length);
+        // UniqSlice adds its record/projection, one bounds primitive and twelve located source bodies.
+        Assert.Equal(164, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(169, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

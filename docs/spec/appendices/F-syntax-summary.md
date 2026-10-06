@@ -90,9 +90,9 @@ TypeAtom             := CoreType | "(" Type ")"
 ObjectSemantics      := "obj" | "rc" | "arc" | "objref" | "objuniq"
 RuntimeContractType  := ContractReference
 CoreType             := NamedType | UnitType | TupleType | FixedArrayType
-FixedArrayType       := "[" ArrayLength "of" ArrayElementType "]"
+FixedArrayType       := "[" ArrayLength "of" ArrayElementType "]" // Local annotation holes: §4.3.1.
 ArrayElementType     := Type | "_"
-ArrayLength          := IntegerLiteral | ConstantName | "(" LengthExpression ")"
+ArrayLength          := "_" | IntegerLiteral | ConstantName | "(" LengthExpression ")"
 ConstantName         := "::"? Name ("." Name)*
 LengthExpression     := LengthProduct (("+" | "-") LengthProduct)*
 LengthProduct        := LengthUnary (("*" | "/" | "%") LengthUnary)*
@@ -136,6 +136,8 @@ LengthParameter      := "length" Name
 
 Object-target syntax uses the View Target lookup role. In the [runtime Contract extension](../08-generics-constraints-and-contracts.md#85-runtime-contracts), a named target may resolve to a valid `RuntimeContractType` instead of a Core; this grammar supplies no runtime designation or View bindings. A bare Contract is not a value Type, and the shared syntax permits no arbitrary Object Semantics around an already Semantics-applied Type. Layer legality and Origin attachment follow [nested Semantics](../03-types-and-values.md#336-nested-semantics-and-type-grouping). `NamedType` also keeps the dotted associated-Type projection syntax, whose Contract and Core roles are resolved under F.3. Callable signature syntax appears with the requirements below.
 
+Length and element `_` holes are permitted only in initialized local fixed-array annotations, recursively through written structure (§4.3.1); the general grammar does not authorize them in other Type positions. The entire unparenthesized declaration initializer `noinit` is a directive before name lookup (§4.3.4), while `(noinit)` is an ordinary expression.
+
 GenericParameters and TypeArguments are nonempty and allow trailing commas. NamedParameter and PairParameter declare Type slots, and only LengthParameter declares a function length slot. A pair consumes one complete Type argument and is recognized only by the declaration-side `Name / Name`. A syntactically ambiguous Name or grouped GenericArgument is kept until Binding checks the declared slot kind under [length parameters](../04-arrays-indexing-and-slices.md#44-function-length-parameters); slot kinds are never inferred from uses. `of` is contextual only after ArrayLength, as the element delimiter. `_` as ArrayElementType is allowed only in a local binding annotation with an initializer. LengthParameter is forbidden on Type declarations. Standalone Semantics slots, general Const arguments, partial, default and variadic arguments, and other `_` Type arguments are not introduced; Origin binding sets and relations follow §15.3–4.
 
 ## F.3. Declaration grammar
@@ -147,7 +149,8 @@ QualifiedName        := Name ("." Name)*
 Access               := "private" | "internal" | "public" | "protected"
                       | "protected" "internal" | "private" "protected"
 AliasDeclaration     := "alias" (Name "=>")? ContainerReference OriginClauses?
-LocalBinding         := ("let" | "var") Name (":" Type)? ("=" Expression)? OriginClauses?
+LocalBinding         := ("let" | "var") Name (":" Type)? ("=" LocalInitializer)? OriginClauses?
+LocalInitializer     := "noinit" | Expression
 GroupDeclaration     := Access? "group" Name ContainerBody
 RootGroupDeclaration := Access? "rootgroup" QualifiedName ContainerBody
 StructureDeclaration := Access? "open"? "struct" Name GenericParameters?

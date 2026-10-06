@@ -39,13 +39,14 @@ internal sealed partial class BodyLowering
         // Bodies register separately; a helper used by several bodies is defined once per module.
         foreach (var helper in this.arrayHelpers.Values)
         {
+            module.NeedsArrayRuntime |= helper.Kind != ArrayHelperKind.BorrowStorage;
             if (!module.ArrayHelpers.Contains(helper))
             {
                 module.ArrayHelpers.Add(helper);
             }
         }
 
-        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed || this.arrayHelpers.Count != 0;
+        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed;
         this.arrayRuntimeUsed = false;
         foreach (var helper in this.dictionaryHelpers.Values)
         {
@@ -366,6 +367,14 @@ internal sealed partial class BodyLowering
 
                 break;
             case OwnershipOperationKind.Produce:
+                if (operation.Source is NoInitKoto directive && directive.Parent is FieldKoto declaration &&
+                    ReferenceEquals(declaration.InitializerKoto, directive) && ReferenceEquals(place.Source, declaration) &&
+                    place.Kind == OwnershipPlaceKind.Local && place.Type.Kind == BoundTypeKind.FixedArray &&
+                    ScalarTypes.Supports(place.Type.Components[0]))
+                {
+                    break; // Construction completes without reading or storing an element (SPEC 4.3.4).
+                }
+
                 if (place.Type.Kind == BoundTypeKind.FunctionItem && ReferenceEquals(operation.Source.BoundSymbol, place.Type.Symbol))
                 {
                     break; // A resolved Item has no runtime payload to initialize.
@@ -478,8 +487,8 @@ internal sealed partial class BodyLowering
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     (!upcast && !(operation.Kind == OwnershipOperationKind.Consume
-                        ? FitsValue(place.Type, body.Places[operation.Input].Type, operation.Source)
-                        : FitsValue(body.Places[operation.Input].Type, place.Type, operation.Source))) ||
+                        ? this.FitsStoredValue(place, body.Places[operation.Input], operation.Source)
+                        : this.FitsStoredValue(body.Places[operation.Input], place, operation.Source))) ||
                     (body.Places[operation.Input].Kind != OwnershipPlaceKind.Temporary && this.slotResultPlaces[operation.Input] == 0 &&
                     !(body.Places[operation.Input].Kind == OwnershipPlaceKind.Result && (IsScalar(place.Type) || ReferenceEquals(place.Type, BoundType.Unit)))) ||
                     (operation.Kind == OwnershipOperationKind.PayloadPlacement && this.payloadOwners[place.Id] < 0) ||

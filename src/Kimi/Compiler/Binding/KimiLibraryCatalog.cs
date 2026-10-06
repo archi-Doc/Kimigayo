@@ -17,6 +17,7 @@ internal enum KimiLibraryContainer : byte
     Utf8Writer,
     Storage,
     Raw,
+    FixedArray,
 }
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
@@ -38,6 +39,8 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Range, "Range"),
         new(KimiDeclarationId.ClosedRange, "ClosedRange"),
         new(KimiDeclarationId.Slice, "Slice"),
+        new(KimiDeclarationId.UniqSlice, "UniqSlice"),
+        new(KimiDeclarationId.StorageBorrowUniqSlice, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowUniqSlice, Overload: 3),
         new(KimiDeclarationId.Dictionary, "Dictionary"),
         new(KimiDeclarationId.Equatable, "Equatable"),
         new(KimiDeclarationId.Comparable, "Comparable"),
@@ -183,6 +186,24 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.ClosedRangeIntoIterator, "intoIterator", SourceFunction: true, CallerLocation: true, Owner: "ClosedRange"),
         new(KimiDeclarationId.RangeIteratorStarting, "starting", SourceFunction: true, CallerLocation: true, Owner: "RangeIterator"),
         new(KimiDeclarationId.ClosedRangeIteratorStarting, "starting", SourceFunction: true, CallerLocation: true, Owner: "ClosedRangeIterator"),
+        new(KimiDeclarationId.DictionaryStorageClearEntries, "clearEntries", SourceFunction: true, CallerLocation: true, Owner: "DictionaryStorage"),
+        new(KimiDeclarationId.StorageDestroyDictionaryEntries, "destroyDictionaryEntries", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageIndexBounds, "indexBounds", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageIndexBounds),
+        new(KimiDeclarationId.UniqSliceIndex, "index", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "UniqSlice"),
+        new(KimiDeclarationId.UniqSliceIndexUniq, "indexUniq", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "UniqSlice"),
+        new(KimiDeclarationId.UniqSliceIndexPosition, "indexPosition", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "UniqSlice"),
+        new(KimiDeclarationId.UniqSliceIndexPositionUniq, "indexPositionUniq", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "UniqSlice"),
+        new(KimiDeclarationId.UniqSliceSliceRange, "slice", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "UniqSlice", Overload: 1),
+        new(KimiDeclarationId.UniqSliceSliceUniqRange, "sliceUniq", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "UniqSlice", Overload: 1),
+        new(KimiDeclarationId.ArraySliceRange, "slice", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Overload: 1),
+        new(KimiDeclarationId.ArraySliceUniqRange, "sliceUniq", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, Overload: 1),
+        new(KimiDeclarationId.FixedArraySliceRange, "slice", KimiLibraryContainer.FixedArray, SourceFunction: true, CallerLocation: true, Overload: 1),
+        new(KimiDeclarationId.FixedArraySliceUniqRange, "sliceUniq", KimiLibraryContainer.FixedArray, SourceFunction: true, CallerLocation: true, Overload: 1),
+        new(KimiDeclarationId.SliceSliceRange, "slice", KimiLibraryContainer.Root, SourceFunction: true, CallerLocation: true, Owner: "Slice", Overload: 1),
+        new(KimiDeclarationId.StorageSliceUniq, "sliceUniq", KimiLibraryContainer.Storage, SourceFunction: true, CallerLocation: true),
+        new(KimiDeclarationId.StorageSetArrayLength, "setArrayLength", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageSetArrayLength),
+        new(KimiDeclarationId.SliceToArray, "toArray", SourceFunction: true, CallerLocation: true, Owner: "Slice"),
+        new(KimiDeclarationId.ArrayAppendCopies, "appendCopies", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
         new(KimiDeclarationId.ArrayTruncate, "truncate", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true),
     ];
 
@@ -192,7 +213,7 @@ internal static class KimiLibraryCatalog
 
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
 
-    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageTransferBytes;
+    internal static bool IsStorageOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.StorageBorrowShared and <= CompilerFunctionKind.StorageSetArrayLength;
 
     internal static bool IsRawOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice;
 

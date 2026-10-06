@@ -325,12 +325,11 @@ public sealed partial class Binding
                     }
 
                     actual = this.ArgumentType(source, actual);
-                    this.transferRequired = this.lendingRequired = false;
+                    this.acquisitionFailure = null;
                     if (!this.AdaptInput(source, hint ?? pattern, actual, scope, null, null, out var adapted, out var quality, out var kind))
                     {
                         // SPEC 6.3.2, 3.5: a bare Non-Copy Place never Moves into a payload; name the required spelling.
-                        var failure = this.lendingRequired ? BindingFailure.ExclusiveBorrowRequired : this.transferRequired ? BindingFailure.TransferRequired : BindingFailure.TypeMismatch;
-                        return failure != BindingFailure.TypeMismatch ? this.FailAcquisition(use, failure, source, this.acquisitionObject) : this.Fail(use, failure);
+                        return this.acquisitionFailure is { } acquisition ? this.FailAcquisition(use, acquisition.Kind, source, acquisition.Object) : this.Fail(use, BindingFailure.TypeMismatch);
                     }
 
                     this.MatchInputOrigins(pattern, adapted, declaration, origins, []);

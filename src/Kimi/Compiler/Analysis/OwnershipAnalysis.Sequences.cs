@@ -68,7 +68,8 @@ public sealed partial class OwnershipAnalysis
         // Snapshot a Copy Slice/reference, but keep an owned Array in its Place. Protect
         // the handle throughout index evaluation so it cannot be resized underneath the read.
         var keepPlace = dynamicArray || ((ReferenceTypes.IsArray(source.Left.BoundType) || ReferenceTypes.IsDictionary(source.Left.BoundType)) && source.Left.BoundType!.Semantics == SemanticsKind.Uniq);
-        var receiver = this.Expression(source.Left, keepPlace ? PlaceUseKind.Read : PlaceUseKind.Consume);
+        var receiver = this.compilation.Binding.TryGetAdaptation(source.Left, out var acquisitionView) && acquisitionView.Kind == ExpectedAdaptationKind.SharedBorrow
+            ? this.Receiver(source.Left) : this.Expression(source.Left, keepPlace ? PlaceUseKind.Read : PlaceUseKind.Consume);
         if (dynamicArray && receiver >= 0)
         {
             this.Emit(OwnershipOperationKind.LocateReceiver, source.Left, receiver);
@@ -183,12 +184,13 @@ public sealed partial class OwnershipAnalysis
             return projection < 0 ? -1 : this.body.Projections[projection].Root;
         }
 
-        if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && receiver is MemberAccessKoto field &&
-            !Binding.IsGetterResult(field) && !this.SpecialField(field) && ElementAccess.BorrowedPathRoot(field) is not null)
+        if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary && receiver is BinaryKoto stored &&
+            (ElementAccess.IsSyntax(stored) || (stored is MemberAccessKoto borrowedField && ElementAccess.BorrowedPathRoot(borrowedField) is not null)) &&
+            !Binding.IsGetterResult(stored) && !this.SpecialField(stored))
         {
-            // SPEC 4.6.1: a collection field reached through a reference is shared-borrowed in place for the operation; an
-            // element borrowed through it keeps the Origin of that borrow.
-            return this.BorrowStruct(field, this.compilation.Binding.SharedReference(source.BoundType, elementOrigin));
+            // SPEC 4.6.1: collection fields and elements are inspected through their shared Place, without attempting to
+            // Copy or Move the Non-Copy handle. An element borrowed through it keeps the Origin of that borrow.
+            return this.BorrowStruct(stored, this.compilation.Binding.SharedReference(source.BoundType, elementOrigin));
         }
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)

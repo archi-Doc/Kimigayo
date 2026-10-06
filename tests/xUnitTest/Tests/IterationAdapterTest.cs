@@ -41,11 +41,17 @@ public class IterationAdapterTest
         => ScalarEmissionTest.EmitFixture("IterationAdapter" + name, Counter + program, stdout);
 
     // A lending item keeps the actual Reborrow of the adapter's next as its step.
+    [Trait("Purpose", "Allocation")]
     [Fact]
     public void BorrowingIteratorForwardsLendingItems()
     {
         const string Source = Cursor + "var cursor = Cursor.init()\nvar sum: i32 = 0\nfor item in Kimi.Iteration.borrowing(cursor@uniq)\n    sum += item\nrequire sum == 3 else => $abort(\"lending\")\nConsole.writeLine(\"lending\")";
         ScalarEmissionTest.EmitFixture("IterationAdapterLending", Source, "lending\n");
+        var c = MinimalEmissionTest.Analyze(Source);
+        var valid = true;
+        var bytes = AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _), iterations: 8, warmupIterations: 8);
+        Assert.True(valid);
+        Assert.Equal(0, bytes);
     }
 
     // SPEC 22.1.2.3: an adapter is an Iterator exactly when its input is, so generic code may retain its items;

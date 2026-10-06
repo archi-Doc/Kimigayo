@@ -52,7 +52,7 @@ public class MatchCaptureTest
         };
         var path = Path.Combine(directory, "main.kimi");
         File.WriteAllText(path, Source);
-        foreach (var argument in new[] { "check", path, "--Format", "json" })
+        foreach (var argument in new[] { "check", path, "--Target", WindowsProfile.Target, "--Format", "json" })
         {
             start.ArgumentList.Add(argument);
         }

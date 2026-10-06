@@ -1,5 +1,17 @@
 # Verification workflow
 
+## Continuous integration
+
+`.github/workflows/test.yml` runs on pull requests, pushes to `main` and `dev`, and manual dispatch. Ubuntu checks the
+managed solution with warnings as errors. Windows uses the ordinary Session verifier for all functional/allocation
+regressions and every regenerated native fixture at O0/O2, then runs the native-worker PowerShell regressions, CLI
+integration, and extension unit/integration tests with the managed compiler. Neither job runs NativeAOT.
+
+The Windows job downloads the adopted LLVM archive only on a toolchain-cache miss, checks its pinned SHA-256, and calls
+the existing backend setup script. Explicit toolchain verification checks cached installations too. Update the archive
+version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
+when a later step fails. A configured lane is not evidence of a successful hosted run; inspect that run's results.
+
 ## Feedback and completion
 
 During edits, build the test project incrementally and run the relevant methods. These commands do not establish warning-free completion:
@@ -88,6 +100,10 @@ This command reports input sizes, retained record counts, iteration counts and t
 `Benchmark --object-plans` measures direct and stored owning-object view analysis/emission with the same inputs as
 `StoredObjectViewTest`; fixed conditions and the command are in [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md).
 Allocation assertions remain in the normal Unit/Session suite; timing samples remain opt-in.
+
+`Benchmark --view-plans` measures Binding, ownership and emission for the exclusive-view and Slice-copy inputs
+shared with `UniqSliceTest` and `SliceToArrayTest`; fixed conditions and native measurement commands are in
+[Views.md](../../src/Benchmark/Views.md).
 
 ## Native fixtures
 

@@ -432,6 +432,12 @@
   + Name="Binding.MissingType"
     Description="the Type is established"
 
+  + Name="Binding.NoInit"
+    Description="the noinit declaration has an explicit fixed-array Type with a proven owner Scalar element"
+
+  + Name="Binding.ArrayAnnotationInference"
+    Description="the initializer establishes every written fixed-array hole consistently"
+
   + Name="Binding.Ambiguous"
     Description="exactly one declaration or operation applies"
 

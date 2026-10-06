@@ -211,12 +211,7 @@ public class NamedAliasTest
     }
 
     private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("Aliases.kimi", source));
-        return c;
-    }
+        => CompilationTestHelper.Parse(source, "Aliases.kimi");
 
     private static string Describe(Compilation c)
         => string.Join("; ", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));

@@ -21,7 +21,66 @@ public sealed class CheckJsonOutputTest : IDisposable
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-check-json-" + Guid.NewGuid().ToString("N"));
 
-    public void Dispose() => Directory.Delete(this.directory, true);
+    public void Dispose()
+    {
+        if (Directory.Exists(this.directory))
+        {
+            Directory.Delete(this.directory, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DirectoryReadFailuresProduceBlockedDocuments(bool accessDenied)
+    {
+        Directory.CreateDirectory(this.directory);
+        var failure = accessDenied ? (Exception)new UnauthorizedAccessException("Directory access denied.") : new IOException("Directory disappeared.");
+        var document = CheckJsonOutput.Create(new KimiOptions(), [this.directory], TestContext.Current.CancellationToken, new FailingDirectoryInput(failure));
+        AssertBlockedInput(document, this.directory, failure.Message);
+    }
+
+    [Fact]
+    public void InvalidPathsProduceBlockedDocuments()
+    {
+        var document = CheckJsonOutput.Create(new KimiOptions(), ["invalid\0.kimiproj"], TestContext.Current.CancellationToken);
+        AssertBlockedInput(document, string.Empty, null);
+    }
+
+    [Fact]
+    public void CancellationDoesNotBecomeAnInputFailure()
+    {
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(() => CheckJsonOutput.Create(new KimiOptions(), [], cancellation.Token));
+        Directory.CreateDirectory(this.directory);
+        Assert.Throws<OperationCanceledException>(() => CheckJsonOutput.Create(new KimiOptions(), [this.directory], TestContext.Current.CancellationToken, new FailingDirectoryInput(new OperationCanceledException())));
+    }
+
+    private static void AssertBlockedInput(CheckDocument document, string path, string? reason)
+    {
+        Assert.Equal(CheckOutcome.Blocked, document.Outcome);
+        Assert.False(document.Accepted);
+        Assert.Equal(path, document.Unit.Project);
+        var record = Assert.Single(document.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ProjectLoadFailed_Kd), record.Code);
+        var json = JsonSerializer.Serialize(document, DiagnosticJsonContext.Default.CheckDocument);
+        using var parsed = JsonDocument.Parse(json);
+        Assert.Equal("Blocked", parsed.RootElement.GetProperty("outcome").GetString());
+        if (reason is not null)
+        {
+            Assert.Contains(reason, json, StringComparison.Ordinal);
+        }
+    }
+
+    private sealed class FailingDirectoryInput(Exception failure) : CheckInputSource
+    {
+        public override byte[] ReadAllBytes(string path) => throw new InvalidOperationException("No file should be read.");
+
+        public override SourceContent ReadSource(string path) => throw new InvalidOperationException("No source should be read.");
+
+        public override string[] GetFiles(string directory, string pattern) => throw failure;
+    }
 
     [Fact]
     public void TheDocumentHoldsTheUnitItsSourcesAndTheRecords()

@@ -14,6 +14,16 @@ public class PublishedPlaceProjectionTest
     [InlineData("Index", "values[1]")]
     [InlineData("Direct", "values.indexUniq(1)")]
     [InlineData("Generic", "slot(values@uniq, 1)")]
+    public void FixedArrayElementsKeepTheirSelectedStorage(string name, string selection)
+    {
+        var source = Header + "var values: Dictionary<i32, [2 of i32]> = [1: [0, 7]]\n" + selection + "[0] = 40\n" + selection + "[0] += 2\nrequire values[1][0] == 42 else => $abort(\"value\")";
+        ScalarEmissionTest.EmitFixture("PublishedPlaceArray" + name, source, string.Empty);
+    }
+
+    [Theory]
+    [InlineData("Index", "values[1]")]
+    [InlineData("Direct", "values.indexUniq(1)")]
+    [InlineData("Generic", "slot(values@uniq, 1)")]
     public void StoredExclusiveReferencesKeepTheSelectedPlaceCapability(string name, string selection)
     {
         var source = Header + "var value = 0\nvar values = [1: (value@uniq, 7)]\n" + selection + ".0@follow = 39\n" +

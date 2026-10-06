@@ -8,6 +8,22 @@ public struct Array<T>
     Self is IntoIterable
     associate IntoIterable.IteratorType is ArrayOwningIterator<T>
 
+    /// Borrows the complete contiguous storage without copying elements.
+    public func slice(self: ref/Self) -> Slice<T> during self
+        return self[..]
+
+    public func slice<R>(self: ref/Self, range: R) -> Slice<T> during self
+        R is PositionRange
+        return self[range]
+
+    /// Borrows the complete contiguous storage exclusively, including an empty array.
+    public func sliceUniq(self: uniq/Self) -> UniqSlice<T> during self
+        return UniqSlice<T>.init(Storage.borrowStorageUniq(self))
+
+    public func sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self
+        R is PositionRange
+        return Storage.sliceUniq(Storage.borrowStorageUniq(self), range)
+
     /// Starts a shared enumeration of the elements in index order.
     public func iterate(self: ref/Self during source) -> ArrayIterator<T> during source
         return ArrayIterator<T>.init(Storage.borrowStorage(self))
@@ -143,9 +159,18 @@ public struct Array<T>
     /// Copies each element of `values` to the end, in order.
     public func appendCopies(self: uniq/Self, values: Slice<T>)
         T is Copy
-        self.reserve(additional: values.length)
-        for value in values
-            self.append(value@follow)
+        let count = values.length
+        if count == 0 => return
+        let offset = self.length
+        // Reserve checks capacity and length overflow once, before reading any element.
+        self.reserve(additional: count)
+        unsafe
+            let storage = Storage.borrowStorageUniq(self).storage
+            // The exclusive receiver keeps the buffer stable. Copy cannot invoke user code, and the
+            // source Loan excludes overlapping storage. Only the newly reserved tail is initialized.
+            for index in values.indices
+                Raw.initialize(storage + offset + index, values[index])
+            Storage.setArrayLength(self, offset + count)
 
     /// Removes the elements for which `matching` returns true and keeps the order of the others.
     ///

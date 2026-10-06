@@ -197,6 +197,9 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 | `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Metadata without element access. |
 | `s[i]`, where i is a position | `place ref/T during source`; invalid element bounds Abort. |
 | `s[r]`, where r is a range | `Slice<T> during source`; invalid range bounds Abort. |
+| `slice(self: Self) -> Slice<T> during source` | Copies the whole shared view, without element copies. |
+| `slice<R>(self: Self, range: R) -> Slice<T> during source`, `R is PositionRange` | Shared subview, equivalent to range subscripting. O(1), no allocation. |
+| `toArray(self: Self) -> Array<T>`, `T is Copy` | Independent element storage, one ordered shallow Copy per element. O(n), at most one element-storage allocation (zero when empty), no intermediate growth. Inner element dependencies remain. |
 | `tryGet<P>(self: Self, index: P) -> Option<ref/T during source>`, `P is Position` | None unless `index` resolves to an element position. |
 | `trySlice<R>(self: Self, range: R) -> Option<Slice<T> during source>`, `R is PositionRange` | None when `range` does not resolve against the length. |
 | `splitAt<P>(self: Self, index: P) -> (Slice<T> during source, Slice<T> during source)`, `P is Position` | Splits into `[0, p)` and `[p, length)`; invalid boundaries Abort. |
@@ -211,6 +214,27 @@ In the table, `source` means the backing Origin `self.source`, not a borrow of t
 Split boundaries include zero and length. Both results retain the source dependency, including empty results. `SliceIterator<T> {source}` is an `Iterator` whose `Item` is `ref/T during source`; it copies the handle and keeps a position. Indexable and the iteration modes follow §2.
 
 Try-prefixed operations handle only their own bounds failures: `tryGet(-1)` and `tryGet(^(-1))` return None, but an Abort while evaluating an argument still Aborts.
+
+### 3.2.1. UniqSlice<T> {source}
+
+[Specification: exclusive view methods and dependencies](spec/04-arrays-indexing-and-slices.md#4611-shared-and-exclusive-view-methods).
+
+A Non-Copy exclusive view with invariant complete `T`, no element ownership and no Copy/Owned constraint on `T`.
+Empty views retain the source Loan. Child views borrow their parent handle; an owning local needs `var` for exclusive
+operations. Formation and reslicing are O(1), with no element copies or heap allocation.
+
+| Member | Guarantee |
+| --- | --- |
+| `length: isize`, `isEmpty: bool`, `indices: ResolvedRange` | Read-only metadata, sharing the handle without reading elements. |
+| `index(self: ref/Self, key: ref/isize) -> place ref/T during self` | Shared Indexable element access; invalid bounds Abort. |
+| `indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self` | Exclusive UniqIndexable element access; no hole-producing Move. |
+| `slice(self: ref/Self) -> Slice<T> during self` | Shared child view of the whole region. |
+| `slice<R>(self: ref/Self, range: R) -> Slice<T> during self`, `R is PositionRange` | Shared child subview, also selected by range subscripting. |
+| `sliceUniq(self: uniq/Self) -> UniqSlice<T> during self` | Exclusive child view of the whole region. |
+| `sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self`, `R is PositionRange` | Exclusive child subview; invalid bounds Abort. |
+
+Position subscripts normalize under §4.6.9. There is no iteration conformance or direct `toArray`; use
+`view.slice().toArray()` for Copy elements. Ordinary explicit `@move` transfers the owning view.
 
 ### 3.3. Common Dynamic Collection Rules
 
@@ -245,6 +269,10 @@ An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! ca
 | `indices: ResolvedRange` | The interval `[0, length)`. |
 | `values[i]`, where i is a position | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
 | `values[r]`, where r is a range | A shared Slice; invalid bounds Abort. |
+| `slice(self: ref/Self) -> Slice<T> during self` | Shares the whole array without element copies. |
+| `slice<R>(self: ref/Self, range: R) -> Slice<T> during self`, `R is PositionRange` | Shares a subrange; invalid bounds Abort. O(1), no allocation. |
+| `sliceUniq(self: uniq/Self) -> UniqSlice<T> during self` | Exclusively lends the whole array without element copies. |
+| `sliceUniq<R>(self: uniq/Self, range: R) -> UniqSlice<T> during self`, `R is PositionRange` | Exclusive subview; retains the whole-array Loan. O(1), no allocation. |
 | `append(self: uniq/Self, value: T) -> ()` | Adds at the end; amortized O(1). |
 | `insert<P>(self: uniq/Self, index: P, value: T) -> ()`, `P is Position` | Inserts at the resolved boundary in `[0, length]`, preserving order; invalid bounds Abort. O(1 + n). |
 | `pop(self: uniq/Self) -> Option<T>` | Returns the last element, or None when empty. O(1). |
@@ -279,6 +307,7 @@ A fixed array `[N of T]` has no source declaration. Its members are receiver fun
 | `iterate(self: ref/Self during source) -> ArrayIterator<T> during source` | The Iterable entry: a shared enumeration in index order. |
 | `iterateUniq(self: uniq/Self during source) -> ArrayUniqIterator<T> during source` | The UniqIterable entry: each element is lent exclusively exactly once. |
 | `intoIterator(self: Self) -> FixedArrayOwningIterator<T, [N of T]>` | The IntoIterable entry: each element is transferred out once; the iterator destroys the unreturned elements in reverse index order and allocates nothing. |
+| `slice`, `slice<R>`, `sliceUniq`, `sliceUniq<R>` | The Array view signatures and guarantees above, with `Self = [N of T]` and functions generic over T and `length N`. |
 | `tryGet<P>`, `trySlice<R>`, `splitAt<P>`, `trySplitAt<P>` with `self: ref/Self during source` | The read operations of §3.2 on `self[..]`, with results `during source`. |
 | `tryGetPairUniq<P, Q>(self: uniq/Self during source ! first: P, second: Q)`, `P is Position`, `Q is Position` | `Option<(uniq/T during source, uniq/T during source)>` in argument order; None for invalid or equal resolved positions. O(1), no allocation, including zero-sized elements. |
 

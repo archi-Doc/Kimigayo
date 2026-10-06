@@ -8,6 +8,15 @@ namespace XunitTest;
 
 public class CommandOptionsTest
 {
+    [Fact]
+    public void ManifestBuildPreservesPathsAndToolOverrides()
+    {
+        Assert.True(SimpleParser.TryParseOptions<BuildCommand.Options>(["--Manifest", "folder with spaces/app.link.json", "--ToolchainRoot", "tools", "--LlvmBin", "LLVM tools"], out var options));
+        Assert.Equal("folder with spaces/app.link.json", options!.Manifest);
+        Assert.Equal("tools", options.ToolchainRoot);
+        Assert.Equal("LLVM tools", options.LlvmBin);
+    }
+
     [Theory]
     [InlineData(true, "--locked")]
     [InlineData(true, "-locked")]

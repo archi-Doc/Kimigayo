@@ -316,6 +316,12 @@ public sealed partial class OwnershipBody
 
     private bool OriginNamesRoot(BoundOrigin origin, int root)
     {
+        if (origin.Kind == OriginKind.Parameter)
+        {
+            // A declared-Origin exclusive input is its own capability root, just like an elided Input Origin.
+            return this.IsExclusiveBorrowInput(root) && ReferenceEquals(this.Places[root].Type.Origin, origin);
+        }
+
         if (origin.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < origin.Operands.Count; i++)

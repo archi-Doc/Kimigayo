@@ -753,6 +753,21 @@ Exit:
         return null;
     }
 
+    // SPEC 4.3.4: only a complete, unparenthesized declaration initializer is the directive. Eligibility is a Binding
+    // check; even an ineligible declaration never falls back to a same-named value.
+    private static Koto ParseVariableInitializer(ref TokenReader reader)
+    {
+        var value = ParseRequiredExpression(ref reader);
+        if (value is not IdentifierNameKoto { IdentifierName: "noinit" })
+        {
+            return value;
+        }
+
+        var directive = new NoInitKoto(ref reader, value.Span);
+        directive.SetAttributeChain(value.AttributeChain);
+        return directive;
+    }
+
     /// <summary>Parses a local binding declaration after its keyword (SPEC 6.4).</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="token">The declaration keyword token.</param>
@@ -789,7 +804,7 @@ Exit:
         Koto? initializerKoto = default;
         if (reader.TryConsume(TokenKind.Equals, out _, false))
         {
-            initializerKoto = ParseRequiredExpression(ref reader);
+            initializerKoto = ParseVariableInitializer(ref reader);
         }
 
         // A binding states its Type or has an initializer, and an inferred element Type needs the initializer; the recovery
@@ -841,7 +856,7 @@ Exit:
         Koto? initializerKoto = default;
         if (reader.TryConsume(TokenKind.Equals, out var equalsSpan, false))
         {
-            initializerKoto = ParseRequiredExpression(ref reader);
+            initializerKoto = ParseVariableInitializer(ref reader);
             if (computed)
             {
                 // The value of a computed Property comes from get; the written initializer is discarded.

@@ -39,6 +39,11 @@ public sealed partial class Binding
                     ? indexedDictionary : this.Fail(source, BindingFailure.Unsupported);
             }
 
+            if (this.TryBindViewSelection((IndexKoto)source, scope, receiver, out var view))
+            {
+                return view;
+            }
+
             if (ReferenceTypes.IsPointer(receiver))
             {
                 // SPEC 5.3: p[n] is *(p + n), with a signed offset and no range/from-end form; a zero stride makes it *p.

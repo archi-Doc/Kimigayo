@@ -9,6 +9,8 @@ public class ElementAssignmentEmissionTest
 {
     public static TheoryData<string, string> Fixtures => new()
     {
+        { "Reference", "let first = 1\nlet second = 42\nvar values: [2 of ref/i32] = [first@ref, second@ref]\nvalues[0] = second@ref\nif values[0]@follow == 42 => Console.writeLine(\"ok\")" },
+        { "RawPointer", "let value = 42\nunsafe\n    var pointers: [1 of raw/i32] = [null]\n    pointers[0] = value@raw\n    if *pointers[0] == 42 => Console.writeLine(\"ok\")" },
         { "Tuple", "var a = (1, 2)\na.1 = 42\nif a.0 == 1 and a.1 == 42 => Console.writeLine(\"ok\")" },
         { "Array", "var a: [3 of i32] = [1, 2, 3]\nlet i: isize = 1\na[i] = 42\nif a[0] == 1 and a[1] == 42 and a[2] == 3 => Console.writeLine(\"ok\")" },
         { "Nested", "var a: [2 of [2 of i32]] = [[1, 2], [3, 4]]\na[1][0] = 42\nif a[1][0] == 42 and a[0][0] == 1 and a[1][1] == 4 => Console.writeLine(\"ok\")" },

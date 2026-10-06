@@ -81,6 +81,23 @@ public class OwnedStoredReferenceTest
         => ScalarEmissionTest.EmitFixture("OwnedStoredReferenceReserved" + name, Reserved + source, string.Empty);
 
     [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeclaredOriginReservationsPermitReadsButStillRejectWrites(bool write)
+    {
+        var source = Reserved + "func poke(target: uniq/i32) -> i32\n    target@follow = 3\n    return 1\n" +
+            "func run(value: uniq/i32 during a)\n    var items = [(value@move, 7)]\n    for item in items@move\n        change3(item.0, " +
+            (write ? "poke" : "inspect") + "(item.0))\nvar value = 42\nrun(value@uniq)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(!write, c.Ownership.Result.IsVerified);
+        if (write)
+        {
+            Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.CallActivationConflict_Kd && x.Source.ToString() == "poke(item.0)");
+        }
+    }
+
+    [Theory]
     [InlineData("twice(item.0, item.0)", true)]
     [InlineData("change3(item.0, poke(item.0))", true)]
     [InlineData("change3(item.0, take(item@move))", false)]

@@ -180,7 +180,7 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        if (kind != CompilerFunctionKind.ArrayPop && !this.TryGetLocation(call, directory, constants, out location))
+        if (kind != CompilerFunctionKind.ArrayPop && !function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location))
         {
             return Fail("An Array operation has no diagnostic source location.", out failure);
         }
@@ -297,10 +297,10 @@ internal sealed partial class BodyLowering
                 break;
         }
 
-        if (location >= 0)
+        if (kind != CompilerFunctionKind.ArrayPop)
         {
-            this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
-            this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
+            this.callOperands.Add(new(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, location));
+            this.callOperands.Add(new(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, location));
         }
 
         if (this.callOperands.Count != callee.Parameters.Length)
@@ -320,6 +320,11 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var kind = plan.Target.CompilerFunction;
         var owning = kind == CompilerFunctionKind.StorageOwn;
+        if (kind == CompilerFunctionKind.StorageSetArrayLength)
+        {
+            return this.LowerArrayLength(body, function, id, call, plan, out failure);
+        }
+
         if (kind == CompilerFunctionKind.StorageOwnFixed)
         {
             return this.LowerFixedStorageOwn(body, function, id, call, plan, out failure);
@@ -340,7 +345,7 @@ internal sealed partial class BodyLowering
             return this.LowerStorageBytes(body, function, id, call, plan, out failure);
         }
 
-        if (kind is CompilerFunctionKind.StorageMissingDictionaryKey or CompilerFunctionKind.StorageArgumentOutOfRange or CompilerFunctionKind.StorageCountOverflow or CompilerFunctionKind.StorageAllocationSizeExceeded)
+        if (kind is CompilerFunctionKind.StorageIndexBounds or CompilerFunctionKind.StorageMissingDictionaryKey or CompilerFunctionKind.StorageArgumentOutOfRange or CompilerFunctionKind.StorageCountOverflow or CompilerFunctionKind.StorageAllocationSizeExceeded)
         {
             if (!function.Abi.CallerLocation || plan.ArgumentOperations.Length != 0 || plan.Receiver is not null || !ReferenceEquals(plan.ReturnType, BoundType.Never))
             {
@@ -349,6 +354,7 @@ internal sealed partial class BodyLowering
 
             var reason = kind switch
             {
+                CompilerFunctionKind.StorageIndexBounds => WindowsLowering.IndexBoundsReason,
                 CompilerFunctionKind.StorageMissingDictionaryKey => WindowsLowering.MissingKeyReason,
                 CompilerFunctionKind.StorageCountOverflow => WindowsLowering.IntegerOverflowReason,
                 CompilerFunctionKind.StorageAllocationSizeExceeded => WindowsLowering.AllocationSizeReason,
@@ -390,10 +396,16 @@ internal sealed partial class BodyLowering
             return Fail("Storage operation has an unsupported argument acquisition.", out failure);
         }
 
-        if (referent.Components is not [var elementType] || referent.Kind != BoundTypeKind.Array ||
+        if (referent.Components is not [var elementType] || (kind == CompilerFunctionKind.StorageBorrowUniqSlice ? referent.Symbol?.LibraryDeclaration != KimiDeclarationId.UniqSlice : referent.Kind != BoundTypeKind.Array) ||
             !this.TryGetArrayElement(elementType, out var element))
         {
             return Fail("Storage operation has an unsupported collection or element Type.", out failure);
+        }
+
+        if (kind == CompilerFunctionKind.StorageBorrowUniqSlice &&
+            (this.aggregateLayouts.Get(referent) is not { Fields.Length: 3 } view || view.Offset(0) != 0 || view.Offset(1) != 8 || view.Fields[2].Layout.Size != 0))
+        {
+            return Fail("An exclusive view must have pointer, length and erased Loan storage.", out failure);
         }
 
         if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
@@ -454,6 +466,39 @@ internal sealed partial class BodyLowering
         return true;
     }
 
+    // The Kimi caller has initialized the reserved tail. This boundary only publishes its length.
+    private bool LowerArrayLength(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    {
+        failure = null;
+        if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
+            plan.ArgumentOperations.Length != 2 || call.ArgumentNodes.Count != 2 || target.Parameters.Count != 2 || plan.ArgumentToParameter.Length != 2 ||
+            plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 ||
+            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array }] } receiver ||
+            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), BoundType.ISize) || !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit) || !ReferenceEquals(SignatureType(this, plan.ReturnType), BoundType.Unit))
+        {
+            return Fail("Publishing an Array length requires its exclusive handle and isize length.", out failure);
+        }
+
+        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
+        {
+            return false;
+        }
+
+        if (!complete)
+        {
+            return true;
+        }
+
+        if (!this.ScalarArrayArgument(body, id, 0, receiver, out var handle) || !this.ScalarArrayArgument(body, id, 1, BoundType.ISize, out var length))
+        {
+            return Fail("Array length publication arguments are unavailable at the call.", out failure);
+        }
+
+        function.AddScalar(EmissionOpcode.ElementAddress, id, [handle, new(EmissionOperandKind.Integer, 8)], representation: WindowsLowering.GetValue(BoundType.ISize));
+        function.AddScalar(EmissionOpcode.StorePointer, id, [length, new(EmissionOperandKind.ElementAddress, id)], "i64", representation: WindowsLowering.GetValue(BoundType.ISize));
+        return true;
+    }
+
     // SPEC 4.7.2, 4.7.4: Array<T>.init(capacity:) zeroes the result handle and reserves the capacity once; the reserve runtime
     // aborts on a negative capacity, and zero allocates nothing.
     private bool LowerArrayConstruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
@@ -476,15 +521,18 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (!this.ScalarArrayArgument(body, id, 0, BoundType.ISize, out var capacity) || !this.TryGetLocation(call, directory, constants, out var location))
+        var location = -1;
+        if (!this.ScalarArrayArgument(body, id, 0, BoundType.ISize, out var capacity) || (!function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location)))
         {
             return Fail("Array construction capacity or location is unavailable at the call.", out failure);
         }
 
         this.arrayRuntimeUsed = true;
         var handle = new EmissionOperand(EmissionOperandKind.SlotAddress, body.Operations[id].Place);
-        function.AddCall(id, WindowsLowering.ArrayInit, [handle, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
-        function.AddCall(id, WindowsLowering.ArrayReserve, [handle, new(EmissionOperandKind.Integer, element.Stride), capacity, new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
+        var place = new EmissionOperand(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, location);
+        var length = new EmissionOperand(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, location);
+        function.AddCall(id, WindowsLowering.ArrayInit, [handle, place, length]);
+        function.AddCall(id, WindowsLowering.ArrayReserve, [handle, new(EmissionOperandKind.Integer, element.Stride), capacity, place, length]);
         return true;
     }
 

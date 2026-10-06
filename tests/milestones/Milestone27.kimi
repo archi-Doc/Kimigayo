@@ -78,3 +78,38 @@ public func main()
     counts[0] = counts[1] + 40 // indexUniq replaces the first value in place.
     require counts[0] == 42 and firstPlace(counts) == 42 and firstPlace(names) == retained else => $abort("Place checks failed")
     Console.writeLine("Pair replaced.")
+
+    // Exclusive child views use relative bounds and lend a parent handle without copying elements.
+    var values: [_ of i32] = [1, 2, 3, 4]
+    values.sliceUniq(1..^0)[0] = 20
+    var view = values.sliceUniq()
+    var child = view.sliceUniq(1..^1)
+    let access = child@uniq
+    access[^1] = 30
+    let snapshot = child.slice().toArray()
+    child[0] = 21
+    require snapshot.length == 2 and snapshot[0] == 20 and snapshot[1] == 30 else => $abort("View copy failed")
+    require view[1] == 21 and view[2] == 30 else => $abort("Child write failed")
+    var moved = view@move
+    moved[3] = 40
+    require moved.slice(^0..).isEmpty else => $abort("Empty child failed")
+    require values[3] == 40 else => $abort("Moved view lost its backing")
+
+    // Copying drops the outer storage dependency but retains references stored inside the elements.
+    var references: [_ of ref/i32] = [number@ref]
+    let retainedReferences = references.sliceUniq().slice().toArray()
+    references = [copied]
+    require retainedReferences[0]@follow == 42 else => $abort("Copied element Origin was lost")
+    var dynamic = snapshot@move
+    dynamic.sliceUniq()[0] = 22
+    let dynamicCopy = dynamic.slice().slice(1..).toArray()
+    dynamic.append(99)
+    require dynamicCopy[0] == 30 and dynamic.length == 3 else => $abort("Dynamic copy retained its outer Loan")
+
+    unsafe
+        var buffer: [3 of i32] = noinit
+        var output = buffer.sliceUniq()
+        for index in output.indices => output[index] = 7
+        let initialized = output.slice().toArray()
+        require initialized.length == 3 and initialized[2] == 7 else => $abort("View initialization failed")
+    Console.writeLine("Exclusive views and independent copies verified.")

@@ -303,7 +303,7 @@ public sealed class EmissionArtifactsTest : IDisposable
             settings => settings.NativeLibraries[WindowsProfile.Target] = new()
             {
                 ["zlib"] = new() { Kind = "import", Input = "zlib.lib" },
-                ["codec"] = new() { Kind = "static", Input = "native/codec.lib" },
+                ["codec"] = new() { Kind = "static", Input = "native/codec.lib", Sha256 = new string('a', 64) },
                 ["unused"] = new() { Kind = "static", Input = "unused.lib" },
             });
         Assert.True(EmissionArtifacts.Publish(c, out var path, out var error), error);
@@ -312,6 +312,8 @@ public sealed class EmissionArtifactsTest : IDisposable
         Assert.Equal(["codec", "kernel32", "kimi_backend", "zlib"], libraries.EnumerateArray().Select(x => x.GetProperty("name").GetString()));
         Assert.Equal(("static", Path.Combine("..", "native", "codec.lib")), (libraries[0].GetProperty("kind").GetString(), libraries[0].GetProperty("input").GetString()));
         Assert.Equal(("import", "zlib.lib"), (libraries[3].GetProperty("kind").GetString(), libraries[3].GetProperty("input").GetString()));
+        Assert.Equal(new string('a', 64), libraries[0].GetProperty("sha256").GetString());
+        Assert.False(libraries[3].TryGetProperty("sha256", out _));
         Assert.Contains("declare dllimport i32 @inflate(i32)\n", File.ReadAllText(path!));
     }
 

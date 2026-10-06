@@ -416,6 +416,12 @@ public sealed partial class Binding
             return known;
         }
 
+        if (IsArrayHole(syntax) && syntax.BindingState != BindingState.Unvisited)
+        {
+            this.Consulted(syntax);
+            return null; // A failed local inference request is not a Type name to look up again.
+        }
+
         if (!this.resolvingTypes.Add(syntax))
         {
             return this.Fail(syntax, BindingFailure.Cycle, true);
@@ -596,7 +602,8 @@ public sealed partial class Binding
                 var length = this.BindLength(array.Length, scope);
                 if (length is null)
                 {
-                    return this.Fail(array, BindingFailure.InvalidTypeFormation);
+                    return array.Length.BindingState != BindingState.Resolved
+                        ? this.CompleteDependent(array, array.Length) : this.Fail(array, BindingFailure.InvalidTypeFormation);
                 }
 
                 return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);

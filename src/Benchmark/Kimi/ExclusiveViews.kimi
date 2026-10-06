@@ -1,0 +1,10 @@
+var values: [16 of i32] = [16 of 0]
+var checksum: isize = 0
+var i = 0
+while i < 100000
+    var view = values.sliceUniq()
+    var child = view.sliceUniq(4..12)
+    child[0] = i
+    checksum += child.slice()[0]@isize
+    i += 1
+Console.writeLine("checksum \(checksum)")

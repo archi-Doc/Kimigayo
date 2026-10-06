@@ -272,35 +272,47 @@ public sealed partial class Binding
             if (syntax is TypeSemanticsKoto { HasOrigin: false } && function?.BoundSymbol?.Type is
                 { Origin.Kind: OriginKind.Static, Components.Count: 1 } expected)
             {
-                if (IsExcludedInputOrigin(returned?.Expression?.BoundType ?? node.BoundType) ||
-                    (this.resultContexts.TryGetValue(node, out var context) && context.Sources.Exists(IsExcludedInputOrigin)))
+                var excluded = this.IsExcludedInputOrigin(returned?.Expression?.BoundType ?? node.BoundType, expected, function);
+                if (!excluded && this.resultContexts.TryGetValue(node, out var context))
                 {
-                    return "The omitted result Origin is static; Origins inside Option inputs are not elision candidates. Write an explicit result 'during' annotation using the required named input Origins, then recheck lifetime and Type fitting.";
-                }
-
-                bool IsExcludedInputOrigin(BoundType? actual)
-                {
-                    if (actual is not { Origin.Kind: not OriginKind.Static, Components.Count: 1 } ||
-                        actual.Semantics != expected.Semantics || !IsBorrow(actual.Semantics) ||
-                        !ReferenceEquals(actual.Components[0], expected.Components[0]))
+                    foreach (var source in context.Sources)
                     {
-                        return false;
-                    }
-
-                    foreach (var parameter in function.Parameters)
-                    {
-                        if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && ContainsOrigin(input, actual.Origin))
+                        if (this.IsExcludedInputOrigin(source, expected, function))
                         {
-                            return true;
+                            excluded = true;
+                            break;
                         }
                     }
+                }
 
-                    return false;
+                if (excluded)
+                {
+                    return "The omitted result Origin is static; Origins inside Option inputs are not elision candidates. Write an explicit result 'during' annotation using the required named input Origins, then recheck lifetime and Type fitting.";
                 }
             }
         }
 
         return null;
+    }
+
+    private bool IsExcludedInputOrigin(BoundType? actual, BoundType expected, FunctionKoto function)
+    {
+        if (actual is not { Origin.Kind: not OriginKind.Static, Components.Count: 1 } ||
+            actual.Semantics != expected.Semantics || !IsBorrow(actual.Semantics) ||
+            !ReferenceEquals(actual.Components[0], expected.Components[0]))
+        {
+            return false;
+        }
+
+        foreach (var parameter in function.Parameters)
+        {
+            if (parameter.Type.BoundType is { } input && input.Symbol == this.Library.Option && ContainsOrigin(input, actual.Origin))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 15.3.2: a storage name that no declaration of any role matches is reported once, at the name. The Reason says that own

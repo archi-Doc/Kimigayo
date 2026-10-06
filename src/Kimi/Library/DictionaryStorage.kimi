@@ -1,5 +1,5 @@
-// Private ordered-storage algorithms. The compiler supplies typed acquisition/destruction and the private located
-// primitives; this source owns capacity decisions, slot links and free-slot reuse.
+// Private ordered-storage algorithms. Typed search/destruction are shared with ordinary collection operations;
+// the compiler supplies placement and located primitives. This source owns capacity decisions and slot links.
 group DictionaryStorage
     // Private physical records shared with the backend; not a public collection ABI.
     #Layout("C")
@@ -152,27 +152,10 @@ group DictionaryStorage
             (*handle).free = 0
             return buffer
 
-    unsafe func clear(handle: raw/Handle, stride: isize, keyOffset: isize, valueOffset: isize, destroyEntry: (raw/u8, raw/u8) -> ())
-        unsafe
-            let buffer = (*handle).buffer
-            var link = (*handle).tail
-            while link != 0
-                let slot = buffer + (link - 1) * stride
-                let previous = (*(slot@raw/Links)).previous
-                destroyEntry(slot + keyOffset, slot + valueOffset)
-                link = previous
-            clearLinks(handle)
-
-    unsafe func find(handle: raw/Handle, stride: isize, keyOffset: isize, key: raw/u8, equals: (raw/u8, raw/u8) -> bool) -> isize
-        unsafe
-            let buffer = (*handle).buffer
-            var link = (*handle).head
-            while link != 0
-                let slot = buffer + (link - 1) * stride
-                if equals(slot + keyOffset, key)
-                    return link
-                link = (*(slot@raw/Links)).next
-            return 0
+    internal func findEntry<K, V>(value: ref/Dictionary<K, V>, key: ref/K) -> isize
+        K is Equatable
+        var state = Storage.borrowStorage(value)
+        return Storage.findDictionaryLink(state@uniq, key)
 
     // Links are slot index + 1; zero denotes no slot. The caller has already
     // secured capacity for needed entries before appendSlot changes any links.

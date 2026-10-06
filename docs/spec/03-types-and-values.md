@@ -616,7 +616,8 @@ Complete Types are classified by Core, Semantics and stored components:
 | `Kimi.Loan<T>` | Copy exactly when `T` is Copy (§15.3.5) |
 | `uniq/T`, `objuniq/T` | Non-Copy |
 | `obj/T`, `rc/T`, `arc/T` | Non-Copy, even if `T` is Copy |
-| `Slice<T>{source}` | Copy shared handle regardless of `T`; no exclusive-element Slice exists |
+| `Slice<T>{source}` | Copy shared handle regardless of `T` |
+| `UniqSlice<T>{source}` | Non-Copy exclusive view; no element ownership (§4.6.11) |
 | `FromEnd<T>`, `Start`, `End`, `Range<S, E>`, `ClosedRange<S, E>`, `ResolvedRange` | Copy |
 | Function Item | Copy |
 | Concrete Closure | Copy exactly when every captured complete Type is Copy; empty environments qualify |
@@ -755,7 +756,7 @@ let view = makeView()      // If makeView returns ref/T, view is ref/T with its 
 inspect(makeView())        // Passed to ref/T as is.
 ```
 
-Borrow and Slice formation never extend the source's lifetime. Result transfers secure their values before the common [scope-exit cleanup](16-scope-exit-and-destruction.md#162-scope-exit-destruction); Abort follows [Abort termination](17-failure-handling.md#173-abort-termination).
+Borrow, Slice and UniqSlice formation never extend the source's lifetime. Result transfers secure their values before the common [scope-exit cleanup](16-scope-exit-and-destruction.md#162-scope-exit-destruction); Abort follows [Abort termination](17-failure-handling.md#173-abort-termination).
 
 ## 3.7. Origins and loans: overview
 

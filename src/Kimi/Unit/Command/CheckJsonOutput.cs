@@ -33,13 +33,15 @@ internal static class CheckJsonOutput
     /// <param name="options">The command options; <c>Target</c> selects the unit's target when the project configures several.</param>
     /// <param name="args">The input.</param>
     /// <param name="cancellationToken">Cancels the check.</param>
+    /// <param name="inputSource">The inputs, or the disk by default.</param>
     /// <returns>The document; a project that cannot be found, loaded or given one target is Blocked (SPEC 23.3.3).</returns>
-    internal static CheckDocument Create(KimiOptions options, string[] args, CancellationToken cancellationToken)
+    internal static CheckDocument Create(KimiOptions options, string[] args, CancellationToken cancellationToken, CheckInputSource? inputSource = null)
     {
-        var inputs = new HashingInputSource(CheckInputSource.Disk);
+        cancellationToken.ThrowIfCancellationRequested();
+        var inputs = new HashingInputSource(inputSource ?? CheckInputSource.Disk);
         var kimigayo = Kimigayo.CreateSilent();
         var target = options.Target;
-        if (!TryResolveInput(args, out var input, out var failure))
+        if (!TryResolveInput(args, inputs, out var input, out var failure))
         {
             var missing = CheckOutput.Blocked(DiagnosticCode.ProjectLoadFailed_Kd, input is null ? default : SourceIdentity.FromPath(input), failure);
             return CheckDocument.Create(missing, input ?? string.Empty, target, CheckMode.Product, options.Debug, inputs.Hashes);
@@ -80,7 +82,7 @@ internal static class CheckJsonOutput
     }
 
     // The one input of the unit: a project file, a directory that holds exactly one, or a source file for an implicit project.
-    private static bool TryResolveInput(string[] args, [NotNullWhen(true)] out string? input, out string? failure)
+    private static bool TryResolveInput(string[] args, CheckInputSource inputs, [NotNullWhen(true)] out string? input, out string? failure)
     {
         failure = null;
         input = null;
@@ -90,34 +92,43 @@ internal static class CheckJsonOutput
             return false;
         }
 
-        var path = Path.GetFullPath(args.Length == 0 ? Directory.GetCurrentDirectory() : args[0]);
-        if (Directory.Exists(path))
+        try
         {
-            var projects = Directory.GetFiles(path, "*" + Constants.KimiProjectExtension, SearchOption.TopDirectoryOnly);
-            if (projects.Length != 1)
+            var path = Path.GetFullPath(args.Length == 0 ? Directory.GetCurrentDirectory() : args[0]);
+            input = path;
+            if (Directory.Exists(path))
             {
-                input = path;
-                failure = projects.Length == 0 ? $"No project file in '{path}'." : $"Several project files in '{path}'; give one.";
+                var projects = inputs.GetFiles(path, "*" + Constants.KimiProjectExtension);
+                if (projects.Length != 1)
+                {
+                    failure = projects.Length == 0 ? $"No project file in '{path}'." : $"Several project files in '{path}'; give one.";
+                    return false;
+                }
+
+                input = Path.GetFullPath(projects[0]);
+                return true;
+            }
+
+            if (!path.EndsWith(Constants.KimiProjectExtension, StringComparison.OrdinalIgnoreCase) && !path.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                failure = $"'{path}' is neither a project file nor a source file.";
                 return false;
             }
 
-            input = Path.GetFullPath(projects[0]);
+            if (!File.Exists(path))
+            {
+                failure = $"'{path}' does not exist.";
+                return false;
+            }
+
             return true;
         }
-
-        input = path;
-        if (!path.EndsWith(Constants.KimiProjectExtension, StringComparison.OrdinalIgnoreCase) && !path.EndsWith(Constants.KimiExtension, StringComparison.OrdinalIgnoreCase))
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
         {
-            failure = $"'{path}' is neither a project file nor a source file.";
+            // Input discovery belongs to the same Blocked outcome as a failed project read. Cancellation and
+            // internal failures still escape; neither is a claim that a user input is unreadable.
+            failure = ex.Message;
             return false;
         }
-
-        if (!File.Exists(path))
-        {
-            failure = $"'{path}' does not exist.";
-            return false;
-        }
-
-        return true;
     }
 }

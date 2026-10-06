@@ -199,7 +199,7 @@ let block = readBlock() // Ordinary identifier; no keyword interpretation.
 
 An **Unsafe Block** is an `unsafe` statement with a Body. It executes immediately with lexical permission for unsafe operations and has no transfer target or lookup barrier. To supply a value outward, use `return`, `yield` or a named `exit` inside the body; `let x = unsafe => readRaw(pointer)` is invalid because `unsafe` is a statement.
 
-The permission reaches nested deferred bodies but does not cross Function Boundaries. Type, ownership and Loan checks remain mandatory. An `unsafe func` declaration does not itself grant permission inside the function (§7.5). Only the operations of §5 that may cause undefined behavior require the permission.
+The permission reaches nested deferred bodies but does not cross Function Boundaries. Type, ownership and Loan checks remain mandatory. An `unsafe func` declaration does not itself grant permission inside the function (§7.5). The unsafe operations of §5 and the `noinit` initialization directive (§4.3.4) require the permission. `noinit` counts as a use of that permission even when no subsequent operation reads an element.
 
 ```kimi
 unsafe => releaseRaw(pointer)

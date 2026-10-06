@@ -31,7 +31,6 @@ public class ConstantLengthBindingTest
     [Theory]
     [InlineData("var N = 4\nlet row: [N of u8]")]
     [InlineData("let N: i32\nlet row: [N of u8]")]
-    [InlineData("let row: [N of u8]\nlet N = 4")]
     [InlineData("func f(N: i32)\n    let row: [N of u8]")]
     [InlineData("func get() -> i32 => 4\nlet N = get()\nlet row: [N of u8]")]
     [InlineData("let N = 4\nlet M: isize = 2\nlet row: [(N + M) of u8]")]
@@ -45,8 +44,6 @@ public class ConstantLengthBindingTest
     [InlineData("let N = -1\nlet row: [N of u8]")]
     [InlineData("let N: u64 = 9223372036854775808\nlet row: [N of u8]")]
     [InlineData("let N = true\nlet row: [N of u8]")]
-    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()")]
-    [InlineData("group Dimensions\n    public let N: i32 = 4\n        private get\nfunc f(row: [Dimensions.N of u8]) => ()")]
     [InlineData("group Dimensions\n    public let N: i32 = 4\n        get() -> i32 => storage\nfunc f(row: [Dimensions.N of u8]) => ()")]
     [InlineData("group Dimensions\n    public let N: i32 = M\n    public let M: i32 = N\nfunc f(row: [Dimensions.N of u8]) => ()")]
     [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [N of u8]")]
@@ -55,6 +52,23 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, issue => issue.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
+
+    [Theory]
+    [InlineData("let row: [N of u8]\nlet N = 4", "N", "UnresolvedBinding_Kd")]
+    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "UnresolvedBinding_Kd")]
+    [InlineData("group Dimensions\n    public let N: i32 = 4\n        private get\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "InaccessibleBinding_Kd")]
+    public void UnavailableLengthNamesKeepTheLookupCause(string source, string text, string code)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(code, error.Code);
+        Assert.Equal(text, error.Text);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());

@@ -38,7 +38,7 @@ public class PairGroupingBindingTest
         var source = $"struct Box<U>\n    var value: U\nfunc identity<s/T>(value: {type}) -> {type} => value";
         var c = Parse(source);
         Verify(c);
-        Verify(Reload(c));
+        Verify(CompilationTestHelper.Reload(c));
         var builder = default(IndentedStringBuilder);
         try
         {
@@ -85,7 +85,7 @@ public class PairGroupingBindingTest
         var c = Parse($"func f<s/T>(value: {type}) => ()", syntaxError);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
-        Assert.False(Reload(c).Bind().IsComplete);
+        Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
     [Fact]
@@ -148,22 +148,9 @@ public class PairGroupingBindingTest
         }));
     }
 
-    private static Compilation Reload(Compilation c)
-    {
-        var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
-        var restored = Parse(string.Empty);
-        var kotonoha = restored.Kotonoha;
-        Tinyhand.TinyhandSerializer.DeserializeObject(bytes, ref kotonoha);
-        Assert.NotNull(kotonoha);
-        kotonoha.OnDeserialized(restored);
-        return restored;
-    }
-
     private static Compilation Parse(string source, bool syntaxError = false)
     {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.AddSource(new SourceDocument("pair.kimi", source));
+        var c = CompilationTestHelper.Parse(source, "pair.kimi");
         Assert.Equal(syntaxError, TestDiagnostics.Of(c).Length != 0);
         return c;
     }

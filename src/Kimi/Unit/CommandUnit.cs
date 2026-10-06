@@ -32,7 +32,7 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
                 // Command
                 context.AddCommand<DefaultCommand>();
                 context.AddCommand<LspCommand, LspCommand.Options>();
-                context.AddCommand<BuildCommand, KimiOptions>();
+                context.AddCommand<BuildCommand, BuildCommand.Options>();
                 context.AddCommand<CheckCommand, KimiOptions>();
                 context.AddCommand<RestoreCommand, KimiOptions>();
                 context.AddCommand<EmitCommand, KimiOptions>();

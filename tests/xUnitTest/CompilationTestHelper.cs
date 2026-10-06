@@ -9,18 +9,33 @@ namespace XunitTest;
 internal static class CompilationTestHelper
 {
     // Preparation and parsing only: callers choose when to Bind and analyze ownership.
-    internal static Compilation Parse(string source)
+    internal static Compilation Parse(string source, string? path = null)
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Prepare(WindowsProfile.Target));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        if (path is null)
+        {
+            c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
+        }
+        else
+        {
+            c.Kotonoha.AddSource(new SourceDocument(path, source));
+        }
+
         return c;
     }
 
-    internal static Compilation ParseSuccess(string source)
+    internal static Compilation ParseSuccess(string source, string? path = null)
     {
-        var c = Parse(source);
+        var c = Parse(source, path);
         Assert.Empty(TestDiagnostics.Of(c));
+        return c;
+    }
+
+    internal static Compilation BindSuccess(string source)
+    {
+        var c = ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         return c;
     }
 

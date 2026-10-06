@@ -175,3 +175,10 @@
 
 - **Proposed fix:** Let the task slot distinguish overloads, as parameter count does.
 - **Why not applied:** A forgotten `task;` would then silently select the blocking variant instead of reporting a missing task argument, and one operation would have two forms (Principle 1). As with receiver shapes (§7.3), one function group has one task-slot shape (§24.2.3), so a call's need for the task argument follows from its Name; code without a task uses `Async.run` at its boundary.
+
+## Running full CI before integration into main
+
+- **Problem:** The full build and test workflow is expensive. Additional triggers repeat that work while changes are still being developed.
+- **Example:** A push to `dev`, a pull request update, and its merge into `main` can each run the same full test suite.
+- **Proposed fix:** Run `.github/workflows/test.yml` on `dev` pushes, pull requests, or manual dispatch as well as `main` pushes.
+- **Why not applied:** The extra runs add substantial test load. Keep this workflow restricted to pushes to `main`, including merge updates. Do not add `dev`, pull request, or manual triggers. Local verification remains part of the implementation workflow.

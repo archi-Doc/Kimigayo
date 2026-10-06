@@ -1,0 +1,13 @@
+let rows: [_ of [_ of i32]] = [[1, 2], [3, 4]]
+
+func fill(values: uniq/[3 of i32], value: i32)
+    for index in values.indices => values[index] = value
+
+unsafe
+    var buffer: [3 of i32] = noinit
+    fill(buffer@uniq, 7)
+    var view = buffer.sliceUniq()
+    let copied = view.slice().toArray()
+    view[2] = 9
+    require copied[2] == 7 and buffer[2] == 9 else => $abort("independent copy")
+    Console.writeLine("\(rows.length) \(copied[2])")

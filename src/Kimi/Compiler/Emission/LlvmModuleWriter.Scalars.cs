@@ -438,7 +438,7 @@ internal static partial class LlvmModuleWriter
     // The condition of a check that the compiler proved: the failure block stays unreachable.
     private const string ProvenValid = "false";
 
-    private static void WriteArithmeticFailure(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, string condition)
+    private static void WriteArithmeticFailure(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, string condition, bool callerLocation = false)
     {
         var id = instruction.Operation;
         output.Write("  br i1 ");
@@ -483,7 +483,7 @@ internal static partial class LlvmModuleWriter
             reason = new(EmissionOperandKind.Value, instruction.Place);
         }
 
-        WriteCall(output, constants, WindowsLowering.Abort, [reason, new(EmissionOperandKind.ConstantAddress, instruction.Constant), new(EmissionOperandKind.ConstantLength, instruction.Constant), new(EmissionOperandKind.Integer, -2)]);
+        WriteCall(output, constants, WindowsLowering.Abort, [reason, new(callerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, instruction.Constant), new(callerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, instruction.Constant), new(EmissionOperandKind.Integer, -2)]);
         output.Write("  unreachable\n");
         Name(output, "b", instruction.Place);
         output.Write(":\n");

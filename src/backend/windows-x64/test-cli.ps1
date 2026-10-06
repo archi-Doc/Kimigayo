@@ -256,6 +256,12 @@ foreach ($level in @('O0', 'O2')) {
     $output = Invoke-Kimi @('build', $foreignProject)
     $output = Invoke-Kimi @('run', $foreignProject, '--no-build')
     if (-not $output.Contains('foreign ok')) { throw "Foreign static supply failed at $level`: $output" }
+    $manifestPath = Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.json'
+    $output = Invoke-Kimi @('build', '--Manifest', $manifestPath)
+    $output = Invoke-Kimi @('run', $foreignProject, '--no-build')
+    if (-not $output.Contains('foreign ok')) { throw "Manifest static supply failed at $level" }
+    & (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $manifestPath -ToolchainRoot $ToolchainRoot -Compiler $compiler -Run
+
 }
 $foreignRecord = Get-Content -LiteralPath (Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.build.json') -Raw | ConvertFrom-Json
 $codecRecord = $foreignRecord.libraries | Where-Object name -ceq 'codec'
@@ -263,6 +269,52 @@ $codecHash = (Get-FileHash (Join-Path $foreignNative 'codec.lib')).Hash.ToLowerI
 if ($codecRecord.sha256 -cne $codecHash -or -not $codecRecord.path.Replace('\', '/').EndsWith(".native/$codecHash.lib")) { throw "Foreign supply was not linked from its staged snapshot: $($codecRecord | ConvertTo-Json)" }
 $foreignManifest = Get-Content -LiteralPath (Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.json') -Raw | ConvertFrom-Json
 if (($foreignManifest.libraries | ForEach-Object name) -join ',' -cne 'codec,kernel32,kimi_backend' -or $foreignManifest.libraries[0].kind -cne 'static') { throw 'Foreign supply manifest entries are not sorted/complete' }
+# The standalone manifest retains the expanded assertion, and failure cannot publish a partial executable.
+$manifestPath = Join-Path $foreignDirectory 'bin/x86_64-pc-windows-msvc/Foreign.link.json'
+$foreignIr = Join-Path (Split-Path $manifestPath) 'Foreign.ll'
+$previousExecutable = Join-Path (Split-Path $manifestPath) 'Foreign.O2.exe'
+$previousHash = (Get-FileHash -LiteralPath $previousExecutable).Hash
+$originalIr = [IO.File]::ReadAllText($foreignIr)
+$originalManifest = [IO.File]::ReadAllText($manifestPath)
+try {
+    [IO.File]::WriteAllText($foreignIr, $originalIr.Replace('@read_total(', '@missing_foreign_symbol('))
+    $foreignManifest.irSha256 = (Get-FileHash -LiteralPath $foreignIr).Hash.ToLowerInvariant()
+    $foreignManifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+    $output = Invoke-Kimi @('build', '--Manifest', $manifestPath) 1
+    if (-not $output.Contains('missing_foreign_symbol') -or -not $output.Contains('lld-link')) { throw "Expected link failure: $output" }
+    if ((Get-FileHash -LiteralPath $previousExecutable).Hash -cne $previousHash) { throw 'A failed link replaced the previous executable' }
+    $failedRecord = Get-Content -LiteralPath ([IO.Path]::ChangeExtension($manifestPath, '.build.json')) -Raw | ConvertFrom-Json
+    if ($failedRecord.status -cne 'incomplete') { throw 'A failed manifest build retained success' }
+}
+finally {
+    [IO.File]::WriteAllText($foreignIr, $originalIr)
+    [IO.File]::WriteAllText($manifestPath, $originalManifest)
+}
+Write-ForeignProject 'O2' ($foreignSupply.Replace('Input=', 'Sha256="' + $codecHash + '" Input='))
+$output = Invoke-Kimi @('emit', $foreignProject)
+$asserted = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+if ($asserted.libraries[0].sha256 -cne $codecHash) { throw 'Manifest lost the supplied hash assertion' }
+$output = Invoke-Kimi @('build', '--Manifest', $manifestPath)
+$asserted.libraries[0].sha256 = '0' * 64
+$asserted | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding utf8
+$output = Invoke-Kimi @('build', '--Manifest', $manifestPath) 1
+if (-not $output.Contains('manifest Sha256 assertion')) { throw "Standalone manifest ignored its hash assertion: $output" }
+$output = Invoke-Kimi @('build', $foreignProject, '--Manifest', $manifestPath) 1
+if (-not $output.Contains('without source, project')) { throw 'Manifest and source arguments must not be combined' }
+
+# Clock imports are declared foreign dependencies, beyond the runtime's kernel32 subset.
+$clockSource = Join-Path $work 'Clock.kimi'
+@'
+var watch = Time.Stopwatch.init()
+watch.start()
+watch.stop()
+let elapsed = watch.elapsed()
+Console.writeLine("clock ok")
+'@ | Set-Content -LiteralPath $clockSource -Encoding utf8
+$output = Invoke-Kimi @('emit', $clockSource)
+$clockManifest = Join-Path $work 'bin/x86_64-pc-windows-msvc/Clock.link.json'
+& (Join-Path $PSScriptRoot 'manual-build.ps1') -Manifest $clockManifest -ToolchainRoot $ToolchainRoot -Compiler $compiler -Run
+
 Write-ForeignProject 'O0' ($foreignSupply.Replace('Input=', 'Sha256="' + ('0' * 64) + '" Input='))
 $output = Invoke-Kimi @('build', $foreignProject) 1
 if (-not $output.Contains('Sha256 assertion')) { throw "Foreign Sha256 assertion was not checked: $output" }
@@ -270,5 +322,5 @@ Write-ForeignProject 'O0' "NativeRequirements=`n  `"x86_64-pc-windows-msvc`"=`n 
 $output = Invoke-Kimi @('emit', $foreignProject) 1
 if (-not $output.Contains('has no NativeLibraries supply')) { throw "A required foreign supply was not diagnosed: $output" }
 
-@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
+@{ status = 'passed'; configuration = $Configuration; scenarios = @('emit without LLVM', 'O0/O2 native build', 'build and run by default', 'explicit no-build', 'failure invalidates old success', 'toolchain policy', 'spaces in paths', 'exit code forwarding', 'missing inputs', 'emit rename', 'extensionless project lookup', 'implicit single-source Application/O2', 'implicit source build and run', 'exact path precedence', 'invalid selection never falls back', 'foreign static supply O0/O2 and assertion/supply failures', 'shared manifest/manual build', 'declared clock imports', 'failed link preserves executable', 'manifest hash assertions') } | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath $report
 Write-Output "CLI integration tests passed: $report"

@@ -689,7 +689,7 @@ public sealed class ControlFlowAnalysis
         {
             this.CheckUnsafePermission(node);
         }
-        else if (requiresUnsafe is null && node is ExpressionKoto)
+        else if (requiresUnsafe is null && node is ExpressionKoto or NoInitKoto)
         {
             // An operation whose need is unknown may use the permission, so the enclosing block is not reported as unused.
             this.unsafeUncertain = true;
@@ -708,6 +708,9 @@ public sealed class ControlFlowAnalysis
                 // SPEC 4.6.2, 4.6.3: prefix ^ and range syntax that construct a value are their synthesized PositionSyntax
                 // calls, whose arguments may themselves be synthesized `^x` constructions.
                 flow = this.Visit(rangeValue) with { Type = this.types.GetExpressionType(node) };
+                break;
+            case IndexKoto when node.CodeContext.Compilation.Binding.ViewRangeCall(node) is { } viewRange:
+                flow = this.Visit(viewRange) with { Type = this.types.GetExpressionType(node) };
                 break;
             case IndexKoto keyed when node.CodeContext.Compilation.Binding.ResolvedKeyCall(keyed) is { } resolvedKey:
                 // SPEC 4.6.4: the receiver is evaluated, then a synthesized call resolves the key against the length of that

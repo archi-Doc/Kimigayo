@@ -11,6 +11,9 @@ internal sealed class SyntheticKoto(Koto root) : ExpressionKoto(root.CodeContext
     /// <summary>Gets or sets the Type whose generic environment a pinned Type function is selected in.</summary>
     internal BoundType? DeclaringType { get; set; }
 
+    /// <summary>Gets or sets a pinned method call's non-owning receiver view.</summary>
+    internal Koto? Receiver { get; set; }
+
     public override void WriteTo(ref IndentedStringBuilder builder) => builder.Append("<synthetic>");
 
     /// <summary>Resolves the node to a declaration or a Type.</summary>

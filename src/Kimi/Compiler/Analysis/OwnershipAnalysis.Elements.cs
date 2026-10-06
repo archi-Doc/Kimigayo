@@ -24,7 +24,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var address = this.BorrowStruct(target, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, target.Left.BoundType!.Origin));
+        var address = this.BorrowStruct(target, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, ElementAccess.AccessType(target.Left, true)!.Origin));
         var pointer = this.Value(address);
         if (pointer < 0)
         {

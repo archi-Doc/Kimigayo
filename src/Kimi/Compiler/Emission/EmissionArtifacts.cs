@@ -135,9 +135,9 @@ public static class EmissionArtifacts
     // SPEC 20.8.3: libraries required by external declarations, sorted by Ordinal name. Only the root
     // module's own self-targeted supplies connect yet: a logical name alone cannot identify another
     // module's requirement, and combined-module native records are not generated.
-    private static List<(string Name, string Kind, string Input)>? ResolveForeignSupplies(Compilation compilation, ProjectFile settings)
+    private static List<(string Name, string Kind, string Input, string? Sha256)>? ResolveForeignSupplies(Compilation compilation, ProjectFile settings)
     {
-        List<(string Name, string Kind, string Input)>? result = null;
+        List<(string Name, string Kind, string Input, string? Sha256)>? result = null;
         var imports = compilation.Binding.LibraryImports;
         for (var i = 0; i < imports.Count; i++)
         {
@@ -169,7 +169,8 @@ public static class EmissionArtifacts
                 throw new InvalidDataException($"Native requirement '{import.Library}' has no NativeLibraries supply for {WindowsProfile.Target}.");
             }
 
-            (result ??= new()).Add((import.Library, import.Kind, supply.Input));
+            var (_, sha256) = NativeConfiguration.Expand(settings, WindowsProfile.Target, import.Library, supply);
+            (result ??= new()).Add((import.Library, import.Kind, supply.Input, sha256));
         }
 
         result?.Sort(static (a, b) => string.CompareOrdinal(a.Name, b.Name));
@@ -185,7 +186,7 @@ public static class EmissionArtifacts
         }
     }
 
-    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, List<(string Name, string Kind, string Input)>? foreign, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
+    private static void WriteManifest(Utf8JsonWriter json, ProjectFile settings, OutputKind outputKind, NativeLibraryInput? backend, List<(string Name, string Kind, string Input, string? Sha256)>? foreign, string irFile, string irHash, string projectDirectory, string outputDirectory, string? llvm)
     {
         json.WriteStartObject();
         json.WriteNumber("schemaVersion", 3);
@@ -255,11 +256,16 @@ public static class EmissionArtifacts
         {
             for (; next < (foreign?.Count ?? 0) && (before is null || string.CompareOrdinal(foreign![next].Name, before) < 0); next++)
             {
-                var (name, kind, input) = foreign![next];
+                var (name, kind, input, sha256) = foreign![next];
                 json.WriteStartObject();
                 json.WriteString("name", name);
                 json.WriteString("kind", kind);
                 json.WriteString("input", HasDirectory(input) ? Path.GetRelativePath(outputDirectory, Path.GetFullPath(input, projectDirectory)) : input);
+                if (sha256 is not null)
+                {
+                    json.WriteString("sha256", sha256);
+                }
+
                 json.WriteEndObject();
             }
         }

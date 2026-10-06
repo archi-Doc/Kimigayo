@@ -6,6 +6,21 @@ namespace Kimi.Compiler;
 
 public sealed partial class KimiLibrary
 {
+    private bool ValidArrayLength(BindingSymbol symbol)
+        => symbol.CompilerFunction == CompilerFunctionKind.StorageSetArrayLength &&
+            symbol.Declaration is FunctionKoto { Name: "setArrayLength", Modifier: ModifierKind.Internal | ModifierKind.Unsafe, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, TypeConstraints.Count: 0, ReturnType: null } function &&
+            ReferenceEquals(function.Parent, this.StorageScope.Owner) &&
+            function.GenericArguments is [GenericParameterKoto { Identifier: "E", SemanticsParameter: null, AttributeChain: null }] &&
+            function.Parameters is [var value, var length] && PlacementInput(value, "value") && PlacementInput(length, "length") && BareName(length.Type, "isize") &&
+            BareType(value.Type) is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq, SemanticsParameter: null, OriginName: "a", OriginArguments: null } reference &&
+            BareType(reference.Type) is GenericsKoto { TypeArguments: [var element] } array && BareName(array.Identifier, "Array") && BareName(element, "E");
+
+    private bool ValidBoundArrayLength(BindingSymbol symbol)
+        => symbol.Declaration is FunctionKoto { GenericArguments: [{ BoundType: { Kind: BoundTypeKind.Parameter } element }], Parameters: [var value, var length] } function &&
+            value.Type.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Symbol: null, OriginArguments.Count: 0, Components: [var array], Origin: { Kind: OriginKind.Parameter, Slot: 0 } origin } &&
+            ReferenceEquals(origin.Binder, function) && this.BoundStorageContainer(array, KimiDeclarationId.Array, element, 0) &&
+            ReferenceEquals(length.Type.BoundType, BoundType.ISize) && (symbol.Type is null || ReferenceEquals(symbol.Type, BoundType.Unit));
+
     private bool ValidStorageAbort(BindingSymbol symbol, in KimiLibraryCatalog.Entry rule)
         => symbol.CompilerFunction == rule.Function &&
         symbol.Declaration is FunctionKoto { Modifier: ModifierKind.Internal, AttributeChain: null, Body: null, ExpressionBody: null, IsRequirement: false, IsGenerated: false, IsSpecialization: false, Origins.Count: 0, GenericArguments.Count: 0, Parameters.Count: 0, TypeConstraints.Count: 0 } function && function.Name == rule.Name &&
@@ -18,6 +33,7 @@ public sealed partial class KimiLibrary
         new(KimiDeclarationId.StorageBorrowShared, KimiDeclarationId.Array, SemanticsKind.Ref, KimiDeclarationId.RefRemainder),
         new(KimiDeclarationId.StorageBorrowExclusive, KimiDeclarationId.Array, SemanticsKind.Uniq, KimiDeclarationId.UniqRemainder),
         new(KimiDeclarationId.StorageOwn, KimiDeclarationId.Array, SemanticsKind.Owner, KimiDeclarationId.OwnedRemainder),
+        new(KimiDeclarationId.StorageBorrowUniqSlice, KimiDeclarationId.UniqSlice, SemanticsKind.Uniq, KimiDeclarationId.UniqRemainder),
     ];
 
     // SPEC 5.6: each Raw operation addresses storage of its own T; release and initialize return Unit, and slice returns the
@@ -82,7 +98,17 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundStorageOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (id is KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded)
+        if (id == KimiDeclarationId.StorageSetArrayLength)
+        {
+            return this.ValidBoundArrayLength(symbol);
+        }
+
+        if (id == KimiDeclarationId.UniqSlice)
+        {
+            return ValidBoundUniqSlice(symbol);
+        }
+
+        if (id is KimiDeclarationId.StorageIndexBounds or KimiDeclarationId.StorageMissingDictionaryKey or KimiDeclarationId.StorageArgumentOutOfRange or KimiDeclarationId.StorageCountOverflow or KimiDeclarationId.StorageAllocationSizeExceeded)
         {
             return ReferenceEquals(symbol.Type, BoundType.Never);
         }
@@ -122,7 +148,7 @@ public sealed partial class KimiLibrary
             return this.ValidBoundDictionaryStorage(symbol, id);
         }
 
-        if (id is < KimiDeclarationId.StorageBorrowShared or > KimiDeclarationId.StorageOwn)
+        if (id != KimiDeclarationId.StorageBorrowUniqSlice && (id is < KimiDeclarationId.StorageBorrowShared or > KimiDeclarationId.StorageOwn))
         {
             return true;
         }
@@ -161,14 +187,21 @@ public sealed partial class KimiLibrary
             storage = input.Components[0];
         }
 
-        if (!this.BoundStorageContainer(storage, parameterId, element, 0))
+        if (!this.BoundStorageContainer(storage, parameterId, element, parameterId == KimiDeclarationId.UniqSlice ? 1 : 0))
         {
             return false;
         }
 
         var borrowing = signature.Semantics != SemanticsKind.Owner;
+        if (parameterId == KimiDeclarationId.UniqSlice &&
+            (storage.OriginArguments[0] is not { Kind: OriginKind.Parameter } source || !ReferenceEquals(source.Binder, function) || ReferenceEquals(source, input.Origin)))
+        {
+            return false;
+        }
+
         return signature.Result is { } resultId && this.BoundStorageContainer(result, resultId, element, borrowing ? 1 : 0) &&
-            (!borrowing || (input.Origin is { Kind: OriginKind.Parameter, Slot: 0 } origin && ReferenceEquals(origin.Binder, function) &&
+            (!borrowing || (input.Origin is { Kind: OriginKind.Parameter } origin && ReferenceEquals(origin.Binder, function) &&
+                (parameterId == KimiDeclarationId.UniqSlice || origin.Slot == 0) &&
                 ReferenceEquals(origin, result.OriginArguments[0])));
     }
 

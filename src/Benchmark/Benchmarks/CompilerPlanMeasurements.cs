@@ -18,14 +18,16 @@ internal static class CompilerPlanMeasurements
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run(bool callable = false)
+    internal static void Run(bool callable = false, bool views = false)
     {
         var results = new List<object>();
-        foreach (var name in callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" })
+        foreach (var name in views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" })
         {
             var stored = name == "stored";
             var source = name switch
             {
+                "exclusive-views" => VerificationWorkloads.ExclusiveViews,
+                "slice-copies" => VerificationWorkloads.SliceCopies,
                 "fixed-reference" => VerificationWorkloads.ContextualFunctionReference,
                 "ranked-reference" => VerificationWorkloads.FunctionReferenceRanking(false),
                 "borrowed-reference" => VerificationWorkloads.FunctionReferenceRanking(true),
@@ -39,15 +41,15 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
             }
 
-            foreach (var phase in callable ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
+            foreach (var phase in callable || views ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
             {
-                if (callable && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
+                if ((callable || views) && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
                 {
                     throw new InvalidOperationException("Rebound workload must pass startup and ownership before measurement.");
                 }

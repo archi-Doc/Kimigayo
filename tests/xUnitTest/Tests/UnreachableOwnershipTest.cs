@@ -135,14 +135,7 @@ public class UnreachableOwnershipTest
     }
 
     private static Compilation Parse(string source)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Prepare("x86_64-pc-windows-msvc"));
-        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, source);
-        Assert.Empty(TestDiagnostics.Of(c));
-        Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        return c;
-    }
+        => CompilationTestHelper.BindSuccess(source);
 
     private static string Describe(Compilation c)
         => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source}")) +

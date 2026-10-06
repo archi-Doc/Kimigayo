@@ -172,6 +172,9 @@ public sealed partial class Binding
         context.Invalid = context.Pending = false;
         context.Sources.Clear();
         context.Evidence.Clear();
+        context.ArrayShape = null;
+        context.ArrayElement = context.ArrayDefault = null;
+        context.ArrayFailure = null;
         this.resultContexts[target] = context;
         if (expected is null && !deferEvidence)
         {
@@ -183,6 +186,29 @@ public sealed partial class Binding
 
     private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
     {
+        if (this.arrayInferenceShapes.TryGetValue(target, out var shape))
+        {
+            context.ArrayShape = shape;
+            this.FindResultEvidence(target, scope, context);
+            context.ArrayShape = null;
+            context.Expected = this.ArrayAnnotationExpectation(shape, scope, context.ArrayElement ?? context.ArrayDefault);
+            if (context.Expected is null && context.ArrayFailure is null)
+            {
+                var leaf = shape;
+                while (leaf is FixedArrayTypeKoto array)
+                {
+                    leaf = ArrayShapeSyntax(array.ElementType);
+                }
+
+                if (IsArrayHole(leaf))
+                {
+                    this.FailExplained(ref this.arrayInferenceFailures, leaf, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Element, target));
+                }
+            }
+
+            return;
+        }
+
         this.FindResultEvidence(target, scope, context);
         if (context.HasLiteral)
         {
@@ -335,6 +361,7 @@ public sealed partial class Binding
 
     private void BodyEvidence(Koto body, BindingScope scope, ResultContext context)
     {
+        scope = this.NodeScope(body, scope);
         var expression = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
         if (expression is not CodeBlockKoto && KotoHelper.IsValueContext(expression))
         {
@@ -345,6 +372,21 @@ public sealed partial class Binding
     private void SourceEvidence(Koto expression, BindingScope scope, ResultContext context)
     {
         expression = KotoHelper.UnwrapParentheses(expression);
+        if (context.ArrayShape is { } shape)
+        {
+            if (context.ArrayFailure is null)
+            {
+                var element = context.ArrayElement;
+                var literalDefault = context.ArrayDefault;
+                this.ArrayElementEvidence(shape, expression, this.NodeScope(expression, scope), ref element, ref literalDefault, out var failed);
+                context.ArrayElement = element;
+                context.ArrayDefault = literalDefault;
+                context.ArrayFailure = failed;
+            }
+
+            return;
+        }
+
         if (expression is LabeledKoto label)
         {
             expression = label.Target;
@@ -373,6 +415,7 @@ public sealed partial class Binding
 
     private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
     {
+        scope = this.NodeScope(node, scope);
         if (node is JumpKoto { Expression: { } expression } jump && jump is not ContinueKoto && KotoHelper.ResolveTransferTarget(jump) == target)
         {
             this.SourceEvidence(expression, scope, context);
@@ -425,6 +468,12 @@ public sealed partial class Binding
 
     private BoundType? FinishResult(Koto node, ResultContext context)
     {
+        if (context.ArrayFailure is { } failedEvidence)
+        {
+            // The bodies have still been checked for independent errors. Their join needs the shape evidence that failed.
+            return this.CompleteDependent(node, failedEvidence);
+        }
+
         var structural = this.ResultStructure();
         switch (node)
         {
@@ -475,6 +524,11 @@ public sealed partial class Binding
 
         var suppliedValue = types.Count > 0;
         var common = context.Expected;
+        if (common is not null && suppliedValue && HasArrayLengthHole(common))
+        {
+            common = this.CompleteArrayExpectation(common, types[0]);
+        }
+
         BoundType? failed = null;
         if (common is null)
         {
@@ -516,6 +570,14 @@ public sealed partial class Binding
 
     private sealed class ResultContext
     {
+        internal Koto? ArrayShape { get; set; }
+
+        internal BoundType? ArrayElement { get; set; }
+
+        internal BoundType? ArrayDefault { get; set; }
+
+        internal Koto? ArrayFailure { get; set; }
+
         internal BoundType? Expected { get; set; }
 
         internal List<BoundType?> Sources { get; } = new();

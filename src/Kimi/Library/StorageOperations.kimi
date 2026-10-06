@@ -4,6 +4,9 @@
 internal func borrowStorage<E>(value: ref/Array<E> during a) -> RefRemainder<E> during a
 internal func borrowStorageUniq<E>(value: uniq/Array<E> during a) -> UniqRemainder<E> during a
 internal func ownStorage<E>(value: Array<E>) -> OwnedRemainder<E>
+// Publishes completed elements within the existing allocation. The caller proves the length is in capacity
+// and every new element is initialized; this primitive neither reads nor destroys any element.
+internal unsafe func setArrayLength<E>(value: uniq/Array<E> during a, length: isize)
 internal func borrowStorage<K, V>(value: ref/Dictionary<K, V> during a) -> DictionaryRefRemainder<K, V> during a
     K is Equatable
 internal func borrowStorageUniq<K, V>(value: uniq/Dictionary<K, V> during a) -> DictionaryUniqRemainder<K, V> during a
@@ -15,11 +18,13 @@ internal unsafe func valueAt<K, V>(slot: raw/u8) -> raw/V
 internal func borrowStorage<E, length N>(value: ref/[N of E] during a) -> RefRemainder<E> during a
 internal func borrowStorageUniq<E, length N>(value: uniq/[N of E] during a) -> UniqRemainder<E> during a
 internal func ownStorage<E, length N>(value: [N of E]) -> FixedOwnedRemainder<E, [N of E]>
+internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) during a) -> UniqRemainder<E> during a
 // Private physical projection: mutable handle address and entry stride. No entry is acquired.
 internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)
     K is Equatable
 // Fails with the caller location carried by the standard operation's private ABI.
 internal func missingDictionaryKey() -> Never
+internal func indexBounds() -> Never
 internal func argumentOutOfRange() -> Never
 internal func countOverflow() -> Never
 internal func allocationSizeExceeded() -> Never
