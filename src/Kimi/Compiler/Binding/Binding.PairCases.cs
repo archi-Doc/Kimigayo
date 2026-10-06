@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Numerics;
+using System.Text;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -9,6 +11,63 @@ namespace Kimi.Compiler;
 /// scope of a body.</summary>
 public sealed partial class Binding
 {
+    /// <summary>The Semantics in <see cref="SemanticsMask"/> bit order, the enumeration order of Semantics cases (SPEC 8.10).</summary>
+    internal static readonly SemanticsKind[] SemanticsOrder =
+    [
+        SemanticsKind.Owner, SemanticsKind.Ref, SemanticsKind.Uniq, SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc, SemanticsKind.ObjRef, SemanticsKind.ObjUniq, SemanticsKind.Raw,
+    ];
+
+    /// <summary>Appends the Semantics of a mask in bit order, separated.</summary>
+    /// <param name="text">The text to append to.</param>
+    /// <param name="mask">The Semantics.</param>
+    /// <param name="separator">The separator between two Semantics.</param>
+    internal static void AppendSemantics(StringBuilder text, SemanticsMask mask, string separator)
+    {
+        var first = true;
+        for (var i = 0; i < SemanticsOrder.Length; i++)
+        {
+            if ((mask & SemanticsOrder[i].ToMask()) != 0)
+            {
+                text.Append(first ? string.Empty : separator).Append(SemanticsOrder[i].ToText());
+                first = false;
+            }
+        }
+    }
+
+    /// <summary>Tells whether a bare acquisition of a pair-layer Place Reborrows in some admitted case (SPEC 8.9): the use is then
+    /// exclusive in that case, the strongest a Closure's receiver can be over its cases (SPEC 7.6.3).</summary>
+    /// <param name="type">The stored Type of the Place.</param>
+    /// <param name="node">The acquiring syntax, whose scope supplies the premises.</param>
+    /// <returns>Whether an admitted case Reborrows.</returns>
+    internal bool BareReborrows(BoundType type, Koto node)
+    {
+        if (!TryPairLayer(type, out _, out _))
+        {
+            return false;
+        }
+
+        this.BareAcquisition(type, node, out var reborrow);
+        return reborrow != SemanticsMask.None;
+    }
+
+    /// <summary>Formats the Semantics cases in which a bare acquisition of a pair layer neither Copies nor Reborrows, for a Note
+    /// (SPEC 8.9, 23.3.6.4); empty for another Type or when every case has a plan.</summary>
+    /// <param name="type">The stored Type.</param>
+    /// <param name="node">The acquiring syntax.</param>
+    /// <returns>The Note's tail, such as <c> in the Semantics case s = owner (SPEC 8.9)</c>.</returns>
+    internal string FailingCaseNote(BoundType type, Koto node)
+    {
+        if (!TryPairLayer(type, out var whole, out _) || (this.BareAcquisition(type, node, out _) is var failing && failing == SemanticsMask.None))
+        {
+            return string.Empty;
+        }
+
+        var text = new StringBuilder(" in the Semantics case").Append(BitOperations.PopCount((uint)failing) == 1 ? " " : "s ");
+        text.Append(whole.Symbol is { } symbol ? symbol.Pair?.Name ?? symbol.Name : "s").Append(" = ");
+        AppendSemantics(text, failing, " or ");
+        return text.Append(" (SPEC 8.9)").ToString();
+    }
+
     /// <summary>Tells whether a pair layer is invariant in its target (SPEC 15.3.5): its binder admits <c>uniq</c>, <c>obj</c>,
     /// <c>objuniq</c> or <c>raw</c>, so a relation between its targets must hold as an equality in a generic body; the admitted set
     /// is the binder's own, from its declaring scope.</summary>

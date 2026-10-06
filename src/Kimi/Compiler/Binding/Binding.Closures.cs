@@ -489,6 +489,10 @@ public sealed partial class Binding
             case null when this.ProveCopy(type, function) == ConstraintProof.Proven:
                 environment.CaptureAcquisition = CaptureAcquisition.Copy;
                 return null;
+            case null when TryPairLayer(type, out _, out _) && this.BareAcquisition(type, function, out _) == SemanticsMask.None:
+                // SPEC 8.9: every admitted case Copies or Reborrows; each case run and instance acquires as its case Type does.
+                environment.CaptureAcquisition = CaptureAcquisition.Bare;
+                return null;
             case null when type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 }:
                 environment.CaptureAcquisition = CaptureAcquisition.Reborrow;
                 return null;
@@ -666,7 +670,9 @@ public sealed partial class Binding
                         {
                             this.plan.Receiver = SemanticsKind.Owner;
                         }
-                        else if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.ExclusiveSlotBorrow && this.plan.Receiver != SemanticsKind.Owner)
+                        else if ((capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.ExclusiveSlotBorrow ||
+                            (capture.Environment.CaptureAcquisition == CaptureAcquisition.Bare && capture.Source.Type is { } captured && binding.BareReborrows(captured, nested))) &&
+                            this.plan.Receiver != SemanticsKind.Owner)
                         {
                             this.plan.Receiver = SemanticsKind.Uniq;
                             this.plan.ExclusiveUse ??= nested;
@@ -719,7 +725,8 @@ public sealed partial class Binding
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
                     (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||
-                    this.UsesReferentExclusively(use))
+                    this.UsesReferentExclusively(use) ||
+                    (ReferenceEquals(use, node) && IsBareAcquisitionPosition(node) && node.BoundType is { } bare && binding.BareReborrows(bare, node)))
                 {
                     if (this.plan.Receiver != SemanticsKind.Owner)
                     {

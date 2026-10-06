@@ -14,12 +14,6 @@ public sealed partial class OwnershipAnalysis
     // SPEC 8.10, 23.3.6.1: the bound on the cases of one body, the width of an issue's case set.
     internal const int CaseBound = 64;
 
-    // The enumeration order of cases, the bit order of SemanticsMask.
-    private static readonly SemanticsKind[] CaseOrder =
-    [
-        SemanticsKind.Owner, SemanticsKind.Ref, SemanticsKind.Uniq, SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc, SemanticsKind.ObjRef, SemanticsKind.ObjUniq, SemanticsKind.Raw,
-    ];
-
     private readonly List<PairBinder> caseBinders = new();
     private readonly List<PairBinder> namedBinders = new();
     private readonly List<OwnershipBody> casePool = new();
@@ -31,28 +25,15 @@ public sealed partial class OwnershipAnalysis
 
     private static SemanticsKind? NextAdmitted(SemanticsMask admitted, int start)
     {
-        for (var i = start; i < CaseOrder.Length; i++)
+        for (var i = start; i < Binding.SemanticsOrder.Length; i++)
         {
-            if ((admitted & CaseOrder[i].ToMask()) != 0)
+            if ((admitted & Binding.SemanticsOrder[i].ToMask()) != 0)
             {
-                return CaseOrder[i];
+                return Binding.SemanticsOrder[i];
             }
         }
 
         return null;
-    }
-
-    private static void AppendSemantics(StringBuilder text, SemanticsMask mask, string separator)
-    {
-        var first = true;
-        for (var i = 0; i < CaseOrder.Length; i++)
-        {
-            if ((mask & CaseOrder[i].ToMask()) != 0)
-            {
-                text.Append(first ? string.Empty : separator).Append(CaseOrder[i].ToText());
-                first = false;
-            }
-        }
     }
 
     // Whether a code's catalog row carries the `case` Reason fact as its last evidence fact (SPEC 23.3.6.4).
@@ -140,7 +121,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             var admitted = this.caseBinders[i].Admitted;
-            if (NextAdmitted(admitted, Array.IndexOf(CaseOrder, this.cases[at].Semantics) + 1) is { } next)
+            if (NextAdmitted(admitted, Array.IndexOf(Binding.SemanticsOrder, this.cases[at].Semantics) + 1) is { } next)
             {
                 this.cases[at] = new(this.cases[at].Target, next);
                 return true;
@@ -288,7 +269,7 @@ public sealed partial class OwnershipAnalysis
                 {
                     this.namedBinders.Add(this.caseBinders[b]);
                     text.Append(text.Length == 0 ? string.Empty : ", ").Append(BinderName(this.caseBinders[b])).Append(" = ");
-                    AppendSemantics(text, found[j], " or ");
+                    Binding.AppendSemantics(text, found[j], " or ");
                 }
 
                 j++;
@@ -340,7 +321,7 @@ public sealed partial class OwnershipAnalysis
             var semantics = NextAdmitted(admitted, 0)!.Value;
             for (var d = 0; d < digit; d++)
             {
-                semantics = NextAdmitted(admitted, Array.IndexOf(CaseOrder, semantics) + 1)!.Value;
+                semantics = NextAdmitted(admitted, Array.IndexOf(Binding.SemanticsOrder, semantics) + 1)!.Value;
             }
 
             digits[j--] = semantics;

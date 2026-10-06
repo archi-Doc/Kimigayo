@@ -1800,7 +1800,7 @@ public sealed partial class Binding
                 node.Report(
                     requirement,
                     code,
-                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference",
+                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference{this.FailingCaseNote(type, node)}",
                     evidence: [name],
                     span: capture.Span,
                     repairs:

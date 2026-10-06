@@ -12,7 +12,7 @@ namespace XunitTest;
 public class GenericOwnershipCaseTest
 {
     // The units of plan C that have landed; a row of a later unit is not judged yet, and a `Limit` row is a located limit.
-    private static readonly string[] Landed = ["U3b", "E2", "E5"];
+    private static readonly string[] Landed = ["U3b", "E2", "E5", "U4"];
 
     private static readonly Lazy<Dictionary<string, PairCaseRow>> Rows = new(() =>
         JsonSerializer.Deserialize<PairCaseRow[]>(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "diagnostics", "pair-cases.json")))!.ToDictionary(x => x.Name, StringComparer.Ordinal));

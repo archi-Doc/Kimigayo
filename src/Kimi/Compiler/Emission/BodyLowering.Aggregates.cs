@@ -658,7 +658,7 @@ internal sealed partial class BodyLowering
             for (var i = 0; i < closure.Captures.Count; i++)
             {
                 var capture = closure.Captures[i];
-                if (capture.Environment.CaptureAcquisition == CaptureAcquisition.Copy && capture.Source is { } source &&
+                if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Copy or CaptureAcquisition.Bare && !this.BorrowingEntry(capture) && capture.Source is { } source &&
                     ReferenceEquals(SignatureType(this, capture.Environment.Type), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
                 {
                     return true;

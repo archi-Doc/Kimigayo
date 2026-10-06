@@ -46,6 +46,13 @@ internal sealed partial class BodyLowering
     // SPEC 7.2.3: a closure inside a default of the function that declares the captured parameter reads the argument that
     // the pending call prepared for that parameter: a temporary of the calling body, or the result of the selection, `do` or
     // short-circuit join that supplied it. Any other entry reads its source binding.
+    // SPEC 7.6.2, 8.10: an entry whose environment binding is initialized by a borrow of the outer binding: a Reborrow or a slot
+    // borrow, or a bare entry of a pair binding whose instantiated Type is an exclusive reference (a Copy in every other instance).
+    private bool BorrowingEntry(in BoundCapture capture)
+        => capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow ||
+            (capture.Environment.CaptureAcquisition == CaptureAcquisition.Bare &&
+                SignatureType(this, capture.Environment.Type) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 });
+
     private bool CaptureSourcePlace(OwnershipBody body, FunctionKoto closure, BindingSymbol source, int input, out int place)
     {
         if (ScalarDefaults.InLaterDefault(closure, source))
@@ -222,7 +229,7 @@ internal sealed partial class BodyLowering
             var representation = environmentLayout?.Fields[i] ?? WindowsLowering.GetValue(capture.Environment.Type!);
             var offset = environmentLayout?.Offset(i) ?? CaptureOffset(closure, i);
             // SPEC 7.6.2: a borrowing entry consumes the temporary its borrow of the outer binding produced.
-            var borrowed = capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow;
+            var borrowed = this.BorrowingEntry(capture);
             var place = -1;
             if (representation is null || offset < 0 || (environmentLayout is null && offset + representation.Layout.Size > 8) ||
                 (uint)input >= (uint)id || body.Operations[input].Kind != (environmentLayout is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Consume) ||

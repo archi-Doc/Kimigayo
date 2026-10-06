@@ -21,11 +21,19 @@ public sealed partial class OwnershipAnalysis
             }
 
             var read = -1;
-            if (closure.EnvironmentType is not null && capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow)
+            var acquisitionKind = capture.Environment.CaptureAcquisition;
+            if (acquisitionKind == CaptureAcquisition.Bare && this.body.Places[place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 })
+            {
+                // SPEC 8.9, 8.10: a bare entry of a pair binding Reborrows in the case or instance whose Type is an exclusive
+                // reference, the binding's case Type, and Copies in every other case.
+                acquisitionKind = CaptureAcquisition.Reborrow;
+            }
+
+            if (closure.EnvironmentType is not null && acquisitionKind is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow)
             {
                 // SPEC 7.6.2: the entry initializes its environment binding as `let x = x` (a Reborrow) or `let x = x@ref`
                 // and `x@uniq` (a borrow of the outer slot) would; the closure keeps the borrow's Loan (SPEC 15.8.2).
-                var borrowed = this.BorrowCapture(source, place, capture.Environment.Type!);
+                var borrowed = this.BorrowCapture(source, place, this.Concrete(capture.Environment.Type!)!);
                 var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
                 var borrowedValue = this.Value(borrowed);
                 read = this.Emit(OwnershipOperationKind.Consume, source, borrowed, acquired, AcquisitionKind.Move);

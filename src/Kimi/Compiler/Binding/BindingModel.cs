@@ -78,6 +78,11 @@ internal enum CaptureAcquisition : byte
     /// <summary>A bare entry of a binding storing <c>uniq/T</c> or <c>objuniq/T</c>: a Reborrow in the same Semantics.</summary>
     Reborrow,
 
+    /// <summary>A bare entry of a binding storing a pair layer whose every admitted case Copies or Reborrows (SPEC 8.9): each case
+    /// run and instance acquires it as the binding's case Type does, a Reborrow for an exclusive reference and a Copy otherwise
+    /// (SPEC 8.10).</summary>
+    Bare,
+
     /// <summary><c>x@ref</c>: a shared borrow of the outer binding's slot.</summary>
     SharedSlotBorrow,
 
