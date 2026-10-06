@@ -2,8 +2,12 @@
 
 **Accepted Hover contract (2026-10-06):** [SPEC §23.4.11](spec/lsp-hover.md) requires declaration/Copy/documentation Hover,
 shared diagnostic scheduling, complete participant agreement, synchronous cached rendering and labeled previous analysis.
-General Hover and these update/rendering rules are not yet implemented or verified; existing Callable effect Hover remains
-the response boundary. LSP checks now opt into documentation/optional Hover collection; CLI checks skip it. Projection
+General and effect Hover now share one provider with client-selected Markdown/plaintext, complete participant adoption,
+strict cached agreement and incremental historical range mapping. The diagnostic quiet period is the only timer; unchanged
+or empty diagnostic payloads do not prevent Hover adoption. `LspHoverTest`, `LspHoverAdoptionTest` and `HoverStateTest`
+cover real compiler responses, partial settings, TestSources selection, revalidation, definitive failures, edits during
+checks, cache bounds and allocation-free repeated lookup (excluding request/response serialization).
+LSP checks opt into documentation/optional Hover collection; CLI checks skip it. Projection
 failures preserve finalized diagnostics, acceptance and TestPresence, and are logged separately. Embedded Kimi comments
 use shared immutable lexical ranges with compilation-local association; `HoverCollectionTest` covers mode order, parallel
 loads and check-record invariance. Opted-in parsing also retains declaration-fragment and structural-token positions;
@@ -15,8 +19,8 @@ Effect projection shares existing bound judgments, retaining requirement and Cal
 Property supplements describe verified operations without asserting use-site writability. Type-parameter Constraints,
 implicit Unit results and specialization documentation roles remain distinct. Recursive header/Type/identity projection
 has deterministic resource guards. The bounded internal renderer preserves parsed Markdown/plaintext structure, isolated
-documentation failures and completed-block truncation (`HoverRenderingTest`). Full collection isolation, general Hover response/adoption
-and responsiveness measurements remain in the H1–H6 track in `docs/dev/PLAN.md`; current limits are in
+documentation failures and completed-block truncation (`HoverRenderingTest`). Full collection isolation, client navigation
+review and responsiveness measurements remain in the H1–H6 track in `docs/dev/PLAN.md`; current limits are in
 [Hover implementation notes](dev/HOVER.md). Existing unsupported language forms (including merged independent requirement
 identities and generic Property requirements) are not made available by Hover.
 

@@ -422,6 +422,7 @@ internal sealed class WorkspaceCheck
             members.Add(SourceIdentity.FromPath(file));
         }
 
+        var productMembers = new HashSet<SourceIdentity>(members);
         foreach (var test in project.ProjectFile.TestSources)
         {
             try
@@ -439,6 +440,7 @@ internal sealed class WorkspaceCheck
             Path = path,
             Project = project,
             Members = members,
+            ProductMembers = productMembers,
             ProductReferences = References(project.ProjectFile.Dependencies, directory),
             TestReferences = References(project.ProjectFile.TestDependencies, directory),
             HasTestSources = project.ProjectFile.TestSources.Length != 0,

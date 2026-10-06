@@ -12,7 +12,7 @@ namespace Kimi.Lsp;
 /// changes shared state — documents, revisions, marks, event numbers, bases, adopted results, required units and
 /// publication decisions.
 /// </summary>
-internal sealed class LspSession : IDisposable
+internal sealed partial class LspSession : IDisposable
 {
     private const string WatchRegistration = "kimi-watched-files";
 
@@ -103,19 +103,29 @@ internal sealed class LspSession : IDisposable
                 break;
             case CommitRequest commit:
                 this.OnCommit(commit);
+                this.hoverDirty = true;
                 break;
             case DerivationDone derivation:
                 this.OnDerivation(derivation);
+                this.hoverDirty = true;
                 break;
             case UnitDone done:
                 this.OnUnit(done.Result);
+                this.hoverDirty = true;
                 break;
             case ProductsDone products:
                 this.OnProducts(products);
+                this.hoverDirty = true;
                 break;
             case CheckDone done:
                 this.OnCheckDone(done);
+                this.hoverDirty = true;
                 break;
+        }
+
+        if (this.hoverDirty)
+        {
+            this.RefreshHover();
         }
     }
 
@@ -368,6 +378,14 @@ internal sealed class LspSession : IDisposable
         this.settings = LspSettings.Parse(parameters?.InitializationOptions, x => this.Log(2, x));
         this.watchSupported = parameters?.Capabilities?.Workspace?.DidChangeWatchedFiles?.DynamicRegistration == true;
         this.relatedInformationSupported = parameters?.Capabilities?.TextDocument?.PublishDiagnostics?.RelatedInformation == true;
+        foreach (var format in parameters?.Capabilities?.TextDocument?.Hover?.ContentFormat ?? [])
+        {
+            if (format is "markdown" or "plaintext")
+            {
+                this.hoverMarkdown = format == "markdown";
+                break;
+            }
+        }
 
         // SPEC 23.4.8: code actions need code action literals and versioned document changes, both optional client features.
         this.codeActionsSupported = parameters?.Capabilities?.TextDocument?.CodeAction?.CodeActionLiteralSupport is not null &&
@@ -421,6 +439,7 @@ internal sealed class LspSession : IDisposable
         if (this.documents.TryGetValue(identity, out var existing))
         {
             existing.Text.Replace(text); // A repeated open is a full-text event and resynchronizes the document.
+            existing.Hover = null;
             existing.Desynchronized = false;
             existing.Version = item.Version;
             this.Event(now, false, InputKey.File(identity));
@@ -463,12 +482,22 @@ internal sealed class LspSession : IDisposable
                 }
                 else if (change.Range is not { } range)
                 {
+                    document.Hover = null;
                     document.Text.Replace(replacement);
                     document.Desynchronized = false;
                 }
-                else if (!document.Desynchronized && !document.Text.TryApply(range.Start, range.End, replacement))
+                else if (!document.Desynchronized)
                 {
-                    this.Desynchronize(document);
+                    document.Text.TryGetOffset(range.Start, out var from);
+                    document.Text.TryGetOffset(range.End, out var to);
+                    if (!document.Text.TryApply(range.Start, range.End, replacement))
+                    {
+                        this.Desynchronize(document);
+                    }
+                    else if (document.Hover is { } hover && !hover.Edited(from, to, replacement.Length))
+                    {
+                        document.Hover = null;
+                    }
                 }
             }
 
@@ -543,36 +572,21 @@ internal sealed class LspSession : IDisposable
     private void OnHover(LspMessage message)
     {
         var parameters = Read<HoverParams>(message);
-        EffectHover? agreed = null;
-        if (parameters is not null && this.FindOpen(parameters.TextDocument?.Uri) is { Desynchronized: false } document &&
-            this.ContributorsValid(document.Identity) && this.contributors.TryGetValue(document.Identity, out var contributors))
+        HoverResult? result = null;
+        if (parameters is not null && this.FindOpen(parameters.TextDocument?.Uri) is { Desynchronized: false, Role: DocumentRole.Source, Hover: { } hover } document)
         {
-            var first = true;
-            foreach (var key in contributors)
+            var answer = hover.Find(document.Text, parameters.Position);
+            if (answer.Reason is { } reason)
             {
-                EffectHover? found = null;
-                foreach (var candidate in this.units[key].Result!.Output.Hover?.Effects ?? [])
-                {
-                    if (candidate.Source == document.Identity && candidate.Range.Start.CompareTo(parameters.Position) <= 0 &&
-                        candidate.Range.End.CompareTo(parameters.Position) > 0 &&
-                        (found is null || (candidate.Range.Start.CompareTo(found.Range.Start) >= 0 && candidate.Range.End.CompareTo(found.Range.End) <= 0)))
-                    {
-                        found = candidate;
-                    }
-                }
+                this.Log(2, reason);
+            }
 
-                if (!first && agreed != found)
-                {
-                    agreed = null;
-                    break;
-                }
-
-                agreed = found;
-                first = false;
+            if (answer.Body is { } body)
+            {
+                result = new() { Contents = new() { Kind = this.hoverMarkdown ? "markdown" : "plaintext", Value = body }, Range = answer.Range };
             }
         }
 
-        var result = agreed is null ? null : new HoverResult { Contents = new() { Value = agreed.Text }, Range = agreed.Range };
         this.sender.Result(message.Id, result, LspJsonContext.Default.HoverResult);
     }
 
@@ -611,6 +625,7 @@ internal sealed class LspSession : IDisposable
 
     private void Desynchronize(OpenDocument document)
     {
+        document.Hover = null;
         if (!document.Desynchronized)
         {
             document.Desynchronized = true;
@@ -634,6 +649,16 @@ internal sealed class LspSession : IDisposable
     private void Event(long now, bool watched, params ReadOnlySpan<InputKey> keys)
     {
         this.store.Event(this.checkBase, watched, keys);
+        this.hoverDirty = true;
+        foreach (var key in keys)
+        {
+            if (key.Kind == InputKind.File && !key.Identity.Value.EndsWith(".kimi", StringComparison.OrdinalIgnoreCase))
+            {
+                this.DiscardHover();
+                break;
+            }
+        }
+
         this.Schedule(now);
     }
 
@@ -654,6 +679,11 @@ internal sealed class LspSession : IDisposable
         foreach (var (key, state) in commit.Comparisons)
         {
             this.store.Commit(key, state, this.checkBase, released, invalidated);
+        }
+
+        if (invalidated.Exists(static item => item is LoadedProject or DiscoveryRecord))
+        {
+            this.DiscardHover();
         }
 
         var items = new List<DerivedItem>(this.projects.Values);
@@ -799,6 +829,8 @@ internal sealed class LspSession : IDisposable
         {
             this.units.Add(products.TestKey, new(products.TestKey));
         }
+
+        this.hoverTestDecisions.Add(products.Owner);
     }
 
     private void OnUnit(UnitResult result)
@@ -815,6 +847,11 @@ internal sealed class LspSession : IDisposable
         }
 
         unit.Result = result;
+        if (result.Key.Kind == UnitKind.Product)
+        {
+            this.hoverTestDecisions.Remove(result.Key.Owner);
+        }
+
         if (result.Output.HoverFault is { } hoverFault)
         {
             this.Log(2, $"Hover information unavailable for {result.Key.Owner}: {hoverFault}");
@@ -866,6 +903,11 @@ internal sealed class LspSession : IDisposable
 
     private void Retire(UnitKey key)
     {
+        if (key.Kind == UnitKind.Product)
+        {
+            this.hoverTestDecisions.Remove(key.Owner);
+        }
+
         if (!this.units.Remove(key, out var unit) || unit.Result is not { } result)
         {
             return;
@@ -1007,5 +1049,7 @@ internal sealed class LspSession : IDisposable
         public int Version { get; set; } = version;
 
         public bool Desynchronized { get; set; }
+
+        public HoverState? Hover { get; set; }
     }
 }

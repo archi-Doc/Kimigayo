@@ -32,6 +32,13 @@ public sealed class TextDocumentClientCapabilities
     public PublishDiagnosticsClientCapabilities? PublishDiagnostics { get; set; }
 
     public CodeActionClientCapabilities? CodeAction { get; set; }
+
+    public HoverClientCapabilities? Hover { get; set; }
+}
+
+public sealed class HoverClientCapabilities
+{
+    public string[]? ContentFormat { get; set; }
 }
 
 /// <summary>The client's code action support; <c>codeActionLiteralSupport</c> is read as presence (SPEC 23.4.8).</summary>
@@ -196,7 +203,7 @@ public sealed class CodeActionParams
     public CodeActionContext Context { get; set; } = new();
 }
 
-/// <summary>The position at which the client requests the checked effect description.</summary>
+/// <summary>The position at which the client requests checked declaration and documentation information.</summary>
 public sealed class HoverParams
 {
     public TextDocumentIdentifier TextDocument { get; set; } = new();
@@ -204,7 +211,7 @@ public sealed class HoverParams
     public SourcePosition Position { get; set; }
 }
 
-/// <summary>A checked, plain-text effect description with its source range.</summary>
+/// <summary>A Markdown or plaintext Hover description with its representative token range.</summary>
 public sealed class HoverResult
 {
     public HoverContent Contents { get; set; } = new();
