@@ -622,7 +622,7 @@ public sealed partial class Binding
 
             positive |= this.AvailableConstraintFact(environment, normalized);
             negative |= this.AvailableConstraintFact(environment, negation);
-            if (environment.HasAssociatedProjection || parameterIdentity)
+            if (environment.HasAssociatedProjection || parameterIdentity || normalized.Kind == ConstraintKind.Callable || normalized is { Kind: ConstraintKind.Not, Left.Kind: ConstraintKind.Callable })
             {
                 foreach (var fact in environment.Facts)
                 {
@@ -632,8 +632,8 @@ public sealed partial class Binding
                     }
 
                     var identity = this.NormalizeProofConstraint(fact, scope);
-                    positive |= ReferenceEquals(identity, normalized);
-                    negative |= ReferenceEquals(identity, negation);
+                    positive |= SameProofPremise(identity, normalized);
+                    negative |= SameProofPremise(identity, negation);
                 }
             }
         }
@@ -683,7 +683,7 @@ public sealed partial class Binding
         }
 
         var subject = this.NormalizeProofType(constraint.Subject, scope);
-        var required = constraint.RequiredType is { } type ? this.NormalizeProofType(type, scope) : null;
+        var required = constraint.RequiredType is { } type ? constraint.Kind == ConstraintKind.Callable ? this.CallableContractType(type, scope) : this.NormalizeProofType(type, scope) : null;
         return ReferenceEquals(subject, constraint.Subject) && ReferenceEquals(required, constraint.RequiredType) ? constraint : this.InternConstraint(new(constraint.Kind, subject, required, constraint.Contract, constraint.Mask));
     }
 

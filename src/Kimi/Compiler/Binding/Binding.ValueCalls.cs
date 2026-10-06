@@ -424,6 +424,12 @@ public sealed partial class Binding
             return true;
         }
 
+        var normalizedOwner = this.CallableContractType(owner, scope);
+        if (!ReferenceEquals(normalizedOwner, owner))
+        {
+            return this.TryCallable(normalizedOwner, scope, out signature, out receiver, out several);
+        }
+
         signature = null!;
         receiver = SemanticsKind.Owner;
         for (var current = scope; current is not null; current = current.Parent)
@@ -435,18 +441,19 @@ public sealed partial class Binding
 
             foreach (var fact in environment.Facts)
             {
-                if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(fact.Subject, owner) || !this.AvailableConstraintFact(environment, fact))
+                if (fact.Kind != ConstraintKind.Callable || !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), owner) || !this.AvailableConstraintFact(environment, fact))
                 {
                     continue;
                 }
 
-                if (signature is not null && !ReferenceEquals(signature, fact.RequiredType))
+                var currentSignature = this.CallableContractType(fact.RequiredType!, scope);
+                if (signature is not null && !SameCallableSignature(signature, currentSignature))
                 {
                     several = true;
                     return false;
                 }
 
-                signature = fact.RequiredType!;
+                signature ??= currentSignature;
                 if (fact.Mask == SemanticsMask.Ref)
                 {
                     receiver = SemanticsKind.Ref;

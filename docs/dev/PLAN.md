@@ -28,7 +28,7 @@ Toolchain identity is checked during setup/update or with `kimi toolchain verify
 
 ## 3. Current position
 
-- **Callable/local regions (explicit user target, 2026-10-07):** U1 length-generic references and U2 block anonymous results are verified. Next: U3 multiple Callable signatures, U4/U5 Place contracts, U6 compiler function adapters with approved Abort-call-site semantics, U7–U9 local-region constraints/Loans, then U10 cross-coverage and final Session. These six items remain the active implementation target; existing milestone order is unchanged.
+- **Callable/local regions (explicit user target, 2026-10-07):** U1 length-generic references, U2 block anonymous results and U3 multiple Callable signature selection are verified. Next: U4/U5 Place contracts, U6 compiler function adapters with approved Abort-call-site semantics, U7–U9 local-region constraints/Loans, then U10 cross-coverage and final Session. These six items remain the active implementation target; existing milestone order is unchanged.
 
 - **Hover (explicit user target, 2026-10-07), DONE:** H0–H6 integrate SPEC §23.4.11, detached contracts/Copy/effects, documentation/link placement, complete participant adoption, synchronous bounded caches, previous analysis and VS Code review. Final Session `20261006-173140-848-session-hover-final`: warning-free whole-solution Release, all 18,161 tests, unchanged diagnostic snapshot and stable inputs. Lifetime/zero-allocation regressions and fixed responsiveness criteria pass; [HOVER.md](HOVER.md) records conditions and limits. Existing unsupported Binding forms remain in STATUS; no separate Hover timer or worker.
 

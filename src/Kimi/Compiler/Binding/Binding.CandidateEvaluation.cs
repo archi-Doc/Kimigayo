@@ -29,7 +29,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var fa = (FunctionKoto)candidates[a].Symbol.Declaration;
+            var fa = candidates[a].Symbol?.Declaration as FunctionKoto;
             var dominates = true;
             for (var b = 0; b < candidates.Length; b++)
             {
@@ -38,7 +38,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var fb = (FunctionKoto)candidates[b].Symbol.Declaration;
+                var fb = candidates[b].Symbol?.Declaration as FunctionKoto;
                 var better = false;
                 var worse = false;
                 for (var i = 0; i < compared; i++)
@@ -106,8 +106,8 @@ public sealed partial class Binding
                     continue;
                 }
 
-                var aGeneric = fa.GenericArguments.Count != 0;
-                var bGeneric = fb.GenericArguments.Count != 0;
+                var aGeneric = fa is { GenericArguments.Count: > 0 };
+                var bGeneric = fb is { GenericArguments.Count: > 0 };
                 if (!(aGeneric != bGeneric ? !aGeneric : candidates[a].DefaultsUsed < candidates[b].DefaultsUsed))
                 {
                     dominates = false;
@@ -155,7 +155,7 @@ public sealed partial class Binding
                     return false;
                 }
 
-                var function = (FunctionKoto)candidates[candidate].Symbol.Declaration;
+                var function = (FunctionKoto)candidates[candidate].Symbol!.Declaration;
                 var pattern = function.Parameters[operation.ParameterIndex].Type.BoundType!;
                 var borrowed = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq };
                 var slot = borrowed ? pattern.Components[0] : pattern;
@@ -217,8 +217,9 @@ public sealed partial class Binding
     // the body or turning an independent written-Type error into a consequence of the selection.
     private void MarkWaitingHeaders(InvocationKoto call)
     {
-        foreach (var argument in call.ArgumentNodes)
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
+            var argument = call.ArgumentNodes[i];
             if (IsWaitingNestedCall(argument))
             {
                 this.CompleteDependent(argument, call);
@@ -230,8 +231,9 @@ public sealed partial class Binding
         }
     }
 
+    // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, ulong Unsolved = 0, ClosureReceiverRefutation? ClosureReceiver = null);
+    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, ulong Unsolved = 0, ClosureReceiverRefutation? ClosureReceiver = null);
 
     // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);

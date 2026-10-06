@@ -674,7 +674,7 @@
 
   + Name="ReceiverShapeMismatch_Kd"
     Category="Language"
-    Message="Every function of this Name that has a receiver must share one receiver shape; requirements gathered from constraints must agree at the use"
+    Message="The call candidates must share one receiver shape; this includes same-Name functions, gathered requirements and Callable signatures"
 
   + Name="AccessorReceiverShape_Kd"
     Category="Language"
@@ -685,7 +685,7 @@
 
   + Name="ParameterShapeMismatch_Kd"
     Category="Language"
-    Message="The functions of one Name acquire a corresponding parameter in one mode where the parameter Types overlap; the acquisition mode of this parameter is {0}, that of the corresponding earlier parameter {1}"
+    Message="Call candidates acquire a corresponding parameter in one mode where the parameter Types overlap; the acquisition mode of this parameter is {0}, that of the corresponding earlier parameter {1}"
     Arguments="mode:Enumeration,other:Enumeration"
     Evidence="correspondence:Text,key:Text"
     Label="{2} is acquired {0} here and {1} there"

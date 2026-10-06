@@ -325,6 +325,8 @@ public sealed partial class Binding
     {
         this.storageVersion++;
         this.issues.Clear();
+        this.callableSelectionFailures.Clear();
+        this.callableSelectionParties.Clear();
         this.libraryImports.Clear();
         this.constraintDiagnosticCauses?.Clear();
         this.ResetPrerequisites();
@@ -650,6 +652,9 @@ public sealed partial class Binding
         {
             // FailObjectPayload records the declaring Type before it fails the use.
             issue.Node.Report(requirement, issue.Code, this.objectPayloadCauses![issue.Node].Name);
+        }
+        else if (this.ReportCallableSelection(issue.Node, requirement, issue.Code))
+        {
         }
         else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
         {

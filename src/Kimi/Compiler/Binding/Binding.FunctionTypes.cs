@@ -588,7 +588,7 @@ public sealed partial class Binding
                 {
                     if (applicable == 0 || evaluated[i].State == CandidateApplicability.Applicable)
                     {
-                        var candidate = evaluated[i].Symbol;
+                        var candidate = evaluated[i].Symbol!;
                         var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
                         rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true);
                     }
@@ -598,7 +598,7 @@ public sealed partial class Binding
                 return this.Fail(use, applicable == 0 ? BindingFailure.NoApplicableCandidate : BindingFailure.Ambiguous);
             }
 
-            selected = evaluated[winner].Symbol;
+            selected = evaluated[winner].Symbol!;
         }
         finally
         {

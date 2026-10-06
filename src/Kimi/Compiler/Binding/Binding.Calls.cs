@@ -384,6 +384,61 @@ public sealed partial class Binding
         }
     }
 
+    // Independent argument evidence is prepared once for named and constraint-based calls.
+    private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
+    {
+        var unknownArgument = false;
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        {
+            var argument = call.ArgumentNodes[i];
+            if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true })
+            {
+                continue; // A common-function argument supplies its fixed signature after selection.
+            }
+
+            if (IsAggregateArgument(argument))
+            {
+                unknownArgument |= !this.PrepareAggregateArgument(argument, scope);
+                continue;
+            }
+
+            if (NeedsEnumContext(argument))
+            {
+                unknownArgument |= !this.PrepareContextualEnumInputs(argument, scope);
+                continue;
+            }
+
+            // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
+            if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindIndependentArgument(argument, scope) is null)
+            {
+                if (IsWaitingNestedCall(argument))
+                {
+                    continue; // SPEC 10.5: only a determined outer candidate supplies the missing expectation.
+                }
+
+                if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
+                {
+                    if ((callableContext || this.TakesCallableContext(group)) && !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)) &&
+                        !this.ExplicitReferenceValue(argument, item, scope))
+                    {
+                        continue; // SPEC 10.5: a waiting reference uses the selected fixed call signature once.
+                    }
+
+                    // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
+                    // A generic Callable contract checks that Type without erasing it to a common Function handle.
+                    if (this.BindFunctionItem(argument, item, scope) is not null)
+                    {
+                        continue;
+                    }
+                }
+
+                unknownArgument = true;
+            }
+        }
+
+        return !unknownArgument;
+    }
+
     private BoundType? BindCallCore(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
         call.IsValueCall = false;
@@ -450,9 +505,7 @@ public sealed partial class Binding
 
             if (several)
             {
-                // SPEC 8.6, 23.3.6.1: the distinct Callable signatures on F are the call's candidates; selecting among them is not
-                // yet implemented, which is a located limit and never a Language error.
-                return this.Fail(call, BindingFailure.Unsupported);
+                return this.SelectValueCall(call, scope, callableType!, expected);
             }
 
             if (callableType is not null && this.FailedCallableClause(callableType, scope) is { } failedClause)
@@ -461,54 +514,7 @@ public sealed partial class Binding
             }
         }
 
-        var unknownArgument = false;
-        for (var i = 0; i < call.ArgumentNodes.Count; i++)
-        {
-            var argument = call.ArgumentNodes[i];
-            if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true })
-            {
-                continue; // A common-function argument supplies its fixed signature after selection.
-            }
-
-            if (IsAggregateArgument(argument))
-            {
-                unknownArgument |= !this.PrepareAggregateArgument(argument, scope);
-                continue;
-            }
-
-            if (NeedsEnumContext(argument))
-            {
-                unknownArgument |= !this.PrepareContextualEnumInputs(argument, scope);
-                continue;
-            }
-
-            // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
-            if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindIndependentArgument(argument, scope) is null)
-            {
-                if (IsWaitingNestedCall(argument))
-                {
-                    continue; // SPEC 10.5: only a determined outer candidate supplies the missing expectation.
-                }
-
-                if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
-                {
-                    if (this.TakesCallableContext(group) && !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)) &&
-                        !this.ExplicitReferenceValue(argument, item, scope))
-                    {
-                        continue; // SPEC 10.5: a waiting reference uses the selected fixed call signature once.
-                    }
-
-                    // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
-                    // A generic Callable contract checks that Type without erasing it to a common Function handle.
-                    if (this.BindFunctionItem(argument, item, scope) is not null)
-                    {
-                        continue;
-                    }
-                }
-
-                unknownArgument = true;
-            }
-        }
+        var unknownArgument = !this.PrepareCallArguments(call, scope, group);
 
         if (group is null)
         {
@@ -736,14 +742,14 @@ public sealed partial class Binding
                     var rejected = new RejectedCandidate[count];
                     for (var i = 0; i < count; i++)
                     {
-                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null);
+                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null);
                         var rejectedReceiver = operations[(i * operationStride) + operationStride - 1];
                         if (rejectedReceiver.SourceType is { } receiverActual && rejectedReceiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
                         {
                             rejected[i] = rejected[i] with { Actual = receiverActual, Expected = receiverExpected, SharedReceiver = true };
                         }
 
-                        if (evaluated[i].Symbol.LibraryDeclaration == KimiDeclarationId.Clone && call.ArgumentNodes is [var cloneInput] &&
+                        if (evaluated[i].Symbol!.LibraryDeclaration == KimiDeclarationId.Clone && call.ArgumentNodes is [var cloneInput] &&
                             cloneInput.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [{ Semantics: SemanticsKind.Obj }] })
                         {
                             rejected[i] = rejected[i] with { ObjectClone = true };
@@ -814,7 +820,7 @@ public sealed partial class Binding
                     {
                         if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                         {
-                            remaining[next++] = new((FunctionKoto)evaluated[i].Symbol.Declaration, null, null, ErasureIncomparable: erasure);
+                            remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
                         }
                     }
 
@@ -823,7 +829,7 @@ public sealed partial class Binding
                 }
             }
 
-            var winner = evaluated[winnerIndex].Symbol;
+            var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
             this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex]; // Reset by the finally block.
             var selectedType = evaluated[winnerIndex].DeclaringType;

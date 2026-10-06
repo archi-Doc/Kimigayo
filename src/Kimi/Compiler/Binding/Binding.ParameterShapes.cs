@@ -180,7 +180,7 @@ public sealed partial class Binding
     }
 
     // SPEC 7.3.1: the acquisition modes a parameter may require (one per admitted case) and its matching key.
-    private ParameterShape ShapeOf(BoundType type, FunctionKoto function, bool sameGenerics)
+    private ParameterShape ShapeOf(BoundType type, Koto function, bool sameGenerics)
     {
         switch (type.Kind)
         {
@@ -212,7 +212,7 @@ public sealed partial class Binding
         }
     }
 
-    private SemanticsMask PairSlotAdmitted(BoundType whole, FunctionKoto function)
+    private SemanticsMask PairSlotAdmitted(BoundType whole, Koto function)
         => this.scopes.TryGetValue(function, out var scope) ? this.AdmittedSemantics(whole, scope) : SemanticsMask.All;
 
     // SPEC 7.3.1: two keys overlap when steps 2-4 of the collision test of SPEC 8.4.9.1 unify them; Value and Object never meet.
@@ -250,6 +250,14 @@ public sealed partial class Binding
 
         var sa = this.ShapeOf(ta, earlier, sameGenerics);
         var sb = this.ShapeOf(tb, later, sameGenerics);
+        return this.ParameterShapesConflict(ta, tb, sa, sb, out mode, out other, out shape, out conservative);
+    }
+
+    private bool ParameterShapesConflict(BoundType ta, BoundType tb, ParameterShape sa, ParameterShape sb, out AcquisitionMode mode, out AcquisitionMode other, out ParameterShape shape, out bool conservative)
+    {
+        mode = other = default;
+        shape = default;
+        conservative = false;
         var union = sa.Modes | sb.Modes;
         if (union == AcquisitionModes.None || IsSingleMode(union) || !this.KeysOverlap(sa, sb))
         {
