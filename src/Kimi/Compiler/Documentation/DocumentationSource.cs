@@ -283,7 +283,8 @@ public sealed class DocumentationSource
             if (token.Kind == TokenKind.Identifier)
             {
                 var spelling = this.Source.AsSpan().Slice(token.Span.Start, token.Length);
-                isPrefix = spelling.SequenceEqual("unsafe") || spelling.SequenceEqual("specialize");
+                isPrefix = spelling.SequenceEqual("unsafe") || spelling.SequenceEqual("specialize") ||
+                    (declaration is FunctionKoto && (spelling.SequenceEqual("virtual") || spelling.SequenceEqual("override")));
             }
 
             if (!isPrefix)

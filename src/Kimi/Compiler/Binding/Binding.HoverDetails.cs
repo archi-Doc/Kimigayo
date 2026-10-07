@@ -15,6 +15,13 @@ public sealed partial class Binding
             var parts = new List<HoverKey> { this.BinderIdentity(declaration), this.TypeIdentity(declaration.BoundSymbol?.Type) };
             if (declaration is FunctionKoto function)
             {
+                if (binding.TryGetVirtualOverride(function, out var implementation))
+                {
+                    parts.Add(this.DeclarationIdentity(implementation.Slot.Original));
+                    parts.Add(this.TypeIdentity(implementation.Slot.DeclaringType));
+                    parts.Add(this.TypeIdentity(implementation.ImplementingType));
+                }
+
                 foreach (var parameter in function.Parameters)
                 {
                     parts.Add(this.TypeIdentity(parameter.Type.BoundType));
@@ -56,6 +63,11 @@ public sealed partial class Binding
 
         private string? DeclarationDetails(Koto declaration)
         {
+            if (declaration is FunctionKoto virtualFunction && (virtualFunction.IsVirtual || virtualFunction.IsOverride))
+            {
+                return this.VirtualDeclarationDetails(virtualFunction);
+            }
+
             if (declaration is PropertyKoto property && property.BoundSymbol?.Property is { IsVerified: true } contract)
             {
                 var text = new StringBuilder(property.TypeKoto is null ? "Inferred type: " : "Type: ").Append(this.TypeName(contract.Type!));

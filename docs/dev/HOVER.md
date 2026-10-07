@@ -14,6 +14,10 @@ they do not change language guarantees or mark pending work as supported.
   within a projection. Structural identities form a DAG, avoiding expansion of repeated Type/Origin subgraphs.
 - Copy reuses the existing judgment in the target's scope. Effect descriptions obtain provenance through existing
   availability checks; ordinary checks pass no collector and allocate no provenance list.
+- Virtual declarations retain their original public contract; overrides additionally display their own header and comments.
+  Calls distinguish a dynamic slot from the selected direct base implementation. Detached identities retain the bound
+  declaring Type, base lookup and implementation, including virtual Function Items. Receiver and erasure details read
+  checked operations; projection never creates a generation context. Binding and ownership completion remain distinct.
 - Function and Property syntax writers also write body-free headers. Verified accessor metadata supplements implicit
   operations. A missing named-function result means Unit; it is not inferred from the body.
 - Documentation inputs retain immutable partial placement maps. Editor links reuse profile validation and logical

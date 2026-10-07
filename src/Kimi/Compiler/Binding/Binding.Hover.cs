@@ -260,13 +260,21 @@ public sealed partial class Binding
 
             if (symbol?.Kind is BindingSymbolKind.Function or BindingSymbolKind.Property)
             {
+                if (syntax is FunctionKoto { IsOverride: true } implementation && binding.TryGetVirtualOverride(implementation, out var entry))
+                {
+                    return new([this.Declaration(implementation), this.Declaration(entry.Slot.Original)], TypeIdentity: this.TypeIdentity(symbol.Type));
+                }
+
                 if (syntax is not FunctionKoto && declaration is FunctionKoto function)
                 {
                     declaration = binding.GetSpecializationOriginal(function) ?? function;
                 }
 
                 return symbol.Type is not null && declaration is not null
-                    ? new([this.Declaration(declaration)], TypeIdentity: this.TypeIdentity(symbol.Type)) : null;
+                    ? new(
+                        [this.Declaration(declaration)],
+                        syntax.BoundType is { Kind: BoundTypeKind.FunctionItem } item && declaration is FunctionKoto { IsVirtual: true } slot ? this.VirtualItemDetails(item, slot) : null,
+                        TypeIdentity: this.TypeIdentity(syntax.BoundType ?? symbol.Type)) : null;
             }
 
             if (symbol is not null && symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType))
@@ -500,7 +508,7 @@ public sealed partial class Binding
             return names.Count == 0 ? syntax.Kotonoha.Name : string.Join('.', names);
         }
 
-        private string CallUse(BoundCall call)
+        private string CallUse(BoundCall call, Koto syntax)
         {
             var text = new StringBuilder("Result: ").Append(this.TypeName(call.ReturnType));
             if (call.TypeArguments.Length != 0 || call.LengthArguments.Length != 0)
@@ -524,6 +532,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.VirtualCallDetails(text, call, syntax);
             return text.ToString();
         }
 
@@ -590,13 +599,14 @@ public sealed partial class Binding
         private HoverKey CallIdentity(BoundCall call)
         {
             var text = FormattableString.Invariant($"call;{call.TypeArguments.Length},{call.LengthArguments.Length},{call.Origins.Length},{call.InputOrigins.Length}");
-            var parts = new HoverKey[5 + call.TypeArguments.Length + call.LengthArguments.Length + call.Origins.Length + call.InputOrigins.Length];
+            var parts = new HoverKey[6 + call.TypeArguments.Length + call.LengthArguments.Length + call.Origins.Length + call.InputOrigins.Length];
             parts[0] = this.TypeIdentity(call.ReturnType);
             parts[1] = this.TypeIdentity(call.DeclaringType);
             parts[2] = this.TypeIdentity(call.ConformingType);
             parts[3] = this.SymbolIdentity(call.RequirementContract);
             parts[4] = this.TypeIdentity(call.RequirementContract?.Type);
-            var index = 5;
+            parts[5] = this.VirtualIdentity(call.VirtualDispatch);
+            var index = 6;
             foreach (var type in call.TypeArguments)
             {
                 parts[index++] = this.TypeIdentity(type);

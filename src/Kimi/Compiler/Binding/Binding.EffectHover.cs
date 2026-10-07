@@ -32,8 +32,13 @@ public sealed partial class Binding
             {
                 var original = call.Target.Declaration is FunctionKoto specialized && binding.GetSpecializationOriginal(specialized) is { } originalFunction
                     ? originalFunction : call.Target.Declaration;
-                info = new([this.Declaration(original)], this.CallUse(call), TypeIdentity: this.CallIdentity(call));
-                if (original is FunctionKoto { IsRequirement: true } requirement)
+                info = new([this.Declaration(original)], this.CallUse(call, syntax), TypeIdentity: this.CallIdentity(call));
+                if (call.VirtualDispatch is not null && binding.TryGetObjectErasure(syntax, out var erasure))
+                {
+                    info = info with { TypeIdentity = new("erased receiver", [info.TypeIdentity!, this.TypeIdentity(erasure.Source), this.TypeIdentity(erasure.Target), this.BinderIdentity(erasure.Entry)]) };
+                }
+
+                if (original is FunctionKoto requirement && (requirement.IsRequirement || requirement.IsVirtual))
                 {
                     evidence = [];
                     text = new();
@@ -45,9 +50,22 @@ public sealed partial class Binding
                     }
 
                     text.Append("Call: ").AppendLine(CallSpelling(syntax));
-                    text.Append("Requirement: ").Append(Owner(requirement)).Append('.').AppendLine(requirement.Name);
+                    text.Append(requirement.IsVirtual ? "Public slot: " : "Requirement: ").Append(Owner(requirement)).Append('.').AppendLine(requirement.Name);
                     WriteBounds(text, available);
                 }
+            }
+            else if (syntax.BoundValueCall is { ReceiverType: { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType } virtualItem)
+            {
+                info = new(
+                    [this.Declaration(originalSlot)],
+                    "Result: " + this.TypeName(virtualItem.ReturnType) + "\n" + this.VirtualItemDetails(itemType, originalSlot),
+                    TypeIdentity: new("virtual Item call", [this.TypeIdentity(itemType), this.TypeIdentity(virtualItem.Signature)]));
+                evidence = [];
+                text = new();
+                var available = binding.AvailableEffectBounds(originalSlot, null, binding.ConstraintScope(syntax), evidence);
+                text.Append("Call: ").AppendLine(CallSpelling(syntax));
+                text.Append("Public slot: ").AppendLine(Qualified(originalSlot));
+                WriteBounds(text, available);
             }
             else if (syntax.BoundValueCall is { } valueCall)
             {
@@ -110,21 +128,29 @@ public sealed partial class Binding
                 previous = item;
                 var declaring = (Koto?)DeclaringContract(item.Bound) ?? item.Context;
                 text.Append("Declared by: ").AppendLine(Qualified(declaring));
-                text.Append("Premise: ");
-                if (item.Clause is IsKoto clause && item.Premise?.Kind == ConstraintKind.Callable)
+                if (item.Context is FunctionKoto { IsVirtual: true } evidenceSlot)
                 {
-                    text.Append(clause.Left).Append(" is ").Append(clause.Right);
-                }
-                else if (item.Premise is { Subject: { } subject, Contract: { } contract })
-                {
-                    text.Append(this.TypeName(subject)).Append(" is ").Append(contract.Type is { } applied ? this.TypeName(applied) : Qualified(contract.Declaration));
+                    text.Append("Public guarantee: ").Append(Qualified(evidenceSlot)).Append(" effect ").AppendLine(EffectBoundKoto.Spelling(item.Bound.Bound));
                 }
                 else
                 {
-                    text.Append(this.TypeName(item.Conforming!)).Append(" is ").Append(Qualified(item.Contract!.Declaration));
+                    text.Append("Premise: ");
+                    if (item.Clause is IsKoto clause && item.Premise?.Kind == ConstraintKind.Callable)
+                    {
+                        text.Append(clause.Left).Append(" is ").Append(clause.Right);
+                    }
+                    else if (item.Premise is { Subject: { } subject, Contract: { } contract })
+                    {
+                        text.Append(this.TypeName(subject)).Append(" is ").Append(contract.Type is { } applied ? this.TypeName(applied) : Qualified(contract.Declaration));
+                    }
+                    else
+                    {
+                        text.Append(this.TypeName(item.Conforming!)).Append(" is ").Append(Qualified(item.Contract!.Declaration));
+                    }
+
+                    text.Append(" effect ").Append(EffectBoundKoto.Spelling(item.Bound.Bound)).Append(" (in ").Append(Qualified(item.Context)).AppendLine(")");
                 }
 
-                text.Append(" effect ").Append(EffectBoundKoto.Spelling(item.Bound.Bound)).Append(" (in ").Append(Qualified(item.Context)).AppendLine(")");
                 keys.Add(new(
                     "effect;" + item.Bound.Bound,
                     [this.BinderIdentity(item.Bound), this.BinderIdentity(item.Context), this.BinderIdentity(item.Clause),
