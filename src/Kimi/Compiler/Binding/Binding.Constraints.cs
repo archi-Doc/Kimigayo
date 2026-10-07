@@ -755,7 +755,7 @@ public sealed partial class Binding
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null)
     {
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
@@ -779,7 +779,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths, incomplete);
+            var substituted = this.SubstituteConstraint(bound, slotOwner ?? binder, arguments, lengths, incomplete);
             if (declaringType?.Symbol?.Declaration is { } owner)
             {
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
@@ -800,7 +800,7 @@ public sealed partial class Binding
 
     // SPEC 10.5, 8.7: whether a clause that no unbound slot leaves unresolved is Unknown. Such a proof waits on no argument, so it proves
     // neither applicability nor negation even while a waiting argument is still open.
-    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self, BoundType? declaringType, ReadOnlySpan<BoundLength?> lengths)
+    private bool ResolvedClauseUnknown(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self, BoundType? declaringType, ReadOnlySpan<BoundLength?> lengths, Koto? slotOwner = null)
     {
         for (var i = 0; i < clauses.Count; i++)
         {
@@ -809,7 +809,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, binder, arguments, lengths, true);
+            var substituted = this.SubstituteConstraint(bound, slotOwner ?? binder, arguments, lengths, true);
             if (declaringType?.Symbol?.Declaration is { } owner)
             {
                 substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);

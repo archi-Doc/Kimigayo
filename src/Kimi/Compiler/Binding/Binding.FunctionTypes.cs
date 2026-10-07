@@ -553,7 +553,7 @@ public sealed partial class Binding
                 }
             }
 
-            var winner = SelectBest(evaluated.AsSpan(0, count), operations, stride);
+            var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
             if (winner < 0)
             {
                 if (perCall is { } slot)

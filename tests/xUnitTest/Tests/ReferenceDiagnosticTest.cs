@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 9.6.1, 10.5, 23.3.6.1: a container named without its Type arguments is an invalid Type formation with its counts, and a
+// SPEC 9.6.1, 10.5, 23.3.6.1: a container outside constructor inference needs its Type arguments, with counts on invalid formation; a
 // reference form that is not yet implemented is one located Unsupported record, also when a later use reads its binding.
 public class ReferenceDiagnosticTest
 {
@@ -37,8 +37,7 @@ public class ReferenceDiagnosticTest
     private const string RunTail = "let n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 3 else => $abort(\"run\")";
 
     [Theory]
-    [InlineData(Box + "let s = Box.size", "Box", "never inferred", "Box<...>.size")]
-    [InlineData(Box + "let b = Box.init(4)", "Box", "never inferred", "Box<...>.init")]
+    [InlineData(Box + "let s = Box.size", "Box", "only the construction target itself can infer its own slots", "Box<...>.size")]
     [InlineData(Box + "let b: Box = Box<i32>.init(4)", "Box", "declares 1 Type parameter, and 0 Type arguments are written", "one Type argument for each of T")]
     [InlineData(Box + "let b: Box<i32, bool> = Box<i32>.init(4)", "Box<i32, bool>", "declares 1 Type parameter, and 2 Type arguments are written", "one Type argument for each of T")]
     public void AContainerWithoutItsTypeArgumentsCannotFormAType(string source, string text, string note, string advice)
@@ -68,6 +67,12 @@ public class ReferenceDiagnosticTest
             Assert.Equal(record.Display!.Range, sent.Range);
         }
     }
+
+    [Theory]
+    [InlineData("Box.init(4)")]
+    [InlineData("Box<i32>.init(4)")]
+    public void AConstructionTargetCanOmitItsOwnArguments(string expression)
+        => Assert.Empty(DiagnosticCorpus.Check(Box + "let b = " + expression).Diagnostics);
 
     [Theory]
     [InlineData("func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c: (ref/T, ref/T) -> i32 = T.compare\n    return c(a, b)", "T.compare")]

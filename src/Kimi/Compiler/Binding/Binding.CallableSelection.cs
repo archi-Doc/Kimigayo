@@ -133,7 +133,7 @@ public sealed partial class Binding
                     }
                 }
 
-                var selected = SelectBest(evaluated.AsSpan(0, count), operations, stride);
+                var selected = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
                 if (selected >= 0)
                 {
                     return this.BindValueCall(call, scope, candidates[selected].Signature, candidates[selected].Receiver);

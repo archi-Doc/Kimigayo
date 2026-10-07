@@ -672,10 +672,16 @@ public sealed partial class Binding
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
                 scratch.AsSpan(0, CallSlotCount(function)).Clear();
+                if (this.MeasureCallInference)
+                {
+                    this.inferenceMappings++;
+                }
+
                 var argumentMap = MapCallArguments(call, function, this.CallReceiver(generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, mapping, used);
                 var defaultsUsed = argumentMap.DefaultsUsed;
                 ClosureReceiverRefutation? closureReceiver = null;
                 var unsolved = false;
+                var independentRejection = false;
                 // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
                 var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
                 if (accessible)
@@ -687,7 +693,7 @@ public sealed partial class Binding
                     }
 
                     this.activeRequirementContract = requirementGroup?.Contracts[index];
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver, out independentRejection);
                     this.activeRequirementContract = null;
                 }
 
@@ -696,7 +702,7 @@ public sealed partial class Binding
                     declaringType = this.ConstructionType(function, declaringType, scratch) ?? declaringType;
                 }
 
-                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations.AsSpan(index * operationStride, operationStride)));
+                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations.AsSpan(index * operationStride, operationStride)), independentRejection);
                 if (savedCandidates != 0)
                 {
                     mapping.AsSpan(0, argumentCount).CopyTo(allMaps.AsSpan(index * argumentCount));
@@ -830,7 +836,7 @@ public sealed partial class Binding
                     }
                 }
 
-                winnerIndex = comparable ? SelectBest(evaluated.AsSpan(0, count), operations, operationStride) : -1;
+                winnerIndex = comparable ? this.SelectBest(evaluated.AsSpan(0, count), operations, operationStride) : -1;
                 if (winnerIndex < 0)
                 {
                     if (this.DeferNestedCall(call, expected))
@@ -912,7 +918,7 @@ public sealed partial class Binding
                     }
                 }
 
-                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, evaluated[winnerIndex].ArgumentMap, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _);
+                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, evaluated[winnerIndex].ArgumentMap, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _, out _);
                 if (state != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
@@ -949,6 +955,11 @@ public sealed partial class Binding
                 !this.ValidateFixedConstruction(call, scope, expected, selectedType, evaluated.AsSpan(0, count), winnerIndex, allMaps, mapping, scratch, lengthArguments, origins, inputs, allOrigins, allInputs, originSlots, inputSlots, operations, operationStride, completedWaiting, waitingContexts))
             {
                 return Complete(call, null);
+            }
+
+            if (selected.IsConstructor && selectedType is not null && callee is MemberAccessKoto constructedMember && this.inferredConstructorTargets.Contains(constructedMember.Left))
+            {
+                Complete(constructedMember.Left, selectedType);
             }
 
             var result = winner.Type is { } returnType ? this.CallType(returnType, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) : null;
@@ -1205,8 +1216,13 @@ public sealed partial class Binding
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
     // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, bool fixedConstruction = false)
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, bool fixedConstruction = false)
     {
+        if (this.MeasureCallInference)
+        {
+            this.inferenceCandidateChecks++;
+        }
+
         var saved = this.invariantSlots;
         var savedInferenceFunction = this.activeInferenceFunction;
         this.activeInferenceFunction = function;
@@ -1217,7 +1233,7 @@ public sealed partial class Binding
         this.environmentEvidence = false;
         try
         {
-            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver, fixedConstruction);
+            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, fixedConstruction);
             if (result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is { } acquisition)
             {
                 // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling.
@@ -1241,7 +1257,7 @@ public sealed partial class Binding
         }
     }
 
-    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, bool fixedConstruction = false)
+    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, bool fixedConstruction = false)
     {
         var waiting = this.RentSlotSet(call.ArgumentNodes.Count);
         var open = this.RentSlotSet(call.ArgumentNodes.Count);
@@ -1253,7 +1269,8 @@ public sealed partial class Binding
             defaultsUsed = argumentMap.DefaultsUsed;
             closureReceiver = null;
             unsolved = false;
-            if (!argumentMap.Valid || (function.IsConstructor && declaringType is null))
+            independentRejection = false;
+            if (!argumentMap.InputsValid || (function.IsConstructor && declaringType is null))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1370,6 +1387,7 @@ public sealed partial class Binding
                     (type.Kind != BoundTypeKind.Function || KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is not FunctionKoto { IsAnonymous: true }) &&
                     !InferInput(type, actual, call.ArgumentNodes[i]))
                 {
+                    independentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
                     // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
                     // applies; a successful overload selection publishes no repair advice from rejected alternatives.
                     if (DifferentRangeShapes(actual, type))
@@ -1397,6 +1415,13 @@ public sealed partial class Binding
             }
 
             if (!InferCallableSignatures(operations))
+            {
+                return CandidateApplicability.Inapplicable;
+            }
+
+            // Supplied inputs have an independent mapping even when a required input is absent.
+            // Preserve their known signature-refusal facts before rejecting the incomplete call.
+            if (!argumentMap.Valid)
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1522,7 +1547,7 @@ public sealed partial class Binding
                         // Default only otherwise unconstrained literals; all established inputs were processed above.
                         if (this.LiteralDefault(argument) is not { } literalDefault)
                         {
-                            if (argument.BoundType is null && !IsUnfittedLiteral(argument) && MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                            if (!IsUnfittedLiteral(argument) && MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
@@ -1549,6 +1574,14 @@ public sealed partial class Binding
                         type = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
                         if (type is null)
                         {
+                            if (MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                            {
+                                // Literal defaults cannot invert a projection or an unresolved selector.
+                                open.Add(i);
+                                operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                continue;
+                            }
+
                             return CandidateApplicability.Pending;
                         }
                     }
@@ -1782,7 +1815,7 @@ public sealed partial class Binding
             }
 
             if (waitingCallables && proof == ConstraintProof.Unknown &&
-                this.ResolvedClauseUnknown(function.TypeConstraints, function, arguments.AsSpan(0, CallOwnSlots(function).Count), scope, self, declaringType, lengths.AsSpan(0, CallOwnSlots(function).Count)))
+                this.ResolvedClauseUnknown(function.TypeConstraints, function, arguments.AsSpan(0, CallSlotCount(function)), scope, self, function.IsConstructor ? null : declaringType, lengths.AsSpan(0, CallOwnSlots(function).Count), slotOwner: CallSlotOwner(function)))
             {
                 // SPEC 10.5, 8.7: a Constraint that no waiting argument leaves open, such as a Callable clause on an F that an independent
                 // argument binds, waits on nothing; Unknown proves neither applicability nor negation, so another candidate is never
@@ -2064,14 +2097,17 @@ public sealed partial class Binding
             // SPEC 10.8: the Constraints and premises whose judgment needs an unsolved slot are not judged.
             ConstraintProof ProveCandidate(ReadOnlySpan<BoundType?> slots, bool incomplete, SlotSet unbound = default)
             {
-                var checkedOwner = function.IsConstructor && declaringType is not null ? this.ConstructionType(function, declaringType, arguments) : declaringType;
-                var proof = this.CheckConstraints(function.TypeConstraints, function, slots, scope, self, checkedOwner ?? declaringType, lengths, incomplete: incomplete || !unbound.IsEmpty, skipUnresolved: !unbound.IsEmpty);
+                var proof = this.CheckConstraints(function.TypeConstraints, function, function.IsConstructor ? arguments.AsSpan(0, CallSlotCount(function)) : slots, scope, self, function.IsConstructor ? null : declaringType, lengths, incomplete: incomplete || !unbound.IsEmpty, skipUnresolved: !unbound.IsEmpty, slotOwner: CallSlotOwner(function));
                 if (declaringType is not null)
                 {
                     var closedOwner = function.IsConstructor ? this.ConstructionType(function, declaringType, arguments) : declaringType;
                     if (closedOwner is not null)
                     {
                         proof = CombineProof(proof, this.CheckTypeConstraints(closedOwner, scope), true);
+                    }
+                    else if (function.IsConstructor && CallSlotOwner(function) is StructKoto owner)
+                    {
+                        proof = CombineProof(proof, this.CheckConstraints(owner.ConstraintNodes, owner, arguments.AsSpan(0, CallSlotCount(function)), scope, incomplete: true, skipUnresolved: !unbound.IsEmpty), true);
                     }
                 }
 

@@ -9,6 +9,8 @@ namespace XunitTest;
 public class CallArgumentMappingTest
 {
     [Theory]
+    [InlineData("", false, 3, new int[0])]
+    [InlineData("b: 2", false, 2, new[] { 1 })]
     [InlineData("1", true, 2, new[] { 0 })]
     [InlineData("c: 3, a: 1", true, 1, new[] { 2, 0 })]
     [InlineData("missing: 4, c: 3, a: 1", false, 1, new[] { -1, 2, 0 })]
@@ -21,6 +23,7 @@ public class CallArgumentMappingTest
         var map = new int[expected.Length];
         var used = new bool[3];
         var result = Binding.MapCallArguments(call, function, false, map, used);
+        Assert.Equal(expected.All(x => x >= 0), result.InputsValid);
         Assert.Equal(valid, result.Valid);
         Assert.Equal(defaults, result.DefaultsUsed);
         Assert.Equal(expected, map);

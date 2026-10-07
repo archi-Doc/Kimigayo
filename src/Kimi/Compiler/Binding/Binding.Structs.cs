@@ -206,7 +206,7 @@ public sealed partial class Binding
         if (node.Parent is InvocationKoto { Parent: FunctionKoto { IsConstructor: true } constructor } call &&
             ReferenceEquals(call.Method, node) && ReferenceEquals(constructor.BaseInitializer, call))
         {
-            var parent = this.StoredBase(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!.Type!);
+            var parent = this.StoredBase(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
             if (parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var initializer))
             {
                 return this.BindReference(node, initializer, scope);
@@ -220,7 +220,7 @@ public sealed partial class Binding
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
-            ? this.StoredBase(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!.Type!)!
+            ? this.StoredBase(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!))!
             : ((MemberAccessKoto)call.Method).Left.BoundType!;
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)

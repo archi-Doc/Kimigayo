@@ -441,6 +441,9 @@ Inference can provisionally choose the first constructor at `T = i32`, while the
 
 This extra equivalence guarantee applies to constructors. Explicit function Type arguments retain their existing effect on the candidate set. No partial lists, placeholders, default Type arguments, structure length parameters, constructor-own generic parameters or new anonymous-Type spelling are introduced.
 
+The [complete example](../examples/ConstructorInference/README.md) demonstrates input and expected-result inference,
+borrow dependencies, a concrete Closure, evaluation order and cleanup.
+
 ## 10.9. Inference and operation design boundaries
 
 The following are not specified in this revision, and implementations must not invent them through broader search:

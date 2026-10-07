@@ -115,6 +115,7 @@ public class ConstructorTypeInferenceTest
     [InlineData("let values = [1, 2]\nlet a = Box.init(values@move)")]
     [InlineData("let a: Box<[2 of i32]> = Box.init([1, 2])")]
     [InlineData("let n: i32 = 42\nlet a = Box.init(n@ref)")]
+    [InlineData("var n: i32 = 42\nlet a = Box.init(n@uniq)")]
     [InlineData("let a = Box.init(Box.init(42))")]
     public void CompositeAndBorrowTypesFollowTheExistingStoragePath(string use)
     {

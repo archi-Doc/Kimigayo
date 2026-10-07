@@ -331,7 +331,7 @@ public sealed partial class Binding
                 this.RequireConstraint(clause, this.ProveConstraint(constraint, this.ConstraintScope(clause)), mode);
             }
 
-            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 &&
+            if (node.BoundType is { Kind: BoundTypeKind.Constructed or BoundTypeKind.Dictionary, Symbol.Declaration: DeclarationContainerKoto container } type && container.ConstraintNodes.Count != 0 && !this.inferredConstructorTargets.Contains(node) &&
                 (type.Kind != BoundTypeKind.Dictionary || type.Components.Count != 0))
             {
                 var scope = this.ConstraintScope(node);

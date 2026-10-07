@@ -1,0 +1,38 @@
+struct Box<T>
+    public let value: T
+
+    public init(value: T)
+        self.value = value@move
+
+struct Empty<T>
+
+struct Token
+    let id: i32
+
+    public init(id: i32)
+        self.id = id
+        Console.writeLine("create \(id)")
+
+    drop => Console.writeLine("drop \(self.id)")
+
+struct Pair<T>
+    let first: T
+    let second: T
+
+    public init(first: T, second: T)
+        self.first = first@move
+        self.second = second@move
+
+public func main()
+    let n: i32 = 42
+    let number = Box.init(n)
+    let borrow = Box.init(n@ref)
+    let callback = Box.init(func (value: i32) => value + 1)
+    let empty: Empty<i32> = Empty.init()
+    require number.value == 42 else => $abort("number")
+    require borrow.value@follow == 42 else => $abort("borrow")
+    require callback.value(41) == 42 else => $abort("callback")
+    Console.writeLine("inference ok")
+
+    // Arguments run in source order; remaining fields are destroyed in reverse order.
+    let pair = Pair.init(Token.init(1), Token.init(2))

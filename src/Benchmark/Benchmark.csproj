@@ -29,6 +29,7 @@
     <ProjectReference Include="..\Kimi\Kimi.csproj" />
     <Compile Include="..\..\tests\Workloads\VerificationWorkloads.cs" Link="Workloads\VerificationWorkloads.cs" />
     <Compile Include="..\..\tests\Workloads\HoverWorkloads.cs" Link="Workloads\HoverWorkloads.cs" />
+    <Compile Include="..\..\tests\Workloads\ConstructorInferenceWorkloads.cs" Link="Workloads\ConstructorInferenceWorkloads.cs" />
   </ItemGroup>
 
 </Project>

@@ -17,25 +17,35 @@ public sealed partial class Binding
         Error,
     }
 
-    private static int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
-        => StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride));
+    private int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+        => StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this));
 
     private readonly ref struct CandidateOrder : IStrictCandidateOrder
     {
         private readonly ReadOnlySpan<EvaluatedCandidate> candidates;
         private readonly BoundArgumentOperation[] operations;
         private readonly int stride;
+        private readonly Binding binding;
 
-        internal CandidateOrder(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+        internal CandidateOrder(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, Binding binding)
         {
             this.candidates = candidates;
             this.operations = operations;
             this.stride = stride;
+            this.binding = binding;
         }
 
         public bool IsEligible(int candidate) => this.candidates[candidate].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
 
-        public bool Better(int left, int right) => BetterCandidate(this.candidates[left], this.candidates[right], this.operations.AsSpan(left * this.stride, this.stride - 1), this.operations.AsSpan(right * this.stride, this.stride - 1));
+        public bool Better(int left, int right)
+        {
+            if (this.binding.MeasureCallInference)
+            {
+                this.binding.inferenceComparisons++;
+            }
+
+            return BetterCandidate(this.candidates[left], this.candidates[right], this.operations.AsSpan(left * this.stride, this.stride - 1), this.operations.AsSpan(right * this.stride, this.stride - 1));
+        }
     }
 
     // SPEC 10.4: this pure comparison reads explicit source arguments only; receiver acquisition is common to the group.
@@ -203,7 +213,7 @@ public sealed partial class Binding
 
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false);
+    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false);
 
     // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);

@@ -325,6 +325,7 @@ public sealed partial class Binding
     // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
     private void ResetPass(BindingMode mode)
     {
+        this.ResetInferenceMetrics();
         this.inferredConstructorTargets.Clear();
         this.callInferenceFailures?.Clear();
         this.storageVersion++;

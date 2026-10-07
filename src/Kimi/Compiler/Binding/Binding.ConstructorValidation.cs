@@ -12,6 +12,26 @@ public sealed partial class Binding
     // Test/measurement switch for the full reference path. It never changes language behavior.
     internal bool UseConstructorReferenceCheck { get; set; }
 
+    // A failed typed-input obligation with no slot, projection, length or Origin premise is
+    // independent of inference mode. Other rejections must be revisited, even after a partial fit.
+    private static bool IndependentInputPattern(BoundType type)
+    {
+        if (type.CarriesOrigin || type.LengthExpression is not null || type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (!IndependentInputPattern(type.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private static bool StableConstructionPremises(CandidateApplicability state, bool unsolved, BoundType? construction, ReadOnlySpan<BoundArgumentOperation> operations)
     {
         if (state != CandidateApplicability.Applicable || unsolved || construction is null || construction.CarriesOrigin)
@@ -83,14 +103,24 @@ public sealed partial class Binding
                 var function = (FunctionKoto)previous.Symbol!.Declaration;
                 var candidateOperations = checkedOperations.AsSpan(i * stride, stride);
                 candidateOperations.Clear();
-                if (!previous.ArgumentMap.Valid || !previous.Accessible)
+                if (!previous.ArgumentMap.Valid || !previous.Accessible || (!this.UseConstructorReferenceCheck && previous.IndependentRejection))
                 {
+                    if (this.MeasureCallInference)
+                    {
+                        this.inferenceFixedReuses++;
+                    }
+
                     checkedCandidates[i] = previous with { State = CandidateApplicability.Inapplicable };
                     continue;
                 }
 
                 if (!this.UseConstructorReferenceCheck && previous.StableConstruction && ReferenceEquals(previous.DeclaringType, construction))
                 {
+                    if (this.MeasureCallInference)
+                    {
+                        this.inferenceFixedReuses++;
+                    }
+
                     checkedCandidates[i] = previous;
                     operations.AsSpan(i * stride, stride).CopyTo(candidateOperations);
                     continue;
@@ -101,7 +131,12 @@ public sealed partial class Binding
                     allMaps.AsSpan(i * argumentCount, argumentCount).CopyTo(mapping);
                 }
 
-                var state = this.TryCandidate(call, function, null, scope, arguments, lengths, [], mapping, previous.ArgumentMap, expected, null, origins, inputs, construction, candidateOperations, out var defaults, out var unbound, out var receiver, fixedConstruction: true);
+                if (this.MeasureCallInference)
+                {
+                    this.inferenceFixedChecks++;
+                }
+
+                var state = this.TryCandidate(call, function, null, scope, arguments, lengths, [], mapping, previous.ArgumentMap, expected, null, origins, inputs, construction, candidateOperations, out var defaults, out var unbound, out var receiver, out _, fixedConstruction: true);
                 checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap);
                 if (state is CandidateApplicability.Pending or CandidateApplicability.Error || unbound)
                 {
@@ -140,7 +175,7 @@ public sealed partial class Binding
                 }
             }
 
-            var winner = SelectBest(checkedCandidates.AsSpan(0, count), checkedOperations, stride);
+            var winner = this.SelectBest(checkedCandidates.AsSpan(0, count), checkedOperations, stride);
             if (winner != selected)
             {
                 var other = winner;

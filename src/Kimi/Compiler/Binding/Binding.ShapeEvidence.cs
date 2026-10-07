@@ -311,6 +311,11 @@ public sealed partial class Binding
 
                     for (var d = 0; d < contract.Count; d++)
                     {
+                        if (this.MeasureCallInference)
+                        {
+                            this.inferenceCorrelations++;
+                        }
+
                         var slot = this.shapeDependencies[contract.Start + d];
                         var a = (left * slotStride) + slot;
                         var b = (c * slotStride) + slot;

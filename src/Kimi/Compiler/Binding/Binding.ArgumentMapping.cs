@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    internal readonly record struct CallArgumentMap(bool Valid, int DefaultsUsed);
+    internal readonly record struct CallArgumentMap(bool InputsValid, bool Valid, int DefaultsUsed);
 
     // Mapping depends only on syntax and the declaration, never on inferred Types. Keep every
     // independently mappable position even after a bad label; group contracts use those facts too.
@@ -36,6 +36,7 @@ public sealed partial class Binding
             valid &= mapped;
         }
 
+        var inputsValid = valid;
         var defaults = 0;
         for (var i = 0; i < function.Parameters.Count; i++)
         {
@@ -46,6 +47,6 @@ public sealed partial class Binding
             }
         }
 
-        return new(valid, defaults);
+        return new(inputsValid, valid, defaults);
     }
 }
