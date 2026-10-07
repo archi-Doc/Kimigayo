@@ -667,7 +667,8 @@ public sealed partial class Binding
                 operations.AsSpan(index * operationStride, operationStride).Clear();
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
-                var defaultsUsed = 0;
+                var argumentMap = MapCallArguments(call, function, this.CallReceiver(generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, mapping, used);
+                var defaultsUsed = argumentMap.DefaultsUsed;
                 ClosureReceiverRefutation? closureReceiver = null;
                 var unsolved = 0UL;
                 // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
@@ -676,15 +677,20 @@ public sealed partial class Binding
                     this.BindHeader(candidate);
                     if (function.IsConstructor)
                     {
-                        declaringType = this.ConstructorType(call, function, scope);
+                        declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, mapping) : null;
                     }
 
                     this.activeRequirementContract = requirementGroup?.Contracts[index];
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver);
                     this.activeRequirementContract = null;
                 }
 
-                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver);
+                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap);
+                if (savedCandidates != 0)
+                {
+                    mapping.AsSpan(0, argumentCount).CopyTo(allMaps.AsSpan(index * argumentCount));
+                }
+
                 pending |= state == CandidateApplicability.Pending;
                 failedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? FailedSignaturePart(function) : null;
                 if (state == CandidateApplicability.Pending)
@@ -708,7 +714,6 @@ public sealed partial class Binding
                 {
                     scratch.AsSpan(0, function.GenericArguments.Count).CopyTo(allTypes.AsSpan(index * maxGenerics));
                     lengthArguments.AsSpan(0, function.GenericArguments.Count).CopyTo(allLengths.AsSpan(index * maxGenerics));
-                    mapping.AsSpan(0, argumentCount).CopyTo(allMaps.AsSpan(index * argumentCount));
                     origins.AsSpan(0, originSlots).CopyTo(allOrigins.AsSpan(index * originSlots));
                     inputs.AsSpan(0, inputSlots).CopyTo(allInputs.AsSpan(index * inputSlots));
                 }
@@ -889,7 +894,7 @@ public sealed partial class Binding
                     }
                 }
 
-                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, used, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _);
+                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, evaluated[winnerIndex].ArgumentMap, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _);
                 if (state != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
@@ -1169,7 +1174,7 @@ public sealed partial class Binding
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
     // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ulong unsolved, out ClosureReceiverRefutation? closureReceiver)
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ulong unsolved, out ClosureReceiverRefutation? closureReceiver)
     {
         var saved = this.invariantSlots;
         var savedEnvironment = this.environmentEvidence;
@@ -1179,7 +1184,7 @@ public sealed partial class Binding
         this.environmentEvidence = false;
         try
         {
-            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, used, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver);
+            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver);
             if (result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is { } acquisition)
             {
                 // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling.
@@ -1201,12 +1206,12 @@ public sealed partial class Binding
         }
     }
 
-    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, bool[] used, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ulong unsolved, out ClosureReceiverRefutation? closureReceiver)
+    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out ulong unsolved, out ClosureReceiverRefutation? closureReceiver)
     {
-        defaultsUsed = 0;
+        defaultsUsed = argumentMap.DefaultsUsed;
         closureReceiver = null;
         unsolved = 0;
-        if (function.IsConstructor && declaringType is null)
+        if (!argumentMap.Valid || (function.IsConstructor && declaringType is null))
         {
             return CandidateApplicability.Inapplicable;
         }
@@ -1224,7 +1229,6 @@ public sealed partial class Binding
 
         Array.Clear(arguments, 0, function.GenericArguments.Count);
         Array.Clear(lengths, 0, function.GenericArguments.Count);
-        Array.Clear(used, 0, function.Parameters.Count);
         Array.Clear(origins, 0, function.Origins.Count);
         Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
         OriginInference? originInference = null;
@@ -1275,12 +1279,6 @@ public sealed partial class Binding
             return CandidateApplicability.Inapplicable;
         }
 
-        var positionalLimit = function.MaxPositionalArguments(receiver is not null);
-        if (call.ArgumentNodes.Count > positionalLimit && call.GetArgumentLabel(positionalLimit) is null)
-        {
-            return CandidateApplicability.Inapplicable;
-        }
-
         var receiverSlot = receiver is null ? -1 : function.BoundSymbol!.ReceiverIndex;
         var receiverPath = receiver is not null && (generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) ? selection.Path : null;
         if (receiver is not null)
@@ -1304,12 +1302,8 @@ public sealed partial class Binding
 
                 return CandidateApplicability.Inapplicable;
             }
-
-            used[receiverSlot] = true;
         }
 
-        var next = 0;
-        var named = false;
         var contextualInputs = false;
         var contextualCallables = false;
         var waitingCallables = false;
@@ -1318,12 +1312,7 @@ public sealed partial class Binding
         var openSignatures = 0UL; // Waiting arguments whose fixed expected call signature holds such a slot.
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            if (!function.TryMapArgument(call.GetArgumentLabel(i), ref next, ref named, used, out var slot))
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            mapping[i] = slot;
+            var slot = mapping[i];
             contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]) || IsAggregateArgument(call.ArgumentNodes[i]);
             contextualCallables |= KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(call.ArgumentNodes[i]);
             var type = function.Parameters[slot].Type.BoundType;
@@ -1371,16 +1360,6 @@ public sealed partial class Binding
         if (!InferCallableSignatures(operations))
         {
             return CandidateApplicability.Inapplicable;
-        }
-
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (!used[i] && function.Parameters[i].DefaultValue is null)
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            defaultsUsed += used[i] ? 0 : 1;
         }
 
         if (contextualInputs && !InferAggregateInputs(false))

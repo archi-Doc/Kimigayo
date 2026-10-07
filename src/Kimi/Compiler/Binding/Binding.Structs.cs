@@ -185,7 +185,7 @@ public sealed partial class Binding
         return this.Fail(node, BindingFailure.InvalidTypeFormation);
     }
 
-    private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope)
+    private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping)
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
@@ -198,9 +198,7 @@ public sealed partial class Binding
         }
 
         var origins = this.originScratch.Rent(count);
-        var used = this.flagScratch.Rent(function.Parameters.Count);
         Array.Clear(origins, 0, count);
-        Array.Clear(used, 0, function.Parameters.Count);
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
             origins[i] = type.OriginArguments[i];
@@ -208,15 +206,9 @@ public sealed partial class Binding
 
         try
         {
-            var next = 0;
-            var named = false;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                if (!function.TryMapArgument(call.GetArgumentLabel(i), ref next, ref named, used, out var slot))
-                {
-                    return null;
-                }
-
+                var slot = mapping[i];
                 if (function.Parameters[slot].Type.BoundType is { } pattern && call.ArgumentNodes[i].BoundType is { } actual &&
                     this.AdaptInput(call.ArgumentNodes[i], pattern, actual, scope, null, null, out var adapted, out _, out _))
                 {
@@ -236,7 +228,6 @@ public sealed partial class Binding
         }
         finally
         {
-            this.flagScratch.Return(used);
             this.originScratch.Return(origins, clearArray: true);
         }
     }
