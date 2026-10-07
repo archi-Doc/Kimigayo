@@ -205,8 +205,10 @@ public sealed partial class Binding
     }
 
     private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation)
-        // Until Access Effect verification supplies callee/returned-Loan summaries, no body or signature is evidence.
-        => implementation.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
+        // SPEC 12.4.4.2: a shared receiver grants only read/shared-borrow effects.
+        // Exclusive receivers still require the receiver-preservation fixed point.
+        => implementation.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
+            : ReceiverShape(implementation) == SemanticsKind.Ref ? ConstraintProof.Proven : ConstraintProof.Unknown;
 
     // SPEC 15.6.2: access through a shared reference cannot grant exclusive
     // authority, even to an exclusive reference stored below it.

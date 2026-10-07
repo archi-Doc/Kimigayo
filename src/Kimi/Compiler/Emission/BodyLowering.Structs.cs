@@ -26,8 +26,9 @@ internal sealed partial class BodyLowering
         }
 
         // An instance's receiver is the instantiated declaring Type of its call.
+        // An unused nongeneric constructor still needs complete base storage; no construction call prepared it.
         var type = this.instance is null ? declared : this.instance.DeclaringType;
-        var layout = type is null ? null : this.aggregateLayouts.Get(type);
+        var layout = type is not null && body.Function.CodeContext.Compilation.Binding.PrepareTypeStorage(type) ? this.aggregateLayouts.Get(type) : null;
         if (type is null || layout is null || !function.Abi.ResultSlot)
         {
             return Fail("Special receiver requires concrete structure storage and its dedicated address.", out failure);

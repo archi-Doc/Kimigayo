@@ -55,6 +55,27 @@ internal sealed partial class BodyLowering
 
             var type = body.Places[operation.Place].Type;
             var output = ValueType(body, id)!;
+            if (type.Semantics == SemanticsKind.Ref && output.Semantics == SemanticsKind.Ref &&
+                !ReferenceTypes.StorageMatches(type.Components[0], output.Components[0]) &&
+                operation.Source is InvocationKoto { BoundCall.ReceiverOperation: { Kind: ArgumentOperationKind.BaseBorrow } projectedCall })
+            {
+                var sourceType = SignatureType(this, projectedCall.SourceType);
+                var sourceCore = ReferenceTypes.IsReference(sourceType) ? sourceType!.Components[0] : sourceType;
+                if (projectedCall.ObjectCompatibility != ConstraintProof.Proven || projectedCall.BasePath is null ||
+                    value.Count != 1 ||
+                    !ReferenceTypes.StorageMatches(type.Components[0], sourceCore) ||
+                    !ReferenceTypes.StorageMatches(output.Components[0], SignatureType(this, projectedCall.BasePath.Type)) ||
+                    !ReferenceTypes.StorageMatches(ValueType(body, Input(body, id, 0)), type) ||
+                    (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
+                {
+                    return Fail("Base receiver borrow requires its proven projection and prepared source reference.", out failure);
+                }
+
+                // Each inline base occupies the prefix of its containing layer.
+                function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
+                return true;
+            }
+
             if (operation.Projection >= 0)
             {
                 if (!this.ValidateElementBorrow(body, id, id) || output.Semantics != SemanticsKind.Ref || value.Count != 0 ||

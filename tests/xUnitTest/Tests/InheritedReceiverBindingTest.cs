@@ -95,22 +95,22 @@ public class InheritedReceiverBindingTest
     [InlineData("ref", "ref", ArgumentAdaptation.SameSemanticsReborrow)]
     [InlineData("uniq", "uniq", ArgumentAdaptation.SameSemanticsReborrow)]
     [InlineData("uniq", "ref", ArgumentAdaptation.CrossSemanticsBorrow)]
-    public void ProjectedCallsRetainTheirPlanButRequireEffectProof(string input, string expected, ArgumentAdaptation quality)
+    public void ProjectedCallsProveSharedReceiversAndRetainExclusiveObligations(string input, string expected, ArgumentAdaptation quality)
     {
         var c = CompilationTestHelper.ParseSuccess($"open struct Base<T>\n    public func f(self: {expected}/Self) -> i32 => 1\nopen struct Middle<U>: Base<U>\nstruct D: Middle<i32>\nfunc use(x: {input}/D) -> i32 => x.f()");
-        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(expected == "ref", c.Bind().IsComplete);
         var call = Call(c);
-        Assert.Null(call.BoundCall);
+        Assert.Equal(expected == "ref", call.BoundCall is not null);
         Assert.True(c.Binding.TryGetReceiverOperation(call, out var plan));
         Assert.Equal(ArgumentOperationKind.BaseBorrow, plan.Kind);
         Assert.Equal(quality, plan.Adaptation);
-        Assert.Equal(ConstraintProof.Unknown, plan.ObjectCompatibility);
+        Assert.Equal(expected == "ref" ? ConstraintProof.Proven : ConstraintProof.Unknown, plan.ObjectCompatibility);
         Assert.NotNull(plan.BasePath!.Parent);
         Assert.Equal("Base", plan.BasePath.Type.Symbol!.Name);
         Assert.Equal("i32", plan.BasePath.Type.Components[0].Name);
         Assert.Same(((MemberAccessKoto)call.Method).Left, plan.Source);
         Assert.Same(plan.SourceType!.Origin, plan.ParameterType!.Origin);
-        Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Equal(expected != "ref", c.Binding.Issues.Any(x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnsupportedBinding_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnprovenConstraint_Kd);
         Assert.False(c.Emission.Validate(out _));
     }
@@ -226,17 +226,17 @@ public class InheritedReceiverBindingTest
     }
 
     [Fact]
-    public void InheritedBorrowedWitnessIsUnavailableUntilItsEffectsAreProven()
+    public void InheritedSharedWitnessHasAProvenReceiverContract()
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f(self: ref/Self) -> i32\nopen struct Base\n    public func f(self: ref/Self) -> i32 => 1\nstruct D: Base\n    Self is C");
-        Assert.False(c.Bind().IsComplete);
+        Assert.True(c.Bind().IsComplete, Describe(c));
         var path = Path(c, "D", "C");
         var witness = Assert.Single(path.Witnesses);
-        Assert.False(path.IsVerified);
-        Assert.Null(path.GetImplementation(witness.Requirement));
+        Assert.True(path.IsVerified);
+        Assert.NotNull(path.GetImplementation(witness.Requirement));
         Assert.Equal("D", witness.Function!.RequirementReceiver!.Components[0].Name);
         Assert.Equal("Base", witness.Function.ImplementationReceiver!.Components[0].Name);
-        Assert.Equal(ConstraintProof.Unknown, witness.Function.ObjectCompatibility);
+        Assert.Equal(ConstraintProof.Proven, witness.Function.ObjectCompatibility);
     }
 
     [Theory]
