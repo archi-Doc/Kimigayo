@@ -55,7 +55,7 @@ Conversion Type arguments follow the same adjacent-`<` and matching-`>` rule as 
 | Operator | Operand and result |
 | --- | --- |
 | `+value` | Numeric value; unchanged Type and value. |
-| `-value` | Negated signed integer, wrapping integer or floating-point value. |
+| `-value` | Built-in numeric negation below, or the result of the terminal Type's [Negatable requirement](arithmetic-contracts.md). |
 | `not value` | Negated `bool`. |
 | `*pointer` | Raw-pointer Place under the [unsafe dereference rules](05-raw-pointers-and-unsafe-memory.md#52-dereference-and-ownership). |
 | `^value` | The from-end position `FromEnd<T>` storing `value` of any `T is PrimitiveInteger`, unchecked until resolution (§4.6.2). |
@@ -74,7 +74,9 @@ let after = ++count   // after = 3, count = 3
 
 ## 13.3. Arithmetic, bitwise, and shift operators
 
-`+`, `-`, `*` and `/` take operands of the same numeric Type and return that Type; `%` accepts integers only. Integer division truncates toward zero. On mathematical integers the remainder satisfies `a = (a / b) * b + a % b`, and a nonzero remainder has the dividend's sign.
+Binary `+`, `-`, `*`, `/`, `%` and unary `-` select either the built-in operation or a standard [arithmetic Contract](arithmetic-contracts.md), which defines provider direction, associated Output, inference, shared acquisition and function-value use. A user arithmetic operation need not return its operand Type. Bitwise, shift and increment/decrement operators have no user extension.
+
+For built-in numeric operands, `+`, `-`, `*` and `/` require the same numeric Type and return it; `%` accepts integer and wrapping integer Types only. Integer division truncates toward zero. On mathematical integers the remainder satisfies `a = (a / b) * b + a % b`, and a nonzero remainder has the dividend's sign.
 
 ```kimi
 let quotient = -7 / 3       // -2
@@ -105,7 +107,7 @@ func lowestBit(value: u32) -> u32
 
 Floating-point operations follow IEEE 754 for `f32`/`f64`, rounding to nearest with ties to even. They support infinities, NaN and signed zero, and floating-point division by zero does not use the integer failure rules. Ordinary operations are not implicitly reassociated or fused when rounding or NaN results would change.
 
-**Strings.** `string` has no arithmetic, bitwise or shift operator, and there is no concatenation operator. An interpolated literal is the one form that joins strings: it produces an owning `string` and borrows the values it embeds ([interpolation formatting](12-expressions.md#1233-interpolation-formatting)). Text built in steps is written to a `Text.HeapBuffer` through `Utf8Writer` or `$tryWrite` and converted once with `intoString` ([formatting profile](utf8-formatting.md#2-text-operations)). `+` or `+=` with a `string` operand, directly or through safe reference layers, is rejected by the numeric-operand rule above; the diagnostic names the interpolated literal that joins the same operands in the same order, or for `+=` the replacement assignment of §13.7.1.
+**Strings.** `string` has no arithmetic, bitwise or shift operator, and there is no concatenation operator. An interpolated literal is the one form that joins strings: it produces an owning `string` and borrows the values it embeds ([interpolation formatting](12-expressions.md#1233-interpolation-formatting)). Text built in steps is written to a `Text.HeapBuffer` through `Utf8Writer` or `$tryWrite` and converted once with `intoString` ([formatting profile](utf8-formatting.md#2-text-operations)). `+` or `+=` with a `string` operand, directly or through safe reference layers, is prohibited even as a counterpart of a user arithmetic provider; the diagnostic names the interpolated literal that joins the same operands in the same order, or for `+=` the replacement assignment of §13.7.1.
 
 ```kimi
 let first = "Hello, "
@@ -113,7 +115,7 @@ let second = "world"
 let joined = "\(first)\(second)" // An owning string; first and second are borrowed.
 var log = "start"
 log = "\(log)!"                   // Replaces log with a new string.
-// let bad = first + second       // Error: + requires numeric operands; strings are joined by interpolation.
+// let bad = first + second       // Error: strings are joined by interpolation.
 ```
 
 Raw-pointer arithmetic is limited to the forms and unsafe conditions of [pointer arithmetic](05-raw-pointers-and-unsafe-memory.md#53-pointer-arithmetic-and-indexing); its undefined-behavior rules are distinct from checked integer arithmetic.
@@ -186,7 +188,7 @@ Beyond the built-in cases above, comparing two operands of the same complete use
 | `==`, `!=` | `Equatable.equals` on shared borrows of both operands | The returned `bool`, or its negation |
 | `<`, `<=`, `>`, `>=` | `Comparable.compare` on shared borrows of both operands | The returned `i32` compared with zero |
 
-`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, wrapping integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic Contracts, user operators and user-defined arithmetic remain deferred, so arithmetic on arbitrary user Types is an error. A Type parameter with a proven `PrimitiveInteger` requirement uses the built-in integer operators (§8.4.7.3).
+`Comparable` refines `Equatable`: the sign of `compare` must agree with equality and with a total order. Integers, wrapping integers, `char` and `string` under `owner` Semantics provide both; `bool`, Unit and floats provide Equatable only. Floats have built-in relational operators but no Comparable, because NaN is unordered. Borrow and Tuple Types forward or compose these capabilities and their mappings, separately from the built-in operator semantics. Structs and enums, including payload-free enums, need explicit conformance and members; equality and ordering are never derived. Arithmetic has its own explicit [Contract mapping](arithmetic-contracts.md); comparison conformance alone grants no arithmetic. A Type parameter with a proven `PrimitiveInteger` requirement uses the built-in integer operators (§8.4.7.3).
 
 For `f32`/`f64`, the intrinsic `Equatable.equals` mapping uses the NaN-reflexive equality defined in §12.3.4, whereas a built-in `==` expression still returns false for NaN. Generic comparison through an Equatable requirement uses the mapping, and such a generic call must not be specialized into a floating `==` instruction that changes its meaning.
 
@@ -879,18 +881,18 @@ Reading and writing are selected independently under Chapter 11: standard operat
 
 ```kimi
 values[nextIndex()] += amount() // amount, nextIndex, old value, addition, write.
-// item: Resource has standard get and custom set.
-holder.item += x // Cannot acquire non-Copy item for this update.
-// User-defined Resource arithmetic is itself unavailable (§13.8).
-holder.item = rebuild(holder.item@ref, x)
-// OK if rebuild returns an independent owner and its input Loan ends before set.
+// item: Resource has standard get, custom set and the selected Addable conformance.
+holder.item += x // May borrow Non-Copy item and write an independent result through set.
+// Existing Loans and getter-temporary destruction dependencies must still permit set.
 ```
 
-Compound assignment is not atomic and provides no synchronization. Raw-pointer `+=` and `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden. Any future user-defined operator follows this acquisition and evaluation order.
+Arithmetic compound assignments use the selected binary Contract, never a separate update Contract. Its operation-only Loans end before writeback; a computed getter temporary retains its ordinary lifetime and dependencies. Thus `x += x` is valid when only those operation-only shared Loans stand in the way of writing. A result need only fit the setter input, not equal the old value's Type. See [arithmetic writeback](arithmetic-contracts.md#4-compound-assignment).
+
+Compound assignment is not atomic and provides no synchronization. Raw-pointer `+=` and `-=` use only the permitted displacement operations and their unsafe conditions; other pointer compound assignments are forbidden.
 
 ## 13.8. Extension boundaries and reserved syntax
 
-Operator symbols, precedence and associativity are fixed by the language. User-defined comparison uses the [Kimi Contract mapping](#1341-contract-comparison-mapping). User-defined arithmetic remains deferred and unavailable, and a same-named method does not authorize an operator. Future arithmetic must preserve evaluation order and counts and assignment's Unit result.
+Operator symbols, precedence and associativity are fixed by the language. User-defined comparison uses the [comparison mapping](#1341-contract-comparison-mapping); user-defined arithmetic uses the [arithmetic Contracts](arithmetic-contracts.md). A same-named method alone authorizes neither. Unary `+`, increment/decrement, bitwise and shift operators have no user extension.
 
 `and`, `or`, `not`, `=`, `@`, `is`, Ranges and control transfers cannot be reinterpreted by user code. Custom operator symbols and precedence declarations are not defined, and neither are `!`, `&&`, `||`, `~`, `**`, `??`, `?.` or a ternary `?:`; use the logical keywords and `if`. Unary `&` is not a borrow operation; use `@ref`/`@uniq`. Prefix `move`, a Move accessor and a dedicated `<-` Move operator are not defined; `@move` is the only transfer spelling (§13.5.3). The Type-only T?/T?? suffix (§3.2.3) and prefix try (§17.2.4) are separate. Recognition by the lexer alone does not make a token a usable operator.
 

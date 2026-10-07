@@ -39,6 +39,21 @@ These are compiler identities, not user-implementable replacements.
 
 The floating-point Equatable mapping treats all NaNs as equal and signed zeros as equal. Built-in floating-point `==` retains its IEEE behavior; floats do not conform to Comparable.
 
+### 1.2.1. Arithmetic
+
+[Specification: arithmetic Contracts](spec/arithmetic-contracts.md). Every Contract declares `associate Output`. Ordinary binary requirements take `(self: ref/Self, right: ref/Rhs) -> Self.Output`; Left requirements take `(left: ref/Lhs, self: ref/Self) -> Self.Output` and compute `left op self`.
+
+| Ordinary Contract / member | Numeric-left Contract / member | Operation |
+| --- | --- | --- |
+| `Addable<Rhs>` / `added` | `LeftAddable<Lhs>` / `addedFrom` | `+` |
+| `Subtractable<Rhs>` / `subtracted` | `LeftSubtractable<Lhs>` / `subtractedFrom` | `-` |
+| `Multipliable<Rhs>` / `multiplied` | `LeftMultipliable<Lhs>` / `multipliedFrom` | `*` |
+| `Dividable<Rhs>` / `divided` | `LeftDividable<Lhs>` / `dividedFrom` | `/` |
+| `RemainderProvider<Rhs>` / `remainder` | `LeftRemainderProvider<Lhs>` / `remainderFrom` | `%` |
+| `Negatable` / `negated(self: ref/Self) -> Self.Output` | — | Unary `-` |
+
+Inputs are shared without requiring Copy; Output may differ from Self or retain existing external dependencies. Conformance alone promises neither algebraic laws nor particular effects or failure behavior. Provider eligibility, built-in numeric conformances and requirement function-value compatibility are defined in the linked specification. No named members are added to numeric Types.
+
 ### 1.3. Option and Result
 
 [Specification: required declarations](spec/22-core-execution-and-foreign-functions.md#221-required-kimi-declarations) and [try propagation](spec/17-failure-handling.md#1724-try-propagation).

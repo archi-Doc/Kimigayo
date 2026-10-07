@@ -50,7 +50,7 @@
   ```kimi
   let first = "Hello, "
   let second = "world"
-  let s1 = first + second       // Error: + requires numeric operands
+  let s1 = first + second       // Error: string arithmetic is prohibited
   let s2 = "\(first)\(second)"  // Owning string; first and second are borrowed
   ```
 

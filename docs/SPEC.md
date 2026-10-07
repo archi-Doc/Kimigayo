@@ -8,7 +8,7 @@ This is the index of the Kimigayo language specification; the chapter files unde
 
 | Part | Status |
 | --- | --- |
-| Chapters 1–19, 22 and 24, the [Documentation Markdown profile](spec/documentation-markdown.md), the [UTF-8 formatting profile](spec/utf8-formatting.md) and the [virtual dispatch detail](spec/virtual-dispatch.md) | Normative language rules. |
+| Chapters 1–19, 22 and 24, the [Documentation Markdown profile](spec/documentation-markdown.md), the [UTF-8 formatting profile](spec/utf8-formatting.md), [arithmetic Contracts](spec/arithmetic-contracts.md) and the [virtual dispatch detail](spec/virtual-dispatch.md) | Normative language rules. |
 | Chapter 23 | Normative contracts of the compiler services (check foundation, Language Server Protocol, Compiler Server Protocol). They govern tools and never change language validity. |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
 | Appendix D | Index of deferred designs and boundaries; the owning sections remain authoritative. |
@@ -44,6 +44,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 
 - [12. Expressions](spec/12-expressions.md)
 - [13. Operators and assignment](spec/13-operators-and-assignment.md)
+  - [Arithmetic Contracts](spec/arithmetic-contracts.md): ordinary and numeric-left providers, associated Output, shared acquisition, requirement function values and compound writeback.
   - [Pair layers](spec/13-operators-and-assignment.md#pair-layers): a pair `s/T` or `s/U` whose admitted set lies in `value or valueborrow` is a safe value-reference layer that may or may not exist; `@follow` selects its direct target, and every operation applies the rule of each admitted Semantics, taking the weakest capability and mode and keeping each case's dependencies conditionally.
   - [Integer results](spec/13-operators-and-assignment.md#133-arithmetic-bitwise-and-shift-operators) and [wrapping integers](spec/03-types-and-values.md#3111-wrapping-integer-types): one rule computes the mathematical result; an integer Type Aborts on an unrepresentable result, `Wrapping<T>` wraps, and undefined inputs Abort for both. [Numeric, wrapping and bit conversions](spec/13-operators-and-assignment.md#1354-numeric-conversions-and-literals): `@Type` never wraps, `@wrap<U>` wraps, `@bits<U>` reinterprets bits, and direct literals convert once from their exact value.
 - [14. Control flow](spec/14-control-flow.md)

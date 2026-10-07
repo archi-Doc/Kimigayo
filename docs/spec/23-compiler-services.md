@@ -429,6 +429,8 @@ The check foundation (§23.3) is the CSP's base: the check entry, check units wi
 
 ### 23.5.3. Requirements
 
+Arithmetic inspection retains the selected operator/Contract, provider, mapping, Output, acquisition and writeback facts defined in [arithmetic Contracts §6](arithmetic-contracts.md#6-diagnostics-and-retained-meaning). Adapters use the source-associated facts rather than resolving again for presentation.
+
 When the CSP is introduced, it must:
 
 - identify every source snapshot by durable content identity, so that edits, results and evidence name exactly the inputs they rest on;

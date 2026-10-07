@@ -291,6 +291,8 @@ Alias targets follow [§18.1](../18-modules-and-dependencies.md#181-external-ref
 
 ## F.4. Expression grammar
 
+[Arithmetic Contracts](../arithmetic-contracts.md) reuse existing unary/binary and compound-assignment syntax; they add no operator tokens or precedence forms. Literal-only inference categories are defined in [§12.3.1](../12-expressions.md#1231-type-inference), independently of this grammar.
+
 [Primary forms](../12-expressions.md#1232-names-literals-and-grouping), [calls](../12-expressions.md#1242-invocation-and-generic-application), [precedence](../13-operators-and-assignment.md#131-precedence-and-associativity), [runtime type tests](../13-operators-and-assignment.md#1361-runtime-is-tests), [explicit operations](../13-operators-and-assignment.md#135-explicit-operations), [assignment](../13-operators-and-assignment.md#137-assignment).
 
 ```ebnf

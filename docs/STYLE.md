@@ -165,6 +165,8 @@ declares; the restatement is valid but adds nothing.
 
 ### 3.4. Integer arithmetic and conversions
 
+[Kimi] Arithmetic implementations use the canonical requirement names (`added`, `subtracted`, `multiplied`, `divided`, `remainder`, their `From` forms, and `negated`) and declare each associated Output. Document domain, rounding and failure guarantees; do not imply algebraic laws, Copy or allocation-free behavior from conformance alone. Use named mutation methods when callers need explicit buffer reuse. See [arithmetic Contracts](spec/arithmetic-contracts.md).
+
 - `[Kimi]` Make a wrapping integer Type visible on the line that introduces it: a Type annotation,
   `@Wrapping<…>` or `@wrap<Wrapping<…>>`. Inference alone hides whether a line wraps or checks
   ([SPEC §3.1.1.1](spec/03-types-and-values.md#3111-wrapping-integer-types)).

@@ -232,7 +232,7 @@ Failures in required compile-time evaluation are compile-time errors. This adds 
 
 Language-defined static checks, including literal fitting and the exact Dictionary duplicate-key subset of §12.3.4, apply independently of optimization. Outside required constant-evaluation contexts, knowledge obtained only by constant propagation or folding must not turn a specified runtime Abort into a compile-time error, even when the failing value is statically known.
 
-These rules are independent of implementation mechanisms such as a `trap` instruction. APIs that return failures as values use the contracts above. Arithmetic that wraps instead of Aborting is selected by the wrapping integer Types ([§3.1.1.1](03-types-and-values.md#3111-wrapping-integer-types)) and the wrapping conversion `@wrap` (§13.5.4.3), never by a build setting or an enclosing context; saturating arithmetic is not defined.
+These rules are independent of implementation mechanisms such as a `trap` instruction. APIs that return failures as values use the contracts above. Arithmetic that wraps instead of Aborting is selected by the wrapping integer Types ([§3.1.1.1](03-types-and-values.md#3111-wrapping-integer-types)) and the wrapping conversion `@wrap` (§13.5.4.3), never by a build setting or an enclosing context; there is no built-in saturating mode. A user [arithmetic Contract](arithmetic-contracts.md#3-evaluation-dependencies-and-failure) publishes its own result and failure behavior; Result outputs require explicit `try` to propagate.
 
 ## 17.4. Warnings
 

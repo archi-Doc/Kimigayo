@@ -78,7 +78,7 @@ An abrupt Completion, divergence or Abort prevents evaluation of later operands 
 
 ### 12.3.1. Type inference
 
-Expected Types from declarations, parameters and results propagate into expressions; otherwise Types are inferred from operands. Ordinary numeric operations require the same numeric Type: integer widths, signedness, and integer and floating-point Types do not mix implicitly.
+Expected Types from declarations, parameters and results propagate into expressions; otherwise Types are inferred from operands. Built-in numeric operations require the same numeric Type: integer widths, signedness, and integer and floating-point Types do not mix implicitly.
 
 An untyped integer literal adopts an expected integer Type if its value fits. Without one it defaults to `i32`, and a value outside that range requires an explicit Type. A floating-point literal adopts an expected `f32` or `f64` and otherwise defaults to `f64`. A directly negated integer literal is checked as a signed value, so the minimum of a signed Type is allowed.
 
@@ -94,24 +94,24 @@ let minimum: i8 = -128
 
 There are no implicit conversions between `bool`, `char` and numbers, and conditions require `bool`, not an integer or pointer. Borrowing and reborrowing are separate adaptations (§10.2, §13.5.5).
 
-**Literal-only expressions.** A literal-only expression is a Type-inference classification, not syntax. It is one of:
+**Literal-only expressions.** These are Type-inference classifications, not syntax:
 
-- an untyped integer literal;
-- a parenthesized literal-only expression;
-- a built-in unary `+` or `-`, arithmetic, bitwise or shift operation whose operands are all literal-only;
-- a from-end position `^a` whose operand is literal-only (§4.6.2);
-- a range `a..b`, `a..=b`, `a..`, `..b` or `..=b` whose written boundaries are all literal-only (§4.6.3).
+- **Integer numeric:** an untyped integer literal, parentheses, or built-in unary `+`/`-`, arithmetic, bitwise or shift operations built only from integer numeric literal-only operands. These fit integer and wrapping integer Types.
+- **Floating-point numeric:** an untyped floating-point literal, parentheses, unary `+`/`-`, or binary `+`, `-`, `*`, `/` built only from floating-point numeric literal-only operands. These fit `f32` or `f64`.
+- **Position/range:** from-end `^a` with an integer numeric literal-only operand (§4.6.2), or a range `a..b`, `a..=b`, `a..`, `..b`, `..=b` whose written boundaries are integer numeric or from-end literal-only expressions (§4.6.3). These are not numeric literal-only expressions.
 
-Typed values, explicit `@` operations, calls, and array or Dictionary literals are not literal-only. Every rule that fits an untyped integer literal to a Type applies to a literal-only expression: candidate fitting (§10.2), comparison operands (§13.4), the [value read](03-types-and-values.md#353-value-read), control-flow result Types (§14.9.1), Semantics-preserving adaptation (§10.8) and length evaluation (§4.2). The only exception is numeric conversion: only a direct literal fits its target (§13.5.4), and every other operand is typed independently (§13.5.2), so `(200 + 100)@u8` computes in `i32` before converting.
+Integer and floating-point forms never mix implicitly: `1 + 1.0` is invalid.
+
+Typed values, explicit `@` operations, calls, and array or Dictionary literals are not literal-only. Each numeric class uses the fitting rules of its literal kind; position/range forms fit their boundaries. The rules apply uniformly to candidate fitting (§10.2), comparison operands (§13.4), the [value read](03-types-and-values.md#353-value-read), control-flow result Types (§14.9.1), Semantics-preserving adaptation (§10.8) and length evaluation (§4.2). The only exception is numeric conversion: only a direct literal fits its target (§13.5.4), and every other operand is typed independently (§13.5.2), so `(200 + 100)@u8` computes in `i32` before converting.
 
 A literal-only expression fits a Type as follows:
 
 - **Propagation:** the Type flows to operands under each operator's Type rule: to both operands of arithmetic and bitwise operators, to the operand of a unary operator, to each boundary of a range separately as its `S` or `E` (§4.6.3.1), to the operand of `^` as the `T` of `FromEnd<T>`, and only to the left operand of a shift. A shift count is typed independently (§13.3).
 - **Condition:** every literal fits the Type it receives (a directly attached sign follows §13.5.4), and every operator is defined for that Type. Thus `-(1)` does not fit `u8`, because unary `-` requires a signed integer, but it fits `Wrapping<u8>`, whose unary `-` is defined (§13.3). An integer literal fits a wrapping integer Type exactly when it fits the Type's integer argument.
 - **Class:** fitting a value directly is Literal fitting; when an acquisition such as borrowing a temporary is also needed, that acquisition's class applies (§10.2.1).
-- **Defaults:** applied only after all other evidence and never during candidate comparison: `i32` for an integer, including every range boundary and `^` operand without another source of its Type (§4.6.3.1), and `isize` in length contexts (§4.2).
+- **Defaults:** applied only after all other evidence and never during candidate comparison: `i32` for an integer, including every range boundary and `^` operand without another source of its Type (§4.6.3.1), `f64` for floating-point numeric expressions, and `isize` in length contexts (§4.2).
 
-The classification changes only typing. An ordinary expression evaluates at run time in its fitted Type, and a visible constant does not turn a runtime Abort into a compile-time error: `127 + 1` fitted to `i8` Aborts when executed, and fitted to `Wrapping<i8>` it is `-128`. Constant folding keeps the meaning of each operation in the fitted Type; computing a literal-only expression exactly and wrapping once at the end is not equivalent when `/`, `%`, `>>` or a comparison is involved. Required constant evaluation keeps its own rules, so `[(4 / 0) of u8]` remains a compile-time error. The admitted length forms (§4.2), [ConstantIndexExpression](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) and Literal Patterns (§14.8.1) are not extended.
+Fitting checks each leaf and operator, not the computed value or success of the whole expression; neither selects between candidates. The classification changes only typing. An ordinary expression evaluates at run time in its fitted Type, and a visible constant does not turn a runtime Abort into a compile-time error: `127 + 1` fitted to `i8` Aborts when executed, and fitted to `Wrapping<i8>` it is `-128`. Constant folding keeps the meaning of each operation in the fitted Type; computing a literal-only expression exactly and wrapping once at the end is not equivalent when `/`, `%`, `>>` or a comparison is involved. Required constant evaluation keeps its own rules, so `[(4 / 0) of u8]` remains a compile-time error. Floating-point operations likewise round at every step in their fitted Type, rather than rounding one exact final result. `(1.0 + 1.0)@f32` computes in independently inferred `f64` before conversion. The admitted length forms (§4.2), [ConstantIndexExpression](15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move) and Literal Patterns (§14.8.1) are not extended.
 
 ```kimi
 func choose(value: i32) -> () => ()

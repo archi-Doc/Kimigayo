@@ -592,6 +592,8 @@ The internal call signature keeps task-slot presence, the complete receiver, par
 
 ### 7.6.4. Function references and common-type conversion
 
+The [arithmetic requirement references](arithmetic-contracts.md#12-requirement-function-values), including built-in witnesses, follow these same Function Item, Callable and common Function rules. A selected requirement and its implementation mapping remain attached to the value.
+
 A function reference is resolved under [§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries-and-specialization) and produces its Function Item Type, including its bound generic arguments and Origin contract; different declarations have distinct Types. A Function Item is Copy and Shared-callable, is Owned when its bound arguments satisfy §15.2.3, and keeps its borrowed parameter and result contracts. A runtime method receiver is never bound automatically; receiver arguments are explicit. Unsafe functions and `drop` cannot be acquired as values.
 
 ```kimi

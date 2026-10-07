@@ -15,6 +15,8 @@ Developer notes for the compiler's diagnostics. SPEC [§23.3.3](../spec/23-compi
 
 ## 2. Common rules
 
+Arithmetic selection and declaration failures follow [SPEC arithmetic Contracts §6](../spec/arithmetic-contracts.md#6-diagnostics-and-retained-meaning). Retain selected facts and candidate evidence; a missing user conformance is not a blanket nonnumeric-operand error. Origin, Loan, effects and setter failures keep their existing cause-specific paths.
+
 Each rule replaces a family of special cases. A change that needs an exception to one of them first revisits the rule.
 
 1. **One requirement, one phase.** A requirement is judged by the phase of its owning partition. A later phase that depends on it names it as a prerequisite and never reports it again.
