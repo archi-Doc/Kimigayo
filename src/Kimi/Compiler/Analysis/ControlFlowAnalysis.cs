@@ -820,8 +820,8 @@ public sealed class ControlFlowAnalysis
                     accessor.AccessorKind == PropertyAccessorKind.Set ? ControlFlowType.Unit : getterResult ?? this.types.GetExpectedResultType(accessor),
                     accessor.AccessorKind == PropertyAccessorKind.Get && accessor.ReturnType is null && getterResult is null);
                 return new(true, null);
-            case DeclarationContainerKoto:
-                this.VisitDeclarations(node);
+            case DeclarationContainerKoto container:
+                this.VisitDeclarations(container);
                 return new(true, ControlFlowType.Unit);
             case SyntaxFormKoto { Akind: KotoKind.AssociatedType }:
                 // SPEC 8.4.3: associated-Type parameters and formation Types have no runtime evaluation.
@@ -1240,17 +1240,28 @@ public sealed class ControlFlowAnalysis
         this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Advice = advice, Repairs = repairs });
     }
 
-    private void VisitDeclarations(Koto container)
+    private void VisitDeclarations(DeclarationContainerKoto container)
     {
-        var start = this.childBuffer.Count;
-        container.VisitChildren(this.childCollector);
-        var end = this.childBuffer.Count;
-        for (var i = start; i < end; i++)
+        // Header Types, generic parameters and Constraints have no runtime evaluation. In particular, a base
+        // Type's Origin arguments must not become unresolved value reads. Binding checks these declarations.
+        for (var i = 0; i < container.Members.Count; i++)
         {
-            this.Visit(this.childBuffer[i]);
+            this.Visit(container.Members[i]);
         }
 
-        this.childBuffer.RemoveRange(start, end - start);
+        for (var i = 0; i < container.NestedContainers.Count; i++)
+        {
+            this.Visit(container.NestedContainers[i]);
+        }
+
+        if (container is StructKoto { ImplicitConstructor: { } constructor })
+        {
+            this.Visit(constructor);
+        }
+        else if (container is GroupKoto group && ReferenceEquals(group, group.Kotonoha.RootKoto) && group.Kotonoha.GeneratedFunction is { } startup)
+        {
+            this.Visit(startup);
+        }
     }
 
     private Flow VisitChildSequence(Koto node)

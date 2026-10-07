@@ -195,6 +195,7 @@ public sealed partial class Binding
             conformance.Active = false;
             conformance.IsVerified = false;
             conformance.Checking = false;
+            conformance.RejectedSelfSignature = null;
             conformance.Invalid = false;
             conformance.WitnessStorage.Clear();
             conformance.WitnessMap.Clear();
@@ -597,6 +598,8 @@ public sealed partial class Binding
         if (!result.Active)
         {
             result.Active = true;
+            result.InheritedFrom = null;
+            result.InheritedBase = null;
             result.Use = use;
             result.Declaration = use;
             result.RootContract = root;
@@ -771,7 +774,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < this.activeConformancePaths.Count; i++)
             {
-                if (!this.IsLibraryDeclaration(this.activeConformancePaths[i].Declaration))
+                if (!this.IsLibraryDeclaration(this.activeConformancePaths[i].Type.Declaration))
                 {
                     this.activeConformancePaths[i].IsVerified = false;
                 }
@@ -782,7 +785,7 @@ public sealed partial class Binding
         {
             var conformance = this.activeConformancePaths[i];
             var proof = this.VerifyConformance(conformance);
-            if (final)
+            if (final && conformance.InheritedFrom is null)
             {
                 this.RequireConstraint(conformance.Use, proof, mode);
             }
@@ -794,7 +797,17 @@ public sealed partial class Binding
             {
                 if (identity.PathStorage.Count != 0)
                 {
-                    this.RequireConstraint(identity.PathStorage[0].Use, this.VerifyConformanceAgreement(identity), mode);
+                    var agreement = this.VerifyConformanceAgreement(identity);
+                    var explicitPath = false;
+                    foreach (var path in identity.PathStorage)
+                    {
+                        explicitPath |= path.InheritedFrom is null;
+                    }
+
+                    if (explicitPath || agreement == ConstraintProof.Error)
+                    {
+                        this.RequireConstraint(identity.PathStorage[0].Use, agreement, mode);
+                    }
                 }
             }
 

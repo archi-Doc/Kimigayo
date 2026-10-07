@@ -75,9 +75,6 @@ public class ReferenceDiagnosticTest
         => Assert.Empty(DiagnosticCorpus.Check(Box + "let b = " + expression).Diagnostics);
 
     [Theory]
-    [InlineData("func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c: (ref/T, ref/T) -> i32 = T.compare\n    return c(a, b)", "T.compare")]
-    [InlineData("func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c = T.compare\n    return c(a, b)", "T.compare")]
-    [InlineData("func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c = T.compare\n    return 0", "T.compare")]
     [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet p = Holder.peek\nrequire p(h@ref) == 3 else => $abort(\"p\")", "Holder.peek")]
     public void AnUnimplementedReferenceIsOneLocatedUnsupportedRecord(string source, string text)
     {
@@ -87,6 +84,25 @@ public class ReferenceDiagnosticTest
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
         Assert.Equal(text, error.Text);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ARequirementReferenceCanBeStoredAndCalled(bool called)
+    {
+        var source = "func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c = T.compare\n    return " + (called ? "c(a, b)" : "0") + "\n()";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
+    [Fact]
+    public void ErasingARequirementStillNeedsOwnedSignatureTypes()
+    {
+        const string Source = "func order<T>(a: ref/T, b: ref/T) -> i32\n    T is Comparable\n    let c: (ref/T, ref/T) -> i32 = T.compare\n    return c(a, b)\n()";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
+        Assert.Equal("T.compare", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.Empty(DiagnosticCorpus.Check(Source.Replace("T is Comparable", "T is Comparable and Owned", StringComparison.Ordinal)).Diagnostics);
     }
 
     // SPEC 15.4.4, 9.6.1.1, 23.3.6.1: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no
@@ -410,7 +426,7 @@ public class ReferenceDiagnosticTest
     }
 
     // SPEC 23.3.6.5: the Note keeps the implemented subset whole within the Note limit, and leaves it out rather than cutting it when
-    // the names leave no room; it was cut in the middle ("for a fu…cs neither generic").
+    // the names leave no room; it was cut in the middle ("for a fu窶ｦcs neither generic").
     [Theory]
     [InlineData(View + "let n = 3\nrequire (View<i32>{w3}).twice(n@ref) == 6 else => $abort(\"t\")", "The binding set w3 names View's Origin slot source, but no origin clause relates w3.source, so the call to twice infers it (SPEC 15.4.4); Binding infers it only in a local initializer, from arguments lent at a parameter's own borrow Origin, when neither the called function nor its Type is generic")]
     [InlineData("struct Container {source}\n    public func measure(value: ref/i32 during source) -> i32 => value@follow * 2\nlet n = 3\nrequire (Container{view}).measure(n@ref) == 6 else => $abort(\"m\")", "The binding set view names Container's Origin slot source, but no origin clause relates view.source, so the call to measure infers it (SPEC 15.4.4); Binding infers it only in a local initializer, from arguments lent at a parameter's own borrow Origin, when neither the called function nor its Type is generic")]

@@ -31,6 +31,7 @@
     <Compile Include="..\..\tests\Workloads\HoverWorkloads.cs" Link="Workloads\HoverWorkloads.cs" />
     <Compile Include="..\..\tests\Workloads\ConstructorInferenceWorkloads.cs" Link="Workloads\ConstructorInferenceWorkloads.cs" />
     <Compile Include="..\..\tests\Workloads\AdaptationWorkloads.cs" Link="Workloads\AdaptationWorkloads.cs" />
+    <Compile Include="..\..\tests\Workloads\ArithmeticWorkloads.cs" Link="Workloads\ArithmeticWorkloads.cs" />
   </ItemGroup>
 
 </Project>

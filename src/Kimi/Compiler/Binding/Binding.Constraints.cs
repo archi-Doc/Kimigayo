@@ -47,9 +47,9 @@ public sealed partial class Binding
 
     // Whether a Type depends on a generic input; a Contract's Self counts only with `contractSelf`, since a Contract clause on
     // Self is an obligation of every conformer rather than a closed proposition.
-    private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false)
+    private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false, bool includeOrigins = true)
     {
-        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
+        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (includeOrigins && type.Origin is not null && type.Origin.Kind != OriginKind.Static))
         {
             return true;
         }
@@ -64,7 +64,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (type.OriginArguments[i].Kind != OriginKind.Static)
+            if (includeOrigins && type.OriginArguments[i].Kind != OriginKind.Static)
             {
                 return true;
             }
@@ -72,7 +72,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (DependentType(type.Components[i], unresolvedProjection, contractSelf))
+            if (DependentType(type.Components[i], unresolvedProjection, contractSelf, includeOrigins))
             {
                 return true;
             }
@@ -360,6 +360,7 @@ public sealed partial class Binding
                 this.RegisterConformances();
                 this.BindCopyDeclarations();
                 this.BindConditionalDeclarations(false);
+                this.RegisterInheritedConformances();
             }
         }
 

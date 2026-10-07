@@ -469,6 +469,7 @@ public sealed partial class Binding
         this.PrepareAliases();
         this.PrepareContracts();
         this.BindConstraints();
+        this.RegisterInheritedConformances(complete: true);
         this.BindTypeOriginContracts();
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -708,6 +709,7 @@ public sealed partial class Binding
             var nextConstraint = rejected.Length;
             string? shapeNote = issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? "No candidate is better than every other remaining candidate under the argument, parameter Type, generic and default ranking rules. Anonymous bodies, captures and waiting function references do not select an overload" : null;
             string? advice = null;
+            var referenceHasGenericCandidate = false;
             for (var c = 0; c < rejected.Length; c++)
             {
                 var candidate = rejected[c];
@@ -722,7 +724,8 @@ public sealed partial class Binding
                 {
                     // SPEC 10.5: without a fixed expected call signature, an overload set is not a value.
                     shapeNote = "A function reference without a fixed expected call signature is a value only when exactly one candidate remains and its Type parameters are bound";
-                    advice = candidate.Function.GenericArguments.Count == 0
+                    referenceHasGenericCandidate |= candidate.Function.GenericArguments.Count != 0;
+                    advice = !referenceHasGenericCandidate
                         ? "Annotate the expected Function Type so that one function is referenced"
                         : "Annotate the expected Function Type, or write explicit Type arguments, so that one function is referenced";
                     candidates[c] = ("candidate", candidate.Function, candidate.Actual is { } signature ? $"{label}: callable signature {DiagnosticText.Bound(DiagnosticTypeName(signature), 48).Text}" : label);
@@ -781,6 +784,11 @@ public sealed partial class Binding
                 {
                     var subject = condition.Constraint.Subject is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
                     var conditionNote = $"{candidate.Function.Name} requires {condition.Clause}; this condition is refuted for {subject}";
+                    if (this.InheritedSelfMismatchNote(condition.Constraint) is { } inherited)
+                    {
+                        conditionNote += $". {inherited}";
+                    }
+
                     label = conditionNote;
                     shapeNote ??= conditionNote;
                     advice ??= "Provide arguments that satisfy the declaration's required constraint";

@@ -158,6 +158,12 @@ public sealed class BoundConformancePath
 
     internal BoundConformancePath RootPath { get; set; } = null!;
 
+    internal BoundConformancePath? InheritedFrom { get; set; }
+
+    internal BoundType? InheritedBase { get; set; }
+
+    internal BindingSymbol? RejectedSelfSignature { get; set; }
+
     internal List<BoundWitness> WitnessStorage { get; } = new();
 
     internal Dictionary<BindingSymbol, BoundWitness> WitnessMap { get; } = new(ReferenceEqualityComparer.Instance);

@@ -484,7 +484,7 @@ public class InheritedReceiverBindingTest
     {
         var t = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == type).BoundType!;
         var target = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == contract).BoundSymbol!;
-        return Assert.Single(c.Binding.GetConformanceDefinition(t, target)!.Paths);
+        return Assert.Single(c.Binding.GetConformanceDefinition(t, target)!.Paths, x => x.InheritedFrom is null);
     }
 
     private static InvocationKoto Call(Compilation c) => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());

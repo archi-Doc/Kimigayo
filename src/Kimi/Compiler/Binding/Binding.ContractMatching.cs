@@ -155,6 +155,11 @@ public sealed partial class Binding
 
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
+        if (conformance.InheritedFrom is not null)
+        {
+            return this.VerifyInheritedConformance(conformance);
+        }
+
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || InvalidDeclarationContext(conformance.Contract.Declaration) || InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;

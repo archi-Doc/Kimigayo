@@ -9,10 +9,10 @@ public sealed partial class Binding
     private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessInputs = new();
     private readonly Dictionary<(BoundConformancePath Conformance, BoundAccessor Requirement), BoundOrigin[]> propertyWitnessOrigins = new();
 
-    private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope)
+    private ConstraintProof VerifyPropertyRequirement(BoundConformancePath conformance, BoundProperty requirement, BoundType self, BindingScope scope, MemberSelection? retained = null)
     {
         this.BindHeader(requirement.Symbol);
-        var selection = this.LookupTypeMember(self, requirement.Symbol.Name, scope, self);
+        var selection = retained ?? this.LookupTypeMember(self, requirement.Symbol.Name, scope, self);
         if (selection.Pending)
         {
             return ConstraintProof.Unknown;

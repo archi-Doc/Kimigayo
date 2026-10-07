@@ -1,6 +1,12 @@
 # Arithmetic implementation
 
-Required behavior is in [arithmetic Contracts](../spec/arithmetic-contracts.md), numeric behavior in SPEC §13.3 and literal fitting in §12.3.1. This document records implementation units and verification; it adds no language rules. PLAN G84 owns the work. Integration and implementation completion are separate.
+Required behavior is in [arithmetic Contracts](../spec/arithmetic-contracts.md), numeric behavior in SPEC §13.3 and literal fitting in §12.3.1. This document records implementation units and verification; it adds no language rules. Integration and implementation completion are separate.
+
+## Position
+
+A0–A5 are implemented. Unit, final Session and matched measurement evidence are recorded in [PLAN_HISTORY](PLAN_HISTORY.md). Program 43 has an original-source O0/O2 harness. Shared inline inherited conformances use the original verified mapping, substituted base paths and associated bindings, including conditional/refinement agreement and external Origin results. Rebinding, ownership and emission reuse storage.
+
+The initial native i128/u128 division/remainder limit is unchanged. General requirement-owned generic slots/named per-call Origins (G78), inherited object receiver projection (G83), exclusive OCC and CSP publication remain separate work; arithmetic requirements introduce none of those signatures or receiver modes. Performance conditions and commands are in [Benchmark/Arithmetic](../../src/Benchmark/Arithmetic.md).
 
 ## Units
 

@@ -11,7 +11,8 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         var value = body.Values[id];
-        if (value.Constant < 0 || value.Constant >= body.Sequences.Count || operation.Kind != OwnershipOperationKind.Produce)
+        // Sequence values retain their checked receiver's authority; they do not introduce an independent Loan.
+        if (value.Constant < 0 || value.Constant >= body.Sequences.Count || operation.Kind != OwnershipOperationKind.Produce || operation.LoanMode != LoanRequirement.None)
         {
             return Fail("Missing sequence value plan.", out failure);
         }

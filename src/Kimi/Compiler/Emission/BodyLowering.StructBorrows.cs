@@ -9,8 +9,21 @@ internal sealed partial class BodyLowering
     private bool[] materializedScalars = [];
 
     private static BoundArgumentOperation CallReceiverOperation(BoundCall call)
-        => call.Target.Declaration is FunctionKoto { Accessor.Receiver: not null } && call.ArgumentOperations.Length != 0
+    {
+        if (call.Receiver is null && call.Target.ReceiverIndex >= 0)
+        {
+            foreach (var argument in call.ArgumentOperations)
+            {
+                if (argument.ParameterIndex == call.Target.ReceiverIndex)
+                {
+                    return argument;
+                }
+            }
+        }
+
+        return call.Target.Declaration is FunctionKoto { Accessor.Receiver: not null } && call.ArgumentOperations.Length != 0
             ? call.ArgumentOperations[^1] : call.ReceiverOperation;
+    }
 
     private static BoundArgumentOperation MemberReceiverOperation(MemberAccessKoto member, SemanticsKind semantics)
     {

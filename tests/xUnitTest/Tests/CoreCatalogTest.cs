@@ -167,12 +167,13 @@ public class CoreCatalogTest
         // Private caller-context metadata recognizes another fifteen ordinary source bodies and one failure primitive, and the
         // located Dictionary capacity (G20) six DictionaryStorage bodies over four private primitives in place of two bridges.
         // UniqSlice adds its record/projection, one bounds primitive and twelve located source bodies.
-        Assert.Equal(164, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(169, c.Library.Declarations.Length);
+        // Eleven arithmetic Contracts supply the public operator requirements.
+        Assert.Equal(175, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(180, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];
-            if ((int)entry.Id < 6 || entry.Id >= KimiDeclarationId.Utf8Format || entry.Id is KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.FromEnd or KimiDeclarationId.Wrapping or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange or KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj or KimiDeclarationId.MakeRc or KimiDeclarationId.MakeArc or KimiDeclarationId.Clone || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.IntoIterable or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.Dictionary or KimiDeclarationId.TestTempDirectory or (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit))
+            if ((int)entry.Id < 6 || entry.Id >= KimiDeclarationId.Utf8Format || entry.Id is (>= KimiDeclarationId.Addable and <= KimiDeclarationId.Negatable) or KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.FromEnd or KimiDeclarationId.Wrapping or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange or KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj or KimiDeclarationId.MakeRc or KimiDeclarationId.MakeArc or KimiDeclarationId.Clone || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.IntoIterable or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.Dictionary or KimiDeclarationId.TestTempDirectory or (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit))
             {
                 Assert.Equal(KimiDeclarationState.Validated, entry.State);
                 Assert.Same(entry.Symbol, c.Library.GetSymbol(entry.Id));

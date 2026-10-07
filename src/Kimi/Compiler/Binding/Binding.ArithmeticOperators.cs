@@ -70,6 +70,26 @@ public sealed partial class Binding
         var left = leftLiteral ? null : this.BindIndependentArgument(binary.Left, scope);
         var leftCore = left is null ? null : this.ArithmeticTerminal(binary.Left, left);
         var ordinary = leftCore is not null && (UserArithmeticProvider(leftCore) || this.HasArithmeticPremise(leftCore, ArithmeticContract(operation), scope));
+        // A built-in input Type still guides literal results of a control-flow operand (SPEC 14.9.1).
+        // Survey result sources without committing their defaults; such an operand cannot supply a user provider.
+        if (!ordinary && leftCore is not null && this.BuiltinNumeric(leftCore, scope))
+        {
+            var operand = KotoHelper.UnwrapParentheses(binary.Right);
+            if (operand is LabeledKoto label)
+            {
+                operand = label.Target;
+            }
+
+            if (operand is IfKoto or MatchKoto or LoopKoto or DoKoto)
+            {
+                var evidence = this.BeginResult(operand, scope, null);
+                if (evidence is { HasLiteral: true, Expected: null, PartialEvidence: false, Invalid: false })
+                {
+                    return false;
+                }
+            }
+        }
+
         // A fixed left provider can give the other operand a bounded expected Type after selection.
         var right = rightLiteral ? null : this.BindIndependentArgument(binary.Right, scope);
         var rightCore = right is null ? null : this.ArithmeticTerminal(binary.Right, right);

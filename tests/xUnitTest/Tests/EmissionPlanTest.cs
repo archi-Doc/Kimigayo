@@ -52,7 +52,7 @@ public class EmissionPlanTest
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         Assert.True(c.Emission.Validate(out _)); // Exercise reuse after a previously successful plan.
-        var body = c.Ownership.Bodies[0];
+        var body = c.Ownership.Bodies.Single(x => ReferenceEquals(x.Function, c.Kotonoha.GeneratedFunction));
         var firstEdge = body.EdgeHeads[0];
         // Mutate the continuation after argument acquisition, preserving the converged
         // input state queried by the gate. The test targets lowering, not a forged solver.
@@ -80,7 +80,16 @@ public class EmissionPlanTest
                 body.CleanupPlanStorage.Clear();
                 break;
             case "conditional-cleanup":
-                body.CleanupStepStorage[0] = body.CleanupSteps[0] with { Action = CleanupAction.Conditional };
+                // The first row can describe an unexecuted Abort edge. Corrupt the live lifetime's destruction rows.
+                Assert.Contains(body.CleanupSteps, x => x.Action == CleanupAction.Destroy);
+                for (var i = 0; i < body.CleanupSteps.Count; i++)
+                {
+                    if (body.CleanupSteps[i].Action == CleanupAction.Destroy)
+                    {
+                        body.CleanupStepStorage[i] = body.CleanupSteps[i] with { Action = CleanupAction.Conditional };
+                    }
+                }
+
                 break;
         }
 

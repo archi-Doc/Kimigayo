@@ -35,6 +35,17 @@ public class UserArithmeticOperatorTest
         => ScalarEmissionTest.EmitFixture("UserArithmeticShared", Declarations + "\nlet value = Value.init()\nrequire value + 2 == 42 and value - value == 0 and -value == -40 else => $abort(\"ordinary\")\nrequire 2.0 * value == 80.0 and (1.0 + 1.0) * value == 80.0 else => $abort(\"left\")\nrequire value.value == 40 else => $abort(\"not consumed\")", string.Empty);
 
     [Fact]
+    public void AnEnumCanProvideAnArithmeticRequirement()
+        => ScalarEmissionTest.EmitFixture("UserArithmeticEnum", "enum Marker\n    Self is Negatable\n    associate Output is i32\n    On\n    public func negated(self: ref/Self) -> i32 => -42\nlet value = Marker.On\nrequire -value == -42 else => $abort(\"enum provider\")", string.Empty);
+
+    [Fact]
+    public void InheritedArithmeticUsesTheOriginalWitness()
+    {
+        const string Types = "open struct Base\n    Self is Addable<i32> and LeftSubtractable<i32> and Negatable\n    associate Addable<i32>.Output is i32\n    associate LeftSubtractable<i32>.Output is i32\n    associate Negatable.Output is i32\n    public let value: i32 = 40\n    public init() => ()\n    public func added(self: ref/Self, right: ref/i32) -> i32 => self.value + right\n    public func subtractedFrom(left: ref/i32, self: ref/Self) -> i32 => left - self.value\n    public func negated(self: ref/Self) -> i32 => -self.value\nstruct Derived: Base\n    public init() : base() => ()\nlet value = Derived.init()\n";
+        ScalarEmissionTest.EmitFixture("UserArithmeticInherited", Types + "require value.added(2) == 42 and value + 2 == 42 and 82 - value == 42 and -value == -40 else => $abort(\"inherited provider\")", string.Empty);
+    }
+
+    [Fact]
     public void PublishedContractsFixGenericOperatorsBeforeInstantiation()
     {
         const string Generic = "\nfunc sum<L, R>(left: ref/L, right: ref/R) -> L.(Addable<R>).Output\n    L is Addable<R>\n    return left + right\nlet value = Value.init()\nrequire sum(value, 2) == 42 and sum(40, 2) == 42 else => $abort(\"generic\")";

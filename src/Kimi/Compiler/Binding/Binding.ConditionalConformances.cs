@@ -64,10 +64,26 @@ public sealed partial class Binding
         for (var i = 0; i < identity.PathStorage.Count; i++)
         {
             var a = identity.PathStorage[i];
-            proof = CombineProof(proof, this.VerifyConformance(a), true);
+            var available = this.VerifyConformance(a);
+            if (a.InheritedFrom is not null && available != ConstraintProof.Proven)
+            {
+                if (available != ConstraintProof.Refuted)
+                {
+                    proof = CombineProof(proof, available, true);
+                }
+
+                continue; // An unavailable inherited path is not a declaration obligation.
+            }
+
+            proof = CombineProof(proof, available, true);
             for (var j = 0; j < i; j++)
             {
                 var b = identity.PathStorage[j];
+                if (b.InheritedFrom is not null && !b.IsVerified)
+                {
+                    continue;
+                }
+
                 if (!a.IsVerified || !b.IsVerified)
                 {
                     proof = CombineProof(proof, ConstraintProof.Unknown, true);
@@ -399,6 +415,11 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {
+        if (path.InheritedFrom is { } source)
+        {
+            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(source, parent, scope) : ConstraintProof.Unknown;
+        }
+
         if (path.Scope.Parent?.Constraints?.Invalid == true)
         {
             return ConstraintProof.Error;

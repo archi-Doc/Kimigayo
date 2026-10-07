@@ -22,6 +22,7 @@
     <Compile Include="..\Workloads\HoverWorkloads.cs" Link="Workloads\HoverWorkloads.cs" />
     <Compile Include="..\Workloads\ConstructorInferenceWorkloads.cs" Link="Workloads\ConstructorInferenceWorkloads.cs" />
     <Compile Include="..\Workloads\AdaptationWorkloads.cs" Link="Workloads\AdaptationWorkloads.cs" />
+    <Compile Include="..\Workloads\ArithmeticWorkloads.cs" Link="Workloads\ArithmeticWorkloads.cs" />
     <EmbeddedResource Include="TestData\DocumentationMarkdown\*.json" />
   </ItemGroup>
 

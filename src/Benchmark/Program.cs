@@ -9,6 +9,18 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--arithmetic-plans")
+        {
+            CompilerPlanMeasurements.Run(arithmetic: true);
+            return;
+        }
+
+        if (args.Length == 2 && args[0] == "--arithmetic-native-sources")
+        {
+            ArithmeticMeasurements.WriteNativeSources(args[1]);
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--adaptation-plans")
         {
             CompilerPlanMeasurements.Run(adaptations: true);

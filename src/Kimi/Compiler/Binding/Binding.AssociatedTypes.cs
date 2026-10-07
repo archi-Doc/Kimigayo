@@ -355,7 +355,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var path = this.activeConformancePaths[i];
-            if (!ReferenceEquals(path.RootPath, path))
+            if (!ReferenceEquals(path.RootPath, path) || path.InheritedFrom is not null)
             {
                 continue;
             }
@@ -440,6 +440,11 @@ public sealed partial class Binding
 
     private BoundType? ResolveAssociated(BoundConformancePath path, BindingSymbol associated)
     {
+        if (path.InheritedFrom is { } source)
+        {
+            return this.ResolveAssociated(source, associated) is { } inherited ? this.StoredType(inherited, path.InheritedBase!) : null;
+        }
+
         // Refinement paths have exactly the root declaration's D + P environment.
         // Share immutable normalized Types and candidate storage within that root only.
         path = path.RootPath;
