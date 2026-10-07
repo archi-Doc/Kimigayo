@@ -21,7 +21,7 @@ public sealed partial class Binding
     {
         var result = this.MemberType(type, call.DeclaringType) is { } member &&
             this.SubstituteType(member, call.Target.Declaration, call.TypeArguments, call.LengthArguments) is { } substituted
-            ? this.SubstituteStoredOrigins(substituted, call.Target.Declaration, call.Origins, call.InputOrigins) : null;
+            ? this.SubstituteStoredOrigins(substituted, call.Target.Declaration is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : call.Target.Declaration, call.Origins, call.InputOrigins) : null;
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(call.Target.Declaration));

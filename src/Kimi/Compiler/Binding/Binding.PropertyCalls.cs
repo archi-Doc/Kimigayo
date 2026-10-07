@@ -124,19 +124,18 @@ public sealed partial class Binding
 
     private bool BindPropertyCall(Koto node, BoundAccessor accessor, BindingScope scope, Koto? input)
     {
-        // A member of a generic struct is called under the receiver's Type arguments, like its methods.
+        // Accessors use the same complete declaring Type as methods, including nominal Types with only Origin slots.
         var declaringType = node is MemberAccessKoto selected && this.memberSelections.TryGetValue(selected, out var memberSelection) &&
-            memberSelection.DeclaringType is { Kind: BoundTypeKind.Constructed } constructed ? constructed : null;
+            memberSelection.DeclaringType is { } declaring ? declaring : null;
 
         var receiver = accessor.Receiver is null ? null : (node as MemberAccessKoto)?.Left;
 
-        // Origin-bearing inputs/results, requirement dispatch and inherited/object receiver projections retain their own execution
+        // Origin-bearing inputs, requirement dispatch and inherited/object receiver projections retain their own execution
         // milestones. An owning or object-form written receiver is the declaration error of SPEC 11.2, not a limit of this path.
         var receiverUnsupported = accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
             (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
-        if (accessor.Declaration?.Body is null || accessor.Result is not { CarriesOrigin: false } declaredResult ||
+        if (accessor.Declaration?.Body is null || accessor.Result is not { } declaredResult ||
             (declaringType is null ? declaredResult : this.MemberType(declaredResult, declaringType)) is not { } result ||
-            this.ProveCopy(result, node) != ConstraintProof.Proven ||
             accessor.Input is { CarriesOrigin: true } ||
             receiverUnsupported)
         {
@@ -184,7 +183,8 @@ public sealed partial class Binding
         var function = this.AccessorFunction(accessor);
         call.Method.BoundSymbol = function.BoundSymbol;
         Complete(call.Method, null);
-        var operations = this.argumentOperationScratch.Rent(call.ArgumentNodes.Count);
+        var operations = this.argumentOperationScratch.Rent(call.ArgumentNodes.Count + 1);
+        operations[call.ArgumentNodes.Count] = default; // Common call judgment's separate receiver slot.
         Span<int> mapping = stackalloc int[2];
         var count = 0;
         if (input is not null)
@@ -200,9 +200,42 @@ public sealed partial class Binding
             operations[count++] = receiverOperation;
         }
 
-        call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], declaringType: declaringType, operations: operations.AsSpan(0, count));
-        this.argumentOperationScratch.Return(operations, clearArray: true);
-        Complete(call, result);
-        return true;
+        var originCount = accessor.Declaration.Origins.Count;
+        var inputCount = InputOriginCount(accessor.Binder);
+        var origins = this.originScratch.Rent(originCount);
+        var inputs = this.originScratch.Rent(inputCount);
+        Array.Clear(origins);
+        Array.Clear(inputs);
+        try
+        {
+            if (receiver is not null && accessor.Receiver is { } receiverPattern && receiverOperation.ParameterType is { } acquired)
+            {
+                var receiverContract = this.MemberType(receiverPattern, declaringType)!;
+                this.MatchInputOrigins(receiverContract, acquired, accessor.Binder, origins, inputs);
+                operations[count - 1] = receiverOperation with
+                {
+                    ParameterType = this.SubstituteStoredOrigins(receiverContract, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount)),
+                    AdaptedType = acquired,
+                };
+            }
+
+            result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
+            if (HasUnsubstitutedOrigin(result, accessor.Binder))
+            {
+                this.Fail(node, BindingFailure.Unsupported, true);
+                return false;
+            }
+
+            call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
+            this.JudgeSelectedCall(call, function, operations, count, origins, inputs, declaringType);
+            Complete(call, result);
+            return true;
+        }
+        finally
+        {
+            this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
+            this.argumentOperationScratch.Return(operations, clearArray: true);
+        }
     }
 }
