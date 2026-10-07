@@ -114,6 +114,8 @@ assertions remain in `ConstructorInferenceReuseTest`.
 `Benchmark --inheritance-plans` measures the unchanged P25 and the deep/wide inputs
 shared with `InheritedPlanReuseTest`; fixed conditions and limits are in
 [Inheritance.md](../../src/Benchmark/Inheritance.md).
+`--inheritance-lifecycle` adds fresh/edited snapshot costs and bounded retained
+ownership storage under complete pipeline reuse, with process caches shared.
 
 ## Native fixtures
 

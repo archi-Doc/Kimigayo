@@ -36,3 +36,29 @@ inputs are below; each cell is before → after.
 | Four layers, 32 Fields per layer | 6.747 → 6.678 | 0.341 → 0.216 | 0.430 → 0.259 |
 
 These are one fixed before/after run on one machine, not a general speedup claim.
+
+## Fresh snapshots and retained storage
+
+```powershell
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --inheritance-lifecycle > artifacts/benchmarks/inheritance-lifecycle.json
+```
+
+This complementary protocol uses the same depth 1/8/32 and width 32 workloads. Each
+of seven samples builds a fresh Compilation, then another for an edited immutable
+snapshot while retaining the previous one. The edit adds one named group/function;
+both source hashes are recorded. Measurements include preparation, parsing,
+Binding, startup checks, ownership and IR emission. Processes and library caches
+are shared: these are fresh Compilation costs, not cold-process or editor latency.
+
+The final edited Compilation receives 32 fixed warm-ups, then seven samples of 64
+complete pipeline repetitions. Collection stays outside every interval. Reports
+include allocation bytes and retained ownership storage before/after the warm run;
+unchanged checks must not grow those tables. This does not measure total retained
+heap size. Keep fresh/edit costs separate from the original warm-phase protocol;
+normal allocation assertions remain in `InheritedPlanReuseTest`.
+
+The 2026-10-07 report (`artifacts/benchmarks/inheritance-lifecycle-20261007.json`)
+retains all fresh/edit samples, including initial process-cache costs. All 28 warm
+samples allocate zero bytes, and the reported ownership tables remain unchanged.
+Fresh and edited snapshots allocate memory; neither zero-allocation result nor
+warm timing describes their cost. No before/after speedup is claimed.

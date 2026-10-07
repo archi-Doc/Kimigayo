@@ -16,6 +16,8 @@ public class QualificationRequiredTest
     [InlineData("open struct Base\n    protected var count: i32 = 1\nstruct Derived: Base\n    func read(self: ref/Self) -> i32 => count", "count", "self.")]
     [InlineData("struct Node\nopen struct Base\n    public struct Node\nstruct Derived: Base\n    func read(value: Node) => ()", "Node", "Self.")]
     [InlineData("struct Item\n    var count: i32 = 1\n    func read(self: ref/Self) -> i32 => count", "count", "self.")]
+    [InlineData("struct Item\n    let id: i32 = 1\n    drop\n        if id == 1 => Console.writeLine(\"first\")", "id", "self.")]
+    [InlineData("struct View<T> {source}\n    let value: ref/T during source\n    func f(self: ref/Self) -> ref/T during self.source => value", "value", "self.")]
     public void AContainerStopsUnqualifiedLookup(string declarations, string name, string qualifier)
     {
         var source = declarations + "\npublic func main() => ()";

@@ -46,7 +46,7 @@ public class ConstantLengthBindingTest
     [InlineData("let N = true\nlet row: [N of u8]")]
     [InlineData("group Dimensions\n    public let N: i32 = 4\n        get() -> i32 => storage\nfunc f(row: [Dimensions.N of u8]) => ()")]
     [InlineData("group Dimensions\n    public let N: i32 = M\n    public let M: i32 = N\nfunc f(row: [Dimensions.N of u8]) => ()")]
-    [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [N of u8]")]
+    [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [self.N of u8]")]
     public void NonconstantOrInvalidArithmeticCannotFormLengths(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -61,6 +61,7 @@ public class ConstantLengthBindingTest
     [InlineData("let row: [N of u8]\nlet N = 4", "N", "UnresolvedBinding_Kd")]
     [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "UnresolvedBinding_Kd")]
     [InlineData("group Dimensions\n    public let N: i32 = 4\n        private get\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "InaccessibleBinding_Kd")]
+    [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [N of u8]", "N", "QualificationRequired_Kd")]
     public void UnavailableLengthNamesKeepTheLookupCause(string source, string text, string code)
     {
         var c = MinimalEmissionTest.Analyze(source);

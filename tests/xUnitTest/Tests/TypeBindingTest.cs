@@ -14,7 +14,7 @@ public class TypeBindingTest
     [InlineData("func f(x: ref/(uniq/i32 during b) during a)")]
     [InlineData("func f(x: owner/(ref/i32 during a))")]
     [InlineData("struct View<T> {source}\n    let value: ref/T during source\nfunc f(x: View<i32>{a})")]
-    [InlineData("struct View<T> {source}\n    let value: ref/T during source\n    func f(self: ref/Self) -> ref/T during self.source => value")]
+    [InlineData("struct View<T> {source}\n    let value: ref/T during source\n    func f(self: ref/Self) -> ref/T during self.source => self.value")]
     [InlineData("func identity<s/T>(x: s/T) -> s/T => x\nlet x = identity(1)")]
     [InlineData("struct Box<T>\n    let value: T\nfunc f(x: Box<ref/i32 during a>)")]
     [InlineData("func f(x: raw/obj/Thing)\nstruct Thing")]
