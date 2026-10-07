@@ -33,20 +33,12 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData("-> i64 => 2", "value: i32")]
-    [InlineData("-> i32 => 2", "different: i32")]
-    public void ResultsAndLabelsDoNotSelectAnotherTarget(string result, string input)
-    {
-        var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func read(self: objref/Self, value: i32) -> i32 => value\nstruct Derived : Base\n    override func read(self: objref/Self, " + input + ") " + result + "\n()");
-        c.Binding.ReportDiagnostics();
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "OverrideContractMismatch_Kd");
-    }
-
-    [Fact]
-    public void DuplicateImplementationsAcrossFragmentsHaveOneSlot()
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DuplicateImplementationsAcrossFragmentsHaveOneSlot(bool generic)
     {
         const string Source = "open struct Base\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => 2\nstruct Derived\n    override func read(self: objref/Self) -> i32 => 3\n()";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = MinimalEmissionTest.Analyze(generic ? Source.Replace("struct Base", "struct Base<T>", StringComparison.Ordinal).Replace(": Base", ": Base<i32>", StringComparison.Ordinal) : Source);
         c.Binding.ReportDiagnostics();
         Assert.Single(TestDiagnostics.Of(c), x => x.Code == "DuplicateOverride_Kd");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.DuplicateBinding_Kd);
@@ -66,7 +58,7 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         Assert.Equal("Base", selected.Slot.DeclaringType.Symbol!.Name);
         Assert.Same(BoundType.I32, selected.Slot.DeclaringType.Components[0]);
         Assert.NotNull(selected.Path?.Parent);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var rebound));
         Assert.Equal(selected.Slot, rebound.Slot);

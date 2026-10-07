@@ -14,7 +14,8 @@ public sealed partial class Binding
     internal readonly record struct VirtualOverride(VirtualSlot Slot, BoundType ImplementingType, BoundMemberPath? Path);
 
     private readonly Dictionary<FunctionKoto, VirtualOverride> virtualOverrides = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(BindingSymbol Type, VirtualSlot Slot), FunctionKoto> overridesBySlot = new();
+    // Single inheritance gives each original declaration one bound path per derived Type.
+    // Duplicate checking and direct-base selection share this index; virtualOverrides retains the full contract.
     private readonly Dictionary<(BindingSymbol Type, FunctionKoto Original), FunctionKoto> overrideEntries = new();
     private readonly HashSet<BoundConstraint> virtualHeaderCommon = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BoundConstraint> virtualHeaderCandidate = new(ReferenceEqualityComparer.Instance);
@@ -277,15 +278,14 @@ public sealed partial class Binding
 
             var slot = new VirtualSlot(first!, selection.DeclaringType!);
             this.virtualOverrides.Add(function, new(slot, self, selection.Path));
-            var key = (typeSymbol, slot);
-            if (this.overridesBySlot.TryGetValue(key, out var previous))
+            var key = (typeSymbol, slot.Original);
+            if (this.overrideEntries.TryGetValue(key, out var previous))
             {
                 this.FailOverride(function, BindingFailure.DuplicateOverride, "this derived Type already supplies an implementation of the same bound slot", slot.Original, previous);
                 continue;
             }
 
-            this.overridesBySlot.Add(key, function);
-            this.overrideEntries.TryAdd((typeSymbol, slot.Original), function);
+            this.overrideEntries.Add(key, function);
             if (IncompleteSignature(slot.Original) is { } prerequisite)
             {
                 this.CompleteDependent(function, prerequisite);

@@ -11,12 +11,7 @@ public sealed partial class Binding
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
     internal BoundCall ResolveObjectCreation(ConversionKoto conversion, BoundType source, BoundType target, BoundCall destination)
     {
-        var factory = this.Library.GetSymbol(target.Semantics switch
-        {
-            SemanticsKind.Obj => KimiDeclarationId.MakeObj,
-            SemanticsKind.Rc => KimiDeclarationId.MakeRc,
-            _ => KimiDeclarationId.MakeArc,
-        })!;
+        var factory = this.Library.GetSymbol(ObjectFactoryId(target.Semantics))!;
         var argument = new BoundArgumentOperation(conversion.Left, source, source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: 0);
         destination.Set(factory, target, null, [0], [source], inputOrigins: [this.PlaceOrigin(conversion.Left)], operations: [argument]);
         destination.AdaptationSource = conversion;

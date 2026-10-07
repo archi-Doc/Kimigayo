@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -21,7 +20,7 @@ public class VirtualPublicEffectTest
         Assert.Equal((confined, preserves), c.Binding.AvailableEffectBounds(original, null, original));
         var implementation = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
         Assert.Equal((false, false), c.Binding.AvailableEffectBounds(implementation, null, implementation));
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

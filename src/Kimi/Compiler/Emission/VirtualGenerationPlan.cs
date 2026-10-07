@@ -184,36 +184,41 @@ internal sealed class VirtualGenerationPlan
             return layout.Table;
         }
 
-        layout.Entries.Clear();
-        foreach (var choice in layout.Choices)
+        // Published physical records retain their table. Copy only on the first changed entry,
+        // preserving old records without a second retained list or an unchanged-table scan.
+        FunctionAbi?[]? changed = layout.Table.Length == layout.Choices.Count ? null : new FunctionAbi?[layout.Choices.Count];
+        for (var i = 0; i < layout.Choices.Count; i++)
         {
+            var choice = layout.Choices[i];
             var proof = this.binding!.VirtualApplicability(choice.Slot);
-            if (proof == ConstraintProof.Refuted)
+            FunctionAbi? abi = null;
+            if (proof != ConstraintProof.Refuted)
             {
-                layout.Entries.Add(null);
-                continue;
+                if (proof != ConstraintProof.Proven)
+                {
+                    this.Failure = "A closed virtual slot requires a completed applicability proof.";
+                    return null;
+                }
+
+                if ((abi = this.Entry(choice.Function, choice.Declaring)) is null ||
+                    this.Entry(choice.Slot.Original, choice.Slot.DeclaringType, implementationBody: false) is not { } contract || !SameAbi(contract, abi))
+                {
+                    return null;
+                }
             }
 
-            if (proof != ConstraintProof.Proven)
+            if (changed is null && !ReferenceEquals(layout.Table[i], abi))
             {
-                this.Failure = "A closed virtual slot requires a completed applicability proof.";
-                return null;
+                changed = layout.Table.AsSpan().ToArray();
             }
 
-            if (this.Entry(choice.Function, choice.Declaring) is not { } abi ||
-                this.Entry(choice.Slot.Original, choice.Slot.DeclaringType, implementationBody: false) is not { } contract || !SameAbi(contract, abi))
+            if (changed is not null)
             {
-                return null;
+                changed[i] = abi;
             }
-
-            layout.Entries.Add(abi);
         }
 
-        if (!layout.Table.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(layout.Entries)))
-        {
-            layout.Table = layout.Entries.ToArray();
-        }
-
+        layout.Table = changed ?? layout.Table;
         layout.Prepared = true;
         return layout.Table;
     }
@@ -288,23 +293,8 @@ internal sealed class VirtualGenerationPlan
     }
 
     private static bool SameAbi(FunctionAbi original, FunctionAbi implementation)
-    {
-        if (original.Result != implementation.Result || original.ResultSlot != implementation.ResultSlot || original.NoReturn != implementation.NoReturn ||
-            original.CallerLocation != implementation.CallerLocation || original.Parameters.Length != implementation.Parameters.Length)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < original.Parameters.Length; i++)
-        {
-            if (original.Parameters[i] != implementation.Parameters[i])
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
+        => original.Result == implementation.Result && original.ResultSlot == implementation.ResultSlot && original.NoReturn == implementation.NoReturn &&
+            original.CallerLocation == implementation.CallerLocation && original.Parameters.AsSpan().SequenceEqual(implementation.Parameters);
 
     // Bind all replacements before requesting bodies. An overridden base body is not a dependency
     // merely because its signature contributes to the inherited table prefix.
@@ -400,8 +390,6 @@ internal sealed class VirtualGenerationPlan
         internal List<Choice> Choices { get; } = new();
 
         internal bool Prepared { get; set; }
-
-        internal List<FunctionAbi?> Entries { get; } = new();
 
         internal FunctionAbi?[] Table { get; set; } = [];
     }

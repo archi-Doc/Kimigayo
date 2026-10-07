@@ -67,7 +67,7 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
     {
         const string Source = "open struct Base<T>\n    public let value: T\n    public virtual func touch(self: objref/Self)\n        effect confined\n        return\nstruct Probe {a, b}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let target: objref/Base<ref/i32 during a> during b\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        self.target.touch()\n        return .Some(self.target.value)\n()";
         var c = MinimalEmissionTest.Analyze(Source);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

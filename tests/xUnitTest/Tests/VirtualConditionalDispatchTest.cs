@@ -119,7 +119,8 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         const string Source = "open struct Base<T>\n    T is Owned\n    public init() => ()\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Leaf<T> : Base<T>\n    T is Owned\n    public init() => ()\n    override func read(self: objref/Self) -> i32 => 2\nlet a = Leaf<string>.init()@obj";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var before, out var failure), failure);
-        Assert.Null(Assert.Single(before.Objects).VirtualSlots[0]);
+        var previousTable = Assert.Single(before.Objects).VirtualSlots;
+        Assert.Null(previousTable[0]);
         var donor = MinimalEmissionTest.Analyze(Source.Replace("T is Copy", "T is Owned", StringComparison.Ordinal));
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
@@ -130,6 +131,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         Assert.True(c.Ownership.Analyze().IsVerified);
         Assert.True(c.Emission.TryPrepare(out var after, out failure), failure);
         Assert.NotNull(Assert.Single(after.Objects).VirtualSlots[0]);
+        Assert.Null(previousTable[0]); // Previously published physical records are not mutated.
     }
 
     [Trait("Purpose", "Allocation")]

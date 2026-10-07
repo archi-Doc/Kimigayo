@@ -27,8 +27,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
     public void OverrideReceiverInheritsErasureWithoutAnOwnedTypePremise(string body)
     {
         var c = MinimalEmissionTest.Analyze(Source(body));
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var use = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallStorage?.Target.Name == "ordinary");
         Assert.NotNull(use.CallStorage);
         var site = body.Contains("@objref/Base", StringComparison.Ordinal)
@@ -46,7 +45,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         var source = Source("        return Base<T>.ordinary((self@objref/Middle<T>)@objref/Base<T>)")
             .Replace("struct Leaf<T> : Base<T>", "open struct Middle<U> : Base<U>\nstruct Leaf<T> : Middle<T>", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(2, conversions.Length);
         Assert.All(conversions, conversion =>

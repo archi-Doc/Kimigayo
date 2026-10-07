@@ -6,6 +6,14 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private static KimiDeclarationId ObjectFactoryId(SemanticsKind mode)
+        => mode switch
+        {
+            SemanticsKind.Obj => KimiDeclarationId.MakeObj,
+            SemanticsKind.Rc => KimiDeclarationId.MakeRc,
+            _ => KimiDeclarationId.MakeArc,
+        };
+
     // SPEC 13.5.8: inference finishes before the common creation/identity/upcast table.
     // The retained intrinsic call reuses acquisition, Loans, effects, cleanup and generation.
     private BoundType? BindObjectAdaptation(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target)
@@ -32,12 +40,7 @@ public sealed partial class Binding
 
     private BoundType? BindObjectCreationCall(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, bool selectedCase = false)
     {
-        var id = target.Semantics switch
-        {
-            SemanticsKind.Obj => KimiDeclarationId.MakeObj,
-            SemanticsKind.Rc => KimiDeclarationId.MakeRc,
-            _ => KimiDeclarationId.MakeArc,
-        };
+        var id = ObjectFactoryId(target.Semantics);
         if (this.Library.GetDeclarationState(id) != KimiDeclarationState.Validated || this.Library.GetSymbol(id) is not { } factory)
         {
             return this.Fail(conversion, BindingFailure.Unsupported, true);

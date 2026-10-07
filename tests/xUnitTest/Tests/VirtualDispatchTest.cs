@@ -35,7 +35,7 @@ public class VirtualDispatchTest
     }
 
     [Fact]
-    public void DispatchAddsNoAllocationOrReferenceCounting()
+    public void DirectDispatchUsesIndexedCallsWithoutAnItemAdapter()
     {
         var source = Hierarchy + "let c = C.init(3)@obj\nrequire c.nested() == 136 else => $abort(\"dispatch\")";
         var c = MinimalEmissionTest.Analyze(source);
@@ -50,9 +50,6 @@ public class VirtualDispatchTest
             Assert.Equal("ptr", call.Callee!.Parameters[call.Place].Type);
         });
         Assert.DoesNotContain(Enumerable.Range(0, module.FunctionCount), i => module.GetFunction(i).Abi.Name.StartsWith("__kimi_virtual_item", StringComparison.Ordinal));
-        var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains("getelementptr i8, ptr %header, i64 16", ir, StringComparison.Ordinal);
-        NativeAllocationAudit.WriteFixture("VirtualDispatchAllocation", source, 1, 1, 20, string.Empty);
     }
 
     [Trait("Purpose", "Allocation")]

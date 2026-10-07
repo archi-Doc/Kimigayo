@@ -44,30 +44,7 @@ public sealed partial class Binding
     /// <param name="origin">The Origin of a newly produced borrow.</param>
     /// <returns>An interned family, collapsed when every case is identical.</returns>
     internal BoundType SemanticsAdaptation(BindingSymbol pair, BoundType source, BoundOrigin? origin)
-    {
-        var admitted = this.AdmittedSemantics(pair.WholeType!, pair.Scope);
-        var children = this.RentTypes(BitOperations.PopCount((uint)admitted));
-        var cases = this.adaptationCaseScratch.Rent(1);
-        try
-        {
-            var count = 0;
-            foreach (var mode in SemanticsOrder)
-            {
-                if (admitted.Contains(mode))
-                {
-                    cases[0] = new(pair, mode);
-                    children[count++] = this.AdaptedType(mode, this.CaseType(source, cases.AsSpan(0, 1)), origin);
-                }
-            }
-
-            return this.TypeFamily(pair, admitted, children.AsSpan(0, count));
-        }
-        finally
-        {
-            this.typeScratch.Return(children, clearArray: true);
-            this.adaptationCaseScratch.Return(cases, clearArray: true);
-        }
-    }
+        => this.AdaptationFamily(pair, source, origin);
 
     /// <summary>Gets the possible outer Semantics of a complete Type or finite result-Type family.</summary>
     /// <param name="type">The complete Type.</param>
@@ -126,29 +103,7 @@ public sealed partial class Binding
 
             if (TryPairLayer(source, out var whole, out _))
             {
-                var pair = whole.Symbol!;
-                var admitted = this.AdmittedSemantics(whole, pair.Scope);
-                var children = this.RentTypes(BitOperations.PopCount((uint)admitted));
-                var cases = this.adaptationCaseScratch.Rent(1);
-                try
-                {
-                    var count = 0;
-                    foreach (var mode in SemanticsOrder)
-                    {
-                        if (admitted.Contains(mode))
-                        {
-                            cases[0] = new(pair, mode);
-                            children[count++] = this.AdaptedType(semantics, this.CaseType(source, cases.AsSpan(0, 1)), origin);
-                        }
-                    }
-
-                    return this.TypeFamily(pair, admitted, children.AsSpan(0, count));
-                }
-                finally
-                {
-                    this.typeScratch.Return(children, clearArray: true);
-                    this.adaptationCaseScratch.Return(cases, clearArray: true);
-                }
+                return this.AdaptationFamily(whole.Symbol!, source, origin, semantics);
             }
 
             if (semantics == SemanticsKind.ObjRef && source.Semantics == SemanticsKind.ObjRef)
@@ -176,6 +131,33 @@ public sealed partial class Binding
         var mask = (uint)family.Length;
         var bit = (uint)mode.ToMask();
         return (mask & bit) == 0 ? null : family.Components[BitOperations.PopCount(mask & (bit - 1))];
+    }
+
+    // Short adaptations select the output mode with the input case; a fixed mode maps every input case.
+    private BoundType AdaptationFamily(BindingSymbol pair, BoundType source, BoundOrigin? origin, SemanticsKind? fixedMode = null)
+    {
+        var admitted = this.AdmittedSemantics(pair.WholeType!, pair.Scope);
+        var children = this.RentTypes(BitOperations.PopCount((uint)admitted));
+        var cases = this.adaptationCaseScratch.Rent(1);
+        try
+        {
+            var count = 0;
+            foreach (var mode in SemanticsOrder)
+            {
+                if (admitted.Contains(mode))
+                {
+                    cases[0] = new(pair, mode);
+                    children[count++] = this.AdaptedType(fixedMode ?? mode, this.CaseType(source, cases.AsSpan(0, 1)), origin);
+                }
+            }
+
+            return this.TypeFamily(pair, admitted, children.AsSpan(0, count));
+        }
+        finally
+        {
+            this.typeScratch.Return(children, clearArray: true);
+            this.adaptationCaseScratch.Return(cases, clearArray: true);
+        }
     }
 
     // A placeholder's Owner tag is not mode evidence. A pair's owner case does establish its target's owner form.
