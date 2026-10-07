@@ -253,29 +253,31 @@ A nearer group `X` does not stop Core lookup for an annotation `X`, but it does 
 **No implicit receiver or inheritance.** In the Type and Value namespaces, an unqualified Name never supplies a receiver and never selects a declaration that a struct inherits from its bases. When stage 2 or 3 searches a Container `C`, lookup stops there with `QualificationRequired_Kd` (Error, `Language`) instead of searching outward if `C`'s own eligible declarations are all instance members, or if `C` is a struct without own eligible declarations and an examination of its base layers finds a declaration of the Name. The examination visits the direct base, then its base, one layer at a time, over the completed declaration set (§6.2.2), conditional members included, and stops at the first layer with an accessible, role-compatible declaration of the Name, as inherited ordinary lookup does (§9.5). It reads declarations only: it needs no base Type or Origin arguments and selects nothing. Accessibility is judged by the effective access domain at the use (§9.3.1); the protected receiver restriction concerns an explicit receiver and does not apply. A base's generic parameters and `Self` are not members and are never examined. A struct's base clause, with its arguments, resolves without examining that struct's own base layers; a dependency cycle that an examination still forms is an unresolvable dependency cycle, as when `struct S : S.N` is declared and resolving the base clause of the nested `N` examines the base layers of `S`, which begin with `N`. In the two-namespace exploration of §9.5, such a stop is a failed path of its namespace. Instance members are reached with `self.member` or another explicit receiver, and other inherited declarations with `Self.member` or `C.member`. The rule does not concern Origin lookup (§15.3.4) or Label lookup.
 
 ```kimi
-func marker() -> i32 => 1
+group Outer
+    func marker() -> i32 => 1
 
-struct Node
+    struct Node
 
-open struct Base
-    protected var count: i32 = 0
+    open struct Base
+        protected var count: i32 = 0
 
-    public func marker() -> i32 => 25
+        public func marker() -> i32 => 25
 
-    public struct Node
+        public struct Node
 
-struct Derived : Base
-    func total(self) -> i32 => self.count + Self.marker() // Valid: both inherited members are qualified.
+    struct Derived : Base
+        func total(self) -> i32 => self.count + Self.marker() // Valid: both inherited members are qualified.
 
-    func root() -> i32 => ::marker()                      // Valid: selects the root marker, 1.
+        func root() -> i32 => ::Outer.marker() // Valid: selects Outer.marker, 1.
 
-    func keep(value: Self.Node) -> () => ()               // Valid: Base.Node (§9.6.1).
+        func keep(value: Self.Node) -> () => ()               // Valid: Base.Node (§9.6.1).
 
-    func first() -> i32 => marker()                       // Error: lookup finds Base.marker and stops.
+        func first() -> i32 => marker()                       // Error: lookup finds Base.marker and stops.
 
-    func second(self) -> i32 => count                     // Error: an inherited instance member; write self.count.
+        func second(self) -> i32 => count                     // Error: an inherited instance member; write self.count.
 
-    func third(value: Node) -> () => ()                   // Error: the inherited Node; write Self.Node or ::Node.
+        // Error: the inherited Node; write Self.Node or ::Outer.Node.
+        func third(value: Node) -> () => ()
 ```
 
 A bare `marker()` in a Container nested in `Derived` stops in the same way at stage 3, and one in a fragment of `Derived` without the base clause stops at stage 2.

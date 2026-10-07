@@ -25,6 +25,9 @@ public enum RepairCondition : byte
 
     /// <summary>The visibility of Names, the order of destruction and defer, the Context and result supply of each expression and the targets of control transfers are unchanged.</summary>
     Structure,
+
+    /// <summary>The qualified Name selects a unique declaration under ordinary name and overload selection.</summary>
+    Selection,
 }
 
 /// <summary>The kind of a repair candidate (SPEC 23.3.6.9), in catalog order; its stable name is <c>Repair.&lt;Kind&gt;</c>.</summary>
@@ -53,6 +56,9 @@ public enum RepairKind : byte
 
     /// <summary>Discard a result explicitly.</summary>
     ExplicitDiscard,
+
+    /// <summary>Insert a qualifier before a Name.</summary>
+    Qualify,
 
     /// <summary>The number of kinds; not a kind.</summary>
     Count,
@@ -222,8 +228,11 @@ public sealed partial class RepairKindEntry
     /// <summary>Gets the facts as <c>name:Kind</c> pairs separated by commas, in the form of a code's Arguments; a candidate supplies all of them.</summary>
     public string? Facts { get; init; }
 
-    /// <summary>Gets the relevant conditions, separated by commas; a candidate judges each as verified or required.</summary>
+    /// <summary>Gets conditions relevant to every candidate, separated by commas; each is verified or required.</summary>
     public string? Conditions { get; init; }
+
+    /// <summary>Gets conditions whose relevance is decided by the recording check; irrelevant conditions are omitted.</summary>
+    public string? ConditionalConditions { get; init; }
 
     /// <summary>Gets the facts' names and kinds, parsed when the catalog loads.</summary>
     [IgnoreMember]
@@ -232,6 +241,9 @@ public sealed partial class RepairKindEntry
     /// <summary>Gets the relevant conditions, parsed when the catalog loads.</summary>
     [IgnoreMember]
     internal RepairConditionSet Relevant { get; private set; }
+
+    [IgnoreMember]
+    internal RepairConditionSet Conditional { get; private set; }
 
     /// <summary>Formats the title from the facts' display values.</summary>
     /// <param name="values">The display values, one per fact.</param>
@@ -263,7 +275,7 @@ public sealed partial class RepairKindEntry
 
         this.FactSchema = facts;
         var relevant = RepairConditionSet.None;
-        foreach (var part in (this.Conditions ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        foreach (var part in string.Join(',', this.Conditions, this.ConditionalConditions).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (!Enum.TryParse<RepairCondition>(part, false, out var condition) || !Enum.IsDefined(condition) || condition.ToString() != part)
             {
@@ -275,10 +287,21 @@ public sealed partial class RepairKindEntry
                 return $"the phrase of {part} references a fact that the kind does not name.";
             }
 
+            if ((relevant & RepairConditions.Flag(condition)) != 0)
+            {
+                return $"{part} is declared more than once.";
+            }
+
             relevant |= RepairConditions.Flag(condition);
         }
 
         this.Relevant = relevant;
+        this.Conditional = RepairConditionSet.None;
+        foreach (var part in (this.ConditionalConditions ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            this.Conditional |= RepairConditions.Flag(Enum.Parse<RepairCondition>(part));
+        }
+
         return null;
     }
 }
@@ -292,15 +315,20 @@ internal enum RepairConditionSet : byte
     ExclusiveAccess = 1 << (int)RepairCondition.ExclusiveAccess,
     UsageLegality = 1 << (int)RepairCondition.UsageLegality,
     Structure = 1 << (int)RepairCondition.Structure,
+    Selection = 1 << (int)RepairCondition.Selection,
 }
 
 /// <summary>The closed vocabulary of repair conditions (SPEC 23.3.6.9) and the phrase templates of required conditions over a candidate's facts.</summary>
 internal static class RepairConditions
 {
+    private static readonly RepairCondition[] Ordered = Enum.GetValues<RepairCondition>();
     private static readonly CompositeFormat TakePhrase = CompositeFormat.Parse("{0} offers Take and is a Movable Place");
+    private static readonly CompositeFormat SelectionPhrase = CompositeFormat.Parse("the qualified Name {1}{0} selects a unique declaration under ordinary selection rules");
     private static readonly CompositeFormat ExclusiveAccessPhrase = CompositeFormat.Parse("the lending point of {0} is exclusively writable");
     private static readonly CompositeFormat UsageLegalityPhrase = CompositeFormat.Parse("the edited operation and every later use of {0} satisfy the initialization, Loan and lifetime conditions");
     private static readonly CompositeFormat StructurePhrase = CompositeFormat.Parse("the visibility of Names, the order of destruction and defer, the Context of each expression and the targets of control transfers are unchanged");
+
+    internal static ReadOnlySpan<RepairCondition> All => Ordered;
 
     /// <summary>Gets the set flag of a condition.</summary>
     /// <param name="condition">The condition.</param>
@@ -315,7 +343,9 @@ internal static class RepairConditions
         RepairCondition.Take => TakePhrase,
         RepairCondition.ExclusiveAccess => ExclusiveAccessPhrase,
         RepairCondition.UsageLegality => UsageLegalityPhrase,
-        _ => StructurePhrase,
+        RepairCondition.Selection => SelectionPhrase,
+        RepairCondition.Structure => StructurePhrase,
+        _ => throw new ArgumentOutOfRangeException(nameof(condition)),
     };
 
     /// <summary>Forms the phrase of a required condition from the candidate's display values.</summary>

@@ -426,6 +426,9 @@
   + Name="Binding"
     Description="the declarations and expressions are valid"
 
+  + Name="Binding.QualificationRequired"
+    Description="the Name has an explicit receiver or qualifier"
+
   + Name="Binding.MissingName"
     Description="a Name or member resolves to a declaration"
 

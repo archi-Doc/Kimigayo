@@ -73,6 +73,7 @@ public sealed partial class Binding
     private BindingSymbol? Lookup(string name, BindingScope scope, Koto use, bool type, bool core = false, int arity = 0)
     {
         this.importCandidates?.GetValueOrDefault(use)?.Clear();
+        this.qualificationStops?.Remove((use, type));
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (type)
@@ -82,6 +83,11 @@ public sealed partial class Binding
                 if (candidates.First is not null)
                 {
                     return this.SelectTypeCandidate(candidates, use);
+                }
+
+                if (this.StopInheritedLookup(current, scope, use, name, type, core, arity))
+                {
+                    return null;
                 }
 
                 continue;
@@ -111,8 +117,19 @@ public sealed partial class Binding
                         continue;
                     }
 
+                    if (current.Owner is DeclarationContainerKoto && IsInstanceMember(candidate) && !this.HasReceiverlessCandidate(symbol, scope, core))
+                    {
+                        this.RecordQualificationStop(use, type, new(current, scope, candidate, name, type, core, arity));
+                        return null;
+                    }
+
                     return candidate;
                 }
+            }
+
+            if (this.StopInheritedLookup(current, scope, use, name, type, core, arity))
+            {
+                return null;
             }
         }
 

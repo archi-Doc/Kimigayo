@@ -10,6 +10,7 @@ public enum DiagnosticCode
     Template_Kd, // First sentinel
 
     UnresolvedBinding_Kd,
+    QualificationRequired_Kd,
     AmbiguousBinding_Kd,
     DuplicateBinding_Kd,
     DuplicateDictionaryKey_Kd,

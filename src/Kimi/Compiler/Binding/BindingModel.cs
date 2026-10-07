@@ -123,6 +123,7 @@ internal enum BindingFailure : byte
     None,
     MissingName,
     MissingType,
+    QualificationRequired,
     Ambiguous,
     Duplicate,
     TypeMismatch,

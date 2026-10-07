@@ -112,6 +112,17 @@ public sealed class DiagnosticCatalogTest
         Assert.Equal(RepairConditionSet.Take | RepairConditionSet.UsageLegality, transfer.Relevant);
         Assert.Equal("Append @move to transfer x to f(a: T)", transfer.FormatTitle(["x", "f(a: T)"]));
         Assert.Equal("x offers Take and is a Movable Place", RepairConditions.Phrase(RepairCondition.Take, ["x"]));
+        Assert.True(RepairKinds.TryGet(RepairKind.Qualify, out var qualify));
+        Assert.Equal(RepairConditionSet.Selection | RepairConditionSet.UsageLegality, qualify.Relevant);
+        Assert.Equal(RepairConditionSet.UsageLegality, qualify.Conditional);
+        Assert.Equal(Enum.GetValues<RepairCondition>(), RepairConditions.All.ToArray());
+    }
+
+    [Fact]
+    public void ConditionalRepairConditionsCannotAlsoBeMandatory()
+    {
+        var entry = new RepairKindEntry { Name = "Repair.Qualify", Title = "Insert {1} before {0}", Facts = "name:Text,qualifier:Text", Conditions = "Selection", ConditionalConditions = "Selection" };
+        Assert.Equal("Selection is declared more than once.", entry.Prepare());
     }
 
     [Fact]

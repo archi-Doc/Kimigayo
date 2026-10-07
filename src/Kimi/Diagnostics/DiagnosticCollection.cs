@@ -342,7 +342,8 @@ public sealed class DiagnosticCollection
                 DiagnosticEntry.ValidateValue(kind.Name, kind.FactSchema[j], facts[j]);
             }
 
-            if ((repair.Verified & repair.Required) != 0 || (repair.Verified | repair.Required) != kind.Relevant)
+            var judged = repair.Verified | repair.Required;
+            if ((repair.Verified & repair.Required) != 0 || (judged & ~kind.Relevant) != 0 || (judged | kind.Conditional) != kind.Relevant)
             {
                 throw new DiagnosticContractException(DiagnosticFault.InvalidArgument, $"{kind.Name} judges each of its conditions ({kind.Conditions}) exactly once; verified {repair.Verified}, required {repair.Required}.");
             }

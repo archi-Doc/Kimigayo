@@ -8,6 +8,14 @@
     Advice="Conditional repair advice; no edit is inferred from it"
     Note="Additional information about the diagnostic"
 
+  + Name="QualificationRequired_Kd"
+    Category="Language"
+    Message="Name '{0}' requires a qualifier in {1}"
+    Arguments="name:Text,container:Text"
+    Evidence="namespace:Enumeration,cause:Enumeration,instance:Boolean|namespace:Enumeration,cause:Enumeration,instance:Boolean,base:Text"
+    Label="qualify {0} explicitly"
+    Note="An unqualified Name supplies no receiver and cannot select an inherited declaration; lookup stops at this Container"
+
   + Name="BorrowOriginKeyword_Kd"
     Category="Language"
     Message="Borrow Origin annotations start with 'during'"

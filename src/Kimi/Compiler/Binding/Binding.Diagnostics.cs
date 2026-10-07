@@ -1935,6 +1935,8 @@ public sealed partial class Binding
     private void ResetPrerequisites()
     {
         this.mismatches?.Clear();
+        this.qualificationStops?.Clear();
+        this.qualificationFailures?.Clear();
         this.originRelations?.Clear();
         this.callRelations?.Clear();
         this.originContracts?.Clear();

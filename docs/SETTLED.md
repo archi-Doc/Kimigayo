@@ -86,17 +86,18 @@
 - **Example:**
 
   ```kimi
-  func marker() -> i32 => 1
+  group Outer
+      func marker() -> i32 => 1
 
-  open struct Base
-      public var count: i32 = 0
+      open struct Base
+          public var count: i32 = 0
 
-      public func marker() -> i32 => 25
+          public func marker() -> i32 => 25
 
-  struct Derived : Base
-      func first(self) -> i32 => marker() // Error: lookup stops at the inherited Base.marker; write Self.marker()
-      func second(self) -> i32 => count   // Error: an inherited instance member; write self.count
-      func total(self) -> i32 => self.count + Self.marker()
+      struct Derived : Base
+          func first(self) -> i32 => marker() // Error: lookup stops at the inherited Base.marker; write Self.marker()
+          func second(self) -> i32 => count   // Error: an inherited instance member; write self.count
+          func total(self) -> i32 => self.count + Self.marker()
   ```
 
 - **Proposed fix:** Search the base layers at lookup stage 2, one layer at a time, so that an unqualified Name inside a derived struct selects the inherited declaration: `marker()` would call `Base.marker`, and a bare nested Type Name would name the inherited Type.

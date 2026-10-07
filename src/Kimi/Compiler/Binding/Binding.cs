@@ -566,6 +566,13 @@ public sealed partial class Binding
 
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
     {
+        if (failure is BindingFailure.MissingName or BindingFailure.MissingType && this.QualificationStop(node) is { } qualification)
+        {
+            failure = BindingFailure.QualificationRequired;
+            (this.qualificationFailures ??= new(ReferenceEqualityComparer.Instance))[node] = qualification;
+            unresolved = false;
+        }
+
         // A node failed while another was being checked, such as a qualifier resolved without BindNode: the checked node consulted it.
         if (this.consultationStart >= 0 && !ReferenceEquals(node, this.consultationNode))
         {
@@ -587,7 +594,11 @@ public sealed partial class Binding
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
-        if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
+        if (issue.Failure == BindingFailure.QualificationRequired)
+        {
+            this.ReportQualification(issue.Node, requirement);
+        }
+        else if (issue.Code == DiagnosticCode.InvalidConstraint_Kd &&
             this.constraintDiagnosticCauses?.TryGetValue(issue.Node, out var cause) == true &&
             cause.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported)
         {
@@ -986,6 +997,7 @@ public sealed partial class Binding
                     BindingFailure.InvalidCLayout => DiagnosticCode.InvalidCLayout_Kd,
                     BindingFailure.InvalidInlineLayout => DiagnosticCode.InvalidInlineLayout_Kd,
                     BindingFailure.MissingName or BindingFailure.MissingType => DiagnosticCode.UnresolvedBinding_Kd,
+                    BindingFailure.QualificationRequired => DiagnosticCode.QualificationRequired_Kd,
                     BindingFailure.Ambiguous => DiagnosticCode.AmbiguousBinding_Kd,
                     BindingFailure.Duplicate => DiagnosticCode.DuplicateBinding_Kd,
                     BindingFailure.DuplicateDictionaryKey => DiagnosticCode.DuplicateDictionaryKey_Kd,

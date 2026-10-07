@@ -889,7 +889,7 @@ public sealed class DiagnosticOwner
 
         var verified = new List<RepairCondition>(2);
         var required = new List<RequiredCondition>(2);
-        for (var condition = RepairCondition.Take; condition <= RepairCondition.Structure; condition++)
+        foreach (var condition in RepairConditions.All)
         {
             var flag = RepairConditions.Flag(condition);
             if ((repair.Verified & flag) != 0)
