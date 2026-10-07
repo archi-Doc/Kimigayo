@@ -124,17 +124,46 @@ internal static partial class LlvmModuleWriter
 
             output.Write(", ptr null }, align 8\n");
             Name(output, "@__kimi_object_descriptor", id);
-            output.Write(" = private constant { ptr, ptr, ptr } { ptr ");
+            output.Write(" = private constant { ptr, ptr, ptr, ptr } { ptr ");
             Name(output, "@__kimi_object_metadata", id);
             output.Write(", ptr @__kimi_object_free, ptr ");
             if (item.BaseTokens.Length == 0)
             {
-                output.Write("null }, align 8\n");
+                output.Write("null");
             }
             else
             {
                 Name(output, "@__kimi_object_views", id);
-                output.Write(" }, align 8\n");
+            }
+
+            output.Write(", ptr ");
+            if (item.VirtualSlots.Length == 0)
+            {
+                output.Write("null");
+            }
+            else
+            {
+                Name(output, "@__kimi_object_virtuals", id);
+            }
+
+            output.Write(" }, align 8\n");
+            if (item.VirtualSlots.Length != 0)
+            {
+                Name(output, "@__kimi_object_virtuals", id);
+                output.Write(" = private constant [");
+                WriteNumber(output, item.VirtualSlots.Length);
+                output.Write(" x ptr] [");
+                for (var s = 0; s < item.VirtualSlots.Length; s++)
+                {
+                    output.Write(s == 0 ? "ptr @" : ", ptr @");
+                    output.Write(item.VirtualSlots[s].Name);
+                }
+
+                output.Write("], align 8\n");
+            }
+
+            if (item.BaseTokens.Length != 0)
+            {
                 Name(output, "@__kimi_object_views", id);
                 output.Write(" = private constant [");
                 WriteNumber(output, (item.BaseTokens.Length * 2) + 1);

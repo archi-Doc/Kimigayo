@@ -17,6 +17,7 @@ public sealed partial class LlvmEmitter
     private readonly FunctionAbiPool signatures = new();
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
+    private readonly VirtualGenerationPlan virtuals = new();
     private readonly DefaultGenerationPlan defaults = new();
     private readonly CompilerFunctionAdapters compilerEntries = new();
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
@@ -74,7 +75,7 @@ public sealed partial class LlvmEmitter
         }
         else if (this.unsupportedVirtual is { } function)
         {
-            function.Report(DiagnosticRequirement.Emission, DiagnosticCode.UnsupportedEmission_Kd, span: function.DispatchModifierSpan, evidence: ["virtual slot-table and dispatch generation"], note: failure);
+            function.Report(DiagnosticRequirement.Emission, DiagnosticCode.UnsupportedEmission_Kd, span: function.DispatchModifierSpan, evidence: ["generic or conditional virtual slot-table and dispatch generation"], note: failure);
         }
         else
         {
@@ -183,6 +184,15 @@ public sealed partial class LlvmEmitter
             }
 
             this.lowering.StaticGetters = this.staticGetters;
+
+            if (!this.virtuals.Begin(c.Binding, module, this.functions))
+            {
+                failure = "Virtual table entries do not match the verified slot correspondence and ABI.";
+                return false;
+            }
+
+            this.lowering.Virtuals = this.virtuals;
+            this.objects.Virtuals = this.virtuals;
 
             module.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
             module.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
@@ -295,6 +305,8 @@ public sealed partial class LlvmEmitter
             c.Ownership.ClearInstances(preserveFailure: true);
             this.objects.Complete();
             this.objects.Clear();
+            this.virtuals.Complete();
+            this.virtuals.Clear();
             this.lowering.ClearFunctionContext();
             this.lowering.AggregateLayouts.ClearDestructors();
             if (!module.IsComplete)
@@ -561,10 +573,10 @@ public sealed partial class LlvmEmitter
             }
 
             var function = body.Function;
-            if (function.IsVirtual || function.IsOverride)
+            if ((function.IsVirtual || function.IsOverride) && (GenericStoragePlan.IsGeneric(function) || function.BoundSymbol!.ConditionalDeclaration is not null))
             {
                 this.unsupportedVirtual = function;
-                return "Virtual bodies have passed front-end checking, but slot-table and dispatch generation are not yet implemented; no static-call fallback is emitted.";
+                return "Generic or conditional virtual slot-table and dispatch generation are not yet implemented; no static-call fallback is emitted.";
             }
 
             if (GenericStoragePlan.IsGeneric(function))

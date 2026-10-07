@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402 // Checked call contexts and syntax-free physical object records.
 
-internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi, int TypeToken, int[] BaseTokens);
+internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi, int TypeToken, int[] BaseTokens, FunctionAbi[] VirtualSlots);
 
 internal readonly record struct ObjectCall(BoundType Payload, BoundType Result, ObjectCreation Physical);
 
@@ -30,6 +30,8 @@ internal sealed class ObjectGenerationPlan
     internal IReadOnlyDictionary<BoundCall, ObjectCall> Calls => this.calls;
 
     internal IReadOnlyDictionary<BoundType, int> RuntimeTypes => this.runtimeTypes;
+
+    internal VirtualGenerationPlan? Virtuals { get; set; }
 
     internal bool PrepareDefault(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, GenericStoragePlan.CallEntry entry, out string? failure)
     {
@@ -171,6 +173,13 @@ internal sealed class ObjectGenerationPlan
         }
 
         this.RegisterType(compilation, payload);
+        var slots = this.Virtuals?.GetTable(payload) ?? (this.Virtuals is null ? [] : null);
+        if (slots is null)
+        {
+            failure = "An object descriptor requires a verified virtual table with matching entry ABIs.";
+            return false;
+        }
+
         var key = this.typeKeys[payload];
         if (!this.entries.TryGetValue(key, out var entry))
         {
@@ -189,7 +198,7 @@ internal sealed class ObjectGenerationPlan
             entry = id < this.physical.Count ? this.physical[id].Entry : null;
             // Recompute every semantic decision; retain only matching syntax-free physical records.
             if (entry is null || entry.TypeKey != typeKey || entry.TypeToken != token || entry.Payload != value || entry.Copy != (copy == ConstraintProof.Proven) ||
-                !entry.BaseTokens.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(this.bases)) || this.physical[id].Drop != drop ||
+                !entry.BaseTokens.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(this.bases)) || !entry.VirtualSlots.AsSpan().SequenceEqual(slots) || this.physical[id].Drop != drop ||
                 (value.Layout.Size != 0 && entry.Abi.Parameters[1].Kind != parameterKind))
             {
                 var parameters = new List<AbiParameter> { new("ptr", "ret", AbiParameterKind.ResultSlot) };
@@ -203,7 +212,7 @@ internal sealed class ObjectGenerationPlan
                 parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
                 var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray(), resultSlot: true);
                 var destroy = drop == -1 ? null : drop == -2 ? "__kimi_destroy_string" : "__kimi_drop_aggregate" + drop;
-                entry = new(id, typeKey, value, destroy, copy == ConstraintProof.Proven, abi, token, this.bases.ToArray());
+                entry = new(id, typeKey, value, destroy, copy == ConstraintProof.Proven, abi, token, this.bases.ToArray(), slots);
                 if (id == this.physical.Count)
                 {
                     this.physical.Add((drop, entry));

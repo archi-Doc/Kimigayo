@@ -488,6 +488,10 @@ internal static partial class LlvmModuleWriter
                     WriteCall(output, constants, instruction.Callee!, function.GetOperands(instruction), instruction.Operation, function);
                     break;
 
+                case EmissionOpcode.VirtualCall:
+                    WriteVirtualCall(output, constants, function, instruction);
+                    break;
+
                 case EmissionOpcode.TestSnapshot:
                     WriteTestSnapshot(output, function, instruction);
                     break;
@@ -572,7 +576,7 @@ internal static partial class LlvmModuleWriter
         }
     }
 
-    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null)
+    private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null, bool indirect = false)
     {
         if (callee.Result != WindowsLowering.Unit.ComputationType)
         {
@@ -587,8 +591,16 @@ internal static partial class LlvmModuleWriter
 
         output.Write(callee.Result == WindowsLowering.Unit.ComputationType ? "  call " : "call ");
         output.Write(callee.Result);
-        output.Write(" @");
-        output.Write(callee.Name);
+        if (indirect)
+        {
+            Name(output, " %virtual_entry", result);
+        }
+        else
+        {
+            output.Write(" @");
+            output.Write(callee.Name);
+        }
+
         output.Write('(');
         for (var i = 0; i < operands.Length; i++)
         {

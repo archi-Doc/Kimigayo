@@ -195,6 +195,25 @@ internal sealed partial class BodyLowering
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
         var callee = clone ? ObjectTypes.HandleMode(returnType)?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
             : runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
+        var virtualSlot = -1;
+        var virtualReceiver = -1;
+        if (target.IsVirtual)
+        {
+            if (plan.VirtualDispatch is not { } dispatch || this.Virtuals is null)
+            {
+                return Fail("A virtual call has no verified slot selection.", out failure);
+            }
+
+            if (dispatch.IsDirect)
+            {
+                callee = dispatch.Implementation is { } implementation ? this.functions!.GetValueOrDefault(implementation) : null;
+            }
+            else if (!this.Virtuals.TrySlot(target, out virtualSlot, out virtualReceiver))
+            {
+                return Fail("A virtual call has no physical slot and receiver mapping.", out failure);
+            }
+        }
+
         if (plan.Target.CompilerFunction == CompilerFunctionKind.WriterWrite && call.Parent is InterpolatedStringKoto { Formatting: { } formattingRoot } &&
             call.ArgumentNodes.Count == 2 && call.ArgumentNodes[1] is StringLiteralKoto && this.EstimateFormatting(formattingRoot).Capacity == 0)
         {
@@ -438,7 +457,7 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands));
+            function.AddCall(id, callee, CollectionsMarshal.AsSpan(this.callOperands), virtualSlot, virtualReceiver);
         }
 
         this.formattingRuntimeUsed |= formatting;

@@ -22,8 +22,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Ownership.Bodies, x => x.Function.IsVirtual);
         Assert.Contains(c.Ownership.Bodies, x => x.Function.IsOverride);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out var failure));
-        Assert.Contains("virtual", failure!, StringComparison.OrdinalIgnoreCase);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
     }
 
     [Fact]
@@ -65,10 +64,10 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void PendingDispatchHasALocatedUnsupportedRecordAndWritesNoIr()
+    public void PendingGenericDispatchHasALocatedUnsupportedRecordAndWritesNoIr()
     {
         var path = Path.GetFullPath("virtual-dispatch-pending.kimi");
-        var c = MinimalEmissionTest.Analyze(Shared, path);
+        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\n()", path);
         using var ir = new StringWriter();
         Assert.False(c.Emission.WriteIr(ir, out var failure));
         Assert.Empty(ir.ToString());

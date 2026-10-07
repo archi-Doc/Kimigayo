@@ -66,8 +66,13 @@ internal sealed partial class BodyLowering
     }
 
     // A generic Item enters the instance of its bound arguments, or the explicit specialization selected for them.
-    private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition)
+    private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition, bool address = false)
     {
+        if (definition.IsVirtual)
+        {
+            return address ? this.Virtuals?.Address(definition) : this.functions?.GetValueOrDefault(definition);
+        }
+
         if (type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None))
         {
             return this.CompilerEntries?.Get(type);
@@ -110,7 +115,7 @@ internal sealed partial class BodyLowering
             // SPEC 7.6.4: a Function Item has no environment; the erasure adapter takes the common (environment, ret, inputs,
             // context) call and calls the function with its own ABI.
             if (operation.Kind != OwnershipOperationKind.Produce || operation.Source.BoundSymbol is not { Kind: BindingSymbolKind.Function, Declaration: FunctionKoto { IsAnonymous: false } target } ||
-                body.Places[operation.Place].Type.Kind != BoundTypeKind.Function || this.functions?.GetValueOrDefault(target) is not { CallerLocation: false } item)
+                body.Places[operation.Place].Type.Kind != BoundTypeKind.Function || (target.IsVirtual ? this.Virtuals?.Address(target) : this.functions?.GetValueOrDefault(target)) is not { CallerLocation: false } item)
             {
                 return Fail("Function item erasure requires a resolved function entry without caller location.", out failure);
             }
@@ -127,7 +132,7 @@ internal sealed partial class BodyLowering
                 !ReferenceEquals(body.ConcreteAt(operation.Source.ErasedFunctionType, id), body.Places[operation.Place].Type) ||
                 operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
                 !operation.Source.CodeContext.Compilation.Binding.ItemContractFits(source, itemSignature, body.Places[operation.Place].Type, operation.Source) ||
-                this.ClosureEntry(source, itemDefinition) is not { } itemEntry ||
+                this.ClosureEntry(source, itemDefinition, address: true) is not { } itemEntry ||
                 (body.IsReachable(id) && !this.Dominates(input, id)))
             {
                 return Fail("Function Item erasure requires an acquired Item and its checked signature.", out failure);
@@ -465,7 +470,15 @@ internal sealed partial class BodyLowering
 
         if (concreteEntry is not null)
         {
-            function.Instructions.Add(new(EmissionOpcode.Call, id, Callee: concreteEntry, OperandStart: start, OperandCount: function.Operands.Count - start));
+            var virtualSlot = -1;
+            var virtualReceiver = -1;
+            if (receiverType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } original } &&
+                (this.Virtuals is null || !this.Virtuals.TrySlot(original, out virtualSlot, out virtualReceiver)))
+            {
+                return Fail("A virtual Item call has no physical slot and receiver mapping.", out failure);
+            }
+
+            function.Instructions.Add(new(virtualSlot < 0 ? EmissionOpcode.Call : EmissionOpcode.VirtualCall, id, Place: virtualReceiver, Constant: virtualSlot, Callee: concreteEntry, OperandStart: start, OperandCount: function.Operands.Count - start));
         }
         else
         {

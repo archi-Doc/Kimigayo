@@ -21,7 +21,12 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         var source = "group State\n    public var count: i32 = 0\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return " + (derived ? "1" : body) + "\n" + (derived ? "struct Derived : Base\n    override func read(self: objref/Self) -> i32 => " + body + "\n" : string.Empty) + "()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(fails, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out var failure));
+        if (!fails)
+        {
+            // The unrelated mutable group storage is still outside generation (P36).
+            Assert.Contains("declaration container", failure!, StringComparison.Ordinal);
+        }
     }
 
     [Fact]

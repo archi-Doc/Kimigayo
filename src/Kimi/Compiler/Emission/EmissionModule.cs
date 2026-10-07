@@ -61,6 +61,7 @@ internal enum EmissionOpcode : byte
 
     /// <summary>A direct call of <c>Callee</c> with prepared operands.</summary>
     Call,
+    VirtualCall,
     TestSnapshot,
     TestPhaseEnter,
     TestPhaseLeave,
@@ -205,7 +206,7 @@ internal sealed class EmissionFunction
     internal void Add(EmissionOpcode opcode, int operation, int place = -1, int constant = -1)
         => this.Instructions.Add(new(opcode, operation, place, constant));
 
-    internal void AddCall(int operation, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands)
+    internal void AddCall(int operation, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int virtualSlot = -1, int receiver = -1)
     {
         if (operands.Length != callee.Parameters.Length)
         {
@@ -214,7 +215,7 @@ internal sealed class EmissionFunction
 
         var start = this.Operands.Count;
         this.Operands.AddRange(operands);
-        this.Instructions.Add(new(EmissionOpcode.Call, operation, Callee: callee, OperandStart: start, OperandCount: operands.Length));
+        this.Instructions.Add(new(virtualSlot < 0 ? EmissionOpcode.Call : EmissionOpcode.VirtualCall, operation, Place: receiver, Constant: virtualSlot, Callee: callee, OperandStart: start, OperandCount: operands.Length));
     }
 
     internal void AddScalar(EmissionOpcode opcode, int operation, ReadOnlySpan<EmissionOperand> operands, string? type = null, string? op = null, int place = -1, int location = -1, ArithmeticCheckKind check = ArithmeticCheckKind.None, bool comparison = false, ValueLowering? representation = null, ValueLowering? countRepresentation = null)

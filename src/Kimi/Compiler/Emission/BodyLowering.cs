@@ -18,6 +18,8 @@ internal sealed partial class BodyLowering
 {
     internal Dictionary<BoundProperty, FunctionAbi>? StaticGetters { get; set; }
 
+    internal VirtualGenerationPlan? Virtuals { get; set; }
+
     private const byte NormalMark = 1;
     private const byte AbortMark = 2;
     private const byte CleanupMark = 4;

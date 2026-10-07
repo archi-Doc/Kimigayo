@@ -21,7 +21,7 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
         var source = "open struct Base\n    public virtual func get(self: objref/Self) -> i32\n" + (bounded ? "        effect confined\n" : string.Empty) + "        return 1\n" + Reader + "()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(!bounded, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd));
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Equal(bounded, c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
     [Theory]
