@@ -611,7 +611,7 @@ public sealed partial class Binding
         }
 
         var candidates = new CallCandidates(group, requirementGroup, imports);
-        var self = requirementGroup?.Self ?? (callee as ComparisonCalleeKoto)?.Self;
+        var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
         var candidateCount = 0;
         var maxParameters = 0;
         var maxGenerics = 0;
@@ -749,7 +749,7 @@ public sealed partial class Binding
                         declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, mapping) : null;
                     }
 
-                    this.activeRequirementContract = requirementGroup?.Contracts[index];
+                    this.activeRequirementContract = requirementGroup?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
                     state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, out rejectedConstraint);
                     this.activeRequirementContract = null;
                 }
@@ -921,7 +921,7 @@ public sealed partial class Binding
 
             var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
-            this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex]; // Reset by the finally block.
+            this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.
             var selectedType = evaluated[winnerIndex].DeclaringType;
             if (savedCandidates != 0)
             {
@@ -1175,10 +1175,9 @@ public sealed partial class Binding
             call.CallStorage.ResultMode = ResultModeOf(selected.ReturnType);
             if (selected.IsRequirement)
             {
-                // A requirement reached through a receiver's Contracts names the reference that supplied it; a comparison
-                // callee names its Contract directly, and Equatable and Comparable take no Type arguments.
+                // Retain the bound Contract selected by member lookup or by an operator.
                 call.CallStorage.RequirementContract = requirementGroup is not null && this.activeRequirementContract is { Contract: { } requirementShape } ? RequirementReference(requirementShape, winner) :
-                    callee is ComparisonCalleeKoto ? winner.Scope.Owner.BoundSymbol : null;
+                    callee is RequirementCalleeKoto requirementCallee ? requirementCallee.Contract : null;
             }
 
             if (call.CallStorage.ResultMode != FunctionResultMode.Value && result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } published)
@@ -1399,7 +1398,7 @@ public sealed partial class Binding
             }
 
             var receiver = this.CallReceiver(generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method));
-            if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not (MemberAccessKoto or ComparisonCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee } or SyntheticKoto))
+            if (receiver is null && function.BoundSymbol!.ReceiverIndex >= 0 && (generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not (MemberAccessKoto or RequirementCalleeKoto or FormattingKoto { Operation: FormattingOperation.Callee } or SyntheticKoto))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1721,7 +1720,7 @@ public sealed partial class Binding
                     }
 
                     if (IsUnfittedLiteral(argument) && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowed &&
-                        (ScalarTypes.Supports(borrowed.Components[0]) || this.IsSyntaxPositionType(borrowed.Components[0])) && this.FitsInputLiteral(argument, borrowed.Components[0], scope))
+                        (ScalarTypes.Supports(borrowed.Components[0]) || this.TakesGenericLiterals(borrowed.Components[0], scope) || this.IsSyntaxPositionType(borrowed.Components[0])) && this.FitsInputLiteral(argument, borrowed.Components[0], scope))
                     {
                         // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed;
                         // its Place Origin binds the parameter's input Origin like any other borrowed temporary.

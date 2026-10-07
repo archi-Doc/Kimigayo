@@ -241,6 +241,8 @@ internal enum BindingFailure : byte
     // SPEC 8.4.7: the conforming Types of an intrinsic or closed Contract are fixed by the language.
     ClosedContractConformance,
     ArithmeticConformance,
+    ArithmeticSelection,
+    ArithmeticDirection,
 
     // SPEC 4.6.9: element indexing needs an Indexable conformance, and range indexing applies only to the sequence Types.
     NotIndexable,

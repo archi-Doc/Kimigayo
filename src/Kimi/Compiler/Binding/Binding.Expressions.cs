@@ -1252,6 +1252,11 @@ public sealed partial class Binding
                 ? this.BindTryWrite(unary, scope) : this.BindAbort(unary, scope);
         }
 
+        if (this.TryArithmetic(unary, scope, out var arithmeticResult))
+        {
+            return arithmeticResult;
+        }
+
         if (unary.Akind is KotoKind.PrefixMinus or KotoKind.PrefixPlus && unary.Operand is NumberLiteralKoto number)
         {
             if (this.TakesGenericLiterals(expected, scope))
@@ -1344,6 +1349,11 @@ public sealed partial class Binding
     private BoundType? BindBinary(BinaryKoto binary, BindingScope scope, BoundType? expected)
     {
         binary.ComparisonActive = false;
+        if (this.TryArithmetic(binary, scope, out var arithmeticResult))
+        {
+            return arithmeticResult;
+        }
+
         var kind = binary.Akind;
         if (kind is KotoKind.Conversion or KotoKind.As or KotoKind.Is)
         {

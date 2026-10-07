@@ -179,11 +179,20 @@ internal sealed partial class BodyLowering
         if (operation.Source is not InvocationKoto { AttributeChain: null } call || resolved is not { } plan ||
             (!intrinsic && generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
-            plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count ||
-            !ReferenceEquals(body.ConcreteAt(ElementAccess.PlaceCallReference(call) ?? call.BoundType, id), SignatureType(this, plan.ReturnType)) || SignatureType(this, plan.ReturnType) is not { } returnType ||
-            !ReferenceTypes.StorageMatches(intrinsic ? SignatureType(this, plan.ReturnType) : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
+            plan.ArgumentToParameter.Length != call.ArgumentNodes.Count || call.ArgumentNodes.Count + plan.DefaultArguments.Length + (plan.Receiver is null ? 0 : 1) != target.Parameters.Count)
         {
-            return Fail("A call needs unsupported callee, argument acquisition or result lowering.", out failure);
+            return Fail("A call needs unsupported callee or argument acquisition lowering.", out failure);
+        }
+
+        if (SignatureType(this, plan.ReturnType) is not { } returnType ||
+            !ReferenceEquals(body.ConcreteAt(ElementAccess.PlaceCallReference(call) ?? call.BoundType, id), returnType))
+        {
+            return Fail($"Call {plan.Target.Name} has inconsistent expression and retained result Types: {Binding.DiagnosticTypeName(call.BoundType ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(plan.ReturnType)}.", out failure);
+        }
+
+        if (!ReferenceTypes.StorageMatches(intrinsic ? returnType : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
+        {
+            return Fail($"Call {plan.Target.Name} has incompatible implementation and result storage: {Binding.DiagnosticTypeName(target.BoundSymbol?.Type ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(returnType)}.", out failure);
         }
 
         var runtime = formatting || clone || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));

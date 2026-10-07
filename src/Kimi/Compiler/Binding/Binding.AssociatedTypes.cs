@@ -458,11 +458,11 @@ public sealed partial class Binding
         var self = this.SelfType(path.Type);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
-        var iteratorItem = this.IsCompleteAssociated(associated);
+        var complete = this.IsCompleteAssociated(associated);
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
-            valid &= (iteratorItem || this.IsAssociatedCore(type, scope)) && (result is null || ReferenceEquals(result, type));
+            valid &= (complete || this.IsAssociatedCore(type, scope)) && (result is null || ReferenceEquals(result, type));
             result = type;
         }
 
@@ -567,12 +567,13 @@ public sealed partial class Binding
         return type.Kind != BoundTypeKind.TargetProjection || this.HasValueRole(type, scope, false);
     }
 
-    // SPEC 8.4.3, 4.6.9, 22.1.2: family definitions with implemented formation checks, Iterator.Item and Indexable.Element
+    // SPEC 8.4.3, 4.6.9, 22.1.2: family definitions with implemented formation checks, Iterator.Item, Indexable.Element and arithmetic Output
     // denote complete Types. Other associated definitions still have the Core limitation recorded in STATUS.
     private bool IsCompleteAssociated(BindingSymbol associated)
         => this.AssociatedParameters(associated.Declaration).Length != 0 ||
         (associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration)) ||
-        (associated.Name == "Element" && ReferenceEquals(associated.Scope.Owner, this.Library.Indexable?.Declaration));
+        (associated.Name == "Element" && ReferenceEquals(associated.Scope.Owner, this.Library.Indexable?.Declaration)) ||
+        (associated.Name == "Output" && ArithmeticContracts.Identity(associated.Scope.Owner.BoundSymbol) is not null);
 
     /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)

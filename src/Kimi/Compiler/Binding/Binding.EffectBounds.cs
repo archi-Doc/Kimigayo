@@ -577,6 +577,12 @@ public sealed partial class Binding
                 case BinaryKoto { ComparisonCall: { } comparison }:
                     this.Queue(comparison);
                     break;
+                case BinaryKoto { ArithmeticCall: { } arithmetic }:
+                    this.Queue(arithmetic);
+                    break;
+                case UnaryKoto { ArithmeticCall: { } unary }:
+                    this.Queue(unary);
+                    break;
                 case ForKoto { Iteration: { Decomposition.IsCurrent: true } iteration } loop:
                     // SPEC 14.6.2: the entry call, the internal Iterator local with its destruction, and each step.
                     this.Queue(loop.EntryCall);

@@ -18,6 +18,10 @@ namespace Kimi.Compiler.Parsing;
 /// </remarks>
 public abstract class UnaryKoto : ExpressionKoto
 {
+    internal BoundArithmetic? ArithmeticStorage { get; set; }
+
+    internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
+
     private static readonly string?[] PrefixTexts = new string?[MaxKind];
     private static readonly string?[] PostfixTexts = new string?[MaxKind];
 

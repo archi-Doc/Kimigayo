@@ -639,6 +639,12 @@
   + Name="Binding.ClosedContractConformance"
     Description="only the Types the language designates conform to the closed Contract"
 
+  + Name="Binding.ArithmeticSelection"
+    Description="the fixed arithmetic provider has one structurally fitting proven requirement"
+
+  + Name="Binding.ArithmeticDirection"
+    Description="published arithmetic premises agree on one provider direction for each operand pair"
+
   + Name="Binding.ArithmeticConformance"
     Description="the arithmetic provider and counterpart meet their published eligibility conditions for every admitted binding"
 

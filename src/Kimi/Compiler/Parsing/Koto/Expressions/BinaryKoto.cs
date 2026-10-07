@@ -17,6 +17,10 @@ namespace Kimi.Compiler.Parsing;
 /// </remarks>
 public abstract class BinaryKoto : ExpressionKoto
 {
+    internal BoundArithmetic? ArithmeticStorage { get; set; }
+
+    internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
+
     internal BinaryKoto(Koto source, Koto left, Koto right)
         : base(source.CodeContext, source.Span)
     {

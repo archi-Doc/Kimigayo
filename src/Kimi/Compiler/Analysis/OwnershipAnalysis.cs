@@ -1387,6 +1387,8 @@ public sealed partial class OwnershipAnalysis
                 return this.RegisterTemporary(blockValue);
             case DereferenceKoto dereference:
                 return this.ReadPointer(dereference, use, acquisition);
+            case UnaryKoto { ArithmeticCall: { } arithmeticCall }:
+                return this.Call(arithmeticCall);
             case UnaryKoto unary when node.Akind is KotoKind.Not or KotoKind.PrefixPlus or KotoKind.PrefixMinus or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement:
                 return this.UnaryValue(unary);
             default:
@@ -1397,6 +1399,11 @@ public sealed partial class OwnershipAnalysis
 
     private int Binary(BinaryKoto binary)
     {
+        if (binary.ArithmeticCall is { } arithmeticCall)
+        {
+            return this.Call(arithmeticCall);
+        }
+
         if (binary.ComparisonCall is { } comparisonCall)
         {
             var compared = this.Call(comparisonCall);

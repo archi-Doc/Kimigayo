@@ -197,6 +197,20 @@
     Category="Language"
     Message="This receiver cannot be indexed by this key: element indexing needs an Indexable conformance that takes the key's Type, and range indexing applies only to fixed arrays, Array and Slice"
 
+  + Name="ArithmeticSelection_Kd"
+    Category="Proof"
+    Message="Operator {0} cannot select a unique {1} requirement"
+    Arguments="operator:Text,contract:Text"
+    Evidence="provider:Type,counterpart:Text,condition:Text"
+    Label="{4}"
+
+  + Name="ArithmeticDirection_Kd"
+    Category="Language"
+    Message="The premises select opposite providers for operator {0}"
+    Arguments="operator:Text"
+    Evidence="left:Type,right:Type,ordinary:Text,reverse:Text"
+    Label="An operand pair has one provider direction"
+
   + Name="InvalidArithmeticConformance_Kd"
     Category="Language"
     Message="Type {0} does not establish the provider conditions of arithmetic Contract {1}"

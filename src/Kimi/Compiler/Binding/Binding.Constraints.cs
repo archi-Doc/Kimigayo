@@ -397,6 +397,13 @@ public sealed partial class Binding
                 continue;
             }
 
+            if (!environment.Invalid && !this.ValidateArithmeticDirections(scope, environment))
+            {
+                environment.Invalid = true;
+                changed = true;
+                continue;
+            }
+
             foreach (var fact in environment.Facts)
             {
                 if (this.ProveConstraint(fact, scope) == ConstraintProof.Error)

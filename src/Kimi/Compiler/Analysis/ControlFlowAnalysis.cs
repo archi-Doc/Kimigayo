@@ -736,6 +736,12 @@ public sealed class ControlFlowAnalysis
             case BinaryKoto { ComparisonCall: { } comparisonCall }:
                 flow = this.Visit(comparisonCall) with { Type = this.types.GetExpressionType(node) };
                 break;
+            case BinaryKoto { ArithmeticCall: { } arithmeticCall }:
+                flow = this.Visit(arithmeticCall) with { Type = this.types.GetExpressionType(node) };
+                break;
+            case UnaryKoto { ArithmeticCall: { } unaryCall }:
+                flow = this.Visit(unaryCall) with { Type = this.types.GetExpressionType(node) };
+                break;
             case MacroKoto { Formatting: { Acquisition: { } acquisition } tryWrite }:
                 var rootFlow = this.Visit(acquisition);
                 var normalRoot = rootFlow.Normal;

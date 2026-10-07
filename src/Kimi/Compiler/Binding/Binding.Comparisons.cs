@@ -53,48 +53,9 @@ public sealed partial class Binding
             return this.Fail(binary, BindingFailure.InvalidConstraint);
         }
 
-        var call = binary.ComparisonStorage;
-        if (call is null || !call.Span.Equals(binary.Span))
-        {
-            var target = new ComparisonCalleeKoto(binary) { Parent = binary };
-            binary.ComparisonStorage = call = new(binary, target, new Koto[2]);
-        }
-
-        var callee = (ComparisonCalleeKoto)call.Method;
-        callee.Self = self;
-        callee.BoundSymbol = members[0];
-        callee.BoundType = members[0].Type;
-        callee.BindingState = BindingState.Resolved;
-        callee.BindingFailure = BindingFailure.None;
-        ((Koto[])call.ArgumentNodes)[0] = binary.Left;
-        ((Koto[])call.ArgumentNodes)[1] = binary.Right;
-        call.BindingState = BindingState.Unvisited;
-        call.BindingFailure = BindingFailure.None;
-        call.BoundMeaning = null;
-        call.BoundSymbol = null;
-        call.CallStorage = callee.RequirementStorage;
-        this.nodes.Add(call);
-        this.BindCall(call, scope, null);
-        if (call.BoundCall is not { } selected)
-        {
-            return Complete(binary, null);
-        }
-
-        callee.RequirementStorage = selected;
-        selected.TupleOperator = tupleOperator;
-        if (!DependentType(self))
-        {
-            var resolved = this.InstantiateRequirementCall(selected, selected, callee.ImplementationStorage);
-            if (resolved is null)
-            {
-                return this.Fail(binary, BindingFailure.Unsupported, true);
-            }
-
-            call.CallStorage = resolved;
-            callee.ImplementationStorage = resolved;
-        }
-
-        binary.ComparisonActive = true;
-        return Complete(binary, BoundType.Boolean);
+        var call = this.BindSelectedRequirement(binary, binary.ComparisonStorage, [binary.Left, binary.Right], self, contract, members[0], scope, tupleOperator);
+        binary.ComparisonStorage = call;
+        binary.ComparisonActive = call?.BoundCall is not null;
+        return Complete(binary, binary.ComparisonActive ? BoundType.Boolean : null);
     }
 }

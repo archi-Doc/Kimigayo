@@ -605,6 +605,14 @@ public sealed partial class Binding
         {
             issue.Node.Report(requirement, issue.Code, DiagnosticTypeName(arithmetic.Type), arithmetic.Contract.Name, evidence: [arithmetic.Condition], related: [("contract", arithmetic.Contract.Declaration, "arithmetic Contract declaration")]);
         }
+        else if (issue.Failure == BindingFailure.ArithmeticSelection && this.arithmeticSelectionFailures?.TryGetValue(issue.Node, out var selection) == true)
+        {
+            this.ReportArithmeticSelection(issue.Node, requirement, selection);
+        }
+        else if (issue.Failure == BindingFailure.ArithmeticDirection && this.arithmeticDirectionFailures?.TryGetValue(issue.Node, out var direction) == true)
+        {
+            issue.Node.Report(requirement, issue.Code, ArithmeticOperatorText(ArithmeticContracts.Operator(direction.Id)), evidence: [DiagnosticTypeName(direction.Left), DiagnosticTypeName(direction.Right), direction.Ordinary.Name, direction.Reverse.Name], related: [("ordinary", direction.OrdinaryUse, direction.Ordinary.Name), ("reverse", direction.ReverseUse, direction.Reverse.Name)]);
+        }
         else if (issue.Failure == BindingFailure.CaseLimit)
         {
             this.ReportCaseLimit(issue.Node, requirement);
@@ -1081,6 +1089,8 @@ public sealed partial class Binding
                     BindingFailure.InvalidSelfClause => DiagnosticCode.InvalidSelfClause_Kd,
                     BindingFailure.ClosedContractConformance => DiagnosticCode.ClosedContractConformance_Kd,
                     BindingFailure.ArithmeticConformance => DiagnosticCode.InvalidArithmeticConformance_Kd,
+                    BindingFailure.ArithmeticSelection => DiagnosticCode.ArithmeticSelection_Kd,
+                    BindingFailure.ArithmeticDirection => DiagnosticCode.ArithmeticDirection_Kd,
                     BindingFailure.NotIndexable => DiagnosticCode.NotIndexable_Kd,
                     BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
@@ -1457,6 +1467,15 @@ public sealed partial class Binding
             if (node is BinaryKoto binary)
             {
                 binary.ComparisonActive = false;
+                if (binary.ArithmeticStorage is { } arithmetic)
+                {
+                    arithmetic.Active = false;
+                }
+            }
+
+            if (node is UnaryKoto { ArithmeticStorage: { } unaryArithmetic })
+            {
+                unaryArithmetic.Active = false;
             }
 
             if (node.FormattingStorage is { } formatting)

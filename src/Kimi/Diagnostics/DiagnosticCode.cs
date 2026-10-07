@@ -30,6 +30,8 @@ public enum DiagnosticCode
     InvalidSelfClause_Kd,
     ClosedContractConformance_Kd,
     InvalidArithmeticConformance_Kd,
+    ArithmeticSelection_Kd,
+    ArithmeticDirection_Kd,
     NotIndexable_Kd,
     NotObjectPayload_Kd,
     UnprovenConstraint_Kd,
