@@ -130,14 +130,14 @@ public sealed partial class Binding
 
         var receiver = accessor.Receiver is null ? null : (node as MemberAccessKoto)?.Left;
 
-        // Non-Copy results/inputs, requirement dispatch and inherited/object receiver projections retain their own execution
+        // Origin-bearing inputs/results, requirement dispatch and inherited/object receiver projections retain their own execution
         // milestones. An owning or object-form written receiver is the declaration error of SPEC 11.2, not a limit of this path.
         var receiverUnsupported = accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
             (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
         if (accessor.Declaration?.Body is null || accessor.Result is not { CarriesOrigin: false } declaredResult ||
             (declaringType is null ? declaredResult : this.MemberType(declaredResult, declaringType)) is not { } result ||
             this.ProveCopy(result, node) != ConstraintProof.Proven ||
-            (accessor.Input is { } value && (value.CarriesOrigin || this.ProveCopy(value, node) != ConstraintProof.Proven)) ||
+            accessor.Input is { CarriesOrigin: true } ||
             receiverUnsupported)
         {
             if (!(receiverUnsupported && receiver?.BoundType is { } shapedActual && this.ReceiverRestsOnAccessorShape(node, accessor, receiver, shapedActual, declaringType, null, scope, false)))

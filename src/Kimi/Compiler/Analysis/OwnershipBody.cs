@@ -324,8 +324,18 @@ public sealed partial class OwnershipBody
     {
         if ((state & PlaceState.MustInit) == 0)
         {
+            var source = operation.Source;
+            if (operation.Projection >= 0 && this.Projections[operation.Projection] is { Root: var root, Loan: >= 0 } projection &&
+                root == place && (this.State(root) & PlaceState.MustInit) == 0 &&
+                (this.State(root) & PlaceState.MayMoved) == (state & PlaceState.MayMoved))
+            {
+                // Locating an unavailable root already explains its dependent projections. Keep checking
+                // every operation's actual state, but give this cause the same source identity as the root.
+                source = this.Operations[this.ComparisonLoans[projection.Loan].Read].Source;
+            }
+
             this.ReportIssue(new(
-                operation.Source,
+                source,
                 (state & PlaceState.MayMoved) != 0 ? OwnershipFailure.PossiblyMovedUse : OwnershipFailure.UninitializedUse,
                 place));
         }

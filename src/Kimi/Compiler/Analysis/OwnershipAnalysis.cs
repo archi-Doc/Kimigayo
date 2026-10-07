@@ -2478,7 +2478,7 @@ public sealed partial class OwnershipAnalysis
                 var property = ((PropertyKoto)syntax.Parent!).BoundSymbol!.Property!;
                 var accessor = syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
                 if (accessor.Result is not { CarriesOrigin: false } result || this.owner.compilation.Binding.ProveCopy(result, syntax) != ConstraintProof.Proven ||
-                    (accessor.Input is { } input && (input.CarriesOrigin || this.owner.compilation.Binding.ProveCopy(input, syntax) != ConstraintProof.Proven)))
+                    accessor.Input is { CarriesOrigin: true })
                 {
                     this.owner.issues.Add(new(node, OwnershipFailure.Unsupported));
                 }
