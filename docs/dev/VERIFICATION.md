@@ -111,6 +111,10 @@ failure cases, retained capacity and work counters. Conditions and commands are 
 [ConstructorInference.md](../../src/Benchmark/ConstructorInference.md); allocation and differential
 assertions remain in `ConstructorInferenceReuseTest`.
 
+`Benchmark --inheritance-plans` measures the unchanged P25 and the deep/wide inputs
+shared with `InheritedPlanReuseTest`; fixed conditions and limits are in
+[Inheritance.md](../../src/Benchmark/Inheritance.md).
+
 ## Native fixtures
 
 `verify.ps1 -NativeParallel <n>` controls native fixture workers independently of managed test and milestone parallelism. The default is up to four workers; 1 runs serially. Each fixture verifies its input IR once, then compiles and executes O0 and O2, verifying optimized IR again. stdout, stderr, exit codes, dependency checks and divergent-fixture timeouts are unchanged.

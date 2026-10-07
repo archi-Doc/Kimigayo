@@ -9,6 +9,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--inheritance-plans")
+        {
+            CompilerPlanMeasurements.Run(inheritance: true);
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--property-plans")
         {
             CompilerPlanMeasurements.Run(properties: true);

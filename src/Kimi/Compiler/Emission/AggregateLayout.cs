@@ -14,7 +14,7 @@ internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowerin
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 
-    internal int StorageCount => this.Count + (this.Base?.StorageCount ?? 0);
+    internal int StorageCount { get; } = Count + (Base?.StorageCount ?? 0);
 
     internal AggregateLayout StorageLayer(ref int index)
     {

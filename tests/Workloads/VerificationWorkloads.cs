@@ -7,6 +7,42 @@ namespace Verification;
 // Linked into tests and benchmarks so their language inputs cannot drift apart.
 internal static class VerificationWorkloads
 {
+    internal static string InheritedPlans(int depth, int width)
+    {
+        var source = new StringBuilder();
+        for (var layer = 0; layer < depth; layer++)
+        {
+            source.Append("open struct Layer").Append(layer);
+            if (layer != 0)
+            {
+                source.Append(": Layer").Append(layer - 1);
+            }
+
+            source.AppendLine();
+            for (var field = 0; field < width; field++)
+            {
+                source.Append("    public var f").Append(layer).Append('_').Append(field).Append(": i32 = ").Append(field).AppendLine();
+            }
+
+            source.AppendLine("    public init() => ()");
+            if (layer == 0)
+            {
+                source.AppendLine("    public func read(self: ref/Self) -> i32 => self.f0_0");
+                source.AppendLine("    public computed peek: i32\n        get(self: ref/Self) -> i32 => self.f0_0");
+            }
+        }
+
+        source.Append("var x = Layer").Append(depth - 1).AppendLine(".init()");
+        for (var layer = 0; layer < depth; layer++)
+        {
+            source.Append("x.f").Append(layer).Append('_').Append(width - 1).AppendLine(" += 1");
+            source.Append("require x.f").Append(layer).Append('_').Append(width - 1).Append(" == ").Append(width).AppendLine(" else => $abort(\"field\")");
+        }
+
+        source.Append("require x.read() == ").Append(width == 1 ? 1 : 0).Append(" and x.peek == ").Append(width == 1 ? 1 : 0).AppendLine(" else => $abort(\"call\")");
+        return source.ToString();
+    }
+
     internal const string ExclusiveViews = "var values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\nview[^1] = 9\nrequire view[1..][0] == 9 else => $abort(\"value\")";
 
     internal const string SliceCopies = "let values: [3 of i32] = [1, 2, 3]\nlet copy = values.slice().toArray()\nrequire copy[1] == 2 else => $abort(\"copy\")";

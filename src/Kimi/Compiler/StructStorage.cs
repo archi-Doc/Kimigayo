@@ -44,14 +44,28 @@ internal static class StructStorage
     {
         for (var layer = type; layer is not null; layer = layer.StoredBase)
         {
-            for (var i = 0; i < Count(layer); i++)
+            if (Declaration(layer) is not { } declaration)
             {
-                if (ReferenceEquals(Field(layer, i).BoundSymbol, symbol))
+                continue;
+            }
+
+            var members = declaration.Members;
+            var index = 0;
+            for (var i = 0; i < members.Count; i++)
+            {
+                if (members[i] is not PropertyKoto { BoundSymbol.Property.IsStored: true } field)
                 {
-                    position = i + (layer.StoredBase is { } parent ? StorageCount(parent) : 0);
-                    fieldType = FieldType(layer, i);
+                    continue;
+                }
+
+                if (ReferenceEquals(field.BoundSymbol, symbol))
+                {
+                    position = index + (layer.StoredBase is { } parent ? StorageCount(parent) : 0);
+                    fieldType = FieldType(layer, index);
                     return fieldType is not null;
                 }
+
+                index++;
             }
         }
 
