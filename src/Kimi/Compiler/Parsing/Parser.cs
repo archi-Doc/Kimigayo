@@ -927,7 +927,7 @@ Exit:
         var unavailableAccessor = false;
         while (reader.CanRead)
         {
-            if (TryConsumeUnavailableModifiers(ref reader, accessor: true))
+            if (TryConsumeUnavailableModifiers(ref reader, out _, accessor: true))
             {
                 unavailableAccessor = true;
                 parsedAny = true;
@@ -1015,7 +1015,7 @@ Exit:
             }
 
             seenAccessor = true;
-            if (TryConsumeUnavailableModifiers(ref reader, accessor: true))
+            if (TryConsumeUnavailableModifiers(ref reader, out _, accessor: true))
             {
                 unavailableAccessor = true;
                 SkipItemForRecovery(ref reader);
@@ -1321,6 +1321,18 @@ CloseParameters:
             builder.Append(Constants.UnsafeKeyword);
         }
 
+        if ((kind & ModifierKind.Virtual) != 0)
+        {
+            builder.EnsureTrailingSpace();
+            builder.Append("virtual");
+        }
+
+        if ((kind & ModifierKind.Override) != 0)
+        {
+            builder.EnsureTrailingSpace();
+            builder.Append("override");
+        }
+
         builder.AppendTrailingSpaceOrLineFeed(writeOptions);
     }
 
@@ -1341,7 +1353,7 @@ CloseParameters:
             _ => string.Empty,
         };
 
-        if ((kind & (ModifierKind.Static | ModifierKind.Open | ModifierKind.Unsafe)) == 0)
+        if ((kind & (ModifierKind.Static | ModifierKind.Open | ModifierKind.Unsafe | ModifierKind.Virtual | ModifierKind.Override)) == 0)
         {
             return addSpace && accText.Length > 0 ? accText + " " : accText;
         }
@@ -1371,10 +1383,11 @@ CloseParameters:
         reader.ClearContext();
 
         var inspectHeader = true;
+        var functionModifiers = false;
         var openSpan = default(SourceSpan);
         while (reader.CanRead)
         {
-            if (inspectHeader && allowCompileTimeDirectives && TryConsumeUnavailableModifiers(ref reader))
+            if (inspectHeader && allowCompileTimeDirectives && TryConsumeUnavailableModifiers(ref reader, out functionModifiers))
             {
                 isEnd = false;
                 return true;
@@ -1382,6 +1395,27 @@ CloseParameters:
 
             inspectHeader = false;
             var tokenKind = reader.CurrentTokenKind;
+            if (functionModifiers && tokenKind == TokenKind.Identifier)
+            {
+                var flag = reader.GetSpan(reader.CurrentToken) switch
+                {
+                    "virtual" => ModifierKind.Virtual,
+                    "override" => ModifierKind.Override,
+                    "unsafe" => ModifierKind.Unsafe,
+                    _ => ModifierKind.NoModifier,
+                };
+                if (flag != ModifierKind.NoModifier)
+                {
+                    if ((flag & (ModifierKind.Virtual | ModifierKind.Override)) != 0 && reader.DispatchModifierSpan == default)
+                    {
+                        reader.DispatchModifierSpan = reader.CurrentTokenRange;
+                    }
+
+                    ReadFlag(ref reader, flag);
+                    continue;
+                }
+            }
+
             if (tokenKind == TokenKind.Identifier && reader.PeekKind(1) == TokenKind.Func && reader.IsCurrentIdentifier(Constants.UnsafeKeyword))
             {
                 ReadFlag(ref reader, ModifierKind.Unsafe);
@@ -1410,6 +1444,7 @@ CloseParameters:
                         }
 
                         reader.ModifierKind = ModifierKind.NoModifier;
+                        reader.DispatchModifierSpan = default;
                     }
 
                     reader.Advance();
@@ -1449,6 +1484,7 @@ CloseParameters:
                             }
 
                             reader.ModifierKind = ModifierKind.NoModifier;
+                            reader.DispatchModifierSpan = default;
                         }
                         else
                         {
@@ -1560,9 +1596,11 @@ CloseParameters:
 
     // Look only through a same-header modifier sequence. These spellings remain
     // ordinary identifiers everywhere else, including calls and declaration names.
-    private static bool TryConsumeUnavailableModifiers(ref TokenReader reader, bool accessor = false)
+    private static bool TryConsumeUnavailableModifiers(ref TokenReader reader, out bool functionModifiers, bool accessor = false)
     {
+        functionModifiers = false;
         var unavailable = default(Token);
+        var dispatch = default(Token);
         var previousEnd = reader.CurrentTokenRange.Start;
         for (var offset = 0; offset < reader.Remaining; offset++)
         {
@@ -1576,11 +1614,21 @@ CloseParameters:
             if (token.Kind == TokenKind.Identifier)
             {
                 var text = reader.GetSpan(token);
-                if (text is "virtual" or "override" or "abstract")
+                if (text is "abstract")
                 {
                     if (unavailable.Kind == TokenKind.Invalid)
                     {
                         unavailable = token;
+                    }
+
+                    continue;
+                }
+
+                if (text is "virtual" or "override")
+                {
+                    if (dispatch.Kind == TokenKind.Invalid)
+                    {
+                        dispatch = token;
                     }
 
                     continue;
@@ -1608,12 +1656,29 @@ CloseParameters:
                 : token.Kind is TokenKind.RootGroup or TokenKind.Group or TokenKind.Struct or TokenKind.Enum or
                     TokenKind.Contract or TokenKind.Extension or TokenKind.Func or TokenKind.Init or TokenKind.Drop or
                     TokenKind.Let or TokenKind.Var or TokenKind.Computed or TokenKind.Property or TokenKind.Associate;
-            if (!introducer || unavailable.Kind == TokenKind.Invalid)
+            if (!introducer)
             {
                 return false;
             }
 
-            reader.Diagnostic.Add(unavailable.Span, DiagnosticCode.UnavailableFeature_Kd, reader.GetSpan(unavailable).ToString());
+            if (unavailable.Kind != TokenKind.Invalid)
+            {
+                reader.Diagnostic.Add(unavailable.Span, DiagnosticCode.UnavailableFeature_Kd, reader.GetSpan(unavailable).ToString());
+            }
+            else if (token.Kind == TokenKind.Func && !accessor)
+            {
+                functionModifiers = true;
+                return false;
+            }
+            else if (dispatch.Kind != TokenKind.Invalid)
+            {
+                reader.Unexpected(SyntaxForm.VirtualModifier, dispatch.Span);
+            }
+            else
+            {
+                return false;
+            }
+
             reader.Advance(offset);
             return true;
         }

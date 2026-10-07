@@ -16,11 +16,8 @@ public class FrontEndSyntaxTest
     [InlineData("override rootgroup G\n    let value: i32", "override")]
     [InlineData("abstract enum E\n    A", "abstract")]
     [InlineData("abstract contract C\n    func f()", "abstract")]
-    [InlineData("virtual func f() => ()", "virtual")]
-    [InlineData("virtual func f()", "virtual")]
     [InlineData("public abstract open struct S", "abstract")]
-    [InlineData("virtual override abstract public unsafe func f() => ()", "virtual")]
-    [InlineData("virtual open func f() => ()", "virtual")]
+    [InlineData("virtual override abstract public unsafe func f() => ()", "abstract")]
     [InlineData("abstract specialize func f<i32>() => ()", "abstract")]
     [InlineData("struct S\n    virtual init() => ()", "virtual")]
     [InlineData("struct S\n    override public drop => ()", "override")]
@@ -30,20 +27,17 @@ public class FrontEndSyntaxTest
     [InlineData("struct S\n    var value: i32\n        abstract get\n        set", "abstract")]
     [InlineData("struct S\n    var value: i32\n        get\n        override open set", "override")]
     [InlineData("struct S\n    computed value: i32\n        virtual get(self: ref/Self) -> i32\n            return 1", "virtual")]
-    [InlineData("contract C\n    virtual public func f()", "virtual")]
     [InlineData("contract C\n    abstract property value: i32 has get", "abstract")]
     [InlineData("contract C\n    override associate Element", "override")]
     [InlineData("contract C\n    property value: i32 has abstract open get, set", "abstract")]
     [InlineData("contract C\n    property value: i32 has get, virtual set", "virtual")]
     [InlineData("contract C\n    property value: i32\n        abstract get(self: ref/Self) -> i32", "abstract")]
-    [InlineData("func outer()\n    virtual func inner() => ()", "virtual")]
     [InlineData("#if true\nabstract struct S", "abstract")]
-    [InlineData("#switch\n    #case true\n        virtual func f() => ()", "virtual")]
-    public void UnavailableModifiersReportOneCauseAndRecover(string source, string modifier)
+    public void UnsupportedOrMisplacedModifiersReportOneCauseAndRecover(string source, string modifier)
     {
         var tree = Parse(source + "\nstruct Following\n");
         var diagnostic = Assert.Single(TestDiagnostics.Of(tree));
-        Assert.Equal("UnavailableFeature_Kd", diagnostic.Code);
+        Assert.Equal(modifier == "abstract" ? "UnavailableFeature_Kd" : "MisplacedSyntax_Kd", diagnostic.Code);
         Assert.Equal(source.IndexOf(modifier, StringComparison.Ordinal), diagnostic.Span.Start);
         Assert.Equal(modifier.Length, diagnostic.Span.Length);
         Assert.Contains(modifier, diagnostic.Message);
@@ -65,7 +59,6 @@ public class FrontEndSyntaxTest
         => AssertValid(Parse(source));
 
     [Theory]
-    [InlineData("#if false\nvirtual func f() => ()\nstruct Next")]
     [InlineData("#if false\nabstract open struct S\n    let value: i32\nstruct Next")]
     public void ExcludedSyntaxReportsUnavailableModifiers(string source)
         => Assert.Equal("UnavailableFeature_Kd", Assert.Single(TestDiagnostics.Of(Parse(source))).Code);
@@ -73,7 +66,7 @@ public class FrontEndSyntaxTest
     [Fact]
     public void UnavailableDeclarationRecoveryRetainsIndependentSiblings()
     {
-        var tree = Parse("struct S\n    virtual func removed()\n        func nested() => ()\n    func retained() => ()\nstruct Following");
+        var tree = Parse("struct S\n    abstract func removed()\n        func nested() => ()\n    func retained() => ()\nstruct Following");
         Assert.Equal("UnavailableFeature_Kd", Assert.Single(TestDiagnostics.Of(tree)).Code);
         var structure = tree.RootKoto.NestedContainers.Single(x => x.Name == "S");
         Assert.Equal("retained", Assert.IsType<FunctionKoto>(Assert.Single(structure.Members)).Name);

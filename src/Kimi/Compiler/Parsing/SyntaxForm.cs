@@ -263,4 +263,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>The indented arm list of a match, which is not an executable body (SPEC 14.2, 14.8).</summary>
     MatchArms,
+
+    /// <summary>A virtual or override modifier outside a function declaration.</summary>
+    VirtualModifier,
 }

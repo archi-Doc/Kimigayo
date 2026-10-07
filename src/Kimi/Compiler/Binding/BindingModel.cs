@@ -195,6 +195,9 @@ internal enum BindingFailure : byte
     /// <summary>Fixing inferred constructor arguments changes or cannot verify selection.</summary>
     ConstructorSelectionChanged,
 
+    /// <summary>A virtual or override declaration violates slot eligibility.</summary>
+    VirtualDeclaration,
+
     // SPEC 7.3: value.method without invocation forms no bound-method value.
     BoundMethodValue,
 

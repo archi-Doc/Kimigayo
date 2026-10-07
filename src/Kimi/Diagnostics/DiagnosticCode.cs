@@ -229,6 +229,7 @@ public enum DiagnosticCode
     UnboundTypeArgument_Kd,
     UnprovenAcquisitionCorrelation_Kd,
     ConstructorSelectionChanged_Kd,
+    InvalidVirtualDeclaration_Kd,
     BoundMethodValue_Kd,
     UnsatisfiedOriginRelation_Kd,
     UnprovenOriginRelation_Kd,

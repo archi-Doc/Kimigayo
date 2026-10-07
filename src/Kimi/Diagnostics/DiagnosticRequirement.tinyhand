@@ -713,3 +713,10 @@
 
   + Name="Binding.ConstructorSelectionChanged"
     Description="fixing inferred construction arguments preserves the same unique constructor and waiting contexts"
+
+  + Name="Syntax.VirtualModifier"
+    Description="virtual and override modify function declarations only"
+    Phrase="a virtual or override modifier on a declaration other than func"
+
+  + Name="Binding.VirtualDeclaration"
+    Description="the virtual or override declaration satisfies slot eligibility and inherited-header restrictions"

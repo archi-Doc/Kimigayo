@@ -1044,3 +1044,9 @@
     Message="Fixing the inferred construction Type does not preserve one verifiable constructor selection"
     Evidence="construction:Type"
     Label="Rechecking the original constructor group with {0} does not preserve the selected declaration"
+
+  + Name="InvalidVirtualDeclaration_Kd"
+    Category="Language"
+    Message="This declaration cannot introduce or implement a virtual slot"
+    Evidence="condition:Text"
+    Label="{0}"

@@ -67,11 +67,19 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the function modifiers.</summary>
     public ModifierKind Modifier { get; private set; }
 
+    /// <summary>Gets a value indicating whether this declaration introduces a virtual slot.</summary>
+    public bool IsVirtual => (this.Modifier & ModifierKind.Virtual) != 0;
+
+    /// <summary>Gets a value indicating whether this declaration supplies an inherited slot's implementation.</summary>
+    public bool IsOverride => (this.Modifier & ModifierKind.Override) != 0;
+
     /// <summary>Gets the function name.</summary>
     public string Name { get; private set; } = string.Empty;
 
     /// <summary>Gets the parsed signature span before the function's span is extended by its body.</summary>
     internal SourceSpan SignatureSpan { get; }
+
+    internal SourceSpan DispatchModifierSpan { get; }
 
     // Anonymous bodies also inherit their enclosing function's substitution through every environment boundary.
     internal bool RequiresInstantiation => !this.IsSpecialization &&
@@ -340,6 +348,7 @@ public sealed class FunctionKoto : DeclarationKoto
     {
         this.SetAttributeChain(context.AttributeKoto);
         this.Modifier = context.ModifierKind;
+        this.DispatchModifierSpan = context.DispatchModifierSpan;
         this.Name = name;
         this.SignatureSpan = range;
         this.genericArguments = genericArguments;

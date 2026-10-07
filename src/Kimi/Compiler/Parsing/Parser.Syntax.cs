@@ -205,7 +205,7 @@ public static partial class Parser
     internal static void ParseRequirementBody(ref TokenReader reader, FunctionKoto function)
     {
         function.IsRequirement = true;
-        if (function.Modifier.Judged() is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
+        if ((function.Modifier.Judged() & ~(ModifierKind.Virtual | ModifierKind.Override)) is not (ModifierKind.NoModifier or ModifierKind.Unsafe) || function.AttributeChain is not null)
         {
             function.Unexpected(SyntaxForm.Decoration);
         }

@@ -3,7 +3,7 @@
 namespace Kimi.Compiler;
 
 [Flags]
-public enum ModifierKind : byte
+public enum ModifierKind : ushort
 {
     NoModifier = 0,
     Public = 1,
@@ -16,4 +16,6 @@ public enum ModifierKind : byte
     Static = 16,
     Open = 32,
     Unsafe = 64,
+    Virtual = 128,
+    Override = 256,
 }

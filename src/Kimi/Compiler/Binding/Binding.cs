@@ -477,6 +477,7 @@ public sealed partial class Binding
             }
         }
 
+        this.ValidateVirtualDeclarations();
         this.ValidateLayoutFragments();
         this.ValidateLibraryImports();
         this.ValidateBaseDeclarations();
@@ -562,6 +563,8 @@ public sealed partial class Binding
         {
             this.CompleteAliasWarnings();
         }
+
+        this.GuardPendingVirtualDeclarations();
     }
 
     private BoundType? Fail(Koto node, BindingFailure failure, bool unresolved = false)
@@ -782,6 +785,10 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.AccessorReceiverShape_Kd && issue.Node is PropertyAccessorKoto { ReceiverType: { } writtenReceiver } shapedAccessor)
         {
             this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
+        }
+        else if (issue.Code is DiagnosticCode.InvalidVirtualDeclaration_Kd or DiagnosticCode.UnsupportedBinding_Kd && issue.Node is FunctionKoto virtualFunction && (virtualFunction.IsVirtual || virtualFunction.IsOverride))
+        {
+            this.ReportVirtualDeclaration(virtualFunction, requirement, issue.Code);
         }
         else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
         {
@@ -1055,6 +1062,7 @@ public sealed partial class Binding
                     BindingFailure.InvalidBitConversion => DiagnosticCode.InvalidBitConversion_Kd,
                     BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
                     BindingFailure.ProtectedPlacement => DiagnosticCode.ProtectedPlacement_Kd,
+                    BindingFailure.VirtualDeclaration => DiagnosticCode.InvalidVirtualDeclaration_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
@@ -1101,7 +1109,7 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
-        if (name == "_" && node.Parent is ForKoto)
+        if ((name == "_" && node.Parent is ForKoto) || node is FunctionKoto { IsOverride: true })
         {
             node.BoundSymbol = symbol;
             return symbol;

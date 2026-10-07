@@ -14,7 +14,8 @@ namespace Kimi.Compiler.Lexing;
 /// <param name="AttributeKoto">The current attribute chain.</param>
 /// <param name="ModifierKind">The current modifiers.</param>
 /// <param name="IsExcluded">Whether the current declaration is excluded.</param>
-public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded);
+/// <param name="DispatchModifierSpan">The first virtual or override modifier, when present.</param>
+public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded, SourceSpan DispatchModifierSpan = default);
 
 /// <summary>
 /// The restrictions of the region the parser is in (SPEC 2.2.1): a new delimiter region lifts them, a body or header adds one, and
@@ -107,6 +108,8 @@ public ref partial struct TokenReader
 
     // Region-local parsing restrictions; grouping and arm/item boundaries reset these.
     private ParseRegion region;
+
+    internal SourceSpan DispatchModifierSpan { get; set; }
 
     /// <summary>Gets a value indicating whether the position lies in an expression body after <c>=&gt;</c>, where a nested arrow body is misplaced.</summary>
     internal readonly bool SingleBodyRegion => this.region.SingleBody;
@@ -288,6 +291,7 @@ public ref partial struct TokenReader
     {
         this.AttributeKoto = default;
         this.ModifierKind = default;
+        this.DispatchModifierSpan = default;
         this.IsExcluded = false;
         this.HasCompileTimeIfPrefix = false;
     }
@@ -299,7 +303,7 @@ public ref partial struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TokenContext TakeContext()
     {
-        var context = new TokenContext(this.AttributeKoto, this.ModifierKind, this.IsExcluded);
+        var context = new TokenContext(this.AttributeKoto, this.ModifierKind, this.IsExcluded, this.DispatchModifierSpan);
         this.ClearContext();
         return context;
     }
@@ -313,6 +317,7 @@ public ref partial struct TokenReader
     {
         this.AttributeKoto = context.AttributeKoto;
         this.ModifierKind = context.ModifierKind;
+        this.DispatchModifierSpan = context.DispatchModifierSpan;
         this.IsExcluded = context.IsExcluded;
     }
 
