@@ -14,7 +14,7 @@ if (-not $LlvmBin) { $LlvmBin = $ToolchainRoot }
 . (Join-Path $PSScriptRoot 'kernel32.ps1')
 $repo = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../../..'))
 $fixtures = if ($FixtureDirectory) { (Resolve-Path -LiteralPath $FixtureDirectory).Path } else { Join-Path $repo 'temp/scalar-fixtures' }
-$selectedFixtures = @(Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern -File | Sort-Object Name)
+$selectedFixtures = @(Get-ChildItem -LiteralPath $fixtures -Filter $FixturePattern -File | Where-Object Extension -EQ '.ll' | Sort-Object Name)
 if ($selectedFixtures.Count -eq 0) { throw "No scalar fixtures match '$FixturePattern' in '$fixtures'." }
 $out = if ($OutputDirectory) { [IO.Path]::GetFullPath($OutputDirectory, (Get-Location).ProviderPath) } else { Join-Path $repo 'temp/scalar-native' }
 New-Item -ItemType Directory -Force $out | Out-Null

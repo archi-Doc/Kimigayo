@@ -121,4 +121,7 @@ shared with `InheritedPlanReuseTest`; fixed conditions and limits are in
 
 Each fixture owns its output names and log. Workers report completed optimization levels and failures; the parent waits for every worker, preserves failure logs and fails the step if any fixture fails or a result is missing. Verify stores per-fixture logs and `results.json` under its evidence directory, with generated binaries under `temp/`. Fixture patterns are still processed in order, and parallelism is bounded within each pattern.
 
+Native selection and its input hashes include only `.ll` files, even with a broad pattern such as `*`.
+Sidecar expectation files never become compiler inputs; a pattern matching only sidecars fails as an empty selection.
+
 After changes to native verification, run `./tests/scripts/NativeFixtureRunnerTest.ps1` with the installed toolchain. It checks serial/parallel equivalence, UTF-8 stdout/stderr, nonzero expected exits, mixed independent failures, divergent execution and empty selections. Logs, including intentional failure cases, remain in `artifacts/verify/`.

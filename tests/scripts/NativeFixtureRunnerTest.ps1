@@ -32,11 +32,11 @@ function New-Fixture([string] $directory, [string] $name, [string] $source = $ir
         [IO.File]::WriteAllText((Join-Path $directory "$name.$($item.Key)"), $item.Value, $utf8)
     }
 }
-function Invoke-Case([string] $name, [string] $fixtures, [int] $parallel, [bool] $expected, [int] $count) {
+function Invoke-Case([string] $name, [string] $fixtures, [int] $parallel, [bool] $expected, [int] $count, [string] $pattern = '*.ll') {
     $logs = Join-Path $evidence $name
     $caught = $false
     try {
-        & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $fixtures -OutputDirectory (Join-Path $work $name) -LogDirectory $logs -Parallel $parallel *> (Join-Path $evidence "$name.log")
+        & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $fixtures -FixturePattern $pattern -OutputDirectory (Join-Path $work $name) -LogDirectory $logs -Parallel $parallel *> (Join-Path $evidence "$name.log")
     }
     catch { $caught = $true; $_ | Out-String | Add-Content (Join-Path $evidence "$name.log") }
     if ($caught -eq $expected) { throw "Unexpected runner outcome: $name" }
@@ -55,6 +55,7 @@ New-Fixture $valid 'two'
 # Both execution modes must preserve UTF-8 stdout/stderr and a nonzero expected exit.
 $serial = Invoke-Case 'serial' $valid 1 $true 2
 $parallel = Invoke-Case 'parallel' $valid 4 $true 2
+$null = Invoke-Case 'broad-pattern' $valid 4 $true 2 '*'
 if (@($serial | Where-Object { -not $_.ok }).Count -or @($parallel | Where-Object { -not $_.ok }).Count) { throw 'Valid fixtures failed.' }
 $mixed = Join-Path $work 'mixed'
 New-Fixture $mixed 'valid'
@@ -74,9 +75,10 @@ New-Fixture $divergent 'loop' -source "target triple = `"x86_64-pc-windows-msvc`
 $null = Invoke-Case 'divergence' $divergent 2 $true 1
 $empty = Join-Path $work 'empty'
 New-Item -ItemType Directory $empty | Out-Null
+[IO.File]::WriteAllText((Join-Path $empty 'orphan.stdout'), 'sidecar only', $utf8)
 $caught = $false
-try { & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $empty *> (Join-Path $evidence 'empty.log') }
+try { & $runner -ToolchainRoot $ToolchainRoot -FixtureDirectory $empty -FixturePattern '*' *> (Join-Path $evidence 'empty.log') }
 catch { $caught = $true; $_ | Out-String | Add-Content (Join-Path $evidence 'empty.log') }
 if (-not $caught) { throw 'An empty selection must fail.' }
 $results | ConvertTo-Json -Depth 6 | Set-Content (Join-Path $evidence 'summary.json')
-Write-Output "PASS native runner: serial/parallel UTF-8, exits, mixed failures, divergence and empty selection; $evidence"
+Write-Output "PASS native runner: serial/parallel UTF-8, exits, mixed failures, divergence, broad patterns and sidecar-only rejection; $evidence"

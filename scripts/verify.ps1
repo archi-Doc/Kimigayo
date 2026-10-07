@@ -258,7 +258,7 @@ if (-not $failed -and $Fixtures.Count -gt 0) {
         $line = Select-String -LiteralPath $log -Pattern 'Passed [1-9]\d* native' | Select-Object -Last 1
         Add-Step "native $pattern" ($ok -and $null -ne $line) "$(if ($line) { $line.Line.Trim() } else { 'see log' }); $log" $timer.Elapsed.TotalSeconds
         if (Test-Path -LiteralPath $fixtureDirectory) {
-            Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
+            Get-ChildItem -LiteralPath $fixtureDirectory -Filter $pattern -File | Where-Object Extension -EQ '.ll' | Get-FileHash | ForEach-Object { $hashes.Add("$($_.Hash),$([IO.Path]::GetFileName($_.Path))") }
         }
     }
 
