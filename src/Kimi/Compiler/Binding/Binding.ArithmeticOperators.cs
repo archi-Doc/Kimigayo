@@ -58,7 +58,8 @@ public sealed partial class Binding
     private bool TryArithmetic(BinaryKoto binary, BindingScope scope, out BoundType? result)
     {
         result = null;
-        var operation = binary.Akind;
+        var compound = binary.Akind is >= KotoKind.PlusEquals and <= KotoKind.PercentEquals;
+        var operation = compound ? KotoHelper.CompoundOperation(binary.Akind) : binary.Akind;
         if (operation is not (KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent) || IsLiteralOnlyOperation(binary))
         {
             return false;
@@ -115,7 +116,28 @@ public sealed partial class Binding
         var requirement = selected.Contract!.MembersByName[ArithmeticContracts.Method(id)][0];
         plan.Call = this.BindSelectedRequirement(binary, plan.Call, [binary.Left, binary.Right], self, selected, requirement, scope);
         plan.Active = plan.Call.BoundCall is not null;
-        result = Complete(binary, plan.Active ? plan.Call.BoundType : null);
+        if (compound && plan.Active)
+        {
+            if (!this.ValidPropertyWritePath(binary.Left, scope) || (!Writable(binary.Left) && ElementAccess.WritableRoot(binary.Left) is null))
+            {
+                result = this.FailWrite(binary, binary.Left);
+            }
+            else if (left is { Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && ReferenceBindingAssignment(binary.Left) is { } referenceFailure)
+            {
+                result = this.Fail(binary, referenceFailure);
+            }
+            else
+            {
+                var destination = ElementAccess.DestinationType(binary.Left, left);
+                result = destination is not null && this.FitsTypeAt(plan.Call.BoundType!, destination, binary)
+                    ? Complete(binary, BoundType.Unit) : this.FailMismatch(binary, binary, plan.Call.BoundType!, destination!);
+            }
+        }
+        else
+        {
+            result = Complete(binary, plan.Active ? plan.Call.BoundType : null);
+        }
+
         return true;
     }
 

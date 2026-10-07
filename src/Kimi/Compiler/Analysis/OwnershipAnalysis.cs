@@ -1401,7 +1401,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (binary.ArithmeticCall is { } arithmeticCall)
         {
-            return this.Call(arithmeticCall);
+            return arithmeticCall.RightFirstArguments ? this.ArithmeticUpdate(binary, arithmeticCall) : this.Call(arithmeticCall);
         }
 
         if (binary.ComparisonCall is { } comparisonCall)
@@ -1734,7 +1734,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int Call(InvocationKoto call, int preparedInput = -1, int preparedReceiver = -1, BoundCall? selected = null)
+    private int Call(InvocationKoto call, int preparedInput = -1, int preparedReceiver = -1, BoundCall? selected = null, ReadOnlySpan<int> preparedArguments = default)
     {
         if (call.BoundValueCall is { } valueCall)
         {
@@ -1798,7 +1798,8 @@ public sealed partial class OwnershipAnalysis
         {
             var argument = plan.ArgumentOperations[i];
             var accessor = (plan.Target.Declaration as FunctionKoto)?.Accessor;
-            var prepared = accessor is not null && argument.ParameterIndex == 0 && accessor.Receiver is not null && preparedReceiver >= 0 ? preparedReceiver
+            var prepared = !preparedArguments.IsEmpty ? preparedArguments[i]
+                : accessor is not null && argument.ParameterIndex == 0 && accessor.Receiver is not null && preparedReceiver >= 0 ? preparedReceiver
                 : accessor?.Kind == PropertyAccessorKind.Set && preparedInput >= 0 ? preparedInput
                 : this.PrepareCallArgument(call, call.ArgumentNodes[i], argument);
             borrows |= this.HasCallInspection(prepared);

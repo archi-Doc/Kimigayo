@@ -33,6 +33,8 @@ public sealed class InvocationKoto : ApplicationKoto
 
     internal bool IsValueCall { get; set; }
 
+    internal bool RightFirstArguments => this.Method is RequirementCalleeKoto && this.Parent is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
+
     // Allocated only when at least one argument is labeled.
     private string?[]? argumentLabels;
 

@@ -932,7 +932,7 @@ public sealed class ControlFlowAnalysis
                 // A committed direct callee is a designator, not a function-value acquisition.
                 // Bound receiver syntax precedes the explicit arguments exactly once.
                 var receiverFlow = receiver is null ? new Flow(true, ControlFlowType.Unit) : this.Visit(receiver);
-                var argumentsFlow = this.VisitSequence(call.ArgumentNodes, 0, call.ArgumentNodes.Count);
+                var argumentsFlow = this.VisitSequence(call.ArgumentNodes, 0, call.ArgumentNodes.Count, call.RightFirstArguments);
                 var callType = this.types.GetExpressionType(call);
                 var acquired = receiverFlow.Normal && argumentsFlow.Normal;
                 var defaultPending = false;
@@ -1258,7 +1258,7 @@ public sealed class ControlFlowAnalysis
         return flow;
     }
 
-    private Flow VisitSequence(IReadOnlyList<Koto> items, int start, int count)
+    private Flow VisitSequence(IReadOnlyList<Koto> items, int start, int count, bool reverse = false)
     {
         var normal = true;
         var pendingCompletion = false;
@@ -1266,7 +1266,7 @@ public sealed class ControlFlowAnalysis
         List<DeferredBlockKoto>? registrations = null;
         for (var i = start; i < start + count; i++)
         {
-            var item = items[i];
+            var item = items[reverse ? start + count - 1 - (i - start) : i];
             var flow = this.Visit(item);
             if (normal)
             {
