@@ -8,6 +8,22 @@ namespace XunitTest;
 
 public class ValueCallBindingTest
 {
+    [Fact]
+    public void EditingAValueCallContractRevokesTheRetainedPlan()
+    {
+        const string Source = "func apply(f: (i32) -> bool) -> bool => f(42)";
+        var c = MinimalEmissionTest.Analyze(Source);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        Assert.NotNull(call.BoundValueCall);
+        var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "apply");
+        var donor = MinimalEmissionTest.Analyze(Source.Replace("i32", "i64", StringComparison.Ordinal));
+        var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "apply").Parameters[0];
+        Assert.True(KotoHelper.Replace(function, function.Parameters[0].Type, changed.Type));
+        Assert.Null(call.BoundValueCall);
+        Assert.True(c.Bind().IsComplete);
+        Assert.NotNull(call.BoundValueCall);
+    }
+
     [Theory]
     [InlineData("ElementBorrow", "let values: Array<i32> = [42]\nlet f = func (x: ref/i32) -> i32 => x\nlet result = f(values[0])")]
     [InlineData("ReferentRead", "let n: i32 = 42\nlet r = n@ref\nlet f = func (x: i32) -> i32 => x\nlet result = f(r)")]

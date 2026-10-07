@@ -16,10 +16,10 @@ public sealed class InvocationKoto : ApplicationKoto
     }
 
     /// <summary>Gets the selected call plan for the current Binding, or null before selection.</summary>
-    public BoundCall? BoundCall => this.BindingState == BindingState.Resolved && !this.IsValueCall ? this.CallStorage : null;
+    public BoundCall? BoundCall => this.HasCurrentBinding && !this.IsValueCall ? this.CallStorage : null;
 
     /// <summary>Gets a checked invocation of a common function value.</summary>
-    public BoundValueCall? BoundValueCall => this.BindingState == BindingState.Resolved && this.IsValueCall ? this.ValueCallStorage : null;
+    public BoundValueCall? BoundValueCall => this.HasCurrentBinding && this.IsValueCall ? this.ValueCallStorage : null;
 
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Invocation;

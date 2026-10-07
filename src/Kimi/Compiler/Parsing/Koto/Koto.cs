@@ -505,6 +505,9 @@ public abstract class Koto
     /// <summary>Gets the selected symbol, or null before selection.</summary>
     public BindingSymbol? BoundSymbol { get; internal set; }
 
+    internal bool HasCurrentBinding => this.BindingState == BindingState.Resolved &&
+        (this.CodeContext.Compilation.Binding.IsRunning || this.CodeContext.Compilation.Binding.Result != default);
+
     internal BoundType? ErasedFunctionType { get; set; }
 
     internal BoundFormatting? FormattingStorage { get; set; }

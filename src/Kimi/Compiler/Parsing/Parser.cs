@@ -4102,7 +4102,7 @@ Separator:
                 return ParseInferredCase(ref reader);
 
             case TokenKind.Base:
-                return new SyntaxFormKoto(ref reader, reader.Read().Span, KotoKind.BaseReference, "base", []);
+                return new BaseReferenceKoto(ref reader, reader.Read());
 
             case TokenKind.Self when reader.PeekKind(1) == TokenKind.Dot:
                 // A Self-qualified member keeps the enclosing complete Type, including its bindings.

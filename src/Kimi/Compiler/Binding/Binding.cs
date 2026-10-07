@@ -797,7 +797,7 @@ public sealed partial class Binding
         {
             this.ReportVirtualDeclaration(virtualFunction, requirement, issue.Code);
         }
-        else if (issue.Node is SyntaxFormKoto { Akind: KotoKind.BaseReference } baseReference && issue.Code is DiagnosticCode.InvalidBaseCall_Kd or DiagnosticCode.UnsupportedBinding_Kd)
+        else if (issue.Node is BaseReferenceKoto baseReference && issue.Code is DiagnosticCode.InvalidBaseCall_Kd or DiagnosticCode.UnsupportedBinding_Kd)
         {
             this.ReportBaseCall(baseReference, requirement, issue.Code);
         }

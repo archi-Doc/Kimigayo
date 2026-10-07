@@ -67,8 +67,7 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Base.Replace("objref", "ref", StringComparison.Ordinal) + "func readAgain(self: ref/Self) -> i32\n        let operation = " + closure + "\n        return operation()\n()");
         c.Binding.ReportDiagnostics();
-        Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "InvalidBaseCall_Kd");
-        Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnsupportedBinding_Kd" && x.Text == "base");
+        Assert.Empty(TestDiagnostics.Of(c));
         var reference = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.Akind == KotoKind.BaseReference);
         Assert.Equal(BindingSymbolKind.Capture, reference.BoundSymbol!.Kind);
     }

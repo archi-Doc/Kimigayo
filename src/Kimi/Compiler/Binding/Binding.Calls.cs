@@ -228,6 +228,11 @@ public sealed partial class Binding
 
     private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
     {
+        if (member.Left is BaseReferenceKoto baseReference)
+        {
+            return this.BaseMember(member, baseReference, scope);
+        }
+
         if (member.Right.Akind == KotoKind.ConstructorReference)
         {
             return this.ConstructorMember(member, scope);
@@ -476,7 +481,12 @@ public sealed partial class Binding
         }
 
         BindingSymbol? group;
-        if (callee is IdentifierNameKoto name)
+        if (callee is BaseReferenceKoto baseReference)
+        {
+            this.BindNode(baseReference, scope);
+            group = null;
+        }
+        else if (callee is IdentifierNameKoto name)
         {
             group = this.Lookup(name.IdentifierName, scope, name, false);
         }
