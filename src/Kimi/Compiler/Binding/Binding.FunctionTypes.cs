@@ -182,7 +182,7 @@ public sealed partial class Binding
         for (var i = 0; i < inputs.Components.Count; i++)
         {
             var input = inputs.Components[i];
-            if (input.CarriesOrigin && !(input is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
+            if (input.CarriesOrigin && !(IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
                 input.Origin.Slot == i && (any || input.Origin.Binder is FunctionTypeKoto || (own is not null && ReferenceEquals(input.Origin.Binder, own))) &&
                 !input.Components[0].CarriesOrigin))
             {

@@ -7,6 +7,8 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    internal static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
+
     // SPEC 8.1: length slots belong only to functions; a nominal header with one is invalid, but its recovery Type is kept.
     private static LengthParameterKoto? LengthSlot(DeclarationContainerKoto container)
     {
@@ -20,8 +22,6 @@ public sealed partial class Binding
 
         return null;
     }
-
-    private static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
 
     private static bool IsExclusive(SemanticsKind semantics) => semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
 

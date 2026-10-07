@@ -44,11 +44,11 @@ public sealed partial class Binding
         }
     }
 
-    // The call context of a generic Item whose bound arguments are closed: the instance its calls and erasure enter. One
-    // context is retained per Item Type, so repeated preparation finds the same generic entry and allocates nothing.
-    internal BoundCall? FunctionItemContext(BoundType type)
+    // The call context of an Item: generation requires closed arguments, while public effect checks also inspect
+    // symbolic contracts. One context per Item Type lets repeated preparation reuse both operands and substitutions.
+    internal BoundCall? FunctionItemContext(BoundType type, bool requireClosed = true)
     {
-        if (type.Kind != BoundTypeKind.FunctionItem || type.ContainsParameter ||
+        if (type.Kind != BoundTypeKind.FunctionItem || (requireClosed && type.ContainsParameter) ||
             type.Symbol is not { Type: { } result, Declaration: FunctionKoto function })
         {
             return null;
@@ -73,9 +73,9 @@ public sealed partial class Binding
         try
         {
             CopyItemArguments(type, function, own);
-            // A compiler entry consumes already-acquired logical parameters. These contract operands let its
-            // ordinary object/formatting planners resolve the same witnesses without inventing a source call.
-            var operations = type.Symbol.CompilerFunction == CompilerFunctionKind.None ? [] : new BoundArgumentOperation[function.Parameters.Count];
+            // Compiler entries and virtual Items consume already-acquired logical parameters. Their public
+            // contract operands serve generation and effect checks without inventing a source invocation.
+            var operations = type.Symbol.CompilerFunction == CompilerFunctionKind.None && !function.IsVirtual ? [] : new BoundArgumentOperation[function.Parameters.Count];
             for (var i = 0; i < operations.Length; i++)
             {
                 var parameter = this.ItemType(function.Parameters[i].Type.BoundType!, type, function)!;

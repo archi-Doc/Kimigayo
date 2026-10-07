@@ -304,7 +304,7 @@ public sealed partial class Binding
             }
             else
             {
-                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
+                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable, requireClosed: false));
             }
 
             if (callable is { Kind: BoundTypeKind.Closure } && receiver == SemanticsKind.Owner &&
@@ -1134,7 +1134,7 @@ public sealed partial class Binding
 
             if (!confined)
             {
-                this.Violate(requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, null);
+                this.Violate(requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, requirement.IsVirtual && this.stepUse is null ? requirement : null);
                 return;
             }
 

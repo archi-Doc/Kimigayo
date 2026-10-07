@@ -84,13 +84,15 @@ public sealed partial class Binding
 
         var spelling = EffectBoundKoto.Spelling(violation.Bound.Bound);
         var cause = EffectCause(violation.Kind, callable: true);
+        var virtualSlot = violation.Kind == EffectViolation.UnboundedVirtual && violation.Node is FunctionKoto { IsVirtual: true };
         var related = violation.Node is { } effect
-            ? new (string Role, Koto At, string? Label)[] { ("bound", violation.Clause, "the bounded Callable Constraint"), ("effect", effect, "the violating effect") }
+            ? new (string Role, Koto At, string? Label)[] { ("bound", violation.Clause, "the bounded Callable Constraint"), (virtualSlot ? "declaration" : "effect", effect, virtualSlot ? "original virtual slot" : "the violating effect") }
             : [("bound", (Koto)violation.Clause, (string?)"the bounded Callable Constraint")];
         var advice = violation.Kind switch
         {
             EffectViolation.MissingCallablePremise => "Declare the required effect bound on the enclosing Callable premise",
             EffectViolation.ErasedCallable => "Keep the concrete Function Item or Closure Type when passing the callable; conversion to a common Function Type erases its effect guarantees",
+            EffectViolation.UnboundedVirtual => "Declare effect confined on the original virtual slot and verify every implementation; a body's incidental effects and same-object result exclusions supply no unbound Callable guarantee",
             _ => "Pass mutable state as an argument or capture; remove an editable bound only if its body can be verified without that guarantee",
         };
         use.Report(
