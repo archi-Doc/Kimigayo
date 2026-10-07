@@ -67,13 +67,12 @@ measure initial rendering, four-setting comparison, maximum history and queued-e
 are in [Hover implementation notes](dev/HOVER.md). Existing unsupported language forms, including merged independent
 requirement identities and generic Property requirements, remain unavailable rather than being guessed by Hover.
 
-**Hover improvements verification pending (2026-10-08):** the source now includes variable/parameter and built-in operation
-projection, shared Semantics descriptions, normal-size declaration rendering and a reserved source footer. These additions
-are not yet claimed as verified support: Windows Smart App Control blocked the latest xUnit assembly (0x800711C7), and the
-user explicitly instructed that execution be skipped. Final focused/full Session functional and allocation regressions remain
-unexecuted. The user will perform the actual VS Code display inspection manually; agents must not automate it, and its result
-awaits the user's report. Build/measurement evidence and remaining checks are recorded in [HOVER.md](dev/HOVER.md) and
-PLAN_HISTORY. Runtime Contract Views remain deferred under SPEC §8.5/Appendix D.
+**Hover improvements (2026-10-08):** variable/parameter and built-in operation projection, shared Semantics descriptions,
+normal-size declaration rendering and reserved source footers pass the full Session's functional and allocation regressions.
+This supersedes the earlier Smart App Control test-skip boundary; the failures and user-authorized waiver remain historical
+evidence. The user owns the manual VS Code display inspection; agents must not automate it, and no visual pass is claimed.
+Verification and measurement evidence are recorded in [HOVER.md](dev/HOVER.md) and PLAN_HISTORY. Runtime Contract Views
+remain deferred under SPEC §8.5/Appendix D.
 
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
 length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotation holes now use written dimensions,

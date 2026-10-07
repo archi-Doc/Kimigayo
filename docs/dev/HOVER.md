@@ -91,15 +91,16 @@ Callable effects, operation token/error/non-code cases, split sources, footer tr
 regressions. `LspHoverTest` adds real variable/operation responses in Markdown and plaintext. Runtime Contract Views remain
 deferred language forms; their rejection does not justify inventing established variable facts or weakening the Hover spec.
 
-The last executable feedback suite exposed six defects in implementation/test inputs; repairs include complete `s/T`
-formatting and avoiding assumptions about Markdown escaping or deferred Contract Views. Later builds succeeded, but Windows
-Smart App Control rejected the latest xUnit assembly with 0x800711C7 (CodeIntegrity events 3077/3033/3118). The user explicitly
-instructed that test execution be skipped. Final focused and full Session tests, including allocation assertions, are therefore
-unverified; earlier passing tests do not establish the final source's correctness. The user owns the manual VS Code display
-inspection (font size, wrapping, headings and source readability); agents must not automate or repeat this visual inspection.
-Its result awaits the user's report and is not an outstanding agent task. The earlier automated attempt stopped before a
-Hover was inspected; neither that attempt nor the older client evidence below certifies the new presentation. Build-only
-Verify, whole-solution build and measurement outcomes are recorded in PLAN_HISTORY and artifacts/verify.
+The initial feedback suite exposed six defects in implementation/test inputs; repairs include complete `s/T` formatting and
+correct expectations for Markdown escaping and deferred Contract Views. Windows Smart App Control then rejected the xUnit
+assembly with 0x800711C7, and the user authorized skipping execution; those failures and the waiver remain in PLAN_HISTORY.
+The later Virtual remaining-plan Session `20261007-183827-283-session-virtual-remaining-session-repaired` passes all 19,318
+functional/allocation tests, including the repaired Hover regressions, with a warning-free whole-solution Release build and
+stable inputs. This supersedes the skipped automated-test boundary.
+
+The user owns manual VS Code inspection of font size, wrapping, headings and source readability; agents must not automate
+or repeat it. Its result awaits the user's report and is not an outstanding agent task. The earlier automated attempt stopped
+before display review; neither that attempt nor the older client evidence below certifies the new presentation.
 
 ## Responsiveness measurements
 
@@ -159,7 +160,7 @@ Final whole-solution verification and commit association are recorded in PLAN_HI
 
 After the final warning-free, non-incremental whole-solution Release build, the unchanged fixed conditions above ran on
 .NET 10.0.12 / Windows 10.0.26300 with 8 reported logical processors, without concurrent build/test. Raw samples are in
-`artifacts/benchmarks/hover-improvements-20261008.json`; these observations do not replace the skipped regression suite.
+`artifacts/benchmarks/hover-improvements-20261008.json`; regression evidence is recorded separately above.
 
 | Added workload | Initial agreement/render allocation, B/op | Repeated lookup allocation, B/op | Maximum-history lookup allocation, B/op |
 | --- | ---: | ---: | ---: |
