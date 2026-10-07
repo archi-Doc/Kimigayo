@@ -76,7 +76,7 @@ public class VirtualCallSelectionTest
     [Fact]
     public void InstantiationClosesBothTheSlotAndDirectImplementation()
     {
-        const string Source = "open struct A<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\nopen struct B<U> : A<U>\n    override func read(self: objref/Self) -> i32 => 2\nstruct C<V> : B<V>\n    V is Owned\n    override func read(self: objref/Self) -> i32 => base.read()\nfunc use(value: objref/C<i32>) => ()\n()";
+        const string Source = "open struct A<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\nopen struct B<U> : A<U>\n    override func read(self: objref/Self) -> i32 => 2\nstruct C<V> : B<V>\n    override func read(self: objref/Self) -> i32 => base.read()\nfunc use(value: objref/C<i32>) => ()\n()";
         var c = MinimalEmissionTest.Analyze(Source);
         var syntax = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.Method is MemberAccessKoto { Left: BaseReferenceKoto });
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride && x.BoundSymbol!.Scope.Owner is StructKoto { Name: "C" });

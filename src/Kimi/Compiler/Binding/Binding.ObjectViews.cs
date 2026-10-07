@@ -8,6 +8,17 @@ public sealed partial class Binding
 {
     private Dictionary<Koto, (BoundType Source, BoundType Target)>? objectErasureFailures;
 
+    internal readonly record struct ObjectErasureEvidence(BoundType Source, BoundType Target, FunctionKoto? Entry);
+
+    private Dictionary<Koto, ObjectErasureEvidence>? objectErasures;
+
+    // Evidence belongs to this operation and source snapshot, never to every value of Source.
+    internal bool TryGetObjectErasure(Koto use, out ObjectErasureEvidence evidence)
+    {
+        evidence = default;
+        return use.HasCurrentBinding && this.objectErasures is not null && this.objectErasures.TryGetValue(use, out evidence);
+    }
+
     internal BoundType PayloadReadReference(ConversionKoto source, BoundType payload)
         => this.SharedReference(payload, this.PlaceOrigin(source));
 
@@ -15,21 +26,76 @@ public sealed partial class Binding
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
-    private bool RequireObjectErasure(Koto use, BoundType source, BoundType target)
+    private bool RequireObjectErasure(Koto use, Koto operand, BoundType source, BoundType target)
     {
         if (ReferenceEquals(source, target))
         {
             return true;
         }
 
-        var proof = this.ProveOwned(source, use);
+        var inherited = this.InheritsObjectErasure(operand, source, out var entry);
+        if (entry is { BindingFailure: not BindingFailure.None })
+        {
+            this.CompleteDependent(use, entry);
+            return false;
+        }
+
+        var proof = inherited ? ConstraintProof.Proven : this.ProveOwned(source, use);
         if (proof == ConstraintProof.Proven)
         {
+            (this.objectErasures ??= new(ReferenceEqualityComparer.Instance))[use] = new(source, target, entry);
             return true;
         }
 
         (this.objectErasureFailures ??= new(ReferenceEqualityComparer.Instance))[use] = (source, target);
         this.RequireConstraint(use, proof, this.capabilityMode);
+        return false;
+    }
+
+    // SPEC 6.2.4: an override's self arrived through the original slot's erased View.
+    // Its immutable receiver binding and explicit captures preserve that evidence; another
+    // parameter of the same Type does not. Original virtual entries have no such premise.
+    private bool InheritsObjectErasure(Koto operand, BoundType source, out FunctionKoto? entry)
+    {
+        entry = null;
+        operand = KotoHelper.UnwrapParentheses(operand);
+        while (ObjectTypes.IsBorrow(operand.BoundType))
+        {
+            if (this.TryGetObjectErasure(operand, out var inherited) && ReferenceEquals(source, inherited.Target))
+            {
+                entry = inherited.Entry;
+                return true;
+            }
+
+            if (operand is not ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer or ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } conversion ||
+                !ObjectTypes.IsBorrow(conversion.Left.BoundType))
+            {
+                break;
+            }
+
+            operand = KotoHelper.UnwrapParentheses(conversion.Left);
+        }
+
+        if (operand is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter or BindingSymbolKind.Capture } receiver } ||
+            receiver.MutableCapture || this.ConstraintScope(operand).Function is not { } function)
+        {
+            return false;
+        }
+
+        var lexical = function;
+        while (lexical.IsAnonymous && this.scopes[lexical].Parent?.Function is { } outer)
+        {
+            lexical = outer;
+        }
+
+        if (lexical.IsOverride &&
+            this.virtualOverrides.TryGetValue(lexical, out var implementation) && ReferenceEquals(source, implementation.ImplementingType) &&
+            ReferenceEquals(receiver, this.BaseReceiver(function, lexical)))
+        {
+            entry = lexical;
+            return true;
+        }
+
         return false;
     }
 
@@ -56,7 +122,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
-        if (!this.RequireObjectErasure(conversion, core, target.Components[0]))
+        if (!this.RequireObjectErasure(conversion, conversion.Left, core, target.Components[0]))
         {
             return null;
         }
