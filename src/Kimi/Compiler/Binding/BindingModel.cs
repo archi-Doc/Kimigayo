@@ -197,6 +197,10 @@ internal enum BindingFailure : byte
 
     /// <summary>A virtual or override declaration violates slot eligibility.</summary>
     VirtualDeclaration,
+    MissingOverrideTarget,
+    AmbiguousOverrideTarget,
+    OverrideContractMismatch,
+    DuplicateOverride,
 
     // SPEC 7.3: value.method without invocation forms no bound-method value.
     BoundMethodValue,

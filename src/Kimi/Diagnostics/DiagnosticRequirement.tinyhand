@@ -720,3 +720,15 @@
 
   + Name="Binding.VirtualDeclaration"
     Description="the virtual or override declaration satisfies slot eligibility and inherited-header restrictions"
+
+  + Name="Binding.MissingOverrideTarget"
+    Description="an accessible inherited virtual slot matches the override inputs"
+
+  + Name="Binding.AmbiguousOverrideTarget"
+    Description="the override inputs identify exactly one original virtual slot"
+
+  + Name="Binding.OverrideContractMismatch"
+    Description="the override preserves the selected original slot's public contract"
+
+  + Name="Binding.DuplicateOverride"
+    Description="the derived Type supplies at most one implementation of each bound virtual slot"

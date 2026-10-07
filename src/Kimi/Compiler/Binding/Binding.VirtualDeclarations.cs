@@ -61,8 +61,9 @@ public sealed partial class Binding
                 return "an override inherits access, attributes, the named-argument boundary, constraints and effects; do not redeclare them";
             }
 
-            foreach (var parameter in function.Parameters)
+            for (var i = 0; i < function.Parameters.Count; i++)
             {
+                var parameter = function.Parameters[i];
                 if (parameter.DefaultValue is not null || parameter.AttributeChain is not null)
                 {
                     return "an override inherits parameter defaults and attributes; do not redeclare them";
@@ -73,11 +74,18 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 6.2.4: declaration eligibility precedes slot matching and body proofs.
-    private void ValidateVirtualDeclarations()
+    private void ResetVirtualDeclarations()
     {
         this.virtualDeclarations.Clear();
         this.virtualDeclarationFailures?.Clear();
+        this.virtualOverrides.Clear();
+        this.overridesBySlot.Clear();
+        this.overrideFailures?.Clear();
+    }
+
+    // SPEC 6.2.4: declaration eligibility precedes slot matching and body proofs.
+    private void ValidateVirtualDeclarations()
+    {
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not FunctionKoto { BoundSymbol: { } symbol } function || (!function.IsVirtual && !function.IsOverride))
@@ -134,7 +142,7 @@ public sealed partial class Binding
     {
         if (code == DiagnosticCode.UnsupportedBinding_Kd)
         {
-            function.Report(requirement, code, span: function.DispatchModifierSpan, note: "Virtual declarations are retained, but slot correspondence, receiver-completeness proofs and dynamic generation are not yet implemented; no static-call fallback is emitted");
+            function.Report(requirement, code, span: function.DispatchModifierSpan, note: "Virtual declarations and structural slot correspondence are retained, but complete contract inheritance, receiver-completeness proofs and dynamic generation are not yet implemented; no static-call fallback is emitted");
         }
         else
         {

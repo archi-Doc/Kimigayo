@@ -344,6 +344,7 @@ public sealed partial class Binding
         this.resultCursor = 0;
         this.ResetStartup();
         this.ResetSpecializations();
+        this.ResetVirtualDeclarations();
         this.receiverOperations.Clear();
         this.adaptations.Clear();
         this.inferredArrayLengths.Clear();
@@ -486,6 +487,7 @@ public sealed partial class Binding
         this.ValidateCLayoutFields();
         this.ComputeOriginRequirements();
         this.ValidateSignatures();
+        this.PrepareVirtualOverrides();
         this.ValidateContractDeclarations();
         this.PrepareEffectBounds();
         this.capabilitiesReady = true;
@@ -786,6 +788,10 @@ public sealed partial class Binding
         {
             this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
         }
+        else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd && issue.Node is FunctionKoto overrideFunction)
+        {
+            this.ReportOverrideFailure(overrideFunction, requirement, issue.Code);
+        }
         else if (issue.Code is DiagnosticCode.InvalidVirtualDeclaration_Kd or DiagnosticCode.UnsupportedBinding_Kd && issue.Node is FunctionKoto virtualFunction && (virtualFunction.IsVirtual || virtualFunction.IsOverride))
         {
             this.ReportVirtualDeclaration(virtualFunction, requirement, issue.Code);
@@ -1063,6 +1069,10 @@ public sealed partial class Binding
                     BindingFailure.GenericBitConversion => DiagnosticCode.GenericBitConversion_Kd,
                     BindingFailure.ProtectedPlacement => DiagnosticCode.ProtectedPlacement_Kd,
                     BindingFailure.VirtualDeclaration => DiagnosticCode.InvalidVirtualDeclaration_Kd,
+                    BindingFailure.MissingOverrideTarget => DiagnosticCode.MissingOverrideTarget_Kd,
+                    BindingFailure.AmbiguousOverrideTarget => DiagnosticCode.AmbiguousOverrideTarget_Kd,
+                    BindingFailure.OverrideContractMismatch => DiagnosticCode.OverrideContractMismatch_Kd,
+                    BindingFailure.DuplicateOverride => DiagnosticCode.DuplicateOverride_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))

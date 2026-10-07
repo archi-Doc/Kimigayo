@@ -178,12 +178,7 @@ public sealed partial class Binding
                     return new(null, type, path, Pending: true);
                 }
 
-                var key = (path, syntax, substituted);
-                if (!this.memberPaths.TryGetValue(key, out var next))
-                {
-                    this.memberPaths.Add(key, next = new(path, syntax, substituted));
-                }
-
+                var next = this.MemberPath(path, syntax, substituted);
                 var candidate = this.LookupTypeMember(substituted, name, use, receiver, next, typeRole);
                 if (candidate.Ambiguous || candidate.Pending)
                 {
@@ -213,4 +208,15 @@ public sealed partial class Binding
     }
 
     private readonly record struct MemberSelection(BindingSymbol? Member, BoundType? DeclaringType, BoundMemberPath? Path, bool Ambiguous = false, bool Pending = false, BindingSymbol? Hidden = null);
+
+    private BoundMemberPath MemberPath(BoundMemberPath? parent, Koto syntax, BoundType type)
+    {
+        var key = (parent, syntax, type);
+        if (!this.memberPaths.TryGetValue(key, out var path))
+        {
+            this.memberPaths.Add(key, path = new(parent, syntax, type));
+        }
+
+        return path;
+    }
 }
