@@ -77,6 +77,7 @@ public sealed partial class Binding
     private void ResetVirtualDeclarations()
     {
         this.virtualDeclarations.Clear();
+        this.virtualEffectBounds.Clear();
         this.virtualDeclarationFailures?.Clear();
         this.virtualOverrides.Clear();
         this.overridesBySlot.Clear();
@@ -141,6 +142,8 @@ public sealed partial class Binding
                     earlier = effect;
                 }
             }
+
+            this.virtualEffectBounds[function] = (confined, preserves);
         }
     }
 

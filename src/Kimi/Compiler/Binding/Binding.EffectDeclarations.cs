@@ -10,6 +10,8 @@ public sealed partial class Binding
     // SPEC 8.4.10.4: every bound declared in this pass, for requirement calls whose conforming Type is concrete.
     private readonly List<BoundEffectBound> boundedRequirements = [];
 
+    private readonly Dictionary<FunctionKoto, (EffectBoundKoto? Confined, EffectBoundKoto? Preserves)> virtualEffectBounds = new(ReferenceEqualityComparer.Instance);
+
     // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
     private readonly List<BoundContract> contractShapes = [];
 
@@ -152,6 +154,29 @@ public sealed partial class Binding
     /// <returns>Whether confined and preserves results are available.</returns>
     internal (bool Confined, bool Preserves) AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, List<EffectEvidence>? evidence = null)
     {
+        if (requirement.IsVirtual)
+        {
+            if ((!this.IsRunning && this.Result == default) || !this.virtualEffectBounds.TryGetValue(requirement, out var declared))
+            {
+                return default;
+            }
+
+            if (evidence is not null)
+            {
+                if (declared.Confined is { } confinedBound)
+                {
+                    evidence.Add(new(confinedBound, requirement));
+                }
+
+                if (declared.Preserves is { } preservesBound)
+                {
+                    evidence.Add(new(preservesBound, requirement));
+                }
+            }
+
+            return (declared.Confined is not null, declared.Preserves is not null);
+        }
+
         var bounded = false;
         for (var i = 0; !bounded && i < this.boundedRequirements.Count; i++)
         {
