@@ -107,9 +107,16 @@ public sealed partial class Binding
             }
 
             this.CheckVirtualOverrideSignature(function, slot);
-            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], slot.DeclaringType, self))
+            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
             {
-                this.FailOverride(function, BindingFailure.OverrideContractMismatch, "Origins must preserve the original slot's binder and input/result dependencies; omitted annotations inherit that contract", slot.Original);
+                if (incompatible is { } contract)
+                {
+                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                }
+                else
+                {
+                    this.FailOverride(function, BindingFailure.OverrideContractMismatch, "Origin binder names must belong to the original slot; omitted annotations inherit that contract", slot.Original);
+                }
             }
         }
     }

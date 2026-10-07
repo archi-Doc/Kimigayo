@@ -2672,7 +2672,7 @@ CloseParameters:
         {
             ReportPendingAttributes(ref reader);
             var relation = ParseOriginRelation(ref reader);
-            if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true } and not { IsSpecialization: true })
+            if ((function ?? state.OriginOwner) is { } owner && !state.SeenExecutableItem && function is not { IsAnonymous: true } and not { IsDestructor: true })
             {
                 if (!excluded)
                 {

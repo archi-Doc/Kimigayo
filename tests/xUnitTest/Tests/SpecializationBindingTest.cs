@@ -211,4 +211,20 @@ public class SpecializationBindingTest
         c.Kotonoha.AddSource(new Kimi.Compiler.SourceDocument("duplicate.kimi", "specialize func weight<i32>(value: ref/i32) -> i32 => 3"));
         Assert.False(c.Bind().IsComplete);
     }
+
+    [Fact]
+    public void InheritedOriginRelationsAreAvailableInTheSpecializedBody()
+        => ScalarEmissionTest.EmitFixture("SpecializationInheritedRelations", "func choose<T>(a: ref/T, b: ref/T) -> ref/T during b\n    origin a outlives b\n    return a\nspecialize func choose<i32>(a: ref/i32, b: ref/i32) -> ref/i32 during b => a\nlet a = 7\nlet b = 9\nrequire choose(a@ref, b@ref) == 7 else => $abort(\"inherited relation\")", string.Empty);
+
+    [Theory]
+    [InlineData("origin a outlives b")]
+    [InlineData("origin a == b")]
+    [InlineData("origin a == static")]
+    public void AFullSpecializationCannotAddAnOriginPrecondition(string clause)
+    {
+        var c = MinimalEmissionTest.Analyze("func choose<T>(a: ref/T, b: ref/T) -> i32 => 1\nspecialize func choose<i32>(a: ref/i32, b: ref/i32) -> i32\n    " + clause + "\n    return 2\n()");
+        var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single(x => x.IsSpecialization);
+        Assert.Single(Kimi.Compiler.Parsing.OriginClauses.Get(implementation));
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnprovenOriginContract_Kd);
+    }
 }

@@ -397,7 +397,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var valid = this.CompleteImplementationOrigins(function, definition, arguments, lengths);
+            var valid = this.CompleteImplementationOrigins(function, definition, arguments, lengths, out var originMismatch);
             for (var p = 0; p < function.Parameters.Count; p++)
             {
                 valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName;
@@ -405,7 +405,15 @@ public sealed partial class Binding
 
             if (!valid)
             {
-                this.Fail(function, BindingFailure.IncompatibleImplementation);
+                if (originMismatch is { } contract)
+                {
+                    this.FailExplained(ref this.originContracts, function, BindingFailure.OriginContract, contract);
+                }
+                else
+                {
+                    this.Fail(function, BindingFailure.IncompatibleImplementation);
+                }
+
                 continue;
             }
 

@@ -1,13 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
 
-public class VirtualOverrideContractTest
+public class VirtualOverrideContractTest(ITestOutputHelper output)
 {
     private const string Original = "open struct Base<T>\n    public virtual func choose(self: objref/Self, value: ref/T during source) -> ref/T during source => value\nstruct Derived : Base<i32>\n    ";
 
@@ -25,13 +28,13 @@ public class VirtualOverrideContractTest
     }
 
     [Theory]
-    [InlineData(" during other", " during other")]
-    [InlineData(" during static", " during static")]
-    [InlineData(" during source", " during static")]
-    public void RenamingOrNarrowingTheOriginalOriginsIsAContractError(string input, string result)
+    [InlineData(" during other", " during other", DiagnosticCode.OverrideContractMismatch_Kd)]
+    [InlineData(" during static", " during static", DiagnosticCode.UnprovenOriginContract_Kd)]
+    [InlineData(" during source", " during static", DiagnosticCode.UnprovenOriginContract_Kd)]
+    public void RenamingOrNarrowingTheOriginalOriginsIsAContractError(string input, string result, DiagnosticCode expected)
     {
         var c = MinimalEmissionTest.Analyze(Original + "override func choose(self: objref/Self, value: ref/i32" + input + ") -> ref/i32" + result + " => value\n()");
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.OverrideContractMismatch_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == expected);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -73,5 +76,77 @@ public class VirtualOverrideContractTest
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnresolvedBinding_Kd");
         Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "OverrideContractMismatch_Kd");
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("        origin a outlives b\n")]
+    public void OriginalOriginRelationsAreBodyPremises(string repeated)
+    {
+        var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> ref/i32 during b\n        origin a outlives b\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> ref/i32 during b\n" + repeated + "        return a\n()");
+        var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
+        Assert.True(c.Binding.IsVerifiedOriginObligation(new(BindingObligationKind.OriginOutlives, implementation, BindingDeadline.BodyOrigins, Longer: implementation.Parameters[1].Type.BoundType!.Origin, Shorter: implementation.Parameters[2].Type.BoundType!.Origin)));
+        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+    }
+
+    [Theory]
+    [InlineData("origin a outlives b")]
+    [InlineData("origin a == b")]
+    [InlineData("origin a == static")]
+    public void AnImplementationCannotProveAnAddedRelationUsingItself(string clause)
+    {
+        var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> i32 => 1\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> i32\n        " + clause + "\n        return 2\n()");
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOriginContract_Kd);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenOriginContract_Kd");
+        Assert.StartsWith("origin ", error.Text, StringComparison.Ordinal);
+        Assert.Contains("not proven", error.Label!, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData(" during first", " during second")]
+    public void OriginalNamedEqualityIsInherited(string first, string? second = null)
+    {
+        second ??= first;
+        var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during first\n        origin first == second\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32" + first + ", b: ref/i32" + second + ") -> ref/i32" + first + " => a\n()");
+        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void RepeatedRelationInheritanceReusesStorage()
+    {
+        const string Source = "open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during second\n        origin first outlives second\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32 during first, b: ref/i32 during second) -> ref/i32 during second\n        origin first outlives second\n        return a\n()";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+    }
+
+    [Fact]
+    public void OriginProofDiagnosticsRetainTheOriginalContractInCliAndLsp()
+    {
+        const string Source = "open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> i32 => 1\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> i32\n        origin a outlives b\n        return 2\n()";
+        var path = Path.GetFullPath("virtual-origin-contract.kimi");
+        var c = MinimalEmissionTest.Analyze(Source, path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        var record = Assert.Single(result.Diagnostics, x => x.Code == "UnprovenOriginContract_Kd");
+        Assert.Equal(DiagnosticCategory.Proof, record.Category);
+        Assert.Contains(record.Related!, x => x.Role == "requirement");
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("outlives", console.Text, StringComparison.Ordinal);
+        Assert.Contains("original", console.Text, StringComparison.Ordinal);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity], x => x.Code == record.Code);
+            Assert.Equal(record.Display!.Range, sent.Range);
+            Assert.Contains("not proven", sent.Message, StringComparison.Ordinal);
+            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
+        }
     }
 }

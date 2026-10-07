@@ -8,6 +8,32 @@ public sealed partial class Binding
 {
     private readonly Dictionary<Koto, BoundType> inheritedOriginTypes = new(ReferenceEqualityComparer.Instance);
 
+    private static OriginContractFact? ImplementationOriginMismatch(Koto at, FunctionKoto definition, BoundType expected, BoundType actual, string member)
+    {
+        if (expected.Origin is { } required && actual.Origin is { } written && !ReferenceEquals(required, written))
+        {
+            return new(at, member, required, written, true, Required: definition);
+        }
+
+        for (var i = 0; i < Math.Min(expected.OriginArguments.Count, actual.OriginArguments.Count); i++)
+        {
+            if (!ReferenceEquals(expected.OriginArguments[i], actual.OriginArguments[i]))
+            {
+                return new(at, member, expected.OriginArguments[i], actual.OriginArguments[i], true, Required: definition);
+            }
+        }
+
+        for (var i = 0; i < Math.Min(expected.Components.Count, actual.Components.Count); i++)
+        {
+            if (ImplementationOriginMismatch(at, definition, expected.Components[i], actual.Components[i], member) is { } mismatch)
+            {
+                return mismatch;
+            }
+        }
+
+        return null;
+    }
+
     // Supply omission defaults only. Normal Type binding and the owning feature's
     // complete-contract comparison still validate structure and explicit arguments.
     private void InheritOriginContract(Koto syntax, BoundType type)
@@ -52,8 +78,10 @@ public sealed partial class Binding
         }
     }
 
-    private bool CompleteImplementationOrigins(FunctionKoto function, FunctionKoto definition, BoundType?[] arguments, BoundLength?[] lengths, BoundType? declaringType = null, BoundType? implementingType = null)
+    private bool CompleteImplementationOrigins(FunctionKoto function, FunctionKoto definition, BoundType?[] arguments, BoundLength?[] lengths, out OriginContractFact? incompatible, BoundType? declaringType = null, BoundType? implementingType = null)
     {
+        incompatible = null;
+        var originalDeclaration = this.originDeclarations.GetValueOrDefault(definition);
         var count = InputOriginCount(definition);
         var definitionOrigins = definition.BoundSymbol!.Schema?.Origins ?? [];
         var inputs = this.originScratch.Rent(count);
@@ -124,7 +152,8 @@ public sealed partial class Binding
                 // An omitted name is inherited through the first parameter position the original binds it at.
                 for (var p = 0; inherited is null && p < definition.Parameters.Count; p++)
                 {
-                    if (definition.Parameters[p].Type.BoundType is { } parameter && MentionsOrigin(parameter, definitionOrigins[i].Origin))
+                    var originalOrigin = originalDeclaration is null ? definitionOrigins[i].Origin : this.ResolveOrigin(definitionOrigins[i].Origin, originalDeclaration);
+                    if (definition.Parameters[p].Type.BoundType is { } parameter && MentionsOrigin(parameter, originalOrigin))
                     {
                         inherited = inputs[p];
                     }
@@ -153,6 +182,38 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[function];
+            var inheritedDeclaration = this.originDeclarations.GetValueOrDefault(function);
+            if (originalDeclaration is not null || inheritedDeclaration is not null)
+            {
+                inheritedDeclaration ??= this.OriginDeclarationFor(function);
+                inheritedDeclaration.Scope = scope;
+                inheritedDeclaration.State = 3;
+                // A written implementation clause is a claim to check, never its own premise.
+                // Rebuild the environment solely from the original before rebinding the header.
+                inheritedDeclaration.Replacements.Clear();
+                inheritedDeclaration.Relations.Clear();
+                if (originalDeclaration is not null)
+                {
+                    foreach (var replacement in originalDeclaration.Replacements)
+                    {
+                        if (ReferenceEquals(replacement.Key.Binder, definition) && replacement.Key.Kind is OriginKind.Parameter or OriginKind.Input)
+                        {
+                            var from = BindContractOrigin(replacement.Key);
+                            var to = BindContractOrigin(this.ResolveOrigin(replacement.Value, originalDeclaration));
+                            if (!ReferenceEquals(from, to))
+                            {
+                                inheritedDeclaration.Replacements[from] = to;
+                            }
+                        }
+                    }
+
+                    foreach (var relation in originalDeclaration.Relations)
+                    {
+                        inheritedDeclaration.Relations.Add(new(BindContractOrigin(relation.Longer), BindContractOrigin(relation.Shorter), relation.Equality, relation.Syntax));
+                    }
+                }
+            }
+
             var valid = true;
             for (var i = 0; i < definition.Parameters.Count; i++)
             {
@@ -175,6 +236,10 @@ public sealed partial class Binding
                 var actual = this.BindType(syntax, scope);
                 this.symbols[function.Parameters[i]].Type = actual;
                 valid &= ReferenceEquals(pattern, actual);
+                if (actual is not null && !ReferenceEquals(pattern, actual))
+                {
+                    incompatible ??= ImplementationOriginMismatch(syntax, definition, pattern, actual, "the input '" + function.Parameters[i].ExternalName + "'");
+                }
             }
 
             if (definition.BoundSymbol.Type is not { } output || BindContractType(output) is not { } result)
@@ -192,6 +257,29 @@ public sealed partial class Binding
             }
 
             function.BoundSymbol!.Type = actualResult;
+            if (actualResult is not null && !ReferenceEquals(result, actualResult))
+            {
+                incompatible ??= ImplementationOriginMismatch(function.ReturnType ?? function, definition, result, actualResult, "the result");
+            }
+
+            var clauses = OriginClauses.Get(function);
+            for (var i = 0; i < clauses.Count; i++)
+            {
+                var clause = clauses[i];
+                var a = this.BindOrigin(clause.Left, scope);
+                var b = this.BindOrigin(clause.Right, scope);
+                if (a is null || b is null || !this.ProvesOriginOutlives(a, b, function) || (clause.IsEquality && !this.ProvesOriginOutlives(b, a, function)))
+                {
+                    if (a is not null && b is not null)
+                    {
+                        incompatible ??= new(clause, "the Origin clause", a, b, clause.IsEquality, Required: definition);
+                    }
+
+                    valid = false;
+                    break;
+                }
+            }
+
             return valid && ReferenceEquals(result, actualResult);
         }
         finally
@@ -202,6 +290,16 @@ public sealed partial class Binding
 
         BoundType? BindContractType(BoundType type)
             => this.SubstituteType(type, definition, arguments, lengths) is { } substituted ? this.MemberType(substituted, declaringType) : null;
+
+        BoundOrigin BindContractOrigin(BoundOrigin origin)
+        {
+            if (declaringType?.Symbol is { } owner)
+            {
+                origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
+            }
+
+            return this.SubstituteStoredOrigin(origin, definition, binders.AsSpan(0, definitionOrigins.Count), inputs.AsSpan(0, count));
+        }
 
         static bool MentionsOrigin(BoundType type, BoundOrigin origin)
         {

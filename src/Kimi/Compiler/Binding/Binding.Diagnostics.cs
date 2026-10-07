@@ -824,6 +824,12 @@ public sealed partial class Binding
     // displayed as the required contract writes them; an omitted end is related at its Type occurrence. Advice only describes a repair.
     private static void ReportOriginContract(Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code)
     {
+        if (contract.Required is { } original)
+        {
+            node.Report(requirement, code, evidence: ["implementation", contract.Member, contract.Equality ? "==" : "outlives", OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)], related: [("requirement", original, "the original implementation contract")], advice: "Preserve the original contract's Origin bindings and requirements; an implementation cannot add a precondition", at: contract.At);
+            return;
+        }
+
         // An erased closure's environment binding lies within its call receiver, which no Origin expression names (SPEC 15.8.2).
         var longer = contract.Longer is { Kind: OriginKind.Projection, Binder: FunctionKoto { IsAnonymous: true } } environment && environment.Slot <= EnvironmentSlot(0)
             ? new DiagnosticOrigin("closure", "call receiver") : OriginDisplay(contract.Longer, null);
