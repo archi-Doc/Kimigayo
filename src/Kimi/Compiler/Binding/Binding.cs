@@ -686,7 +686,14 @@ public sealed partial class Binding
         }
         else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
         {
-            var candidates = new (string Role, Koto At, string? Label)[rejected.Length];
+            var relatedCount = rejected.Length;
+            foreach (var candidate in rejected)
+            {
+                relatedCount += candidate.ConstraintFailure is null ? 0 : 1;
+            }
+
+            var candidates = new (string Role, Koto At, string? Label)[relatedCount];
+            var nextConstraint = rejected.Length;
             string? shapeNote = issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? "No candidate is better than every other remaining candidate under the argument, parameter Type, generic and default ranking rules. Anonymous bodies, captures and waiting function references do not select an overload" : null;
             string? advice = null;
             for (var c = 0; c < rejected.Length; c++)
@@ -753,6 +760,16 @@ public sealed partial class Binding
                     {
                         advice ??= RangeShapeAdvice;
                     }
+                }
+
+                if (candidate.ConstraintFailure is { } condition)
+                {
+                    var subject = condition.Constraint.Subject is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
+                    var conditionNote = $"{candidate.Function.Name} requires {condition.Clause}; this condition is refuted for {subject}";
+                    label = conditionNote;
+                    shapeNote ??= conditionNote;
+                    advice ??= "Provide arguments that satisfy the declaration's required constraint";
+                    candidates[nextConstraint++] = ("constraint", condition.Clause, conditionNote);
                 }
 
                 advice ??= candidate.ObjectClone ? StrongCloneAdvice : null;

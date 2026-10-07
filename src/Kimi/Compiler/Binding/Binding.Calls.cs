@@ -731,6 +731,7 @@ public sealed partial class Binding
                 ClosureReceiverRefutation? closureReceiver = null;
                 var unsolved = false;
                 var independentRejection = false;
+                ReferenceConstraintFailure? rejectedConstraint = null;
                 // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
                 var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
                 if (accessible)
@@ -742,7 +743,7 @@ public sealed partial class Binding
                     }
 
                     this.activeRequirementContract = requirementGroup?.Contracts[index];
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver, out independentRejection);
+                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, out rejectedConstraint);
                     this.activeRequirementContract = null;
                 }
 
@@ -751,7 +752,7 @@ public sealed partial class Binding
                     declaringType = this.ConstructionType(function, declaringType, scratch) ?? declaringType;
                 }
 
-                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations.AsSpan(index * operationStride, operationStride)), independentRejection);
+                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations.AsSpan(index * operationStride, operationStride)), independentRejection, rejectedConstraint);
                 if (savedCandidates != 0)
                 {
                     mapping.AsSpan(0, argumentCount).CopyTo(allMaps.AsSpan(index * argumentCount));
@@ -764,7 +765,7 @@ public sealed partial class Binding
                     // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
                     pendingCount++;
                     callableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, scratch, lengthArguments, mapping, scope, self, declaringType) : null;
-                    constraintFailure ??= function.TypeConstraints.Count != 0 ? this.PendingConstraintFailure(function, scratch, lengthArguments, scope, self, declaringType) : null;
+                    constraintFailure ??= this.CandidateConstraintFailure(function, scratch, lengthArguments, scope, self, declaringType, ConstraintProof.Unknown);
                 }
 
                 error |= state == CandidateApplicability.Error;
@@ -824,7 +825,7 @@ public sealed partial class Binding
                     var rejected = new RejectedCandidate[count];
                     for (var i = 0; i < count; i++)
                     {
-                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null);
+                        rejected[i] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ConstraintFailure: evaluated[i].ConstraintFailure);
                         var rejectedReceiver = operations[(i * operationStride) + operationStride - 1];
                         if (rejectedReceiver.SourceType is { } receiverActual && rejectedReceiver.ParameterType is { } receiverExpected && SharedObjectAuthorityMismatch(receiverActual, receiverExpected))
                         {
@@ -969,7 +970,7 @@ public sealed partial class Binding
                     }
                 }
 
-                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, evaluated[winnerIndex].ArgumentMap, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _, out _);
+                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, evaluated[winnerIndex].ArgumentMap, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _, out _, out _);
                 if (state != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
@@ -1273,7 +1274,7 @@ public sealed partial class Binding
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
     // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, bool fixedConstruction = false)
+    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, out ReferenceConstraintFailure? constraintFailure, bool fixedConstruction = false)
     {
         if (this.MeasureCallInference)
         {
@@ -1290,7 +1291,7 @@ public sealed partial class Binding
         this.environmentEvidence = false;
         try
         {
-            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, fixedConstruction);
+            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, out constraintFailure, fixedConstruction);
             if (result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is { } acquisition)
             {
                 // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling.
@@ -1314,7 +1315,7 @@ public sealed partial class Binding
         }
     }
 
-    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, bool fixedConstruction = false)
+    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, out ReferenceConstraintFailure? constraintFailure, bool fixedConstruction = false)
     {
         var waiting = this.RentSlotSet(call.ArgumentNodes.Count);
         var open = this.RentSlotSet(call.ArgumentNodes.Count);
@@ -1327,6 +1328,7 @@ public sealed partial class Binding
             closureReceiver = null;
             unsolved = false;
             independentRejection = false;
+            constraintFailure = null;
             if (!argumentMap.InputsValid || (function.IsConstructor && declaringType is null))
             {
                 return CandidateApplicability.Inapplicable;
@@ -1906,6 +1908,12 @@ public sealed partial class Binding
                 {
                     this.permitClosureReceivers = false;
                 }
+            }
+
+            // Retain only a condition actually reached after the argument/result checks, before scratch is reused.
+            if (proof == ConstraintProof.Refuted && closureReceiver is null)
+            {
+                constraintFailure = this.CandidateConstraintFailure(function, arguments, lengths, scope, self, declaringType, ConstraintProof.Refuted);
             }
 
             unsolved = proof == ConstraintProof.Proven && !unsolvedSlots.IsEmpty;

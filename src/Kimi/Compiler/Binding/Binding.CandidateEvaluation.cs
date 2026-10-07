@@ -200,7 +200,7 @@ public sealed partial class Binding
         return this.FailExplained(ref this.referenceConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
     }
 
-    private ReferenceConstraintFailure? PendingConstraintFailure(FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType)
+    private ReferenceConstraintFailure? CandidateConstraintFailure(FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType, ConstraintProof outcome)
     {
         for (var i = 0; i < function.TypeConstraints.Count; i++)
         {
@@ -210,9 +210,27 @@ public sealed partial class Binding
             }
 
             var substituted = this.SubstituteCandidateConstraint(bound, function, slots, lengths, scope, self, declaringType);
-            if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == ConstraintProof.Unknown)
+            if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == outcome)
             {
-                return new(clause, substituted, ConstraintProof.Unknown, function.BoundSymbol);
+                return new(clause, substituted, outcome, function.BoundSymbol);
+            }
+        }
+
+        if (function.BoundSymbol is { ConditionalDeclaration: { } declaration } member)
+        {
+            declaringType ??= this.SelfType(member.Scope.Owner.BoundSymbol!);
+            foreach (IsKoto clause in ((SyntaxFormKoto)declaration.Operands[1]).Operands)
+            {
+                if (clause.BoundConstraint is not { HasUnresolved: false } bound)
+                {
+                    continue;
+                }
+
+                var substituted = this.ContractConstraint(this.SubstituteConstraint(bound, member.Scope.Owner, (BoundType[])declaringType.Components), scope, declaringType);
+                if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == outcome)
+                {
+                    return new(clause, substituted, outcome, member);
+                }
             }
         }
 
@@ -250,7 +268,7 @@ public sealed partial class Binding
 
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false);
+    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null);
 
     // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);

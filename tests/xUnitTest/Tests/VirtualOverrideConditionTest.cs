@@ -73,8 +73,9 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     public void ClosedInapplicabilityIsNotAContradictoryDefinitionPremise()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.Single(c.Binding.Issues);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Empty(c.Binding.Issues);
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

@@ -215,11 +215,18 @@ public sealed partial class Binding
         foreach (var fact in environment.DirectFacts)
         {
             var bound = this.SubstituteConstraint(fact, slot.DeclaringType.Symbol!.Declaration, (BoundType[])slot.DeclaringType.Components);
-            // A closed, inapplicable binding is not a contradictory definition premise. Body exclusion
-            // needs the applicability-aware generation plan; keep that intersection unsupported for now.
-            if (this.ProveConstraint(bound, premises) is ConstraintProof.Refuted or ConstraintProof.Error)
+            // Applicability belongs to the public slot. A refuted substituted premise supplies no
+            // body evidence; ordinary definition checks still run (SPEC 8.4.8.2). Generation keeps
+            // the inapplicable slot's position without requesting its body.
+            var proof = this.ProveConstraint(bound, premises);
+            if (proof == ConstraintProof.Refuted)
             {
-                this.Fail(function, BindingFailure.Unsupported, true);
+                continue;
+            }
+
+            if (proof == ConstraintProof.Error)
+            {
+                this.FailConstraint(function, this.FindConformanceDiagnosticCause(source.Owner, fact));
                 continue;
             }
 
