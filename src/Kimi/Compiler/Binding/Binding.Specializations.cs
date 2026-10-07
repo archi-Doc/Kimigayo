@@ -294,7 +294,7 @@ public sealed partial class Binding
 
             // Constraint and attribute specializations require their own inherited contract certificates.
             // Do not accept their syntax by merely erasing the generic header. Written binder names
-            // are inherited by CompleteSpecializationOrigins (SPEC 8.8.2); a receiver is an ordinary
+            // are inherited by CompleteImplementationOrigins (SPEC 8.8.2); a receiver is an ordinary
             // restated parameter matched at the original's position (SPEC 8.8.1).
             if (function.AttributeChain is not null || function.GenericArguments.Count == 0 || HasParameterAttributes(function))
             {
@@ -397,7 +397,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var valid = this.CompleteSpecializationOrigins(function, definition, arguments, lengths);
+            var valid = this.CompleteImplementationOrigins(function, definition, arguments, lengths);
             for (var p = 0; p < function.Parameters.Count; p++)
             {
                 valid &= function.Parameters[p].ExternalName == definition.Parameters[p].ExternalName;

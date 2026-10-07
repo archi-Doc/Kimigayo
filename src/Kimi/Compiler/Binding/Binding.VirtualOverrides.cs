@@ -100,7 +100,17 @@ public sealed partial class Binding
             }
 
             this.overridesBySlot.Add(key, function);
+            if (IncompleteSignature(slot.Original) is { } prerequisite)
+            {
+                this.CompleteDependent(function, prerequisite);
+                continue;
+            }
+
             this.CheckVirtualOverrideSignature(function, slot);
+            if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], slot.DeclaringType, self))
+            {
+                this.FailOverride(function, BindingFailure.OverrideContractMismatch, "Origins must preserve the original slot's binder and input/result dependencies; omitted annotations inherit that contract", slot.Original);
+            }
         }
     }
 

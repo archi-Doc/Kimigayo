@@ -18,6 +18,9 @@ public sealed partial class Binding
             case ParenthesizedTypeKoto grouped:
                 this.InheritOriginContract(grouped.Type, type);
                 break;
+            case PlaceResultKoto place:
+                this.InheritOriginContract(place.Type, type);
+                break;
             case TypeSemanticsKoto { Type: { } target } semantics:
                 if (semantics.IsTransparentWrapper || (semantics.SemanticsParameter is null && semantics.SemanticsKind == SemanticsKind.Owner))
                 {
@@ -49,7 +52,7 @@ public sealed partial class Binding
         }
     }
 
-    private bool CompleteSpecializationOrigins(FunctionKoto function, FunctionKoto definition, BoundType?[] arguments, BoundLength?[] lengths)
+    private bool CompleteImplementationOrigins(FunctionKoto function, FunctionKoto definition, BoundType?[] arguments, BoundLength?[] lengths, BoundType? declaringType = null, BoundType? implementingType = null)
     {
         var count = InputOriginCount(definition);
         var definitionOrigins = definition.BoundSymbol!.Schema?.Origins ?? [];
@@ -104,7 +107,7 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 8.8.2: named Origin binders are inherited by name; a specialization neither adds nor renames one.
+            // SPEC 8.8.2 and 6.2.4: implementations inherit named Origin binders without adding or renaming them.
             var written = function.BoundSymbol!.Schema?.Origins ?? [];
             for (var i = 0; i < definitionOrigins.Count; i++)
             {
@@ -153,13 +156,19 @@ public sealed partial class Binding
             var valid = true;
             for (var i = 0; i < definition.Parameters.Count; i++)
             {
-                var pattern = this.SubstituteType(definition.Parameters[i].Type.BoundType!, definition, arguments, lengths);
+                var pattern = BindContractType(definition.Parameters[i].Type.BoundType!);
                 if (pattern is null)
                 {
                     return false;
                 }
 
                 pattern = this.SubstituteStoredOrigins(pattern, definition, binders.AsSpan(0, definitionOrigins.Count), inputs.AsSpan(0, count));
+                if (implementingType is not null && i == definition.BoundSymbol.ReceiverIndex)
+                {
+                    // Only the receiver's core Self changes. Its public Origin is inherited unchanged.
+                    pattern = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [implementingType], origin: pattern.Origin);
+                }
+
                 var syntax = function.Parameters[i].Type;
                 this.InheritOriginContract(syntax, pattern);
                 Reset(syntax);
@@ -168,7 +177,7 @@ public sealed partial class Binding
                 valid &= ReferenceEquals(pattern, actual);
             }
 
-            if (definition.BoundSymbol.Type is not { } output || this.SubstituteType(output, definition, arguments, lengths) is not { } result)
+            if (definition.BoundSymbol.Type is not { } output || BindContractType(output) is not { } result)
             {
                 return false;
             }
@@ -190,6 +199,9 @@ public sealed partial class Binding
             this.originScratch.Return(binders, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
         }
+
+        BoundType? BindContractType(BoundType type)
+            => this.SubstituteType(type, definition, arguments, lengths) is { } substituted ? this.MemberType(substituted, declaringType) : null;
 
         static bool MentionsOrigin(BoundType type, BoundOrigin origin)
         {

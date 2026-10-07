@@ -1119,7 +1119,7 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
-        if ((name == "_" && node.Parent is ForKoto) || node is FunctionKoto { IsOverride: true })
+        if ((name == "_" && node.Parent is ForKoto) || (kind == BindingSymbolKind.Function && node is FunctionKoto { IsOverride: true }))
         {
             node.BoundSymbol = symbol;
             return symbol;
