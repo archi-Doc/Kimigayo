@@ -85,7 +85,7 @@ public sealed partial class OwnershipAnalysis
     private int BorrowCapture(FunctionKoto source, int place, BoundType type)
     {
         var stored = this.body.Places[place].Type;
-        var borrowValue = ReferenceTypes.IsBorrow(stored) || ObjectTypes.IsBorrow(stored);
+        var borrowValue = ReferenceTypes.IsBorrow(stored);
         if (borrowValue)
         {
             this.Emit(OwnershipOperationKind.Read, source, place);

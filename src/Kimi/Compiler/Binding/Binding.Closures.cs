@@ -446,10 +446,10 @@ public sealed partial class Binding
         }
 
         // SPEC 7.6.2: an environment holds any Type with slot storage, including enums (Option, Result), Arrays, Dictionaries,
-        // Slices and raw pointers.
+        // Slices, object Views and raw pointers. All safe borrows use the same representation boundary.
         if (!(ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) ||
                 (function.ClosureStorage?.EnvironmentType is not null && (type.Kind == BoundTypeKind.Parameter || SlotTypes.IsResult(type) ||
-                    ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type)))))
+                    ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type)))))
         {
             if (entry is { } written)
             {

@@ -74,13 +74,15 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void AnUnsupportedObjectViewCaptureRemainsThePrerequisite()
+    public void AnObjectViewCaptureReachesTheDirectBaseCall()
     {
         var c = MinimalEmissionTest.Analyze(Base + "func readAgain(self: objref/Self) -> i32\n        let operation = func[self]() -> i32 => base.read()\n        return operation()\n()");
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("UnsupportedBinding_Kd", error.Code);
-        Assert.Equal("self", error.Text);
+        Assert.Equal("base", error.Text);
+        var reference = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.Akind == KotoKind.BaseReference);
+        Assert.Equal(BindingSymbolKind.Capture, reference.BoundSymbol!.Kind);
     }
 
     [Fact]
