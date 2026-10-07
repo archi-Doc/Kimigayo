@@ -32,6 +32,8 @@ public sealed partial class Binding
         private readonly HashSet<string> syntaxErrorSources = new(SourceIdentity.PathComparer);
         private readonly HashSet<string> documentationErrorSources = new(SourceIdentity.PathComparer);
         private readonly List<EffectHover> legacyEffects = [];
+        private readonly Dictionary<SourceDocument, string?> logicalNames = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<(string Operation, bool Full), HoverInfo> operations = new();
         private readonly HoverBudget budget = new(maximumWork: 4 * HoverLimits.Work);
 
         internal HoverSnapshot Build()
@@ -53,6 +55,11 @@ public sealed partial class Binding
 
             foreach (var module in compilation.SourceModules.Append(compilation.Library.Kotonoha))
             {
+                for (var i = 0; i < module.SourceDocuments.Count; i++)
+                {
+                    this.logicalNames.TryAdd(module.SourceDocuments[i], module.HoverSourceName(i));
+                }
+
                 foreach (var source in module.SourceDocuments)
                 {
                     if (compilation.Diagnostics.HasSyntaxErrors(source))
@@ -108,15 +115,17 @@ public sealed partial class Binding
                         this.origins.Add(declaration, list = []);
                     }
 
-                    list.Add(new(this.Project(declaration), anchor.Source.Path, anchor.Token));
+                    list.Add(this.Origin(declaration, anchor.Source, anchor.Token));
                 }
             }
 
             // Explicit parser positions own their tokens. References supply names; selected direct calls augment those names.
             foreach (var anchor in compilation.HoverAnchors)
             {
-                this.Add(anchor.Source, anchor.Token, Effective(anchor.Syntax), 2);
+                this.Add(anchor.Source, anchor.Token, Effective(anchor.Syntax), anchor.Syntax is ConversionKoto ? 4 : 2);
             }
+
+            this.IndexVariables();
 
             foreach (var node in binding.nodes)
             {
@@ -235,6 +244,19 @@ public sealed partial class Binding
 
         private HoverInfo? Describe(Koto syntax)
         {
+            if (syntax is ConversionKoto { Right: TypeSemanticsKoto { HoverOperation: { } operation } target } && !IsRecovery(target, out _))
+            {
+                var full = target.Type is not null;
+                if (!this.operations.TryGetValue((operation, full), out var operationInfo))
+                {
+                    var header = "@" + operation + (target.ConversionOperation is not null ? "<U>" : full ? "/T" : string.Empty);
+                    operationInfo = new([new("Operation", string.Empty, header, [], [], Details: HoverExplanations.Operation(operation, full))], TypeIdentity: new("operation;" + header, []));
+                    this.operations.Add((operation, full), operationInfo);
+                }
+
+                return operationInfo;
+            }
+
             if (IsRecovery(syntax, out _) || (syntax.BindingState != BindingState.Resolved && !IsDeclaration(syntax)))
             {
                 return null;
@@ -243,7 +265,12 @@ public sealed partial class Binding
             var symbol = ReferenceSymbol(syntax);
             if (syntax is InvocationKoto invocation)
             {
-                return this.Call(invocation);
+                return this.VariableCall(invocation, this.Call(invocation));
+            }
+
+            if (symbol is { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter, Type: { } variableType })
+            {
+                return this.Variable(symbol, syntax.BoundType ?? variableType, syntax);
             }
 
             var declaration = IsDeclaration(syntax) ? syntax : symbol?.Declaration;
@@ -277,14 +304,16 @@ public sealed partial class Binding
                         TypeIdentity: this.TypeIdentity(syntax.BoundType ?? symbol.Type)) : null;
             }
 
-            if (symbol is not null && symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType))
+            if (symbol is not null && symbol.Kind is not (BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType) &&
+                !(symbol.Kind == BindingSymbolKind.SemanticsParameter && syntax is TypeSemanticsKoto { Type: not null }))
             {
                 return null;
             }
 
             var isType = syntax is TypeKoto or GenericsKoto or OriginApplicationKoto ||
                 symbol?.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType;
-            if (!isType || symbol?.Kind is BindingSymbolKind.SemanticsParameter or BindingSymbolKind.LengthParameter ||
+            if (!isType || symbol?.Kind == BindingSymbolKind.LengthParameter ||
+                (symbol?.Kind == BindingSymbolKind.SemanticsParameter && syntax is not TypeSemanticsKoto { Type: not null }) ||
                 syntax.BoundType is not { } type)
             {
                 return null;
@@ -309,23 +338,12 @@ public sealed partial class Binding
             var declared = declaration is null || (declaration is not (StructKoto or EnumKoto or GenericParameterKoto) && symbol?.Kind != BindingSymbolKind.AssociatedType)
                 ? this.Builtin(type)
                 : this.Declaration(declaration);
-            var scope = binding.ConstraintScope(syntax);
-            if (!this.copies.TryGetValue((type, scope), out var copy))
-            {
-                var invalid = false;
-                for (var current = scope; current is not null; current = current.Parent)
-                {
-                    invalid |= current.Constraints is { Invalid: true };
-                }
-
-                copy = invalid ? ConstraintProof.Error : binding.ProveCopy(type, syntax);
-                this.copies.Add((type, scope), copy);
-            }
+            var copy = this.Copy(type, syntax);
 
             if (!this.typeDescriptions.TryGetValue((declared, type, copy), out var info))
             {
                 var spelling = this.TypeName(type);
-                info = new([declared], "Type: " + spelling, spelling, copy, TypeIdentity: this.TypeIdentity(type));
+                info = new([declared], "Type: " + spelling + "\nSemantics: " + this.Semantics(type), spelling, copy, TypeIdentity: this.TypeIdentity(type));
                 this.typeDescriptions.Add((declared, type, copy), info);
             }
 
@@ -366,7 +384,7 @@ public sealed partial class Binding
                 (syntax.Parent is StructKoto container && ReferenceEquals(container.ImplicitConstructor, syntax));
             var origins = generated ? [] : this.origins.TryGetValue(syntax, out var fragments)
                 ? fragments.ToArray()
-                : source is null ? [] : new HoverOrigin[] { new(this.Project(syntax), source.Path, syntax.Span) };
+                : source is null ? [] : new HoverOrigin[] { this.Origin(syntax, source, syntax.Span) };
             Array.Sort(origins, static (a, b) =>
             {
                 var result = string.CompareOrdinal(a.Project, b.Project);
@@ -460,6 +478,9 @@ public sealed partial class Binding
         private string Project(Koto syntax)
             => syntax.Kotonoha.Url.Length != 0 ? syntax.Kotonoha.Url : binding.compilation.Project.FilePath ?? binding.compilation.Project.Directory;
 
+        private HoverOrigin Origin(Koto syntax, SourceDocument source, SourceSpan span)
+            => new(this.Project(syntax), source.Path, span, this.logicalNames.GetValueOrDefault(source));
+
         private HoverPlacement Placement(Kotonoha module)
         {
             if (ReferenceEquals(module, binding.compilation.Library.Kotonoha))
@@ -498,14 +519,19 @@ public sealed partial class Binding
             var names = new List<string>();
             for (var parent = syntax.Parent; parent is not null; parent = parent.Parent)
             {
-                if (parent.BoundSymbol is { Name.Length: > 0 } symbol)
+                if (parent.BoundSymbol is { Name.Length: > 0 } symbol && parent is not FunctionKoto { IsGenerated: true } && !symbol.Name.StartsWith('$'))
                 {
                     names.Add(symbol.Name);
                 }
             }
 
             names.Reverse();
-            return names.Count == 0 ? syntax.Kotonoha.Name : string.Join('.', names);
+            if (syntax.Kotonoha.Name.Length != 0 && (names.Count == 0 || names[0] != syntax.Kotonoha.Name))
+            {
+                names.Insert(0, syntax.Kotonoha.Name);
+            }
+
+            return string.Join('.', names);
         }
 
         private string CallUse(BoundCall call, Koto syntax)

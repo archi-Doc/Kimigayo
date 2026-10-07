@@ -27,7 +27,7 @@ public sealed partial class Binding
             return (string)value;
         }
 
-        if (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Parameter && (!complete || !type.CarriesOrigin))
+        if (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Parameter && (!complete || (!type.CarriesOrigin && type.Symbol?.Kind != BindingSymbolKind.SemanticsTarget)))
         {
             return type.Name;
         }
@@ -41,6 +41,11 @@ public sealed partial class Binding
         {
             using var guard = budget?.Enter();
             budget?.Charge(current.Name.Length);
+            if (complete && current is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } semantics } })
+            {
+                text.Append(semantics.Name).Append('/');
+            }
+
             if (current.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication && current.Components.Count == 1)
             {
                 var mark = complete ? current.Origin is not null : shown is not null && ReferenceEquals(current.Origin, shown);

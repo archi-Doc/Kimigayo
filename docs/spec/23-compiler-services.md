@@ -409,7 +409,7 @@ Example: with the default quiet period, edits at 0, 90 and 180 ms start one work
 
 ### 23.4.11. Hover
 
-[Hover](lsp-hover.md) defines declaration, Type/Copy, Property, function, effect and documentation inspection, including source-relative links. It shares this section's checks, quiet-period setting, input validity and required units, while keeping its own complete participant agreement and explicitly labeled previous-analysis display. Diagnostic publication does not depend on Hover readiness or rendering.
+[Hover](lsp-hover.md) defines declaration containers and source attribution, Type/Copy, Property, function, local/parameter Type composition, built-in `@` operation explanations, effects and documentation inspection, including source-relative links. It shares this section's checks, quiet-period setting, input validity and required units, while keeping its own complete participant agreement and explicitly labeled previous-analysis display. Diagnostic publication does not depend on Hover readiness or rendering.
 
 ## 23.5. Compiler Server Protocol
 

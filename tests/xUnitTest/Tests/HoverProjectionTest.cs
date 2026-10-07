@@ -30,8 +30,8 @@ public sealed class HoverProjectionTest
         Assert.Equal("The count.", DocumentationComment.Extract(comment.Source, comment.Span, comment.Indent).Text);
         var function = At(snapshot, text.IndexOf("read(", StringComparison.Ordinal));
         Assert.Equal("func read(value: ref/Record) -> i32", Assert.Single(function.Declarations).Header);
-        Assert.Equal(-1, Document(snapshot).Find(text.IndexOf("value:", StringComparison.Ordinal)));
-        Assert.Equal(-1, Document(snapshot).Find(text.LastIndexOf("value.", StringComparison.Ordinal)));
+        Assert.NotNull(At(snapshot, text.IndexOf("value:", StringComparison.Ordinal)).Variable);
+        Assert.NotNull(At(snapshot, text.LastIndexOf("value.", StringComparison.Ordinal)).Variable);
         Assert.Equal(-1, Document(snapshot).Find(text.IndexOf("///", StringComparison.Ordinal)));
     }
 

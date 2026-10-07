@@ -24,6 +24,11 @@ internal sealed class HoverRenderer(bool markdown)
     private HoverDocumentation? documentation;
     private int descriptionStart;
     private bool trimDescription;
+    private string footer = string.Empty;
+    private int contentLimit = BodyLimit;
+    private bool attributed;
+    private int parameterAt;
+    private int parameterStart = -1;
 
     internal static HoverRendering Render(HoverInfo info, bool markdown)
         => new HoverRenderer(markdown).Render(info);
@@ -33,28 +38,44 @@ internal sealed class HoverRenderer(bool markdown)
         this.output = this.body;
         try
         {
+            this.attributed = info.Variable is not null || info.Declarations.Length > 1 || info.Declarations.Any(static d => d.Origins.Length > 1 || d.Documentation.Length > 1);
+            this.output = this.block;
+            if (info.Variable is { } sourceVariable)
+            {
+                this.Sources(sourceVariable.Declaration, 1);
+            }
+
+            for (var i = 0; i < info.Declarations.Length; i++)
+            {
+                this.Sources(info.Declarations[i], i + (info.Variable is null ? 1 : 2));
+            }
+
+            this.footer = this.block.ToString();
+            this.block.Clear();
+            this.contentLimit -= this.footer.Length;
+            this.output = this.body;
+            if (info.Variable is { } variable)
+            {
+                this.Header(variable.Declaration, 1);
+                this.parameterAt = this.body.Length;
+                this.Text("Semantics: " + variable.Semantics);
+                this.End(string.Empty);
+                if (variable.Referent is { } referent)
+                {
+                    this.Append("Referent: ");
+                    this.Code(referent);
+                    this.End(string.Empty);
+                }
+
+                this.Text(variable.Target);
+                this.End(string.Empty);
+            }
+
             for (var i = 0; i < info.Declarations.Length; i++)
             {
                 var declaration = info.Declarations[i];
-                this.Append(markdown ? "## " : string.Empty);
-                this.Text(declaration.Kind);
-                if (declaration.Owner.Length != 0)
-                {
-                    this.Append(" · ");
-                    this.Text(declaration.Owner);
-                }
-
-                this.End(string.Empty);
                 // A merged requirement displays its common contract once, retaining each owner's attributed documentation.
-                if (i == 0 || info.Declarations[i - 1].Header != declaration.Header)
-                {
-                    this.CodeBlock(declaration.Header, "kimi", string.Empty);
-                }
-
-                if (declaration.Details is { } details)
-                {
-                    this.CodeBlock(details, string.Empty, string.Empty);
-                }
+                this.Header(declaration, i + (info.Variable is null ? 1 : 2), i == 0 || info.Declarations[i - 1].Header != declaration.Header);
             }
 
             if (info.Use is { } use)
@@ -88,8 +109,15 @@ internal sealed class HoverRenderer(bool markdown)
 
         string? reason = null;
         var cacheable = true;
-        foreach (var declaration in info.Declarations)
+        for (var declarationIndex = info.Variable is null ? 0 : -1; declarationIndex < info.Declarations.Length; declarationIndex++)
         {
+            var declaration = declarationIndex == -1 ? info.Variable!.Declaration : info.Declarations[declarationIndex];
+            var attribution = declarationIndex + (info.Variable is null ? 1 : 2);
+            if (declarationIndex == -1 && declaration.Parameter is not null)
+            {
+                this.parameterStart = this.body.Length;
+            }
+
             if (declaration.DocumentationNotice is { } notice && !this.Notice(notice))
             {
                 return new(null, "Hover mandatory documentation notice exceeds output limit");
@@ -135,9 +163,9 @@ internal sealed class HoverRenderer(bool markdown)
                     }
 
                     this.Append(markdown ? "**" : string.Empty);
-                    this.Append(declaration.ImplementationNote ? "Implementation note" : "Documentation");
-                    this.Append(markdown ? "** — " : " — ");
-                    this.Text(documentation.LogicalName ?? documentation.ModId ?? documentation.Source.Path);
+                    this.Append(declaration.Parameter is not null ? "Parameter" : declaration.ImplementationNote ? "Implementation note" : "Documentation");
+                    this.Append(markdown ? "**" : string.Empty);
+                    this.Attribution(attribution, this.SourceNumber(declaration, documentation));
                     this.End(string.Empty);
                     if (!this.CommitBlock())
                     {
@@ -180,7 +208,7 @@ internal sealed class HoverRenderer(bool markdown)
 
                     if (ex is HoverLimitException && ex.Message == "Hover work limit exceeded")
                     {
-                        return new(this.body.ToString().TrimEnd(), reason, cacheable);
+                        return this.Finish(reason, cacheable);
                     }
                 }
                 catch (Exception ex) when (ex is not (OperationCanceledException or PendingInputException))
@@ -193,14 +221,136 @@ internal sealed class HoverRenderer(bool markdown)
                     }
                 }
             }
+
+            this.RelocateParameter();
         }
 
+        return this.Finish(reason, cacheable);
+    }
+
+    private void Header(HoverDeclaration declaration, int attribution, bool contract = true)
+    {
+        if (declaration.Owner.Length != 0)
+        {
+            this.Code(declaration.Owner);
+        }
+
+        this.Attribution(attribution);
+        if (declaration.Owner.Length != 0 || this.attributed)
+        {
+            this.End(string.Empty);
+        }
+
+        if (contract)
+        {
+            this.CodeBlock(declaration.Header, "kimi", string.Empty);
+        }
+
+        if (declaration.Details is { } details)
+        {
+            if (declaration.Kind == "Operation")
+            {
+                this.Text(details);
+                this.End(string.Empty);
+            }
+            else
+            {
+                this.CodeBlock(details, string.Empty, string.Empty);
+            }
+        }
+    }
+
+    private void Attribution(int declaration, int source = 0)
+    {
+        if (this.attributed)
+        {
+            this.Append(" [");
+            this.Append(declaration.ToString(CultureInfo.InvariantCulture));
+            if (source != 0)
+            {
+                this.Append('.');
+                this.Append(source.ToString(CultureInfo.InvariantCulture));
+            }
+
+            this.Append(']');
+        }
+    }
+
+    private int SourceNumber(HoverDeclaration declaration, HoverDocumentation documentation)
+    {
+        var number = 0;
+        string? previous = null;
+        string? previousProject = null;
+        foreach (var origin in declaration.Origins)
+        {
+            this.budget.Charge();
+            if (origin.LogicalName is not { } name || (name == previous && origin.Project == previousProject))
+            {
+                continue;
+            }
+
+            number++;
+            if (name == documentation.LogicalName && origin.Project == documentation.Project)
+            {
+                return number;
+            }
+
+            previous = name;
+            previousProject = origin.Project;
+        }
+
+        return 0;
+    }
+
+    private void Sources(HoverDeclaration declaration, int attribution)
+    {
+        string? previous = null;
+        string? previousProject = null;
+        var number = 0;
+        foreach (var origin in declaration.Origins)
+        {
+            if (origin.LogicalName is not { } name || (name == previous && origin.Project == previousProject))
+            {
+                continue;
+            }
+
+            previous = name;
+            previousProject = origin.Project;
+            this.Attribution(attribution, ++number);
+            if (this.attributed)
+            {
+                this.Append(' ');
+            }
+
+            this.Append('(');
+            this.Text(name);
+            this.Append(')');
+            this.End(string.Empty);
+        }
+    }
+
+    private void RelocateParameter()
+    {
+        if (this.parameterStart >= 0)
+        {
+            // Render once with the shared documentation path, then place the selected parameter item after its variable.
+            var length = this.body.Length - this.parameterStart;
+            var parameter = this.body.ToString(this.parameterStart, length);
+            this.body.Remove(this.parameterStart, length).Insert(this.parameterAt, parameter);
+            this.parameterStart = -1;
+        }
+    }
+
+    private HoverRendering Finish(string? reason, bool cacheable)
+    {
+        this.RelocateParameter();
+        this.body.Append(this.footer);
         return new(this.body.ToString().TrimEnd(), reason, cacheable);
     }
 
     private bool CommitBlock()
     {
-        if (this.body.Length + this.block.Length > BodyLimit - NoticeReserve)
+        if (this.body.Length + this.block.Length > this.contentLimit - NoticeReserve)
         {
             return false;
         }
@@ -212,7 +362,7 @@ internal sealed class HoverRenderer(bool markdown)
     private bool Notice(string notice)
     {
         // Notices remain available even after a documentation work budget is exhausted.
-        if (this.body.Length + notice.Length + 2 > BodyLimit)
+        if (this.body.Length + notice.Length + 2 > this.contentLimit)
         {
             return false;
         }
@@ -224,7 +374,7 @@ internal sealed class HoverRenderer(bool markdown)
     private HoverRendering Truncated(string? reason, bool cacheable)
     {
         const string Notice = "Documentation truncated: response output limit";
-        return this.Notice(Notice) ? new(this.body.ToString().TrimEnd(), reason ?? Notice, cacheable) : new(null, reason ?? Notice, cacheable);
+        return this.Notice(Notice) ? this.Finish(reason ?? Notice, cacheable) : new(null, reason ?? Notice, cacheable);
     }
 
     private void Block(DocumentationMarkdownNode node, string prefix, bool tight = false)
@@ -244,7 +394,7 @@ internal sealed class HoverRenderer(bool markdown)
                 break;
             case DocumentationMarkdownKind.Heading:
                 this.Begin(prefix);
-                var level = node.HeadingLevel + 2;
+                var level = node.HeadingLevel;
                 if (markdown && level <= 6)
                 {
                     this.Repeat('#', level);
@@ -571,7 +721,7 @@ internal sealed class HoverRenderer(bool markdown)
     private void Reserve(int count)
     {
         this.budget.Charge(count);
-        if (count > BodyLimit - this.output.Length)
+        if (count > this.contentLimit - this.output.Length)
         {
             throw new HoverLimitException("Hover output limit exceeded");
         }

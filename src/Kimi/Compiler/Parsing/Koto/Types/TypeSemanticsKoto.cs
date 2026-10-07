@@ -30,6 +30,10 @@ public sealed class TypeSemanticsKoto : TypeKoto
     /// <summary>Gets the conversion operation <c>wrap</c> or <c>bits</c> whose Type argument <see cref="Type"/> holds (SPEC 13.5.4), or null.</summary>
     public string? ConversionOperation => this.isConversionOperation ? this.nameOrSemanticsParameter : null;
 
+    internal string? HoverOperation => this.ConversionOperation ?? (this.Type is null
+        ? this.Identifier is "ref" or "uniq" or "obj" or "rc" or "arc" or "objref" or "objuniq" or "move" or "copy" or "follow" or "raw" ? this.Identifier : null
+        : !this.isTransparentWrapper && this.SemanticsKind is not (SemanticsKind.Owner or SemanticsKind.Parameter) ? this.SemanticsKind.ToText() : null);
+
     private bool isConversionOperation;
 
     private TokenKind coreTypeToken;

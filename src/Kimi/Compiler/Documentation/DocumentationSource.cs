@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Checking;
 using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -195,6 +196,27 @@ public sealed class DocumentationSource
             var path = this.Source.Path;
             this.LogicalName = (Path.IsPathRooted(path) && projectDirectory.Length > 0 ? Path.GetRelativePath(projectDirectory, path) : path).Replace('\\', '/');
         }
+    }
+
+    internal static string? PhysicalLogicalName(string path, string projectDirectory)
+    {
+        if (path.StartsWith(SourceIdentity.BuiltInPrefix, StringComparison.Ordinal) || path.Contains("://", StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (Path.IsPathFullyQualified(path))
+        {
+            if (!Path.IsPathFullyQualified(projectDirectory))
+            {
+                return null;
+            }
+
+            var relative = Path.GetRelativePath(projectDirectory, path);
+            return Path.IsPathRooted(relative) ? null : relative.Replace('\\', '/');
+        }
+
+        return Path.IsPathRooted(path) ? null : path.Replace('\\', '/');
     }
 
     private void MergeCore(DocumentationSource nested)

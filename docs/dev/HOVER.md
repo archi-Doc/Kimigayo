@@ -14,6 +14,12 @@ they do not change language guarantees or mark pending work as supported.
   within a projection. Structural identities form a DAG, avoiding expansion of repeated Type/Origin subgraphs.
 - Copy reuses the existing judgment in the target's scope. Effect descriptions obtain provenance through existing
   availability checks; ordinary checks pass no collector and allocate no provenance list.
+- `Binding.HoverVariables` indexes established local and ordinary parameter bindings, sharing descriptions by binding,
+  complete Type and contextual Copy result. Callable uses add variable facts to the existing call contract/effect facts.
+  Complete generic Types and Semantics/target pairs retain their declarations and constraints without a guessed owner/Core.
+  `HoverExplanations` owns common Semantics and operation wording; operation descriptions are shared by parsed form.
+- Parser anchors distinguish the `@` token, operation name and explicit Type arguments, even when an operand fails Binding.
+  Only established syntax selects a general operation description; it is independent of use-site legality.
 - Virtual declarations retain their original public contract; overrides additionally display their own header and comments.
   Calls distinguish a dynamic slot from the selected direct base implementation. Detached identities retain the bound
   declaring Type, base lookup and implementation, including virtual Function Items. Receiver and erasure details read
@@ -34,6 +40,11 @@ they do not change language guarantees or mark pending work as supported.
   from current ranges. Full replacement, lost synchronization and configuration/membership changes discard history.
 - `HoverRenderer` serializes the documentation profile's tree to Markdown or plaintext. Completed blocks are staged
   before publication; contract fields remain indivisible. Unsupported syntax is escaped, and links use source placement.
+- Containers use inline code and declarations use normal-size code blocks. Comment heading levels are preserved.
+  Parameter items use the existing classified documentation path once, then move immediately after the variable header.
+  Known physical source names are computed once per module source using its own project base, independently of comments;
+  embedded/generated/unknown mappings invent no physical path. Stable attribution accompanies a reserved source footer,
+  including after documentation truncation. Agreement includes these names and variable facts.
 
 ## Deterministic limits
 
@@ -73,12 +84,29 @@ preservation, nested structures, unavailable syntax, interrupted documentation a
 `LspHoverAdoptionTest` controls adoption/revalidation and unfinished units independently of diagnostic contributors.
 `HoverStateTest` checks strict agreement, DAG sharing, continuity, fixed storage bounds and zero-allocation repeated lookup.
 
+### Hover improvements verification boundary (2026-10-08)
+
+`HoverImprovementsTest` adds declaration/reference, shadowing, renamed-parameter items, generic/nested/structural Types,
+Callable effects, operation token/error/non-code cases, split sources, footer truncation, agreement and cached allocation
+regressions. `LspHoverTest` adds real variable/operation responses in Markdown and plaintext. Runtime Contract Views remain
+deferred language forms; their rejection does not justify inventing established variable facts or weakening the Hover spec.
+
+The last executable feedback suite exposed six defects in implementation/test inputs; repairs include complete `s/T`
+formatting and avoiding assumptions about Markdown escaping or deferred Contract Views. Later builds succeeded, but Windows
+Smart App Control rejected the latest xUnit assembly with 0x800711C7 (CodeIntegrity events 3077/3033/3118). The user explicitly
+instructed that test execution be skipped. Final focused and full Session tests, including allocation assertions, are therefore
+unverified; earlier passing tests do not establish the final source's correctness. The actual VS Code display inspection was
+stopped by the user's physical Escape key, before a Hover was inspected. Do not infer new client evidence from the older run
+below. Build-only Verify, whole-solution build and measurement outcomes are recorded in PLAN_HISTORY and artifacts/verify.
+
 ## Responsiveness measurements
 
 Run `dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --hover` on an otherwise idle local machine. Workloads shared
 with regressions include short and long comments, the maximum admitted comment, 60,000 effect characters, a shared
 identity DAG and a wide identity tree, each across four independent configurations. Fixed conditions: 32 warm-ups,
 seven samples, 64 initial requests or 10,000 repeated requests per sample; history uses all 256 admitted edits.
+Variable/parameter and operation workloads additionally use four independent compiler snapshots of `ValueProgram`, at
+their actual token positions. Cached and queued requests use those same positions and immutable source text.
 The full compilation comparison uses 16 iterations per sample with collection disabled/enabled, including ownership.
 
 Review criteria on the measured host: warmed initial-target samples at most 100 ms/request, repeated lookup at most
@@ -124,3 +152,20 @@ heading scrolling are not asserted. The LSP integration suite passes 13 tests, c
 unit tests 65 with two platform skips. The initial link assertion assumed an uppercase drive letter; the corrected assertion
 uses VS Code's own file-URI normalization. The passing LSP log is `artifacts/verify/hover-client-20261007/lsp.log`.
 Final whole-solution verification and commit association are recorded in PLAN_HISTORY and the Verify evidence.
+
+### Measurements (2026-10-08)
+
+After the final warning-free, non-incremental whole-solution Release build, the unchanged fixed conditions above ran on
+.NET 10.0.12 / Windows 10.0.26300 with 8 reported logical processors, without concurrent build/test. Raw samples are in
+`artifacts/benchmarks/hover-improvements-20261008.json`; these observations do not replace the skipped regression suite.
+
+| Added workload | Initial agreement/render allocation, B/op | Repeated lookup allocation, B/op | Maximum-history lookup allocation, B/op |
+| --- | ---: | ---: | ---: |
+| Parameter | 7,152 | 0 | 0 |
+| Local | 3,232 | 0 | 0 |
+| Operation | 2,528 | 0 | 0 |
+
+All nine workloads meet the predeclared investigation thresholds in every recorded sample. The largest initial sample
+average is 6.81 ms/request (wide identity); the first process response takes 30.10 ms. Every current/history cached lookup
+sample allocates zero bytes. Fixed execution order, host conditions and JIT variation do not establish a speedup over the
+earlier run. Wide initial identities still allocate a large temporary comparison set, as already recorded above.

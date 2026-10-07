@@ -30,6 +30,14 @@ internal sealed class HoverAgreement
             return false;
         }
 
+        if (!ReferenceEquals(left.Variable, right.Variable) &&
+            (left.Variable is not { } a || right.Variable is not { } b ||
+            !this.Declaration(a.Declaration, b.Declaration) || !this.Text(a.Semantics, b.Semantics) ||
+            !this.Text(a.Referent, b.Referent) || !this.Text(a.Target, b.Target)))
+        {
+            return false;
+        }
+
         for (var i = 0; i < left.Declarations.Length; i++)
         {
             if (!this.Declaration(left.Declarations[i], right.Declarations[i]))
@@ -62,7 +70,7 @@ internal sealed class HoverAgreement
         {
             var a = left.Origins[i];
             var b = right.Origins[i];
-            if (a.Name != b.Name || !this.Text(a.Project, b.Project) || !this.Text(a.Source, b.Source))
+            if (a.Name != b.Name || !this.Text(a.Project, b.Project) || !this.Text(a.Source, b.Source) || !this.Text(a.LogicalName, b.LogicalName))
             {
                 return false;
             }

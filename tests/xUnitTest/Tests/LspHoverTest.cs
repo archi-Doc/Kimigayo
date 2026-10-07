@@ -81,6 +81,32 @@ public sealed class LspHoverTest : IDisposable
         Assert.DoesNotContain("```", Body(result));
     }
 
+    [Theory]
+    [InlineData("markdown")]
+    [InlineData("plaintext")]
+    public async Task VariableCompositionAndOperationDescriptionsReachExactProtocolRanges(string format)
+    {
+        const string Text = "/// The counter.\nstruct Counter\nfunc use(counter: ref/Counter)\n    _ = counter@copy\n";
+        var path = this.Write(Text);
+        await using var client = new LspTestClient();
+        await client.InitializeAsync(capabilities: "{\"textDocument\":{\"hover\":{\"contentFormat\":[\"" + format + "\"]}}}");
+        await client.OpenAsync(path, Text);
+        var parameter = await WaitFor(client, path, 2, 10, "counter: ref/Counter");
+        var body = format == "markdown" ? Markdig.Markdown.ToHtml(Body(parameter)) : Body(parameter);
+        Assert.Contains("counter: ref/Counter during ", body);
+        Assert.Contains("Core: Counter", body);
+        Assert.Contains("The counter.", body);
+        Assert.Equal(format, parameter.GetProperty("contents").GetProperty("kind").GetString());
+        var at = await Request(client, path, 3, 15);
+        var name = await Request(client, path, 3, 16);
+        Assert.Equal(Body(at), Body(name));
+        Assert.Contains("Copies the operand", Body(at));
+        Assert.Equal(15, at.GetProperty("range").GetProperty("start").GetProperty("character").GetInt32());
+        Assert.Equal(16, at.GetProperty("range").GetProperty("end").GetProperty("character").GetInt32());
+        Assert.Equal(16, name.GetProperty("range").GetProperty("start").GetProperty("character").GetInt32());
+        Assert.Equal(20, name.GetProperty("range").GetProperty("end").GetProperty("character").GetInt32());
+    }
+
     private static string Body(JsonElement result) => result.GetProperty("contents").GetProperty("value").GetString()!;
 
     private static async Task<JsonElement> Request(LspTestClient client, string path, int line, int character)

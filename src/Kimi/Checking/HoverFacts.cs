@@ -9,7 +9,7 @@ namespace Kimi.Checking;
 #pragma warning disable SA1402, SA1600, SA1649 // The internal, detached Hover vocabulary is kept together.
 
 // Arrays are created and owned by the projection. No compiler node or declaration identity crosses this boundary.
-internal sealed record HoverOrigin(string Project, string Source, SourceSpan Name);
+internal sealed record HoverOrigin(string Project, string Source, SourceSpan Name, string? LogicalName = null);
 
 internal sealed record HoverDocumentation(
     SourceDocument Source,
@@ -41,7 +41,10 @@ internal sealed record HoverInfo(
     string? CopyType = null,
     ConstraintProof? Copy = null,
     string? Effects = null,
-    HoverKey? TypeIdentity = null);
+    HoverKey? TypeIdentity = null,
+    HoverVariable? Variable = null);
+
+internal sealed record HoverVariable(HoverDeclaration Declaration, string Semantics, string? Referent, string Target);
 
 /// <summary>A detached structural identity DAG. Equal hashes or equal presentation never replace exact comparison.</summary>
 internal sealed record HoverKey(string Value, HoverKey[] Parts)

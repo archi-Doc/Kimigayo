@@ -74,6 +74,9 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     internal string SourceDirectory => this.Url.Length == 0 ? this.Compilation.Project.Directory : Path.IsPathFullyQualified(this.Url) ? Path.GetDirectoryName(this.Url) ?? string.Empty : string.Empty;
 
+    internal string? HoverSourceName(int index)
+        => this.generatedSourceLocations?.ContainsKey(index) == true ? null : Documentation.DocumentationSource.PhysicalLogicalName(this.sourceDocuments[index].Path, this.SourceDirectory);
+
     private List<Documentation.DocumentationSource>? documentationSources;
 
     [IgnoreMember]

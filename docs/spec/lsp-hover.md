@@ -12,8 +12,10 @@ Hover serves open, synchronized `file:` documents with the `.kimi` extension. Do
 | Contract | Declaration, required contracts, effect bounds and documentation; no Copy field for the Contract itself |
 | Property: member `let`, `var`, `computed`, or a Contract Property requirement | Declaration, Type, accessor contracts and documentation |
 | Named function, member function, Contract requirement, `init`, `drop`, explicit specialization | Signature, Constraints, effect information and documentation |
+| Local `let`/`var`, ordinary function parameter, or resolved loop/pattern local | Complete Type, outer Semantics, Core or View target, Constraints and associated documentation |
+| Syntactically established built-in `@` operation | General operation description, independently of Type-check success |
 
-Resolved references into dependencies and Kimi use the same rules. Generated declarations expose only established information; no physical file, declaration position or documentation is invented. Dedicated hover for local bindings, ordinary parameters, enum Cases, groups, Origin names and Semantics names is outside this profile, as are arbitrary expression Types, completion, Signature Help, definition navigation and Document Link requests on comments. Being a documentation target alone does not make a declaration a Hover target. Callable call contracts and effects remain included.
+Resolved references into dependencies and Kimi use the same rules. Generated declarations expose only established information; no physical file, declaration position or documentation is invented. Dedicated hover for enum Cases, groups and Origin names is outside this profile, as are arbitrary expression Types, completion, Signature Help, definition navigation and Document Link requests on comments. Being a documentation target alone does not make a declaration a Hover target. Callable call contracts and effects remain included.
 
 Positions use UTF-16 and ranges are half-open. A character position past a line's end is clamped to its end; a nonexistent line or position without a target returns `null`. Malformed requests follow the protocol error rules.
 
@@ -26,6 +28,7 @@ Each semantic target owns a representative token of its own syntax:
 | Unnamed Type | `(` for Unit and Tuple, `->` for a Function Type, `[` for a fixed array, `?` for Option |
 | Semantics-applied Type `X/T` | `X`, whether a keyword or Semantics parameter; the target is the applied Type |
 | Call contract | That invocation's `(`; a direct name or member reference, including a Type-argument application, also carries the call contract on its name |
+| Built-in `@` operation | `@` and the operation name each return the same explanation, with their own token range; the target Type and Type arguments keep their own targets |
 
 A child owns its tokens. Grouping parentheses alone add no target. Origin annotations belong to the complete target Type; the Copy field identifies that Type. In `A.f<T>(x)` the call name is `f`, and in `Box<T>.init(x)` it is `init`; qualifiers and Type arguments keep their own targets. The outer calls in `factory()(value)` and `items[index](value)` use their own `(`, never the inner name or index.
 
@@ -35,7 +38,7 @@ Combine information for the same target and settle child precedence when buildin
 
 ## 23.4.11.2. Declaration and contract display
 
-Display, in order: the previous-analysis notice when applicable, owner and target kind, declaration, established use-site information, Copy/effects, then documentation. Distinguish the logical declaration, its source fragments and the complete use-site Type. Omit empty fields, but identify deferred or interrupted information.
+Display, in order: the previous-analysis notice when applicable, declaration container, declaration, established use-site information, Copy/effects, documentation, then declaration source files. Distinguish the logical declaration, its source fragments and the complete use-site Type. Omit empty fields, but identify deferred or interrupted information. The container is its identifying qualified name (the module at top level), rendered as ordinary inline code above a `kimi` declaration block. Do not invent a container, use a two-column table, or add a large declaration heading or kind-only label such as `Type`, `Property`, `Function` or `Built-in type`. Preserve multiline Constraints, Origins and accessor contracts.
 
 Generated labels are English; documentation retains its language. Preserve the effect labels `Call:`, `Requirement:`, `Callable:`, `Available bound:`, `Declared by:` and `Premise:`. Other decoration is not a fixed machine interface; structured compiler services use semantic facts rather than parsing the rendering.
 
@@ -45,7 +48,7 @@ Generated labels are English; documentation retains its language. Preserve the e
 - Keep the generic declaration unchanged and supplement it with established static arguments or the instantiated call signature. Do not expose unrelated internal names or unestablished arguments. Distinguish inferred result information from written syntax.
 - A split struct is one logical declaration including all fragments' bases and Constraints; choose no primary fragment. A unique candidate composed of requirement declarations displays the common contract once and preserves each declaration's provenance.
 - An associated-Type reference describes its contract declaration even when `T.Element` normalizes to `i32`; the established Type supplements the display and supplies the Copy query. At a specification's own declaration, describe that specification.
-- A Type without source declaration uses its canonical Type spelling and `Built-in type`, without fabricated source information.
+- A Type without source declaration uses its canonical Type spelling, without fabricated source information.
 
 Copy uses the existing judgment on the complete Type in the displayed position's Constraint context: the declaration context at a declaration and the use context at a reference.
 
@@ -60,6 +63,38 @@ Unknown and Error are established answers, not missing facts. An inapplicable ta
 
 Effect information follows [§8.4.10.6–7](08-generics-constraints-and-contracts.md#84106-diagnostics-and-recovery). A Contract displays the bounds it declares; a requirement call displays available bounds, every declaring Contract and every contributing premise; a Callable call preserves its contract and all contributing premises. Integrate this information into the target's declaration display. Implementation bodies and specializations never strengthen the public call contract.
 
+### Variables and parameters
+
+Show the enclosing function or other established container and `name: complete Type` at both declaration and resolved reference names. Use the established Type at that position, including inferred Types, Origins, arguments and nested layers; distinguish the declared Type when it differs. Never expose compiler-generated names or guess an unresolved binding or Type. Ordinary resolved loop and pattern locals follow the same rules; member Properties retain their existing contract display.
+
+After the variable, show any uniquely matching classified item from its parent function documentation as `Parameter`, separately from Core documentation. Then describe the outer `Semantics` and the `Core`, including its declaration, relevant Constraints and associated documentation. Core documentation is never generated from its name, recursively expanded through Type arguments, or substituted from adjacent comments. Absent, explicitly empty, deferred and interrupted documentation retain their existing distinctions.
+
+| Semantics | General explanation |
+| --- | --- |
+| `owner` | Direct ownership of a value. |
+| `ref` | Shared, non-owning access to a value. |
+| `uniq` | Exclusive, mutable, non-owning access to a value. |
+| `obj` | Exclusive ownership of an object. |
+| `rc` | Shared object ownership with non-atomic reference counting. |
+| `arc` | Shared object ownership with atomic reference counting. |
+| `objref` | Shared, non-owning access to an object. |
+| `objuniq` | Exclusive, mutable, non-owning access to an object. |
+| `raw` | A raw pointer without safe-borrow guarantees. |
+
+Atomicity for `arc` concerns reference counting, not concurrent mutation of the contents. These explanations do not establish whether a particular write, Move or borrow is legal. A Semantics-applied Type token also includes the same Semantics explanation. An unresolved Semantics parameter retains its name and established Constraints; a Type parameter retains its declaration and Constraints rather than a guessed concrete Type. Since an ordinary Type parameter denotes a complete Type (§8.1.1), it does not establish `owner` or a concrete Core: identify the parameter (or associated Type) and report undetermined Semantics where appropriate. A normalized original pair still displays `s/T`, not the direct-target projection `T`.
+
+For nested layers, retain the complete `Referent`, for example `obj/Counter` in `ref/obj/Counter`: this borrows the object handle's storage, unlike `ref/Counter`. A Contract View is not a Core and is labeled `View target`. Tuple, Function and array Types use canonical spelling and necessary structural descriptions, without expanding every member. A Callable variable's call name combines variable information with the established call contract and effects; it never replaces that contract. Copy judgments concern the complete Type, not its Core alone.
+
+### Built-in operations
+
+Provide concise English explanations, based on [§13.5](13-operators-and-assignment.md#135-explicit-operations), for `@ref`, `@uniq`, `@obj`, `@rc`, `@arc`, `@objref`, `@objuniq`, `@move`, `@copy`, `@follow`, `@raw`, `@wrap<U>` and `@bits<U>`. Explain an operation rather than reusing the value-Semantics sentence. For example, `@ref` creates a shared borrow of the operand's storage, including the reference slot when the operand stores a reference. Object adaptation with an omitted target infers it from the operand: it creates an object from an eligible owned value or acquires an existing object with the same ownership Semantics, and does not implicitly move a Non-Copy value from a Place. It does not always allocate a new object or clone an existing strong reference. Distinguish full-target forms from target-omitting forms. Raw operations follow [§5](05-raw-pointers-and-unsafe-memory.md); wrap/bits retain their distinct conversion rules.
+
+Syntactically established operations can be described despite Type errors, without claiming legality or hiding diagnostics. Keep established use-site supplements separate from the general explanation. In `@ref/Counter`, `@` and `ref` describe the operation, while `Counter` describes the Type. Adjacent operations and Type arguments keep separate tokens; whitespace, comments, strings, excluded regions, recovery guesses and same-spelled ordinary identifiers do not acquire operation targets. An explanation alone has no fabricated container or source file.
+
+### Declaration source files
+
+End with ordinary parenthesized project-relative logical paths, using `/`, for example `(tests/milestones/Milestone7.kimi)`. Do not depend on HTML/CSS or partial font sizing. Deduplicate paths to the same declaration; list every split source in stable order without choosing a primary file. With multiple projects, declarations or comment fragments, correlate content and sources by identifying names or numbers; identical comments from distinct declarations remain distinct. Distinguish a variable's source from its Core's source. Omit files for built-in/generated declarations without a real source; embedded sources are not physical files. Use established logical mappings only, never infer a physical or relative path from an unknown base. This display adds no declaration navigation feature.
+
 ## 23.4.11.3. Documentation and links
 
 ### Association and provenance
@@ -73,6 +108,7 @@ Collection, association and selection follow [§2.3](02-source-and-lexical-struc
 | Ordinary or specialized call | The original declaration that defines the call contract |
 | Specialization declaration | Its own `Implementation note`; any original contract description is separate and attributed |
 | Type parameter | Its uniquely matching classified parameter item from the parent declaration, with provenance; otherwise omitted |
+| Ordinary parameter | Its uniquely matching classified parameter item from the parent function, labeled `Parameter`; otherwise omitted |
 
 Do not implicitly copy documentation from an inherited/implementing declaration or another overload. Preserve all fragments of a split declaration and all declarations of a unique merged requirement candidate, parsing and rendering each independently. Order first by stable project identity, then by the existing logical declaration order, never by arrival. Remove duplicate paths to one declaration, not identical text from distinct declarations.
 
@@ -82,9 +118,9 @@ Distinguish absent, explicitly empty and deferred documentation. A SourceDocumen
 
 Render the complete selected documentation by default, not only its summary. Generate Markdown or plaintext from the [Documentation Markdown profile](documentation-markdown.md)'s parsed structure; neither forward raw comments nor repurpose HTML output. Escape unadmitted syntax so the client cannot reinterpret it as images, HTML or reference links. Preserve code as code and encode fences, destinations and labels for their output contexts.
 
-The declaration heading is level 2; a comment heading of level `n` becomes `n + 2`. Above level 6, use a bold paragraph that retains the numeric depth, such as `Heading level 7: …`, rather than flattening levels. Plaintext retains hierarchy with labels, indentation and line breaks, and shows both label and URL for an enabled link. Render independent fragments separately; extract parameter items from parsed structure.
+There is no declaration heading. Introduce each documentation fragment with a separate attributed `Documentation`, `Parameter` or `Implementation note` paragraph; retain comment heading levels without offset. Plaintext retains hierarchy with labels, indentation and line breaks, and shows both label and URL for an enabled link. Render independent fragments separately; extract parameter items from parsed structure.
 
-Truncate comments only at completed block boundaries, naming the omitted part and reason, and giving counts only when known. Never cut a link or code block. A parsing depth/work limit publishes no partial parse: retain established declaration information and state why documentation stopped. Mandatory information is indivisible: the previous-analysis notice, declaration contract, Copy result, and effects with all provenance/premises. If it cannot fit, return `null`. A default expression may be explicitly omitted, but the default's existence remains visible.
+Truncate comments only at completed block boundaries, naming the omitted part and reason, and giving counts only when known. Never cut a link or code block. A parsing depth/work limit publishes no partial parse: retain established declaration information and state why documentation stopped. Mandatory information is indivisible: the previous-analysis notice, declaration contract, Copy result, and effects with all provenance/premises. Reserve space for source attribution at the end, even after truncation. If mandatory information cannot fit, return `null`. A default expression may be explicitly omitted, but the default's existence remains visible.
 
 Log resource-limit and internal-failure reasons for `null`. A documentation-only failure preserves other established information with an explanatory notice. These are not language diagnostics or new documentation lint.
 
@@ -120,7 +156,7 @@ Reconsider Hover information on result adoption, input revalidation and particip
 
 Use the existing input/dependency validity rules. Currently valid results may have different generation times; do not require recompilation of unaffected units. Never fill a current set with invalid historical fields. Version numbers alone do not establish freshness; dependency changes and the existing disk-detection limits also apply.
 
-**Agreement.** Compare the requested target across every participant. Missing targets or differences return `null`. Compare declaration sets and their identities, provenance/content, representative ranges, headers and use-site instantiation; Copy and complete effect evidence; documentation text/ranges, association status, classification facts, fragment order and link placement. Compilation-local object references or sequence numbers do not identify declarations across compilations, and equal names/ranges/rendered text alone are insufficient.
+**Agreement.** Compare the requested target across every participant. Missing targets or differences return `null`. Compare declaration sets and their identities, provenance/content, representative ranges, headers and use-site instantiation; variable binding and complete Type, Core/View target and Semantics facts; operation identity and target form; Copy and complete effect evidence; documentation text/ranges, association status, classification facts, fragment order, source labels and link placement. Compilation-local object references or sequence numbers do not identify declarations across compilations, and equal names/ranges/rendered text alone are insufficient.
 
 ## 23.4.11.5. Previous analysis while updating
 

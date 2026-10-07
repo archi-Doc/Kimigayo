@@ -35,6 +35,8 @@ public sealed record class FunctionParameterKoto
     /// <summary>Gets the written external name's span for syntax evidence.</summary>
     internal SourceSpan ExternalNameSpan { get; init; }
 
+    internal SourceSpan InternalNameSpan { get; init; }
+
     /// <summary>Initializes a new instance of the <see cref="FunctionParameterKoto"/> class.</summary>
     /// <param name="externalName">The caller-facing name.</param>
     /// <param name="internalName">The body-facing name.</param>

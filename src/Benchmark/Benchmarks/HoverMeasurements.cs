@@ -5,6 +5,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Verification;
 
@@ -18,29 +19,37 @@ internal static class HoverMeasurements
     internal static void Run()
     {
         var results = new List<object>();
-        using var text = new TextDocument(HoverWorkloads.Text);
-        foreach (var name in new[] { "short", "long-comment", "maximum-comment", "long-effects", "identity-dag", "wide-identity" })
+        foreach (var name in new[] { "short", "long-comment", "maximum-comment", "long-effects", "identity-dag", "wide-identity", "parameter", "local", "operation" })
         {
-            var participants = HoverWorkloads.Create(name);
+            var values = name is "parameter" or "local" or "operation";
+            var source = values ? HoverWorkloads.ValueProgram : HoverWorkloads.Text;
+            var position = name switch { "parameter" => new SourcePosition(3, 13), "local" => new(5, 8), "operation" => new(5, 13), _ => new(0, 8) };
+            using var text = new TextDocument(source);
+            var participants = values ? HoverWorkloads.CreateValues() : HoverWorkloads.Create(name);
             HoverAnswer answer = default;
             var cold = Stopwatch.GetTimestamp();
-            answer = new HoverState(participants, true).Find(text, new(0, 8));
+            answer = new HoverState(participants, true).Find(text, position);
+            if (answer.Body is null)
+            {
+                throw new InvalidOperationException("The measured Hover must be available: " + name + ": " + answer.Reason);
+            }
+
             results.Add(new { name, operation = "beforeWarmup", milliseconds = Stopwatch.GetElapsedTime(cold).TotalMilliseconds, outputLength = answer.Body?.Length ?? 0, answer.Reason });
-            results.Add(new { name, operation = "initialFourConfigurations", cost = Measure(() => answer = new HoverState(participants, true).Find(text, new(0, 8)), 64) });
+            results.Add(new { name, operation = "initialFourConfigurations", cost = Measure(() => answer = new HoverState(participants, true).Find(text, position), 64) });
             var cached = new HoverState(participants, true);
-            answer = cached.Find(text, new(0, 8));
-            results.Add(new { name, operation = "repeated", cost = Measure(() => answer = cached.Find(text, new(0, 8)), 10_000) });
+            answer = cached.Find(text, position);
+            results.Add(new { name, operation = "repeated", cost = Measure(() => answer = cached.Find(text, position), 10_000) });
             for (var edit = 0; edit < HoverLimits.Edits; edit++)
             {
                 cached.Edited(0, 0, 0);
             }
 
-            answer = cached.Find(text, new(0, 8));
-            results.Add(new { name, operation = "previousMaximumHistory", cost = Measure(() => answer = cached.Find(text, new(0, 8)), 10_000) });
-            if (name is "short" or "long-comment" or "maximum-comment" or "long-effects" or "wide-identity")
+            answer = cached.Find(text, position);
+            results.Add(new { name, operation = "previousMaximumHistory", cost = Measure(() => answer = cached.Find(text, position), 10_000) });
+            if (name != "identity-dag")
             {
-                results.Add(new { name, operation = "queuedInitialHoverThenEdit", cost = Queued(participants, 1, false) });
-                results.Add(new { name, operation = "queued100CachedHoversThenEdit", cost = Queued(participants, 100, true) });
+                results.Add(new { name, operation = "queuedInitialHoverThenEdit", cost = Queued(participants, 1, false, source, position) });
+                results.Add(new { name, operation = "queued100CachedHoversThenEdit", cost = Queued(participants, 100, true, source, position) });
             }
 
             GC.KeepAlive(answer);
@@ -120,13 +129,13 @@ internal static class HoverMeasurements
 
     // Model an already queued FIFO burst on the real state owner. The interval ends after didChange is applied;
     // Response construction/enqueue is inside it. Parsing, transport and asynchronous serialization/drain are outside it.
-    private static object Queued(HoverParticipant[] participants, int requests, bool cached)
+    private static object Queued(HoverParticipant[] participants, int requests, bool cached, string source, SourcePosition position)
     {
         var milliseconds = new double[Samples];
         var bytes = new long[Samples];
         for (var sample = -Warmup; sample < Samples; sample++)
         {
-            using var workload = HoverWorkloads.Session(participants);
+            using var workload = HoverWorkloads.Session(participants, source, position);
             if (cached)
             {
                 workload.Session.Process(workload.Hover, 0);

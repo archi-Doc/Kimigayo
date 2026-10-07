@@ -20,9 +20,10 @@ public sealed class HoverRenderingTest
         var body = Assert.IsType<string>(result.Body);
         Assert.Contains("```kimi\nstruct Sample\n```", body);
         var html = Markdig.Markdown.ToHtml(body);
-        Assert.Contains("<h2>Type · Project</h2>", html);
-        Assert.Contains("<h3>Section</h3>", html);
-        Assert.Contains("<strong>Heading level 8:</strong> Deep", html);
+        Assert.Contains("<code>Project</code>", html);
+        Assert.DoesNotContain("<h2>Type", html);
+        Assert.Contains("<h1>Section</h1>", html);
+        Assert.Contains("<h6>Deep</h6>", html);
         Assert.Contains("<strong>strong</strong>", html);
         Assert.Contains("<code>a`b</code>", html);
         Assert.Contains("<code class=\"language-kimi\">&lt;tag&gt;\n</code>", html);
@@ -46,7 +47,7 @@ public sealed class HoverRenderingTest
     public void PlaintextIncludesLabelsUrlsAndHierarchy()
     {
         var text = HoverRenderer.Render(Info("# Links\n\n[guide](https://example.test/guide \"A guide\") and <author@example.test>.\n\n- first\n- second"), false).Body!;
-        Assert.Contains("Heading level 3: Links", text);
+        Assert.Contains("Heading level 1: Links", text);
         Assert.Contains("guide (https://example.test/guide) — A guide", text);
         Assert.Contains("author@example.test (mailto:author@example.test)", text);
         Assert.Contains("- first", text);

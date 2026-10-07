@@ -520,7 +520,8 @@ public static partial class Parser
         }
 
         var internalName = externalName;
-        if (reader.TryConsume(TokenKind.EqualsGreaterThan) && !reader.TryReadName(out internalName, out _))
+        var internalNameSpan = externalNameSpan;
+        if (reader.TryConsume(TokenKind.EqualsGreaterThan) && !reader.TryReadName(out internalName, out internalNameSpan))
         {
             SkipParameter(ref reader);
             return false;
@@ -556,7 +557,7 @@ public static partial class Parser
             reader.Unexpected(SyntaxForm.FunctionExpressionParameter, externalNameSpan);
         }
 
-        parameter = new(externalName, internalName, parameterType, defaultValue, attribute) { ExternalNameSpan = externalNameSpan };
+        parameter = new(externalName, internalName, parameterType, defaultValue, attribute) { ExternalNameSpan = externalNameSpan, InternalNameSpan = internalNameSpan };
         return true;
     }
 
@@ -3546,6 +3547,7 @@ CloseParameters:
                 }
 
                 var token2 = reader.Read();
+                var operationSpan = reader.CanRead ? reader.TokenSpanAt(reader.Position) : default;
                 Koto typeKoto;
                 if (IsExpressionBoundary(ref reader))
                 {
@@ -3582,6 +3584,12 @@ CloseParameters:
                     SourceSpan.FromBounds(left.Span.Start, Math.Max(token2.Span.End, typeKoto.Span.End)),
                     left,
                     typeKoto);
+                if (typeKoto is TypeSemanticsKoto { HoverOperation: not null })
+                {
+                    reader.Hover(left, token2.Span);
+                    reader.Hover(left, operationSpan);
+                }
+
                 continue;
             }
 
@@ -3868,9 +3876,11 @@ ProcessPrefix:
                         return false;
                     }
 
-                    reader.Advance();
+                    var operatorRange = reader.Read().Span;
                     var target = new TypeSemanticsKoto(ref reader, reader.Read());
                     left = new ConversionKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, target.Span.End), left, target);
+                    reader.Hover(left, operatorRange);
+                    reader.Hover(left, target.Span);
                     return true;
                 }
 
