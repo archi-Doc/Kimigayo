@@ -1153,7 +1153,7 @@ public sealed partial class Binding
                 >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
                 CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
                 >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
-                CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or
+                CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic or
                 CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
                 CompilerFunctionKind.StorageOwn or
                 >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageTransferBytes or

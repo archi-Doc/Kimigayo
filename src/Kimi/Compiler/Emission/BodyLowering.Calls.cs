@@ -173,8 +173,9 @@ internal sealed partial class BodyLowering
 
         var formatting = resolved?.Target.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
         var comparison = resolved?.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare;
+        var arithmetic = resolved?.Target.CompilerFunction == CompilerFunctionKind.BuiltinArithmetic;
         var clone = resolved?.Target.CompilerFunction == CompilerFunctionKind.Clone;
-        var intrinsic = formatting || comparison || clone;
+        var intrinsic = formatting || comparison || arithmetic || clone;
         if (operation.Source is not InvocationKoto { AttributeChain: null } call || resolved is not { } plan ||
             (!intrinsic && generic is null && creation is null && plan.TypeArguments.Length != 0) ||
             plan.Target.Declaration is not FunctionKoto target || plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
@@ -225,7 +226,7 @@ internal sealed partial class BodyLowering
             callee = userFormat;
         }
 
-        if (callee is null && !comparison)
+        if (callee is null && !comparison && !arithmetic)
         {
             return Fail("Call target has no selected implementation ABI.", out failure);
         }
@@ -340,6 +341,11 @@ internal sealed partial class BodyLowering
         if (comparison)
         {
             return this.LowerBuiltinComparison(body, function, plan, id, out failure);
+        }
+
+        if (arithmetic)
+        {
+            return this.LowerBuiltinArithmetic(body, function, constants, directory, plan, id, out failure);
         }
 
         this.callOperands.Clear();

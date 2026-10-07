@@ -68,6 +68,7 @@ public enum CompilerFunctionKind : byte
     BuiltinFormat,
     BuiltinEquals,
     BuiltinCompare,
+    BuiltinArithmetic,
     StorageBorrowShared,
     StorageBorrowExclusive,
     StorageOwn,

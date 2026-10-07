@@ -609,6 +609,11 @@ public sealed partial class Binding
 
             try
             {
+                if (this.BuiltinArithmeticOutput(result, scope) is { } numericOutput)
+                {
+                    return numericOutput;
+                }
+
                 if (result.Kind == BoundTypeKind.AssociatedProjection && this.FixedArrayIteratorType(result) is { } fixedIterator)
                 {
                     return fixedIterator;

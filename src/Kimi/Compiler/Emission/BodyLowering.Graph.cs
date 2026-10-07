@@ -27,14 +27,8 @@ internal sealed partial class BodyLowering
         : FloatingTypes.Supports(type) || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
-        OwnershipValueKind.Binary when value.Operator == KotoKind.Slash && type is not null && ScalarTypes.Signed(type) => type.IsWrappingInteger ? ArithmeticCheckKind.WrappingDivision : ArithmeticCheckKind.Division,
-        OwnershipValueKind.Binary when value.Operator is KotoKind.Slash or KotoKind.Percent => ArithmeticCheckKind.DivisionZero,
+        OwnershipValueKind.Binary or OwnershipValueKind.Unary when type is not null => NumericArithmetic.Check(value.Operator, type),
 
-        // SPEC 13.3: a wrapping integer Type has no unrepresentable result, so its +, -, * and negation carry no check.
-        OwnershipValueKind.Binary when value.Operator is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk => type?.IsWrappingInteger == true ? ArithmeticCheckKind.None : ArithmeticCheckKind.Overflow,
-        OwnershipValueKind.Unary when value.Operator == KotoKind.PrefixMinus => type?.IsWrappingInteger == true ? ArithmeticCheckKind.None : ArithmeticCheckKind.Overflow,
-
-        // An element of a fixed array borrowed through a reference takes a bounds-checked address (SPEC 4.6.9).
         OwnershipValueKind.Address when value.Count == 2 => ArithmeticCheckKind.Bounds,
         _ => ArithmeticCheckKind.None,
     };
@@ -644,10 +638,8 @@ internal sealed partial class BodyLowering
 
         // SPEC 13.3: wrapping arithmetic is the plain instruction without nsw/nuw; checked arithmetic names its overflow intrinsic.
         var wrapping = operandType.IsWrappingInteger;
-        var op = value.Operator switch
+        var op = NumericArithmetic.Instruction(value.Operator, operandType) ?? value.Operator switch
         {
-            KotoKind.Plus => wrapping ? "add" : signed ? "sadd" : "uadd", KotoKind.Minus or KotoKind.PrefixMinus => wrapping ? "sub" : signed ? "ssub" : "usub", KotoKind.Asterisk => wrapping ? "mul" : signed ? "smul" : "umul",
-            KotoKind.Slash => signed ? "sdiv" : "udiv", KotoKind.Percent => signed ? "srem" : "urem",
             KotoKind.Ampersand => "and", KotoKind.Bar => "or", KotoKind.Caret => "xor",
             KotoKind.LessThanLessThan => "shl", KotoKind.GreaterThanGreaterThan => signed ? "ashr" : "lshr",
             KotoKind.EqualsEquals => "eq", KotoKind.ExclamationEquals => "ne",

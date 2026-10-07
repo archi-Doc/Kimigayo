@@ -10,13 +10,8 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var value = body.Values[id];
-        var op = value.Operator switch
+        var op = NumericArithmetic.Instruction(value.Operator, operandType) ?? value.Operator switch
         {
-            KotoKind.Plus => "fadd",
-            KotoKind.Minus => "fsub",
-            KotoKind.Asterisk => "fmul",
-            KotoKind.Slash => "fdiv",
-            KotoKind.PrefixMinus => "fneg",
             KotoKind.EqualsEquals => "oeq",
             KotoKind.ExclamationEquals => "une",
             KotoKind.LessThan => "olt",

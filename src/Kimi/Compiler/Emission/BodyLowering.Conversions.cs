@@ -126,7 +126,8 @@ internal sealed partial class BodyLowering
                 this.conversions.Add(plan);
             }
 
-            this.checks[id] = this.LiteralOperandCheck(body, id, ClassifyCheck(body.Values[id], ValueType(body, id), plan));
+            this.checks[id] = kind == OwnershipValueKind.Call ? this.NumericCallCheck(body, id)
+                : this.LiteralOperandCheck(body, id, ClassifyCheck(body.Values[id], ValueType(body, id), plan));
             var input = kind is OwnershipValueKind.Alias or OwnershipValueKind.Convert ? Input(body, id, 0) : -1;
             if (kind == OwnershipValueKind.Convert && body.Values[id].Constant == OwnershipValue.PositionConversion && (uint)input < (uint)id &&
                 (this.folded[input] ? new EmissionOperand(EmissionOperandKind.Integer, this.foldedValues[input]) : Operand(body, this.physicalValues[input])) is { Kind: EmissionOperandKind.Integer } position)

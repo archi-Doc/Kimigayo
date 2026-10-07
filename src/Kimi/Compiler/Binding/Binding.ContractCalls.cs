@@ -83,7 +83,7 @@ public sealed partial class Binding
 
     private BindingSymbol? RequirementMember(MemberAccessKoto member, BindingScope scope, BoundType type, bool typeAccess)
     {
-        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
+        if (!FormattingTypes.IsBuiltin(type) && !ComparisonTypes.IsComposite(type) && !this.IsGenericWrapping(type, scope) && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection) && type.Symbol?.Declaration is not ContractKoto)
         {
             return null;
         }
@@ -145,6 +145,24 @@ public sealed partial class Binding
         if (this.Library.Position.Contract is { } position && this.IsGenericInteger(type, scope))
         {
             Add(position);
+        }
+
+        // Numeric witnesses are requirements under generic evidence, not named numeric members.
+        if (this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope))
+        {
+            for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.RemainderProvider; id++)
+            {
+                if (TypeSpelling(member.Right) == ArithmeticContracts.Method(id))
+                {
+                    Add(this.ArithmeticReference(id, type).Contract!);
+                    break;
+                }
+            }
+
+            if (this.IsGenericWrapping(type, scope) && TypeSpelling(member.Right) == "negated")
+            {
+                Add(this.ArithmeticReference(KimiDeclarationId.Negatable, type).Contract!);
+            }
         }
 
         // Expand the proved contracts of this referenced receiver only, as for an explicit associated

@@ -114,6 +114,11 @@ public sealed partial class Binding
 
     private BindingSymbol CompilerRequirementTarget(BindingSymbol selected, BoundType? self)
     {
+        if (self is not null && ArithmeticContracts.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic && ArithmeticContracts.Supports(self, arithmetic))
+        {
+            return this.NumericRequirementTarget(selected, arithmetic);
+        }
+
         if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
             (ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration) || ComparisonTypes.IsComposite(self)))
         {
