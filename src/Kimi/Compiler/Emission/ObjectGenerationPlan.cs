@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402 // Checked call contexts and syntax-free physical object records.
 
-internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi, int TypeToken, int[] BaseTokens, FunctionAbi[] VirtualSlots);
+internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi, int TypeToken, int[] BaseTokens, FunctionAbi?[] VirtualSlots);
 
 internal readonly record struct ObjectCall(BoundType Payload, BoundType Result, ObjectCreation Physical);
 
@@ -86,6 +86,11 @@ internal sealed class ObjectGenerationPlan
         for (var b = 0; b < compilation.Ownership.Bodies.Count; b++)
         {
             var body = compilation.Ownership.Bodies[b];
+            if (compilation.Binding.IsInapplicableVirtualBody(body.Function))
+            {
+                continue;
+            }
+
             for (var i = 0; i < body.Operations.Count; i++)
             {
                 var operation = body.Operations[i];

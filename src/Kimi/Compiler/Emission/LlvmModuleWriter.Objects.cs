@@ -155,8 +155,16 @@ internal static partial class LlvmModuleWriter
                 output.Write(" x ptr] [");
                 for (var s = 0; s < item.VirtualSlots.Length; s++)
                 {
-                    output.Write(s == 0 ? "ptr @" : ", ptr @");
-                    output.Write(item.VirtualSlots[s].Name);
+                    output.Write(s == 0 ? "ptr " : ", ptr ");
+                    if (item.VirtualSlots[s] is { } entry)
+                    {
+                        output.Write('@');
+                        output.Write(entry.Name);
+                    }
+                    else
+                    {
+                        output.Write("null");
+                    }
                 }
 
                 output.Write("], align 8\n");

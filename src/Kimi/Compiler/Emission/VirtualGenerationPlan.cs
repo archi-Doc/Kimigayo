@@ -166,7 +166,7 @@ internal sealed class VirtualGenerationPlan
         return abi;
     }
 
-    internal FunctionAbi[]? GetTable(BoundType type)
+    internal FunctionAbi?[]? GetTable(BoundType type)
     {
         if (this.declarations.Count == 0 || type.Symbol is not { Declaration: StructKoto })
         {
@@ -187,6 +187,19 @@ internal sealed class VirtualGenerationPlan
         layout.Entries.Clear();
         foreach (var choice in layout.Choices)
         {
+            var proof = this.binding!.VirtualApplicability(choice.Slot);
+            if (proof == ConstraintProof.Refuted)
+            {
+                layout.Entries.Add(null);
+                continue;
+            }
+
+            if (proof != ConstraintProof.Proven)
+            {
+                this.Failure = "A closed virtual slot requires a completed applicability proof.";
+                return null;
+            }
+
             if (this.Entry(choice.Function, choice.Declaring) is not { } abi ||
                 this.Entry(choice.Slot.Original, choice.Slot.DeclaringType, implementationBody: false) is not { } contract || !SameAbi(contract, abi))
             {
@@ -388,9 +401,9 @@ internal sealed class VirtualGenerationPlan
 
         internal bool Prepared { get; set; }
 
-        internal List<FunctionAbi> Entries { get; } = new();
+        internal List<FunctionAbi?> Entries { get; } = new();
 
-        internal FunctionAbi[] Table { get; set; } = [];
+        internal FunctionAbi?[] Table { get; set; } = [];
     }
 
     private readonly record struct Choice(FunctionKoto Function, BoundType Declaring, Binding.VirtualSlot Slot);

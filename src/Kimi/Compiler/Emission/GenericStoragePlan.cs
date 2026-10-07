@@ -119,7 +119,7 @@ internal sealed partial class GenericStoragePlan
         for (var b = 0; b < compilation.Ownership.Bodies.Count; b++)
         {
             var body = compilation.Ownership.Bodies[b];
-            if (IsGeneric(body.Function))
+            if (IsGeneric(body.Function) || compilation.Binding.IsInapplicableVirtualBody(body.Function))
             {
                 continue; // Dependent calls receive a concrete context from their caller's entry.
             }

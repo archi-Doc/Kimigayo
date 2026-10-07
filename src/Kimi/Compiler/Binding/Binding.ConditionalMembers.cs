@@ -25,7 +25,7 @@ public sealed partial class Binding
             : this.ImportedEnvironment(callee) is { } environment ? environment
             : member.Scope.Owner is StructKoto or EnumKoto || member.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } ? this.SelfType(member.Scope.Owner.BoundSymbol!) : null;
 
-    private ConstraintProof ProveMemberConditions(BindingSymbol member, BoundType? declaringType, BindingScope scope)
+    private ConstraintProof ProveMemberConditions(BindingSymbol member, BoundType? declaringType, BindingScope scope, Koto? failureUse = null)
     {
         if (member.ConditionalDeclaration is not { } declaration)
         {
@@ -38,7 +38,7 @@ public sealed partial class Binding
         }
 
         declaringType ??= this.SelfType(member.Scope.Owner.BoundSymbol!);
-        return this.ProveConditionalPremises((SyntaxFormKoto)declaration.Operands[1], member.Scope.Owner, declaringType, scope);
+        return this.ProveConditionalPremises((SyntaxFormKoto)declaration.Operands[1], member.Scope.Owner, declaringType, scope, failureUse);
     }
 
     private void ValidateConditionalBlock(SyntaxFormKoto syntax, DeclarationContainerKoto owner)

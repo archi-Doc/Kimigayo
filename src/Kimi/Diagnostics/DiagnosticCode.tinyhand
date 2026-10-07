@@ -205,12 +205,12 @@
   + Name="UnprovenConstraint_Kd"
     Category="Proof"
     Message="The required Constraint cannot be proven by its semantic deadline"
-    Evidence="subject:Type,member:Text,origin:Origin|subject:Type,member:Text|subject:Type,constraint:Text,member:Text,relation:Text,longer:Origin,shorter:Origin"
+    Evidence="subject:Type,member:Text,origin:Origin|subject:Type,member:Text|subject:Type,constraint:Text,member:Text,relation:Text,longer:Origin,shorter:Origin|subject:Type,member:Text,constraint:Text"
 
   + Name="UnsatisfiedConstraint_Kd"
     Category="Language"
     Message="The supplied Types do not satisfy the required Constraints"
-    Evidence="subject:Type,entry:Text,start:Type,end:Type|subject:Type,member:Text,origin:Origin"
+    Evidence="subject:Type,entry:Text,start:Type,end:Type|subject:Type,member:Text,origin:Origin|subject:Type,member:Text,constraint:Text"
     Label="{0} does not satisfy {1}: boundaries are {2} and {3}"
 
   + Name="InvalidKimiLibrary_Kd"

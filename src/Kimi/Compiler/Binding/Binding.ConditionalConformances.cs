@@ -402,7 +402,7 @@ public sealed partial class Binding
         return this.ProveConditionalPremises(path.Premises, path.Type.Declaration, type, scope);
     }
 
-    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope)
+    private ConstraintProof ProveConditionalPremises(SyntaxFormKoto? premises, Koto binder, BoundType type, BindingScope scope, Koto? failureUse = null)
     {
         if (premises is null)
         {
@@ -418,7 +418,14 @@ public sealed partial class Binding
         for (var i = 0; i < premises.Operands.Length; i++)
         {
             var condition = (IsKoto)premises.Operands[i];
-            result = CombineProof(result, condition.BoundConstraint is { } bound ? this.ProveConstraint(this.ContractConstraint(this.SubstituteConstraint(bound, binder, (BoundType[])type.Components), scope, type), scope) : ConstraintProof.Unknown, true);
+            var bound = condition.BoundConstraint is { } written ? this.ContractConstraint(this.SubstituteConstraint(written, binder, (BoundType[])type.Components), scope, type) : null;
+            var proof = bound is null ? ConstraintProof.Unknown : this.ProveConstraint(bound, scope);
+            if (bound is not null && failureUse is not null)
+            {
+                this.RecordReferenceConstraint(failureUse, condition, bound, proof);
+            }
+
+            result = CombineProof(result, proof, true);
         }
 
         return result;

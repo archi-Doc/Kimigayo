@@ -755,7 +755,7 @@ public sealed partial class Binding
 
     // With `skipUnresolved`, a clause whose judgment needs an unbound slot, and that is not otherwise refuted, is not judged (SPEC 10.8):
     // it contributes Proven, so only the clauses that can be judged decide.
-    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null)
+    private ConstraintProof CheckConstraints(IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BindingScope scope, BoundType? self = null, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default, bool incomplete = false, bool skipUnresolved = false, Koto? slotOwner = null, Koto? failureUse = null)
     {
         var result = ConstraintProof.Proven;
         for (var i = 0; i < clauses.Count; i++)
@@ -786,10 +786,16 @@ public sealed partial class Binding
             }
 
             // Associated identities also need normalization for calls without a receiver.
-            var proof = this.ProveConstraint(this.ContractConstraint(substituted, scope, self), scope);
+            substituted = this.ContractConstraint(substituted, scope, self);
+            var proof = this.ProveConstraint(substituted, scope);
             if (skipUnresolved && proof == ConstraintProof.Unknown && substituted.HasUnresolved && !bound.HasUnresolved)
             {
                 proof = ConstraintProof.Proven;
+            }
+
+            if (failureUse is not null)
+            {
+                this.RecordReferenceConstraint(failureUse, constraint, substituted, proof);
             }
 
             result = CombineProof(result, bound.HasUnresolved && proof == ConstraintProof.Proven ? ConstraintProof.Unknown : proof, true);

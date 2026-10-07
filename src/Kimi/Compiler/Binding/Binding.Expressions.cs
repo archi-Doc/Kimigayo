@@ -1069,7 +1069,7 @@ public sealed partial class Binding
             return this.Fail(node, BindingFailure.InvalidAssignment);
         }
 
-        if (symbol.ConditionalDeclaration is not null)
+        if (symbol.ConditionalDeclaration is not null && symbol.Kind != BindingSymbolKind.Function)
         {
             var conditionalType = node is MemberAccessKoto conditionalMember && this.memberSelections.TryGetValue(conditionalMember, out var memberSelection) ? memberSelection.DeclaringType : null;
             var proof = this.ProveMemberConditions(symbol, conditionalType, scope);
@@ -1077,11 +1077,6 @@ public sealed partial class Binding
             {
                 this.RequireConstraint(node, proof, this.capabilityMode);
                 return null;
-            }
-
-            if (symbol.Kind == BindingSymbolKind.Function)
-            {
-                return this.Fail(node, BindingFailure.Unsupported, true);
             }
         }
 

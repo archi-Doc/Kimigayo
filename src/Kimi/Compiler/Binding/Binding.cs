@@ -902,6 +902,10 @@ public sealed partial class Binding
             var defaultNote = wrappingConversion || conversion is not null ? null : this.GenericDefaultNote(issue.Node, mismatch.Actual, mismatch.Expected, out defaultAdvice);
             issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? defaultNote ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : defaultAdvice, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.referenceConstraints?.TryGetValue(issue.Node, out var reference) == true)
+        {
+            this.ReportReferenceConstraint(issue.Node, reference, requirement, issue.Code);
+        }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures?.TryGetValue(issue.Node, out var erasure) == true)
         {
             var subject = DiagnosticTypeName(erasure.Source);

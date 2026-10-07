@@ -27,6 +27,29 @@ public sealed partial class Binding
         return (this.IsRunning || this.Result != default) && this.virtualOverrides.TryGetValue(function, out result);
     }
 
+    // Closed descriptor bindings use the public premises, without assuming those premises from the body scope.
+    internal ConstraintProof VirtualApplicability(VirtualSlot slot)
+    {
+        if (slot.DeclaringType.ContainsParameter)
+        {
+            return ConstraintProof.Unknown;
+        }
+
+        var original = slot.Original;
+        var scope = this.ModuleScope(original);
+        return CombineProof(
+            this.CheckConstraints(original.TypeConstraints, original, [], scope, declaringType: slot.DeclaringType),
+            this.ProveMemberConditions(original.BoundSymbol!, slot.DeclaringType, scope),
+            true);
+    }
+
+    internal bool IsInapplicableVirtualBody(FunctionKoto function)
+    {
+        var slot = function.IsVirtual ? new VirtualSlot(function, this.SelfType(function.BoundSymbol!.Scope.Owner.BoundSymbol!))
+            : function.IsOverride && this.virtualOverrides.TryGetValue(function, out var implementation) ? implementation.Slot : default;
+        return slot.Original is not null && this.VirtualApplicability(slot) == ConstraintProof.Refuted;
+    }
+
     // Called by the common BoundCall setter, including instantiated calls and Function Item contexts.
     // Target and its defaults always remain the original public contract.
     internal BoundVirtualCall SelectVirtualCall(BoundCall call, FunctionKoto original, BoundVirtualCall? record)

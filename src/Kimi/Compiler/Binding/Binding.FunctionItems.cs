@@ -1,12 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, BoundCall> functionItemContexts = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<Koto, ReferenceConstraintFailure>? referenceConstraints;
+
+    private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof);
 
     // Generation-only context of an already selected declaration. An override never becomes a public Item.
     internal BoundCall? ImplementationContext(FunctionKoto function, BoundType declaring)
@@ -257,7 +261,15 @@ public sealed partial class Binding
             return this.FailUnfixedReference(use, symbol, unbound, declaring);
         }
 
-        return this.CompleteFunctionItem(use, symbol, default, this.ReferenceContainer(use, symbol));
+        var container = this.ReferenceContainer(use, symbol);
+        var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container, failureUse: use);
+        if (proof != ConstraintProof.Proven)
+        {
+            this.RequireConstraint(use, proof, this.capabilityMode);
+            return null;
+        }
+
+        return this.CompleteFunctionItem(use, symbol, default, container);
     }
 
     // SPEC 10.5: without a fixed expected call signature, a reference is a value only when one candidate remains and that
@@ -369,7 +381,7 @@ public sealed partial class Binding
             }
 
             var container = this.ReferenceContainer(use, selected);
-            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths);
+            var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths, use);
             if (proof != ConstraintProof.Proven)
             {
                 this.RequireConstraint(use, proof, this.capabilityMode);
@@ -477,5 +489,32 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(components, clearArray: true);
         }
+    }
+
+    private void RecordReferenceConstraint(Koto use, IsKoto clause, BoundConstraint constraint, ConstraintProof proof)
+    {
+        if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
+        {
+            var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
+            if (!failures.TryGetValue(use, out var previous) || (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Refuted))
+            {
+                failures[use] = new(clause, constraint, proof);
+            }
+        }
+    }
+
+    private void ReportReferenceConstraint(Koto use, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var member = use.BoundSymbol?.Name ?? "the referenced function";
+        var subject = fact.Constraint.Subject is { } type ? DiagnosticTypeName(type) : null;
+        var clause = fact.Clause.ToString();
+        var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
+        use.Report(
+            requirement,
+            code,
+            evidence: [subject, member, clause],
+            note: $"Function Item {member} requires {clause}; this condition {outcome}" + (subject is null ? " under the supplied bindings" : $" for {subject}"),
+            related: [("constraint", fact.Clause, "required by the referenced declaration")],
+            advice: "Choose Type arguments that satisfy the referenced declaration's constraints");
     }
 }

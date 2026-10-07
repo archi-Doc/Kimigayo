@@ -64,33 +64,12 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void PendingConditionalDispatchHasALocatedUnsupportedRecordAndWritesNoIr()
+    public void UnreferencedConditionalSlotsNeedNoGeneratedBody()
     {
-        var path = Path.GetFullPath("virtual-dispatch-pending.kimi");
-        var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    Self is Marker when T is Copy\n        public virtual func read(self: objref/Self) -> i32 => 1\n()", path);
-        using var ir = new StringWriter();
-        Assert.False(c.Emission.WriteIr(ir, out var failure));
-        Assert.Empty(ir.ToString());
-        c.Emission.ReportFailure(failure);
-        var shown = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal("UnsupportedEmission_Kd", shown.Code);
-        Assert.Equal("virtual", shown.Text);
-        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
-        var result = c.Diagnostics.Finalize(last: DiagnosticPartition.Emission);
-        var record = Assert.Single(result.Diagnostics);
-        Assert.Equal(DiagnosticCategory.Unsupported, record.Category);
-        var console = new DiagnosticContractTest.DiagnosticConsole();
-        new Kimigayo(console).Render(result, string.Empty);
-        output.WriteLine(console.Text);
-        Assert.Contains("virtual slot-table and dispatch generation", console.Text, StringComparison.Ordinal);
-        var identity = SourceIdentity.FromPath(path);
-        foreach (var related in new[] { false, true })
-        {
-            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
-            Assert.Equal(record.Display!.Range, sent.Range);
-            Assert.Contains("no static-call fallback", sent.Message, StringComparison.Ordinal);
-            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
-        }
+        var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    Self is Marker when T is Copy\n        public virtual func read(self: objref/Self) -> i32 => 1\n()");
+        Assert.True(c.Emission.TryPrepare(out var module, out var failure), failure);
+        Assert.Empty(module.Objects);
+        Assert.Empty(TestDiagnostics.Of(c));
     }
 
     [Fact]

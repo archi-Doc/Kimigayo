@@ -28,7 +28,6 @@ public sealed partial class LlvmEmitter
     private bool resourceLimit;
     private string? instanceFailureContext;
     private Koto? instanceFailureSite;
-    private FunctionKoto? unsupportedVirtual;
 
     internal LlvmEmitter(Compilation compilation)
     {
@@ -73,10 +72,6 @@ public sealed partial class LlvmEmitter
         {
             c.Ownership.ReportInstanceDiagnostics(failed, this.instanceFailureContext, this.instanceFailureSite);
         }
-        else if (this.unsupportedVirtual is { } function)
-        {
-            function.Report(DiagnosticRequirement.Emission, DiagnosticCode.UnsupportedEmission_Kd, span: function.DispatchModifierSpan, evidence: ["conditional virtual slot-table and dispatch generation"], note: failure);
-        }
         else
         {
             c.Diagnostics.Report(DiagnosticPartition.Emission, this.resourceLimit ? DiagnosticCode.GenerationResourceLimit_Kd : DiagnosticCode.GenerationFailed_Kd, c.Project.FilePath, note: failure);
@@ -95,7 +90,6 @@ public sealed partial class LlvmEmitter
         this.instanceFailureContext = null;
         this.instanceFailureSite = null;
         this.FailureInstance = null;
-        this.unsupportedVirtual = null;
         c.Ownership.ClearInstances();
         this.generics.Clear();
         this.defaults.Clear();
@@ -522,7 +516,8 @@ public sealed partial class LlvmEmitter
     }
 
     private bool SkipGenerated(OwnershipBody body)
-        => body.Function.IsGenerated && !ReferenceEquals(body.Function, this.compilation.Binding.Startup.Function);
+        => (body.Function.IsGenerated && !ReferenceEquals(body.Function, this.compilation.Binding.Startup.Function)) ||
+            this.compilation.Binding.IsInapplicableVirtualBody(body.Function);
 
     private string? CheckInputs()
     {
@@ -583,12 +578,6 @@ public sealed partial class LlvmEmitter
             }
 
             var function = body.Function;
-            if ((function.IsVirtual || function.IsOverride) && (function.BoundSymbol!.ConditionalDeclaration is not null || function.TypeConstraints.Count != 0))
-            {
-                this.unsupportedVirtual = function;
-                return "Conditional virtual slot-table and dispatch generation is not yet implemented; no static-call fallback is emitted.";
-            }
-
             if (GenericStoragePlan.IsGeneric(function))
             {
                 continue; // Each closed instance is validated by BodyLowering under its substitution (LowerInstances).

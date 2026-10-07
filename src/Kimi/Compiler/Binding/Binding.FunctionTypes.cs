@@ -990,10 +990,16 @@ public sealed partial class Binding
     }
 
     // A substitution must be a valid complete Type, and the Constraints hold for it, as for a call (SPEC 8.1.3, 10.1 step 5).
-    private ConstraintProof ReferenceArgumentProof(FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? container, BoundLength?[]? lengths = null)
+    private ConstraintProof ReferenceArgumentProof(FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? container, BoundLength?[]? lengths = null, Koto? failureUse = null)
     {
+        if (failureUse is not null)
+        {
+            this.referenceConstraints?.Remove(failureUse);
+        }
+
         var count = function.GenericArguments.Count;
-        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope, declaringType: container, lengths: lengths.AsSpan(0, lengths is null ? 0 : count));
+        var proof = this.CheckConstraints(function.TypeConstraints, function, arguments.AsSpan(0, count), scope, declaringType: container, lengths: lengths.AsSpan(0, lengths is null ? 0 : count), failureUse: failureUse);
+        proof = CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, container, scope, failureUse), true);
         proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
         if (container is not null)
         {
