@@ -83,21 +83,7 @@ public sealed partial class Binding
         }
 
         var spelling = EffectBoundKoto.Spelling(violation.Bound.Bound);
-        var cause = violation.Kind switch
-        {
-            EffectViolation.MutableStatic => "a mutable static access",
-            EffectViolation.ExternalOperation => "an external operation",
-            EffectViolation.ForeignCall => "a foreign function call",
-            EffectViolation.StaticPointer => "a raw pointer read from an immutable static",
-            EffectViolation.IntegerPointer => "a pointer made from an integer",
-            EffectViolation.ResultLoan => "an access to a Loan an earlier result may keep",
-            EffectViolation.MissingCallablePremise => "the enclosing premise does not declare the bound",
-            EffectViolation.ErasedCallable => "a common Function Type whose erasure keeps no bounds",
-            EffectViolation.UnknownDestruction => "destruction with unknown effects",
-            EffectViolation.UnboundedRequirement => "a requirement call without the required guarantee",
-            EffectViolation.UnboundedVirtual => "a virtual call without the required public effect guarantee",
-            _ => "a call with unknown effects",
-        };
+        var cause = EffectCause(violation.Kind, callable: true);
         var related = violation.Node is { } effect
             ? new (string Role, Koto At, string? Label)[] { ("bound", violation.Clause, "the bounded Callable Constraint"), ("effect", effect, "the violating effect") }
             : [("bound", (Koto)violation.Clause, (string?)"the bounded Callable Constraint")];

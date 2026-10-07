@@ -304,20 +304,7 @@ public sealed partial class Binding
         var spelling = EffectBoundKoto.Spelling(bound);
 
         // SPEC 8.4.10.6: an environment effect is named by the operation that obtained the authority (SPEC 8.4.10.2).
-        var effect = violation.Kind switch
-        {
-            EffectViolation.MutableStatic => "a mutable static access",
-            EffectViolation.ExternalOperation => "an external operation",
-            EffectViolation.ForeignCall => "a foreign function call",
-            EffectViolation.StaticPointer => "a raw pointer read from an immutable static",
-            EffectViolation.IntegerPointer => "a pointer made from an integer",
-            EffectViolation.ResultLoan => "an access to a Loan the result may keep",
-            EffectViolation.UnboundedRequirement => "a requirement call with unknown effects",
-            EffectViolation.UnboundedVirtual => "a virtual call without the required public effect guarantee",
-            EffectViolation.UnclassifiedAccess => "an access with unknown Loans",
-            EffectViolation.UnknownDestruction => "a destruction with unknown effects",
-            _ => "a call with unknown effects",
-        };
+        var effect = EffectCause(violation.Kind);
         var definite = violation.Kind is EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ForeignCall or
             EffectViolation.StaticPointer or EffectViolation.IntegerPointer or EffectViolation.ResultLoan;
 
@@ -766,9 +753,25 @@ public sealed partial class Binding
         }
     }
 
-    // The facts of a rejected effect item; its text is formed only when the record is published.
-    // The violating effect of a rejected conformance: its kind, the own-body syntax reaching it, its node, why delegation did not
-    // apply, the requirement and the bounds checked.
+    // Share cause text across Contract, Callable and virtual implementation diagnostics.
+    private static string EffectCause(EffectViolation kind, bool callable = false) => kind switch
+    {
+        EffectViolation.MutableStatic => "a mutable static access",
+        EffectViolation.ExternalOperation => "an external operation",
+        EffectViolation.ForeignCall => "a foreign function call",
+        EffectViolation.StaticPointer => "a raw pointer read from an immutable static",
+        EffectViolation.IntegerPointer => "a pointer made from an integer",
+        EffectViolation.ResultLoan => callable ? "an access to a Loan an earlier result may keep" : "an access to a Loan the result may keep",
+        EffectViolation.UnboundedRequirement => callable ? "a requirement call without the required guarantee" : "a requirement call with unknown effects",
+        EffectViolation.UnboundedVirtual => "a virtual call without the required public effect guarantee",
+        EffectViolation.UnclassifiedAccess => "an access with unknown Loans",
+        EffectViolation.UnknownDestruction => callable ? "destruction with unknown effects" : "a destruction with unknown effects",
+        EffectViolation.MissingCallablePremise => "the enclosing premise does not declare the bound",
+        EffectViolation.ErasedCallable => "a common Function Type whose erasure keeps no bounds",
+        _ => "a call with unknown effects",
+    };
+
+    // The violating effect and the public bound it must satisfy; text is formed only during publication.
     private readonly record struct EffectViolationRecord(EffectViolation Kind, Koto? Site, Koto? Node, DelegationFailure Delegation, Koto? DelegationNode, FunctionKoto Requirement, BoundContract Contract, bool Confined, bool Preserves);
 
     private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Requirement = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0, BoundType? Part = null, BoundType? Result = null, BoundOrigin? Atom = null);

@@ -240,7 +240,7 @@ public sealed partial class Binding
         // SPEC 8.4.8.2: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
         // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
-        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref)
+        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false)
         {
             this.confined = confined;
             this.preserves = preserves;
@@ -297,7 +297,16 @@ public sealed partial class Binding
                 }
             }
 
-            this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
+            if (implementationBody && this.implementation is { } body)
+            {
+                // The obligation checks this body; all calls inside it still use their own dispatch kind.
+                this.Body(body, null);
+            }
+            else
+            {
+                this.Function(implementation, callable is null ? null : binding.FunctionItemContext(callable));
+            }
+
             if (callable is { Kind: BoundTypeKind.Closure } && receiver == SemanticsKind.Owner &&
                 callable.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
             {

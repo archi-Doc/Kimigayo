@@ -567,6 +567,7 @@ public sealed partial class Binding
         }
 
         this.ValidateVirtualOverrideConditions();
+        this.ValidateVirtualEffectBounds();
         this.GuardPendingVirtualDeclarations();
     }
 
@@ -792,6 +793,10 @@ public sealed partial class Binding
         else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
             this.ReportOverrideFailure(overrideFunction, requirement, issue.Code);
+        }
+        else if (issue.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd && issue.Node is FunctionKoto effectImplementation)
+        {
+            this.ReportVirtualEffectViolation(effectImplementation, requirement);
         }
         else if (issue.Code is DiagnosticCode.InvalidVirtualDeclaration_Kd or DiagnosticCode.UnsupportedBinding_Kd && issue.Node is FunctionKoto virtualFunction && (virtualFunction.IsVirtual || virtualFunction.IsOverride))
         {
@@ -1085,6 +1090,7 @@ public sealed partial class Binding
                     BindingFailure.OverrideContractMismatch => DiagnosticCode.OverrideContractMismatch_Kd,
                     BindingFailure.DuplicateOverride => DiagnosticCode.DuplicateOverride_Kd,
                     BindingFailure.UnprovenOverrideCondition => DiagnosticCode.UnprovenOverrideCondition_Kd,
+                    BindingFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
                     BindingFailure.BaseCall => DiagnosticCode.InvalidBaseCall_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };

@@ -229,7 +229,7 @@
 
   + Name="UnsatisfiedEffectBound_Kd"
     Category="Language"
-    Message="The callable given here does not satisfy an effect bound of its Callable Constraint"
+    Message="The operation does not satisfy a required effect bound"
     Evidence="cause:Text"
     Label="{0}"
 

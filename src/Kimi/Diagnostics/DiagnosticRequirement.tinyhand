@@ -736,5 +736,8 @@
   + Name="Binding.UnprovenOverrideCondition"
     Description="the derived Type and original slot's premises imply the override's containing condition"
 
+  + Name="Binding.VirtualEffectBound"
+    Description="each original and override body satisfies the original slot's public effect bounds"
+
   + Name="Binding.BaseCall"
     Description="base names a direct instance call using the lexical derived receiver"
