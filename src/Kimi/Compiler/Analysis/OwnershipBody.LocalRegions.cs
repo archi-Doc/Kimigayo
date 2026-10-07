@@ -32,7 +32,7 @@ public sealed partial class OwnershipBody
     private void PrepareLoanFlow(int root, int count)
     {
         this.loanFlowRoot = -1;
-        var needed = false;
+        var needed = this.transferredOrigins;
         for (var p = 0; p < count && !needed; p++)
         {
             needed = this.Function.CodeContext.Compilation.Binding.HasRegionBounds(this.Places[p].Type);

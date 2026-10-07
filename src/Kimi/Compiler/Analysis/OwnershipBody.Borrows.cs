@@ -22,6 +22,7 @@ public sealed partial class OwnershipBody
     private readonly List<(int Referent, int Operation, int Stored, BoundType Storage, int Read, bool Complete)> retentions = new();
 
     private int[] retentionStarts = [];
+    private bool transferredOrigins;
     private PackedAnalysisTable borrowLive = new(1);
     private int[] checkingBorrowHeads = [];
     private PackedAnalysisTable borrowDependencies = new(2);
@@ -228,6 +229,7 @@ public sealed partial class OwnershipBody
     // Types retain Origin identity through Copy, Move, calls and field storage.
     internal void VerifyBorrows()
     {
+        this.transferredOrigins = false;
         this.ClearStoredBorrows();
         this.contentUpdates.Clear();
         this.contentSlots.Clear();
@@ -1388,11 +1390,11 @@ public sealed partial class OwnershipBody
     }
 
     // SPEC 15.6.3, 15.8.2: an exclusive reference held by a body input, a parameter or an environment binding of the closure being
-    // analyzed, with a declared Origin is its own external capability root, independent of the Origin's shared name. An elided
-    // Origin is an Input Origin that AddOrigin roots at the input's own Place; an object reference (objuniq) is not a root today.
+    // analyzed, is its own external capability root, whether its Origin is declared or elided. Origin relations do not identify
+    // the acquired Places; an object reference (objuniq) is not a root today.
     private bool IsExclusiveBorrowInput(int place)
         => (this.Places[place].Kind == OwnershipPlaceKind.Parameter || this.IsEnvironmentBinding(place)) &&
-            this.Places[place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin.Kind: OriginKind.Parameter };
+            this.Places[place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Origin.Kind: OriginKind.Input or OriginKind.Parameter };
 
     // Retain stronger input authority separately from the shared access a child actually acquires.
     private void RetainBorrowAuthority(int count)
@@ -1411,10 +1413,10 @@ public sealed partial class OwnershipBody
                 switch (FlowOf(operation.Kind))
                 {
                     case OperationFlow.InputFromPlace:
-                        Merge(operation.Input, operation.Place, id);
+                        Merge(operation.Input, operation.Place, id, transferred: true);
                         break;
                     case OperationFlow.PlaceFromInput:
-                        Merge(operation.Place, operation.Input, id);
+                        Merge(operation.Place, operation.Input, id, transferred: true);
                         break;
                     case OperationFlow.DictionaryEntry:
                         Merge(operation.Place, operation.Input, id);
@@ -1541,7 +1543,7 @@ public sealed partial class OwnershipBody
                 : this.IsStoredBorrow(source, root) ? this.AddStoredBorrowTransfer(source, destination, root, at) : null;
 
         // The destination takes the source's dependencies at operation `at`.
-        void Merge(int destination, int source, int at, BoundType? storage = null, bool before = false)
+        void Merge(int destination, int source, int at, BoundType? storage = null, bool before = false, bool transferred = false)
         {
             if (destination < 0 || source < 0 || destination == source)
             {
@@ -1560,13 +1562,31 @@ public sealed partial class OwnershipBody
                 var original = this.retainedBorrowAuthority[(destination * count) + root];
                 var target = original;
                 var input = this.retainedBorrowAuthority[(source * count) + root];
-                if (input != LoanRequirement.None && target == LoanRequirement.None && this.IsExclusiveBorrowInput(root) &&
-                    this.NamedOriginRequirement(this.Places[destination].Type, this.Places[root].Type.Origin!) is not LoanRequirement.None and var requirement)
+                if (input != LoanRequirement.None && target == LoanRequirement.None && this.IsExclusiveBorrowInput(root))
                 {
-                    this.borrowDependencies[(destination * count) + root] = requirement;
-                    target = requirement;
-                    changed = true;
-                    _ = Store(destination, source, root, at, storage, before);
+                    var type = this.Places[destination].Type;
+                    var requirement = this.NamedOriginRequirement(type, this.Places[root].Type.Origin!);
+                    if (transferred && type is { CarriesOrigin: true, Kind: not (BoundTypeKind.Function or BoundTypeKind.FunctionItem) })
+                    {
+                        // A value acquisition or complete transfer preserves the acquired Loans even when its destination
+                        // shortens an Origin. Keep its access mode separate from the stronger retained parent authority.
+                        var mode = this.borrowDependencies[(source * count) + root];
+                        if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef })
+                        {
+                            mode = (LoanRequirement)Math.Min((int)mode, (int)LoanRequirement.Ref);
+                        }
+
+                        requirement = (LoanRequirement)Math.Max((int)requirement, (int)mode);
+                        this.transferredOrigins |= mode != LoanRequirement.None;
+                    }
+
+                    if (requirement != LoanRequirement.None)
+                    {
+                        this.borrowDependencies[(destination * count) + root] = requirement;
+                        target = requirement;
+                        changed = true;
+                        _ = Store(destination, source, root, at, storage, before);
+                    }
                 }
                 else if (input != LoanRequirement.None && target != LoanRequirement.None && this.HasStoredBorrowRecord(destination, root))
                 {
