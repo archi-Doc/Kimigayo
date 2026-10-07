@@ -762,6 +762,7 @@ public sealed partial class Binding
                     }
                 }
 
+                advice ??= candidate.ObjectClone ? StrongCloneAdvice : null;
                 if (candidate.ConstraintFailure is { } condition)
                 {
                     var subject = condition.Constraint.Subject is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
@@ -772,7 +773,6 @@ public sealed partial class Binding
                     candidates[nextConstraint++] = ("constraint", condition.Clause, conditionNote);
                 }
 
-                advice ??= candidate.ObjectClone ? StrongCloneAdvice : null;
                 candidates[c] = ("candidate", candidate.Function, label);
             }
 

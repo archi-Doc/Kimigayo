@@ -194,7 +194,7 @@ public class ArrayBindingTest
     [InlineData("values@uniq.append(true)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("values@uniq.reserve(4, 5)", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("let index = 1.5\nvalues@uniq.insert(index, 1)", DiagnosticCode.NoApplicableOverload_Kd)]
-    [InlineData("values@uniq.insertAt(0, 1)", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("values@uniq.insertAt(0, 1)", DiagnosticCode.InaccessibleBinding_Kd)]
     public void MutationOperationsRejectWrongReceiversAndArguments(string statement, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze("var values: Array<i32> = []\n" + statement);

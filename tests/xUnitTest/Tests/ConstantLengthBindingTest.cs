@@ -59,7 +59,7 @@ public class ConstantLengthBindingTest
 
     [Theory]
     [InlineData("let row: [N of u8]\nlet N = 4", "N", "UnresolvedBinding_Kd")]
-    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "UnresolvedBinding_Kd")]
+    [InlineData("group Dimensions\n    private let N = 4\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "InaccessibleBinding_Kd")]
     [InlineData("group Dimensions\n    public let N: i32 = 4\n        private get\nfunc f(row: [Dimensions.N of u8]) => ()", "Dimensions.N", "InaccessibleBinding_Kd")]
     [InlineData("struct S\n    let N: i32\n    func f(self: ref/Self)\n        let row: [N of u8]", "N", "QualificationRequired_Kd")]
     public void UnavailableLengthNamesKeepTheLookupCause(string source, string text, string code)
