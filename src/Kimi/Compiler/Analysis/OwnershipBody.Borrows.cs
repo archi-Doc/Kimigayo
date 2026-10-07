@@ -124,7 +124,7 @@ public sealed partial class OwnershipBody
         OwnershipOperationKind.CompleteConstruction => OperationFlow.Construction,
         OwnershipOperationKind.DecomposeCase => OperationFlow.Decomposition,
         OwnershipOperationKind.Call => OperationFlow.Call,
-        OwnershipOperationKind.StorePointer => OperationFlow.Store,
+        OwnershipOperationKind.StorePointer or OwnershipOperationKind.WriteElement => OperationFlow.Store,
         OwnershipOperationKind.UpdateBorrowed => OperationFlow.Update,
 
         // Control flow and scope: no value reaches a Place. Declare brings an uninitialized Place into scope and Cleanup
@@ -157,9 +157,6 @@ public sealed partial class OwnershipBody
 
         // A method's receiver field is a Place without an Input; its Loans come from its Type (AddType).
         OwnershipOperationKind.InitializeReceiverField => OperationFlow.None,
-
-        // A scalar element input flows through the operation's Alias value; an aggregate input has no edge to the root (limit).
-        OwnershipOperationKind.WriteElement => OperationFlow.None,
 
         // SPEC 13.7: the Input of a borrowed field write is a ComputeUpdate scalar; no reference is stored.
         OwnershipOperationKind.WriteBorrowedField => OperationFlow.None,
@@ -1458,6 +1455,10 @@ public sealed partial class OwnershipBody
                         ApplyRetentions(id); // The writable referents of the call's arguments (PrepareRetentions).
                         break;
                     case OperationFlow.Store:
+                        // A selected part may retain into its enclosing owner, not just the temporary address holder.
+                        // Use the same resolved targets as local-region flow and ordinary call retention.
+                        ApplyRetentions(id);
+                        break;
                     case OperationFlow.Update:
                         for (var u = 0; u < this.contentUpdates.Count; u++)
                         {
@@ -1727,6 +1728,15 @@ public sealed partial class OwnershipBody
         {
             this.retentionStarts[id] = this.retentions.Count;
             var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.WriteElement)
+            {
+                var projection = this.Projections[operation.Projection];
+                var storage = this.ConcreteAt(this.Operations[projection.Operation].Source.BoundType, id)!;
+                // Replacing a part adds its contents to the owner; the other parts keep their current dependencies.
+                this.retentions.Add((projection.Root, id, operation.Input, storage, id, false));
+                continue;
+            }
+
             if (operation.Kind == OwnershipOperationKind.StorePointer)
             {
                 if (operation.Place >= 0 && this.Values[id] is { Kind: OwnershipValueKind.PointerStore, Count: > 0 } node &&

@@ -656,7 +656,7 @@ internal readonly record struct OwnershipStringComparison(int Operation, int Lef
 // Borrow identifies a Read/Borrow that replaces location protection with an element Loan without acquisition.
 // Path/PathDepth identify the longest static prefix in this same projection table;
 // Selector is the decoded literal element index, or -1 for a non-static selector.
-internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1, int Path = -1, int PathDepth = 0, int Selector = -1, int Borrow = -1);
+internal readonly record struct OwnershipProjection(int Operation, int Root, int Parent, int Index, int Element, int Loan, int Output = -1, int Write = -1, int Update = -1, int Exclusive = -1, int Path = -1, int PathDepth = 0, int Selector = -1, int Borrow = -1, int ReplacementBorrow = -1);
 
 // A completed numeric update links one projection's Copy and store to its calculation/result.
 internal readonly record struct OwnershipElementUpdate(int Projection, int Right, int Computation, int Result);

@@ -83,6 +83,22 @@ public sealed partial class OwnershipAnalysis
         return call is null ? plan.Root : this.RegisterTemporary(result);
     }
 
+    private int BorrowElementAddress(BinaryKoto source, int projection, BoundType type)
+    {
+        if (projection < 0)
+        {
+            return -1;
+        }
+
+        var plan = this.body.Projections[projection];
+        var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        var exclusive = type.Semantics == SemanticsKind.Uniq;
+        var borrow = this.Emit(OwnershipOperationKind.Borrow, source, plan.Root, result, loanMode: exclusive ? LoanRequirement.Uniq : LoanRequirement.Ref, projection: projection);
+        this.SetValue(borrow, OwnershipValueKind.Address, [], constant: plan.Root);
+        this.body.Projections[projection] = exclusive ? plan with { ReplacementBorrow = borrow } : plan with { Borrow = borrow };
+        return this.RegisterTemporary(result);
+    }
+
     private int UpdateElement(Koto source, BinaryKoto target)
     {
         var operation = ElementAccess.UpdateOperator(source.Akind);

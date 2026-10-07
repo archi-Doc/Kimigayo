@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -53,6 +55,69 @@ public class UserArithmeticUpdateTest
         => ScalarEmissionTest.EmitFixture("UserArithmeticUpdate" + name, Counter + "\n" + program, name == "Place" ? "locate\n" : string.Empty);
 
     [Theory]
+    [InlineData("Fixed", "[2 of Counter]")]
+    [InlineData("Array", "Array<Counter>")]
+    public void DynamicIndexReusesOneLocationAfterSelfInspection(string name, string type)
+    {
+        var program = "\nfunc select() -> isize\n    Console.writeLine(\"index\")\n    return 0\nvar values: " + type + " = [Counter.init(21), Counter.init(7)]\nvalues[select()] += values[0]\nrequire values[0].value == 42 and values[1].value == 7 else => $abort(\"dynamic index\")";
+        ScalarEmissionTest.EmitFixture("UserArithmeticUpdateIndex" + name, Counter + program, "index\n");
+    }
+
+    [Fact]
+    public void RetainedElementLoanStillPreventsReplacement()
+    {
+        var c = MinimalEmissionTest.Analyze(Counter + "\nvar values: Array<Counter> = [Counter.init(21)]\nlet saved = values[0]@ref\nvalues[0] += values[0]\nrequire saved.value == 21 else => $abort(\"saved element\")");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Internal or OwnershipFailure.Unsupported);
+    }
+
+    [Fact]
+    public void ReturningRightHandSideSkipsLocationAndReplacement()
+    {
+        const string Program = "\nfunc select() -> isize\n    Console.writeLine(\"unexpected index\")\n    return 0\nfunc run() -> i32\n    var values: Array<Counter> = [Counter.init(21)]\n    values[select()] += do\n        return 7\n    return 0\nrequire run() == 7 else => $abort(\"transfer\")";
+        ScalarEmissionTest.EmitFixture("UserArithmeticUpdateTransfer", Counter + Program, string.Empty);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    public void InstalledElementContentsRetainTheirExternalLoans(bool overwrite, bool compound)
+    {
+        const string View = "struct View {a}\n    Self is Addable<Self>\n    associate Output is Self\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n    public func added(self: ref/Self, right: ref/Self) -> Self => Self.init(right.value)\n";
+        var source = View + "func run(a: uniq/i32 during s, b: uniq/i32 during s) -> i32\n    var values: Array<View during s> = [View.init(a@follow@ref)]\n    values[0] " + (compound ? "+=" : "=") + " View.init(b@follow@ref)\n" +
+            (overwrite ? "    b@follow = 9\n" : string.Empty) + "    return values[0].value\nvar a = 1\nvar b = 2\nrequire run(a@uniq, b@uniq) == 2 else => $abort(\"content loan\")";
+        var path = Path.GetFullPath("arithmetic-element-loan.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (overwrite)
+        {
+            Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
+            Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Internal or OwnershipFailure.Unsupported);
+            c.Ownership.ReportDiagnostics();
+            c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+            var result = c.Diagnostics.Finalize(rejected: true);
+            var error = Assert.Single(result.Diagnostics);
+            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+            Assert.Equal(source.IndexOf("b@follow = 9", StringComparison.Ordinal), error.Span!.Value.Start);
+            Assert.Contains(error.Related!, static x => x.Role == "loan");
+            var console = new DiagnosticContractTest.DiagnosticConsole();
+            new Kimigayo(console).Render(result, string.Empty);
+            Assert.Contains("value retaining the conflicting loan", console.Text, StringComparison.Ordinal);
+            var identity = SourceIdentity.FromPath(path);
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, true)[identity]);
+            Assert.Equal(error.Code, sent.Code);
+            Assert.Equal(error.Display!.Range, sent.Range);
+        }
+        else
+        {
+            ScalarEmissionTest.WriteFixture("UserArithmeticUpdateContent" + compound, CompilationTestHelper.WriteIr(c), string.Empty);
+        }
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void StandardGetAndCustomSetBorrowNonCopyStorage(bool throughReference)
@@ -88,7 +153,7 @@ public class UserArithmeticUpdateTest
         }
         else
         {
-            ScalarEmissionTest.EmitFixture("UserArithmeticUpdateGetterLifetime", source, string.Empty);
+            ScalarEmissionTest.WriteFixture("UserArithmeticUpdateGetterLifetime", CompilationTestHelper.WriteIr(c), string.Empty);
         }
     }
 
@@ -111,11 +176,13 @@ public class UserArithmeticUpdateTest
 
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void WarmUpdatesReuseCallAndReplacementStorage(bool property)
+    [InlineData("local")]
+    [InlineData("property")]
+    [InlineData("index")]
+    public void WarmUpdatesReuseCallAndReplacementStorage(string kind)
     {
-        var source = property ? "\nstruct Box\n    public var item: Counter\n        set(value: Counter) -> () => storage = value@move\n    public init() => self.item = Counter.init(21)\nvar box = Box.init()\nbox.item += box.item"
+        var source = kind == "property" ? "\nstruct Box\n    public var item: Counter\n        set(value: Counter) -> () => storage = value@move\n    public init() => self.item = Counter.init(21)\nvar box = Box.init()\nbox.item += box.item"
+            : kind == "index" ? "\nfunc select() -> isize => 0\nvar values: Array<Counter> = [Counter.init(21)]\nvalues[select()] += values[0]"
             : "\nvar total = Counter.init(21)\ntotal += total";
         var c = MinimalEmissionTest.Analyze(Counter + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));

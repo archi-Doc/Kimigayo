@@ -12,6 +12,27 @@ internal sealed partial class BodyLowering
     private int[] elementOutputs = [];
     private bool hasElements;
 
+    private static bool ValidElementReplacementBorrow(OwnershipBody body, int projection)
+    {
+        var plan = body.Projections[projection];
+        var borrow = plan.ReplacementBorrow;
+        if (plan.Borrow < 0 || borrow <= plan.Borrow || (uint)borrow >= (uint)body.Operations.Count ||
+            body.Operations[borrow] is not { Kind: OwnershipOperationKind.Borrow, LoanMode: LoanRequirement.Uniq } operation ||
+            operation.Projection != projection || operation.Place != plan.Root ||
+            !ReferenceEquals(operation.Source, body.Operations[plan.Operation].Source) ||
+            ElementAccess.WritableRoot(operation.Source) is not { } root || !body.Places[plan.Root].Mutable ||
+            !ReferenceEquals(root.BoundSymbol, body.Places[plan.Root].Source.BoundSymbol) ||
+            body.Values[borrow] is not { Kind: OwnershipValueKind.Address, Count: 0 } ||
+            body.Operations[borrow - 1].Kind != OwnershipOperationKind.EndComparisonLoans ||
+            body.LoanInputs[borrow - 1] != plan.Loan || body.HasComparisonLoan(borrow, plan.Loan) ||
+            !ConsecutiveElementEdge(body, borrow - 1, borrow))
+        {
+            return false;
+        }
+
+        return true;
+    }
+
     // SPEC 8.10, 13.5.5.1: the Place an assignment writes: its left side, below a pair layer's follow that selects the operand
     // itself in an owner case or instance; the reference cases write through WriteReferent and never reach an element write.
     private static Koto WrittenPlace(Koto left)
@@ -241,6 +262,7 @@ internal sealed partial class BodyLowering
                     (body.Values[plan.Borrow].Kind == OwnershipValueKind.Address ? body.LoanStates[plan.Borrow] != plan.Loan : body.ComparisonLoans[body.LoanStates[plan.Borrow]].Projection != i) ||
                     plan.Output != -1 || plan.Write != -1 || plan.Exclusive != -1 || plan.Update != -1 ||
                     !ConsecutiveElementEdge(body, plan.Operation, plan.Borrow))) ||
+                plan.ReplacementBorrow < -1 || (plan.ReplacementBorrow >= 0 && !ValidElementReplacementBorrow(body, i)) ||
                 (plan.Output >= 0 && plan.Write >= 0 && plan.Update < 0) ||
                 this.elementOperations[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation] is not { Kind: OwnershipOperationKind.ProjectElement, Source: BinaryKoto source, Input: -1 } operation ||
@@ -332,9 +354,11 @@ internal sealed partial class BodyLowering
         }
 
         var plan = body.Projections[operation.Projection];
-        return plan.Borrow == borrow && this.elementOperations[plan.Operation] == operation.Projection &&
-            (borrow == at || body.Values[borrow].Kind == OwnershipValueKind.Address ? body.HasComparisonLoan(at, plan.Loan) : body.HasComparisonLoan(at, body.LoanStates[borrow])) &&
-            (!body.IsReachable(at) || (this.Dominates(plan.Operation, borrow) && (borrow == at || this.Dominates(borrow, at)) &&
+        var exclusive = operation.LoanMode == LoanRequirement.Uniq;
+        return (exclusive ? plan.ReplacementBorrow == borrow && ValidElementReplacementBorrow(body, operation.Projection) : plan.Borrow == borrow) &&
+            this.elementOperations[plan.Operation] == operation.Projection &&
+            (exclusive || (borrow == at || body.Values[borrow].Kind == OwnershipValueKind.Address ? body.HasComparisonLoan(at, plan.Loan) : body.HasComparisonLoan(at, body.LoanStates[borrow]))) &&
+            (!body.IsReachable(at) || (this.Dominates(plan.Operation, borrow) && (!exclusive || this.Dominates(plan.Borrow, borrow)) && (borrow == at || this.Dominates(borrow, at)) &&
                 (body.GetElementState(at, operation.Projection) & PlaceState.MustInit) != 0));
     }
 

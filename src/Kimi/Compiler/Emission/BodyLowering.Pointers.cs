@@ -99,7 +99,7 @@ internal sealed partial class BodyLowering
         // SPEC 7.1.1: a write through a Place call stores through the reference the call returns.
         var pointerType = ValueType(body, address);
         // SPEC 13.7: a field replaced through a reference is stored through the exclusive address of that field.
-        var sourceType = store && ((operation.Source is BinaryKoto inline && ElementAccess.OwnedPathRoot(inline) is not null) ||
+        var sourceType = store && ((operation.Source is BinaryKoto inline && ElementAccess.IsSyntax(inline) && ElementAccess.WritableRoot(inline) is not null) ||
             (operation.Source is MemberAccessKoto replaced && ElementAccess.BorrowedPathRoot(replaced) is not null) ||
             ElementAccess.IsExclusiveArrayElement(operation.Source)) &&
             ReferenceEquals(SignatureType(this, operation.Source.BoundType), type) ? pointerType

@@ -36,10 +36,15 @@ public sealed partial class OwnershipAnalysis
         var depth = this.comparisonDepth++;
         var right = this.PrepareCallArgument(call, source.Right, plan.ArgumentOperations[1]);
         var address = -1;
+        var projection = -1;
         Koto storage = target;
         if (destination < 0 && !inline)
         {
-            if (raw)
+            if (!raw && target is BinaryKoto element && ElementAccess.IsSyntax(element) && !ElementAccess.ReachesThroughBorrow(element) && ElementAccess.WritableRoot(element) is not null)
+            {
+                projection = this.LocateElement(element);
+            }
+            else if (raw)
             {
                 address = this.PointerAddress(target);
             }
@@ -60,6 +65,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var left = destination >= 0 || inline ? this.PrepareCallArgument(call, source.Left, plan.ArgumentOperations[0])
+            : projection >= 0 ? this.BorrowElementAddress((BinaryKoto)target, projection, leftType)
             : address < 0 ? -1 : raw ? this.BorrowRawAddress(target, address, leftType) : this.BorrowThrough(target, address, leftType, -1);
         // Preparation is RHS-first; the retained requirement still receives operands in their original positions.
         var updated = this.Call(call, preparedArguments: [left, right]);
@@ -80,6 +86,10 @@ public sealed partial class OwnershipAnalysis
             if (inline)
             {
                 address = this.BorrowStruct(target, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin));
+            }
+            else if (projection >= 0)
+            {
+                address = this.BorrowElementAddress((BinaryKoto)target, projection, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin));
             }
 
             this.StorePointer(storage, raw ? address : this.Value(address), updated);

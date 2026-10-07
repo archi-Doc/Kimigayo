@@ -90,7 +90,7 @@ internal sealed partial class BodyLowering
 
             if (operation.Projection >= 0)
             {
-                if (!this.ValidateElementBorrow(body, id, id) || output.Semantics != SemanticsKind.Ref || value.Count != 0 ||
+                if (!this.ValidateElementBorrow(body, id, id) || output.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq) || value.Count != 0 ||
                     !ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), output.Components[0]))
                 {
                     return Fail("Stored element borrow requires its protected projection and complete stored Type.", out failure);

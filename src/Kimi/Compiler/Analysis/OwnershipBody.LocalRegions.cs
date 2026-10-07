@@ -121,6 +121,14 @@ public sealed partial class OwnershipBody
             }
 
             var operation = this.Operations[id];
+            if (operation.Kind == OwnershipOperationKind.WriteElement && operation.Projection >= 0 && this.Projections[operation.Projection].Root == holder)
+            {
+                // A known stored path replaces only its part. Use that precision before the enclosing-owner retention.
+                var written = this.loanProjectionSlots[operation.Projection];
+                return written >= 0 ? this.LoanPartWithin(slot, written) ? Transfer(id, operation.Input, slot, written) : State(id, slot)
+                    : Combine(State(id, slot), Source(id, operation.Input));
+            }
+
             if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
             {
                 foreach (var update in this.contentUpdates)
@@ -177,12 +185,6 @@ public sealed partial class OwnershipBody
             if (operation.Projection >= 0 && this.Projections[operation.Projection].Root == holder)
             {
                 var written = this.loanProjectionSlots[operation.Projection];
-                if (operation.Kind == OwnershipOperationKind.WriteElement)
-                {
-                    return written >= 0 ? this.LoanPartWithin(slot, written) ? Transfer(id, operation.Input, slot, written) : State(id, slot)
-                        : Combine(State(id, slot), Source(id, operation.Input));
-                }
-
                 if (operation.Acquisition is AcquisitionKind.Move or AcquisitionKind.CopyOrMove)
                 {
                     return written >= 0 && this.LoanPartWithin(slot, written) ? -1 : State(id, slot);
