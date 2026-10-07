@@ -18,17 +18,19 @@ internal static class CompilerPlanMeasurements
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run(bool callable = false, bool views = false, bool regions = false)
+    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false)
     {
+        var allPhases = callable || views || regions || properties;
         var results = new List<object>();
         var workloads = regions
             ? new[] { ("candidates", 4), ("candidates", 8), ("candidates", 16), ("results", 4), ("results", 8), ("results", 16), ("regions", 4), ("regions", 8), ("regions", 16) }
-            : (views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" }).Select(static name => (name, 0)).ToArray();
+            : (properties ? new[] { "milestone24" } : views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" }).Select(static name => (name, 0)).ToArray();
         foreach (var (name, size) in workloads)
         {
             var stored = name == "stored";
             var source = name switch
             {
+                "milestone24" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone24.kimi")),
                 "candidates" or "results" or "regions" => VerificationWorkloads.CallableRegions(name, size),
                 "exclusive-views" => VerificationWorkloads.ExclusiveViews,
                 "slice-copies" => VerificationWorkloads.SliceCopies,
@@ -45,15 +47,15 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
             }
 
-            foreach (var phase in callable || views || regions ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
+            foreach (var phase in allPhases ? new[] { "binding", "ownership", "emission" } : new[] { "ownership", "emission" })
             {
-                if ((callable || views || regions) && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
+                if (allPhases && phase == "ownership" && (!c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified))
                 {
                     throw new InvalidOperationException("Rebound workload must pass startup and ownership before measurement.");
                 }
@@ -108,6 +110,8 @@ internal static class CompilerPlanMeasurements
         var report = new
         {
             compiler = Compilation.CompilerVersion,
+            compilerModule = typeof(Compilation).Module.ModuleVersionId,
+            benchmarkModule = typeof(CompilerPlanMeasurements).Module.ModuleVersionId,
             configuration = typeof(CompilerPlanMeasurements).Assembly.GetCustomAttribute<AssemblyConfigurationAttribute>()?.Configuration,
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,

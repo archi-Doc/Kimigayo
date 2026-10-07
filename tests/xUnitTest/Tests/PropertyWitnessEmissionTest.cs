@@ -54,7 +54,7 @@ public class PropertyWitnessEmissionTest
 
     [Fact]
     public void GenericStorageWitnessInstantiatesItsAssociatedResult()
-        => ScalarEmissionTest.EmitFixture("PropertyWitnessGeneric", "struct Box<T>\n    public var value: T\n    public init(value: T) => self.value = value@move\ncontract C\n    associate E\n    property item: ref/E has get\nstruct S<T>\n    Self is C\n    associate C.E is Box<T>\n    public var item: Box<T>\n    public init(value: T) => self.item = Box<T>.init(value@move)\nfunc read<T>(s: ref/T during source) -> ref/T.E during source\n    T is C\n    return s.item\nlet s = S<i32>.init(7)\nrequire read(s@ref).value == 7 else => $abort(\"generic witness\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("PropertyWitnessGeneric", "struct Box<T>\n    public var value: T\n    public init(value: T) => self.value = value@move\ncontract C\n    associate E\n    property item: ref/E has get\nstruct S<T>\n    Self is C\n    associate C.E is Box<T>\n    public var item: Box<T>\n    public init(value: T) => self.item = Box<T>.init(value@move)\nfunc read<T>(s: ref/T during source) -> ref/T.E during source\n    T is C\n    return s.item\nlet s = S<i32>.init(7)\nrequire read(s@ref).value == 7 else => $abort(\"generic witness\")\nlet flags = S<bool>.init(true)\nrequire read(flags@ref).value == true else => $abort(\"second witness instance\")", string.Empty);
 
     [Fact]
     public void RefinementKeepsTheOriginalWitnessIdentity()
