@@ -1,23 +1,84 @@
-# virtual / override：仕様変更案・実装計画
+# オブジェクト生成と virtual / override：仕様変更案・実装計画
 
-日付：2026-10-07。状態：合意内容を反映した提案。正式仕様への取り込み・実装・実行検証は未実施。
+日付：2026-10-07。状態：合意内容を統合した最終計画案。正式仕様への取り込み・本計画の実装・実行検証は未実施。
 
 ## 1. 位置付けと設計方針
 
 本書で追加・変更する事項は、[SPEC.md](../../docs/SPEC.md)およびその参照先より優先する。変更しない事項には既存仕様を適用し、他の提案は暗黙に採用しない。今回の作業は本書の作成・改訂だけとし、正式仕様への取り込み・実装は別作業とする。
 
-設計の中心は、**一つのスロットに一つの公開契約を持たせ、override は契約を変えず実装だけを提供する**ことである。
+設計の中心は、**生成を一つの操作表、仮想呼び出しを一つのスロット契約で定義する**ことである。override は契約を変えず実装だけを提供する。
 
 - `virtual` は新しいスロットと初期実装を定義する。`override` は既存スロットの実装を更新する。
+- オブジェクト生成は `@obj` / `@rc` / `@arc` を基本表記とし、`makeObj` / `makeRc` / `makeArc` も同じ生成契約を使う関数として残す。
 - 名前解決・overload・アクセス・呼び出し契約は静的に決定する。動的型は、そのスロットの実装だけを選ぶ。
 - 所有権・Origin・Loan・取得・副作用の検査は既存規則を共用する。暗黙の boxing、upcast、所有権移転は追加しない。
 - スロット、実装、検証結果を別々の意味情報として保持し、診断・LSP・CSP・コード生成で共有する。
 
 これは、契約の単一化による「One Concept, One Canonical Form」、公開保証による「Local Reasoning」、明示的な差し替えと基底呼び出しによる「Explicit Semantics」、検証可能な意味情報による「Compiler Server Protocol」を満たす。
 
-## 2. 対象と宣言
+## 2. オブジェクト生成の明示適応
 
-### 2.1. 初版の範囲
+### 2.1. 表記と共通の操作表
+
+既存の明示適応に、完全な値 `T` から同じ payload 型を持つ新しいオブジェクトを生成する操作を追加する。`@` の非 overload・一回評価・変換連鎖を探索しない規則は維持し、必要な領域の確保はこの明示的な生成操作に認める。
+
+| 基本表記 | 新規生成の型 | 残す生成関数 |
+| --- | --- | --- |
+| `E@obj` | `T → obj/T` | `Kimi.Intrinsics.makeObj<T>(value: T)` |
+| `E@rc` | `T → rc/T` | `Kimi.Intrinsics.makeRc<T>(value: T)` |
+| `E@arc` | `T → arc/T` | `Kimi.Intrinsics.makeArc<T>(value: T)` |
+
+短縮形、完全形 `@obj/T` 等、型別名、ジェネリックな `@s` / `@s/T` / `@Type` は、解決した入力型と目標型から次の同じ表を使う。短縮形は入力から対象を補うだけであり、専用の生成規則を持たない。以下の `s` は `obj` / `rc` / `arc` のいずれかである。
+
+| 入力 → 目標 | 選ぶ操作 |
+| --- | --- |
+| `owner/T → s/T` | `T is ObjectPayload` を証明し、新規生成する |
+| `s/T → s/T` | 既存の同型取得。再確保・複製・参照カウント増加はない |
+| `s/Derived → s/Base` | 既存の明示 upcast。動的型・Identity・所有形態を保つ |
+| 上記以外 | 既存表に明示された操作がなければ拒否する |
+
+新規生成は、型引数・長さ・内部 Origin・Loan を含む完全な payload 型 `T` を保持する。`owner/Derived → obj/Base` のような生成と upcast の合成、借用や raw pointer の暗黙 follow、オブジェクトの再 boxing は行わない。`obj → rc/arc`、`rc ↔ arc`、共有から排他・借用から所有への変換、`@owner` 単独による取得や取り出しも追加しない。共有所有者の複製は引き続き `clone` を使う。
+
+### 2.2. 取得・型推論・生存期間
+
+- **取得：** Copy な Place は Copy、一時値は移譲する。Non-Copy な Place は `E@move@obj` 等を必要とし、`@move` だけを Place からの移動表記とする。既存オブジェクトの同型取得・upcast にも通常の取得規則を適用する。
+- **推論：** 目標の外側が `obj` / `rc` / `arc` となる適応は、操作選択前に入力式の型を独立に確定する。外側の期待型や object 目標型から、入力への逆向き推論・引数適応を加えない。`1@obj` は `obj/i32`、`1@obj/i64` は不一致であり、`1@i64@obj` と明示する。
+- **ジェネリック：** 許容する Semantics case に `obj` / `rc` / `arc` を含む場合も、入力型を先に確定して全 case で共有し、literal 型や overload を選び直さない。各 case で選ぶ操作の型形成・取得・依存・cleanup と、新規生成なら ObjectPayload を定義時に検証する。それ以外の適応の既存推論は変更しない。
+- **依存：** 生成前に内部 Origin を書き換えず、生成後の短縮は既存の結果 fitting だけで行う。`obj` の View Target 不変性を維持する。生成自体には `Owned`・`Sealed`・`Transferable` を一律要求せず、基底ビューへの erasure は §6.1 で別途検査する。`arc` の生成だけではスレッド間の移動や payload の並行アクセス権限を得ない。
+
+入力自体が `Never` なら式全体も非完了で、生成・取得・参照カウント初期化は起きない。`obj/Never` 等を補って形成せず、存在しない到達値に ObjectPayload / Copy を要求しない。構文・明示目標の型形成・Unsafe 検査は維持し、単に実行時に到達しないコードの不適格な型を免除しない。
+
+### 2.3. 生成関数との契約共有
+
+通常の生成式には `@obj` 系を用いる。`makeObj` 系は公開名・署名・通常の型推論・引数取得・関数値としての利用を維持し、削除も非推奨化もしない。両者は、入力型と取得が確定した後の生成契約と処理を共用する。入力推論まで同一な構文糖とはしない。
+
+完成済みの値を一度取得して格納し、constructor・getter・`drop` を繰り返さない。メタデータと payload の初期化完了後に、exact な `T` の handle を公開する。新規 `rc` / `arc` の strong count は 1 とする。入力の依存と破棄責任を引き継ぎ、必要な確保の失敗は既存の Abort に従う。Move の巻き戻しや Abort 後の cleanup は保証しない。
+
+生成の確保・Abort 自体は既存どおり環境への effect ではない。入力式の評価、constructor・getter、結果の破棄などの effect は別に合成し、`@obj` 系の式全体を無条件に `confined` と扱わない。循環生成・Weak・clone の API と契約は変更しない。
+
+### 2.4. 生成と移譲の例
+
+本書のコードは導入後の仕様例であり、現コンパイラでの実行確認を意味しない。
+
+~~~kimi
+let single = 7@obj                    // obj/i32 を新規生成
+let shared = 7@rc                     // rc/i32 を新規生成
+let atomicShared = 7@arc              // arc/i32 を新規生成
+let same = single@move@obj            // 同じ object を移譲。新規生成しない
+let another = Kimi.Intrinsics.makeObj(7) // 生成関数も引き続き利用できる
+let factory = Kimi.Intrinsics.makeObj<i32>
+let fromItem = factory(7)             // 生成関数を関数値として渡せる
+
+let text = "sample"
+let boxedText = text@move@obj         // Non-Copy な値は移動を明示
+let wide = 1@i64@obj                  // 数値変換と生成を明示的に分ける
+// let wrong: obj/i64 = 1@obj         // obj/i32 を期待型で作り直さない
+// let duplicate = shared@rc         // 複製ではない。Place の移譲には @move が必要
+~~~
+
+## 3. virtual / override の宣言
+
+### 3.1. 初版の範囲
 
 | 項目 | 規則 |
 | --- | --- |
@@ -34,7 +95,7 @@
 
 レシーバーの省略記法 `self` は引き続き `ref/Self` なので、virtual / override のレシーバーとしては不適合である。open な派生型の override はさらに override できる。元の関数が通常関数なら、同名の宣言によって virtual 化できない。
 
-### 2.2. スロットの契約と override ヘッダー
+### 3.2. スロットの契約と override ヘッダー
 
 公開契約の所有者は原 `virtual` 宣言だけとする。override のヘッダーは、既存の full specialization（SPEC §8.8.2）と共通の契約継承規則を使い、次の差分を加える。
 
@@ -53,9 +114,7 @@
 
 レシーバー以外の `Self` は、その記述位置で解決した型のままである。基底の `other: objref/Self` が `objref/Base` なら、派生 override も `other: objref/Base` と書く。引数や結果を派生型に狭めず、`Self` の使用自体は一律禁止しない。
 
-### 2.3. 宣言例
-
-以下は導入後の仕様を示す例であり、現在のコンパイラでの実行確認を意味しない。
+### 3.3. 生成・override・基底呼び出しの例
 
 ~~~kimi
 open struct Base
@@ -67,18 +126,20 @@ struct Derived : Base
     override func score(self: objref/Self, bonus: i32) -> i32
         return base.score(bonus) + 10
 
-let d = Kimi.Intrinsics.makeObj(Derived.init())
+let d = Derived.init()@obj
 let a = d.score()                        // 11。既定引数は Base が定義する
 let b = Base.score(d@objref/Base)         // 11。型名で修飾しても動的に呼ぶ
 let operation = Derived.score
 let c = operation(d@objref/Base, 1)       // 11。関数値では全引数を渡す
+let baseObject = d@move@obj/Base         // 生成後の upcast。動的型は Derived のまま
+// let invalid = Derived.init()@obj/Base // 生成と upcast を一操作に合成しない
 ~~~
 
-## 3. スロットの同一性・探索・実装選択
+## 4. スロットの同一性・探索・実装選択
 
-### 3.1. SlotId と override の対応
+### 4.1. SlotId と override の対応
 
-静的なスロット参照（SlotId）は、原宣言の同一性と、宣言元の囲み型・基底経路の正規化済み束縛で識別し、完全な型・Origin 契約を保存する。実装の同一性とは区別する。過去結果の対応付けには §5.3 の照合規則を使い、生成キー・物理インデックスは §6 で別に定める。用途の異なる一致判定で、型・寿命・Loan の証明を代用しない。
+静的なスロット参照（SlotId）は、原宣言の同一性と、宣言元の囲み型・基底経路の正規化済み束縛で識別し、完全な型・Origin 契約を保存する。実装の同一性とは区別する。過去結果の対応付けには §6.3 の照合規則を使い、生成キー・物理インデックスは §7 で別に定める。用途の異なる一致判定で、型・寿命・Loan の証明を代用しない。
 
 override の対象は次の順に決める。
 
@@ -90,7 +151,7 @@ override の対象は次の順に決める。
 
 環境選択、Mod、断片のマージ後、一つの派生型から同じ SlotId への override は高々一つとする。ファイルの違い、同一の本体、型条件の排他性では重複を許さない。未使用の宣言も検査する。
 
-### 3.2. 継承グループを維持する
+### 4.2. 継承グループを維持する
 
 override は新しい探索層・overload 候補・公開関数を作らず、継承グループの該当スロットの実装だけを更新する。基底の `f(i32)` と `f(string)` の一方を override しても、他方を隠さない。
 
@@ -98,7 +159,7 @@ override は新しい探索層・overload 候補・公開関数を作らず、�
 
 同じスロットを継承検索した `Derived.f` と `Base.f` は、同じ束縛なら同じ原宣言・Function Item を参照する。公開レシーバーは `objref/Base` 等のままであり、override 本体だけが派生 Self を持つ。`Derived.f(baseObject)` も原契約を満たせば合法である。
 
-### 3.3. 呼び出しと条件付きメンバー
+### 4.3. 呼び出しと条件付きメンバー
 
 通常の名前解決、overload、Effective Type、アクセス、引数取得、既定引数、Origin・Loan 検査を先に行う。呼び出し可能なスロットが決まった後、実オブジェクトの動的型から、その継承経路で最も派生側にある実装を選ぶ。override がなければ原実装を使う。実行時に名前・overload・制約・アクセスを再探索しない。
 
@@ -108,21 +169,21 @@ override は新しい探索層・overload 候補・公開関数を作らず、�
 
 override 独自の適用条件は作らない。条件付き conformance ブロック内に置く場合も、そのブロック条件を上記の前提から証明できることを要求し、追加条件で実装を切り替えない。`P` が不成立なら通常の適用不可であり、基底実装への fallback や実行時条件判定はない。適用不可の束縛について、スロットの存在だけを理由に本体生成を強制しない。
 
-## 4. `base.f(...)`
+## 5. `base.f(...)`
 
 `base.f(...)` は、現在の字句的な `self` を使い、宣言元 struct の直接基底から既存の lookup を行い、選ばれた関数の実装を直接呼ぶ構文とする。専用の値・型・ビューは作らない。
 
 - override 本体と派生型の通常のインスタンス関数から利用できる。対象はアクセス可能な基底インスタンス関数であり、virtual / nonvirtual の両方を許す。
 - `A → B → C` の C 内では、B が保持する実装を呼ぶ。B に override がなければ B の継承実装を呼び、必ず原宣言まで飛ぶわけではない。
 - 直接呼び出しになるのはその一回だけである。基底本体内の `self.g()` が virtual なら、元の動的型で dispatch する。オブジェクトの動的型・メタデータは変えない。
-- 公開契約・既定引数は静的に選ばれた関数のものを使い、§5 の基底射影・OCC・Loan・構築破棄の制限を維持する。直接本体の effect summary は既存の直接呼び出しとして利用できる。
+- 公開契約・既定引数は静的に選ばれた関数のものを使い、§6 の基底射影・OCC・Loan・構築破棄の制限を維持する。直接本体の effect summary は既存の直接呼び出しとして利用できる。
 - 匿名関数内では通常の明示的な `self` のキャプチャを必要とする。基底探索の起点は元の字句的宣言に固定し、キャプチャのモード・寿命は既存規則に従う。名前付きローカル関数へ暗黙に `self` を渡さない。
 
 `base` 単体、`base.f` の関数値、`base.base`、新しい基底フィールドアクセスは導入しない。レシーバーを持たない関数には通常の型修飾を使う。既存のコンストラクター初期化 `: base(...)` は別の構文として維持する。
 
-## 5. 安全性と公開保証
+## 6. 継承呼び出しの安全性と公開保証
 
-### 5.1. レシーバーと生存期間
+### 6.1. レシーバーと生存期間
 
 virtual 呼び出しのオブジェクト借用は、**元の完全なオブジェクト payload 全体**を保護する。派生実装が派生フィールドへアクセスするため、基底の inline subobject だけに Loan や effect の対象を狭めない。
 
@@ -138,7 +199,7 @@ runtime 型検査・refinement・cast は、この共通の erasure 証明に従
 
 構築・破棄対象自身への runtime dispatch は、helper 経由も含めて既存どおり禁止する。最適化で直接呼び出しになっても禁止は解除しない。`init` と `drop` の専用 receiver・既存の動的破棄は変更しない。
 
-### 5.2. 完全性の公開保証
+### 6.2. 完全性の公開保証
 
 原実装と全 override は、それぞれ宣言時に ObjectCallCompatible Proven を必要とする。スロットは、**receiver 経由の操作が完全性・動的型・Origin 束縛を保つ**という共通の公開保証を持つ。新しい修飾子は追加しない。
 
@@ -148,15 +209,15 @@ runtime 型検査・refinement・cast は、この共通の erasure 証明に従
 
 本体検証は呼び出すスロットの公開保証を前提とし、各実装が自身の義務を満たすことを既存の固定点・義務解決で確認する。原実装の証明で override を承認せず、未使用でも違反は宣言エラーとする。未完了の証明を成功扱いせず、別 artifact では検証済みの公開保証を使う。子孫や private 本体の列挙には依存しない。
 
-### 5.3. Effect と結果の依存
+### 6.3. Effect と結果の依存
 
 原 virtual の Constraint 領域に、既存の `effect confined` と `effect preserves results` を許す。重複・適格性・検証は Contract / Callable の既存規則を共用し、override は追加・削除しない。virtual 自体を新しい Contract 型に変換する仕組みは作らない。
 
-仮想呼び出しは、スロットの公開契約と公開保証だけを使う。完全性は §5.2、入力経由の読み書き・Loan は既存の requirement-call の規則に従い、環境への effect は保証がなければ unknown とする。結果の依存先も公開 Origin / Loan 契約と既存の間接呼び出しの保守的な規則で扱い、特定本体の返却フィールドや static anchor を一般の保証にしない。sealed な呼び出し先でも合法性の判定規則は変えない。
+仮想呼び出しは、スロットの公開契約と公開保証だけを使う。完全性は §6.2、入力経由の読み書き・Loan は既存の requirement-call の規則に従い、環境への effect は保証がなければ unknown とする。結果の依存先も公開 Origin / Loan 契約と既存の間接呼び出しの保守的な規則で扱い、特定本体の返却フィールドや static anchor を一般の保証にしない。sealed な呼び出し先でも合法性の判定規則は変えない。
 
 receiver 評価、明示引数、既定引数、呼び出し準備中の離脱と cleanup の effect は従来どおり別途検査・合成する。スロットの `confined` を理由に、引数や既定式の環境アクセスを消さない。
 
-#### 5.3.1. 過去結果の追跡
+#### 6.3.1. 過去結果の追跡
 
 `preserves results` のレシーバー適格性を、`ref` / `uniq` に加え `objref` / `objuniq` を含む借用レシーバーへ一般化する。結果がその呼び出しの receiver Loan や receiver 自身のストレージに依存してはならない条件は維持する。
 
@@ -168,13 +229,13 @@ handle の移動・Reborrow・合法なビュー変更は実オブジェクト�
 
 保証付き呼び出し内の変更は、その保証の本体検証で扱う。呼び出しの保守的な入力 effect だけを理由に毎回対応を失効させず、検証中の失効を理由に保護すべき過去結果を検査から落とさない。これらは静的な追跡であり、新しい実行時 ID・寿命タグ・世代カウンターを必要としない。
 
-#### 5.3.2. 関数値と task
+#### 6.3.2. 関数値と task
 
 virtual Function Item の `confined` はスロットの公開保証から利用できる。`preserves results` は Callable の保証へ自動的に移さない。unbound 関数には毎回別の receiver を渡せるためであり、Contract requirement の Function Item と同じ規則を使う。共通 Function Type への消去は既存どおり effect 保証を保持しない。
 
 `task;` 付き呼び出しは既存のタスク・借用規則に従う。`confined` があっても、他タスクの実行を考慮する静的 Loan 検査は省略しない。
 
-### 5.4. Contract 適合
+### 6.4. Contract 適合
 
 virtual を既存の適合条件の下で Contract 要求の実装に使う場合、保持する対応付けは特定本体ではなくスロットを指す。通常呼び出しと Contract 経由で別の実装を選ばない。
 
@@ -187,9 +248,17 @@ virtual を既存の適合条件の下で Contract 要求の実装に使う場�
 
 派生実装だけの強い保証をそのまま Contract に使える自由は減るが、子孫・別 artifact・未発見の実装を列挙せず検証できる。関連型の一致、条件付き適合、継承適合の Self 検査は維持し、適合を自動追加・黙って削除しない。runtime Contract View 全体の導入は本計画に含めない。
 
-## 6. 実行時表現と性能
+## 7. 実行時表現と共通処理
 
-### 6.1. descriptor とスロット配置
+### 7.1. オブジェクト生成
+
+§2 の表で新規生成を選んだ適応と `makeObj` 系は、取得後の完全な入力型・目標の所有形態・生成メタデータ・依存・破棄責任を持つ共通の生成計画へ接続する。同型取得・upcast は既存の計画を使う。通常の名前検索を伴う文字列置換で関数呼び出しを挿入せず、検証済みの intrinsic identity と既存処理を使う。生成関数を関数値として呼ぶ経路も同じ生成処理へ到達させる。
+
+現行の変換式は主に値の Read / Convert、factory は呼び出しの取得・Loan・cleanup として処理される。構文の禁止解除と LLVM 分岐の追加だけで済ませず、意味解析・所有権解析から生成まで一つの計画を渡す。入力の二重取得・二重評価・二重破棄、初期化前の handle 公開、生成依存の登録漏れを防ぐ。診断と Abort の位置は、内部の合成処理でなく元の `@` 式または関数呼び出しに対応付ける。
+
+構文によって object の配置・確保回数・参照管理方式を変えない。物理メタデータを共有しても、呼び出しごとの完全な型・Origin・Loan を消去しない。コンパイラの解析再利用でも、合成ノードや計画の不要な再確保・保持を避ける。
+
+### 7.2. descriptor とスロット配置
 
 既存のオブジェクトヘッダーと動的型ごとの共有 descriptor を使い、descriptor からスロット表へ到達できるようにする。通常の値・値借用・各基底部分に vptr を追加しない。現在の Windows x64 のハンドル 8 bytes、ヘッダー 16 bytes、payload 開始位置を維持する。descriptor の内部配置は変更でき、永続・外部 ABI として固定しない。
 
@@ -197,27 +266,29 @@ virtual を既存の適合条件の下で Contract 要求の実装に使う場�
 
 静的な SlotId、Origin 消去後の生成キー、表の物理インデックスを分離する。Origin の違いだけで実装選択や実行時スロットを増やさず、コード共有は既存の証明に従う。同じ入力から配置を再現できるものとし、ソース順・読み込み順を意味上の優先順位にしない。entry・ABI・必要なコンテキストが一致する不変の表は、型をまたいで共有できる。
 
-### 6.2. 共通 dispatch 計画
+### 7.3. 共通 dispatch 計画
 
-§3.3 の全呼び出し経路は、原スロットの公開契約・束縛済み署名・receiver 対応・entry ABI・生成コンテキストを持つ共通計画を使う。通常の呼び出しは既知のインデックスから entry を取得でき、追加のラッパーを必須としない。`base.f(...)` は選択済みの実装入口へ直接進む。
+§4.3 の全呼び出し経路は、原スロットの公開契約・束縛済み署名・receiver 対応・entry ABI・生成コンテキストを持つ共通計画を使う。通常の呼び出しは既知のインデックスから entry を取得でき、追加のラッパーを必須としない。`base.f(...)` は選択済みの実装入口へ直接進む。
 
 関数値としてアドレスを持つ入口が必要な場合だけ、入力 receiver からその都度 dispatch する入口を生成する。Function Item 自体は既存どおり環境を持たない。ABI 調整・引数取得・結果・cleanup は既存の FunctionAbi と各計画を共有し、呼び出し経路ごとに重複実装しない。
 
 型ごとの文脈は共有し、dispatch 自体のためのヒープ確保・参照カウント変更・名前探索・型探索を行わない。引数、既定式、本体、既存の関数値消去が本来行う確保は別である。
 
-### 6.3. 生成依存と最適化
+### 7.4. 生成依存と最適化
 
 保持する descriptor の有効な slot entry から、選択・具体化済みの実装、ABI 調整、コンテキストへ生成依存を張る。そこから通常関数・factory・破棄処理へ続く依存も、既存の生成 worklist に加えて到達範囲を求める。直接呼び出しがないことだけを理由に override を未使用と判定しない。条件不成立の束縛から本体への依存は張らない。
 
 既存の生成キーの重複排除、循環処理、生成量上限を共有する。有限な循環は再利用し、異なるジェネリック生成キーの増殖には既存の Resource 診断を適用して、不完全な IR を公開しない。独立した探索や全派生型・全型引数の列挙は追加しない。
 
-動的型や到達実装を証明できる場合は直接呼び出し化・インライン化を許す。合法性と公開保証の検査を先に完了し、最適化で受理結果を変えない。到達不能と証明した本体・実装参照は省略できるが、§6.1 の番号対応と未使用宣言の検証は維持する。
+動的型や到達実装を証明できる場合は直接呼び出し化・インライン化を許す。合法性と公開保証の検査を先に完了し、最適化で受理結果を変えない。到達不能と証明した本体・実装参照は省略できるが、§7.2 の番号対応と未使用宣言の検証は維持する。
 
-## 7. 診断・意味情報・依存関係
+## 8. 診断・意味情報・依存関係
 
 宣言モデルは、公開スロット、override 本体、直接基底からの選択、検証義務を別々に保持する。対応関係を先に解決してから本体・effect の固定点を検証し、証明待ちを理由に lookup 候補から消さない。無効な override を無視して基底実装に fallback しない。
 
 診断は、対象なし・複数対象・契約不一致・重複・OCC / effect 違反を区別する。主位置は問題の修飾子または署名要素、関連位置は原スロット・競合実装・失敗の根拠とし、Reason に異なる事実を示す。未対応の実装経路は Unsupported として、言語上の不正と分ける。`override` の追加を修正候補にする場合は、対象の一意性と契約適合などの前提を明示・検証する。
+
+オブジェクト適応では、ObjectPayload 不成立、型不一致、Move 必須、禁止された所有形態変更、Loan 違反を既存の原因別診断で示す。新規生成・同型取得・upcast のどれを選んだかと、入力取得・結果型・依存を意味情報として保持する。`@move` の修正候補は Take と取得後の条件を確認し、生成に失敗しても別の操作へ切り替えない。
 
 CLI / LSP の診断と Hover、CSP の意味検査では、少なくとも次を区別できる情報を提供する。
 
@@ -228,35 +299,51 @@ CLI / LSP の診断と Hover、CSP の意味検査では、少なくとも次を
 
 原契約、基底関係、アクセス、条件、型束縛、実装、effect が変わった場合、関連する lookup・適合・証明・生成表・表示を再検証する。artifact には必要な意味上の対応と検証済み保証を保存し、情報欠落を「override なし」と解釈しない。物理配置と参照は生成単位で再構築し、表示文字列や物理インデックスを意味 API にしない。
 
-## 8. 実装計画と完了条件
+## 9. 実装計画と完了条件
 
-### 8.1. 現状と前提
+### 9.1. 現状と前提
 
-計画作成時点の [CODEMAP](../../docs/dev/CODEMAP.md) と [STATUS](../../docs/STATUS.md) を基準とする。現在は virtual / override を未対応修飾子として拒否する。ObjectCallCompatible の推論・使用時の強制・公開、およびオブジェクトレシーバーの継承射影は完成済みの基盤ではない。CSP §23.5 の adapter も未実装である。
+改訂時点の [CODEMAP](../../docs/dev/CODEMAP.md) と [STATUS](../../docs/STATUS.md) を基準とする。現在は bare `@obj` / `@rc` / `@arc` と virtual / override を拒否する。既存の三つの factory、ジェネリック生成、factory の関数値経路を再利用する。
+
+共有 object receiver と継承射影の既存対応を再利用し、排他 receiver 射影と ObjectCallCompatible の推論・使用時の強制・公開を前提作業に含める。CSP §23.5 の adapter も未実装である。開始時には最新の支援境界と証拠を再確認し、既存対応を作り直さない。
 
 task の構文・実行基盤も未実装範囲にある。同期 virtual の実行対応には OCC を必須とし、task virtual の実行対応は既存の task / coroutine 基盤の完成に依存する。未検証を NotProven に隠したり、静的呼び出しへ代替したりしない。
 
 これらを前提作業として含める。ほかの未実装機能と交差する有効な形式は、仕様を狭めず依存課題として記録する。段階的な部分対応は許すが、部分対応を本計画全体の完了とはしない。
 
-### 8.2. 作業単位
+### 9.2. 作業単位
 
-各段階を必要に応じて最小再現例・実装・関連テストの単位に分ける。診断・依存無効化は各段階で実装し、V5 は横断確認と公開接続を担う。表の入口は現行の主な参照先であり、固定の新規ファイル構成ではない。
+各段階を最小再現例・実装・関連テストの単位に分ける。V0 の後、生成構文の C1–C2 と継承の V1–V4 は独立して進められる。V5–V6 で両者を統合する。診断・依存無効化は各段階で実装し、V5 で横断確認する。以下の入口は現行の主な参照先であり、固定の新規ファイル構成ではない。
 
 | 段階 | 内容・依存 | 完了条件・主な入口 |
 | --- | --- | --- |
-| V0 基準と再現例 | 本書の受理・拒否・公開契約を独立した期待値にする。OCC、Origin、task、関数値、artifact、CSP の既存支援境界を調査する | §8.3 のケースと依存課題を対応付ける。`docs/dev/CODEMAP.md`、`docs/STATUS.md`、既存回帰テスト |
-| V1 構文・宣言 | contextual modifier、`base.f(...)`、スロットと実装の宣言モデル、対象制限と構文回復 | 解析後に原宣言と実装を区別でき、誤宣言後も解析継続。`Parser.cs`、`FunctionKoto.cs`、`ModifierKind.cs` |
+| V0 基準と再現例 | 本書の受理・拒否・公開契約を独立した期待値にする。生成・推論・OCC・Origin・task・関数値・artifact・CSP の支援境界を調査する | §9.3 のケースと依存課題を対応付ける。`docs/dev/CODEMAP.md`、`docs/STATUS.md`、既存回帰テスト |
+| C1 生成適応・取得 | V0。§2 の独立推論と操作選択、ジェネリック case・Never・取得・Origin・effect を検査し、新規生成を共通生成計画へ接続 | 短縮形・完全形・別名・ジェネリック形が同じ操作を選び、正しい依存と発生位置を保持。`Binding.Conversions.cs`、`Binding.ArgumentOperations.cs`、`OwnershipAnalysis.Values.cs` と既存 call 解析 |
+| C2 生成・互換性 | C1。§7.1。既存 factory の ABI・metadata・生成依存を共用し、直接 / 関数値の既存 API を維持 | 一回評価・責任移譲・cleanup・O0/O2・解析再利用を確認。`ObjectGenerationPlan.cs`、`GenericStoragePlan.cs`、`BodyLowering.Calls.cs`、`CompilerFunctionAdapters.cs`、`LlvmModuleWriter.Objects.cs` |
+| V1 構文・宣言 | V0。contextual modifier、`base.f(...)`、スロットと実装の宣言モデル、対象制限と構文回復 | 解析後に原宣言と実装を区別でき、誤宣言後も解析継続。`Parser.cs`、`FunctionKoto.cs`、`ModifierKind.cs` |
 | V2 対象解決・契約 | V1。継承グループ、対象一意性、契約継承、公開 Self / 本体 Self、条件、アクセス、Function Item | 部分 override が他の overload を隠さず、原契約を全経路で保持。`Binding.MemberLookup.cs`、`Binding.Specializations.cs`、`Binding.FunctionItems.cs`、`Binding.Access.cs` |
-| V3 安全性 | V2。§5 の共通 erasure 検査と入口証拠、OCC の公開保証と合成、全オブジェクト Loan、effect / alias、過去結果の対応・失効、Contract 適合、base / capture / task | 未使用実装を含め証明完了。合法な経路を Unsupported で残す場合は未完了範囲を明記。`Binding.ArgumentOperations.cs`、`Binding.ContractMatching.cs`、`Binding.EffectBounds.cs`、`OwnershipAnalysis.Objects.cs`、`OwnershipBody.Borrows.cs` |
-| V4 生成・実行 | V3。§6 の基底番号を保つ表、共通 dispatch 計画、必要時の関数値入口、表からの生成依存。ジェネリック囲み型・task・破棄との接続 | 全経路で同じ実装を選び、省略後も番号を維持し、間接到達の依存を漏らさない。O0/O2 で結果・生存期間・cleanup を確認。`ObjectGenerationPlan.cs`、`GenericStoragePlan.cs`、`BodyLowering.Calls.cs`、`BodyLowering.Closures.cs`、`FunctionAbi.cs`、`LlvmModuleWriter.Objects.cs` |
-| V5 公開・再検証 | V2–V4。artifact 契約、編集・依存変更の無効化、CLI / LSP の出力、CSP の必要 adapter と snapshot 検証への接続 | 古い対応・証明・表を再利用しない。CSP 接続前は CSP 対応を完了扱いしない。`Binding.Diagnostics.cs`、`Binding.Hover.cs`、`HoverFacts.cs`、`CheckService.cs`、`LspSession.cs`、依存 artifact 処理 |
+| V3 安全性 | V2。§6 の共通 erasure 検査と入口証拠、OCC の公開保証と合成、全オブジェクト Loan、effect / alias、過去結果の対応・失効、Contract 適合、base / capture / task | 未使用実装を含め証明完了。合法な経路を Unsupported で残す場合は未完了範囲を明記。`Binding.ArgumentOperations.cs`、`Binding.ContractMatching.cs`、`Binding.EffectBounds.cs`、`OwnershipAnalysis.Objects.cs`、`OwnershipBody.Borrows.cs` |
+| V4 生成・実行 | V3。§7.2–7.4 の基底番号を保つ表、共通 dispatch 計画、必要時の関数値入口、表からの生成依存。ジェネリック囲み型・task・破棄との接続 | 全経路で同じ実装を選び、省略後も番号を維持し、間接到達の依存を漏らさない。O0/O2 で結果・生存期間・cleanup を確認。`ObjectGenerationPlan.cs`、`GenericStoragePlan.cs`、`BodyLowering.Calls.cs`、`BodyLowering.Closures.cs`、`FunctionAbi.cs`、`LlvmModuleWriter.Objects.cs` |
+| V5 公開・再検証 | C2・V2–V4。artifact 契約、編集・依存変更の無効化、CLI / LSP の出力、CSP の必要 adapter と snapshot 検証への接続 | 古い対応・証明・生成計画・表を再利用しない。CSP 接続前は CSP 対応を完了扱いしない。`Binding.Diagnostics.cs`、`Binding.Hover.cs`、`HoverFacts.cs`、`CheckService.cs`、`LspSession.cs`、依存 artifact 処理 |
 | V6 性能・統合 | V4–V5。直接呼び出し化、表とコンテキストの共有、allocation / capacity 回帰、性能計測、Session 検証 | 正確なソース・構成に結び付いた全検証と測定を保存。`LlvmEmitter.cs`、`ObjectGenerationPlan.cs`、`src/Benchmark` |
 
 Compiler の入口は `src/Kimi/Compiler/`、`FunctionKoto.cs` はその `Parsing/Koto/Declarations/` にある。ほかは `src/Kimi/Misc/ModifierKind.cs`、`src/Kimi/Checking/HoverFacts.cs`、`src/Kimi/Checking/CheckService.cs`、`src/Kimi/Lsp/LspSession.cs` を参照する。現行の責務分割に従い、LLVM writer に名前解決や契約判定を持ち込まない。
 
-関連する既存テストは `InheritedNameBindingTest`、`InheritedReceiverBindingTest`、`BaseProjectionAccessBindingTest`、`MemberFunctionReferenceTest`、`EffectBoundImplementationTest`、`EffectBoundCallerTest`、`CallableEffectBoundTest`、`CallReservationTest`、`ContextualCaptureTest`、object runtime 系、`SyntaxEditInvalidationTest`、診断・Hover 系とする。新しい virtual 専用クラス・fixture は実装時に追加し、既存テスト名と区別して選択する。
+関連する既存テストは `GenericObjectFactoryTest`、`CompilerFunctionReferenceTest`、`InheritedNameBindingTest`、`InheritedReceiverBindingTest`、`BaseProjectionAccessBindingTest`、`MemberFunctionReferenceTest`、`EffectBoundImplementationTest`、`EffectBoundCallerTest`、`CallableEffectBoundTest`、`CallReservationTest`、`ContextualCaptureTest`、object runtime 系、`SyntaxEditInvalidationTest`、診断・Hover 系とする。新しい生成適応・virtual 専用クラスと fixture は、独立した期待値から追加する。
 
-### 8.3. 必須の検証範囲
+### 9.3. 必須の検証範囲
+
+#### 9.3.1. 生成適応と既存 API
+
+| 分類 | 最小限の受理・拒否・相互作用 |
+| --- | --- |
+| 操作選択 | 3所有形態、短縮 / 完全 / 別名 / ジェネリック形、同型取得と既存 upcast、生成と upcast の合成拒否、所有形態変更・暗黙 follow・再 boxing の拒否、bare `@owner` の拒否維持 |
+| 型・取得 | ObjectPayload opt-out、Copy Place / 一時値 / 明示 Move、Non-Copy Place 拒否、内部 Origin・Loan、exact な非 Owned payload、型形成違反、明示型と期待型の推論境界、全 Semantics case、Never と単なる到達不能コードの区別 |
+| 評価・生存期間 | constructor・getter・添字式の一回評価、結果の格納 / capture / return / 破棄、後続引数の離脱、零サイズ payload の破棄、初期化完了後の公開、原借用の期間を超える結果の拒否、生成と入力 / cleanup の effect 分離 |
+| 既存 API | `makeObj` / `makeRc` / `makeArc` の通常推論・明示型引数・Function Item・Callable・共通 Function value・既定式・ジェネリック本体を維持。同名のユーザー宣言で `@obj` 系の意味が変わらない |
+| 診断・再利用 | ObjectPayload / Move / 型 / Loan の原因と位置、CLI / LSP / CSP、元の操作位置での allocation Abort、編集後の無効化、温まった解析の allocation・保持容量。新規生成は factory と確保 / 解放 / 参照カウントが一致し、同型取得・upcast は追加確保・参照カウント操作なし |
+
+#### 9.3.2. 継承と統合
 
 | 分類 | 最小限の受理・拒否・相互作用 |
 | --- | --- |
@@ -272,29 +359,31 @@ Compiler の入口は `src/Kimi/Compiler/`、`FunctionKoto.cs` はその `Parsin
 | 実行時 | `obj` / `rc` / `arc` と共有・排他 borrow、ヘッダーと Identity の維持、動的破棄と一回だけの cleanup、dispatch 自体の追加確保・参照カウント操作なし、O0/O2 の同一結果 |
 | 生成 | 表からだけ到達する override・helper・factory・破棄、条件不成立本体の非生成、有限な依存循環、生成キー増殖時の Resource 診断と IR 非公開、同一 entry / context の表共有 |
 | 公開・再利用 | 別 Kotonoha・artifact 往復と必須証拠の欠落、基底スロット・override の追加 / 削除、署名を変えない本体変更、型束縛変更、CLI / LSP / CSP の位置と保証、snapshot 不一致。編集反復後の正しい再生成・allocation・保持容量と不要な表 / entry / context の保持解消 |
+| 統合 | `@obj` / `@rc` / `@arc` と既存 factory で作った派生 object を、基底ビュー・virtual Function Item・Contract 経由で呼ぶ。公開契約・動的型・借用・cleanup が生成表記で変わらない |
 
 不正例には独立に書いた公開診断期待値と有効な対例を置く。診断件数だけで改善を判断せず、主位置・Reason・関連位置・Note / Advice・修正候補の前提を確認する。未対応を言語上の拒否として固定せず、対応時には native 受理例へ置き換える。
 
-### 8.4. 検証と記録
+### 9.4. 検証と記録
 
 [VERIFICATION.md](../../docs/dev/VERIFICATION.md)とリポジトリの実装・診断ワークフローに従う。途中の incremental build / 選択テストはフィードバックに使い、各実装単位の完了は関連クラス・生成 fixture・必要な milestone を選ぶ Unit Verify で確認する。実装セッションの最後には Session Verify を一度実行する。Release、warnings as errors、functional と allocation / reuse、native O0/O2 を維持し、検証中はソースを編集しない。NativeAOT は実行しない。
 
-性能測定は `src/Benchmark` で、直接呼び出しと各経路の仮想呼び出し、同一 / 混在動的型、共有 / 排他、表の共有、再解析・再生成を固定条件で比較する。実行時間・生成コード量・表の使用量を測り、確保・保持容量の回帰検証と分ける。測定前に速度向上を主張しない。
+性能測定は `src/Benchmark` で、生成適応と既存 factory、直接呼び出しと各経路の仮想呼び出し、同一 / 混在動的型、共有 / 排他、表の共有、再解析・再生成を固定条件で比較する。実行時間・生成コード量・表の使用量を測り、確保・保持容量の回帰検証と分ける。短い生成表記を理由に高速化を主張しない。
 
 成功・失敗を含む検証証拠は `artifacts/verify/`、測定は `artifacts/benchmarks/` に保存する。必要な検証を通した単位だけを、その単位の変更ファイルに限定して commit し、証拠を対応付けて現在のブランチを origin へ push する。未完了の依存・対応経路と次の作業を残し、検査済みの範囲だけを支援済みとする。
 
-## 9. 後続の正式取り込み
+## 10. 後続の正式取り込み
 
 本書作成では以下を変更しない。正式取り込み時に、重複した規則を増やさず、主担当節へ統合する。
 
 | 取り込み先 | 主な変更 |
 | --- | --- |
 | SPEC §2・§6・付録 D/E/F | contextual modifier、宣言適格性、slot / override、用語・構文・未導入範囲 |
+| §3.5・§8.9–8.10・§10.8・§13.5・§22.1 | object 生成を共通適応表へ追加。bare 3形式の禁止と `@` の資源取得禁止を置換し、object 目標の逆向き推論を限定。`@owner` の禁止・既存 factory の公開 API は維持 |
 | §7–§10 | 共通の実装契約継承、公開 / 実装 receiver、探索、対象照合、条件付きメンバー、関数値、Contract 適合と effect |
 | §9・§12–§16・§24 | 静的 / 動的 / base 呼び出し、共通の object 射影・Owned erasure・型検査、OCC の公開保証と合成、Origin / Loan・過去結果の対応、capture、構築破棄、task |
-| §18・§23・IMPL §20–§21 | artifact と依存再検証、意味情報・診断・CSP、共通 dispatch 計画、基底番号を保つ表と共有、生成依存・上限、最適化 |
+| §18・§23・IMPL §20–§21 | artifact と依存再検証、意味情報・診断・CSP、生成適応と factory の共通処理、共通 dispatch 計画、基底番号を保つ表と共有、生成依存・上限、最適化 |
 | CODEMAP・PLAN・PLAN_HISTORY | 入口と責務、実装順と依存、簡潔な作業記録。PLAN は既存の行数制限を守る |
-| STATUS・STYLE・LIBRARY・SETTLED | 検証済みの支援境界、必要な規約・公開宣言・不採用理由の変更だけを反映する |
+| STATUS・STYLE・LIBRARY・SETTLED | 検証済みの支援境界、`@obj` 系を基本とする生成例・規約、残す factory の共通契約、関連する不採用理由を更新する |
 | draft/INTEGRATED.md | 本書の節と取り込み先、残件、最終処分を正式仕様の変更と同じ commit に記録する |
 
 正式仕様の更新は英語で行い、影響する例・テスト・milestone を同時に整える。未解決項目があれば取り込んだ範囲だけを凍結し、一部取り込みとして記録する。全項目の処分が確定した時点で、一項目以上取り込んだ場合は取り込み済みとして `draft/Changes`、取り込みがなければ完了として `draft/Obsolete` に移し、本文全体を凍結する。正式取り込み、実装完了、検証完了は別々に記録する。
