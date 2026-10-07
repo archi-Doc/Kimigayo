@@ -1003,6 +1003,12 @@ public sealed partial class Binding
             var receiverOperation = selectedOperations[argumentCount];
             if (receiverOperation.Source is not null)
             {
+                if (receiverOperation.BasePath is { } objectBase && ObjectTypes.IsBorrow(receiverOperation.ParameterType) &&
+                    !this.RequireObjectErasure(call, ObjectTypes.ViewTarget(receiverOperation.SourceType)!, objectBase.Type))
+                {
+                    return null;
+                }
+
                 receiverOperation = receiverOperation with { ObjectCompatibility = receiverOperation.BasePath is null ? ConstraintProof.Proven : ProjectedReceiverProof(winner) };
                 this.receiverOperations[call] = receiverOperation;
                 if (receiverOperation.ObjectCompatibility != ConstraintProof.Proven)

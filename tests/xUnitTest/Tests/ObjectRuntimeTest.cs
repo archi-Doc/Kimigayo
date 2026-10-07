@@ -35,7 +35,7 @@ public class ObjectRuntimeTest
                     let child = owner@objuniq/Leaf
                     inspect(child@objref/Base)
                     inspectExclusive(child@objuniq/Base)
-                let moved = owner@obj/Base
+                let moved = owner@move@obj/Base
                 inspect(moved@objref)
                 require moved is Leaf else => $abort("lost identity")
             do
@@ -91,7 +91,7 @@ public class ObjectRuntimeTest
                 public init(): base() => ()
             var owner = Kimi.Intrinsics.makeObj(Leaf.init())
             let view = owner@objuniq/Base
-            _ = owner@obj/Base
+            _ = owner@move@obj/Base
             _ = view@move
             """;
         var c = MinimalEmissionTest.Analyze(Source);

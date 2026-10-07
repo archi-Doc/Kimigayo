@@ -208,7 +208,7 @@ public sealed partial class Binding
         // SPEC 12.4.4.2: a shared receiver grants only read/shared-borrow effects.
         // Exclusive receivers still require the receiver-preservation fixed point.
         => implementation.Declaration.BindingState == BindingState.Invalid || accessor?.Declaration?.BindingState == BindingState.Invalid ? ConstraintProof.Error
-            : (accessor?.Receiver?.Semantics ?? ReceiverShape(implementation)) == SemanticsKind.Ref ? ConstraintProof.Proven : ConstraintProof.Unknown;
+            : (accessor?.Receiver?.Semantics ?? ReceiverShape(implementation)) is SemanticsKind.Ref or SemanticsKind.ObjRef ? ConstraintProof.Proven : ConstraintProof.Unknown;
 
     // SPEC 15.6.2: access through a shared reference cannot grant exclusive
     // authority, even to an exclusive reference stored below it.
@@ -881,7 +881,20 @@ public sealed partial class Binding
         var projected = path is not null;
         if (ObjectTypes.IsBorrow(pattern))
         {
-            return !projected && this.AdaptObjectBorrow(source, pattern, actual, scope, explicitBorrow, out adapted, out quality, out kind, receiver, fixedExpectation, deferAcquisition);
+            if (!this.AdaptObjectBorrow(source, pattern, actual, scope, explicitBorrow, out adapted, out quality, out kind, receiver, fixedExpectation, deferAcquisition))
+            {
+                return false;
+            }
+
+            if (projected)
+            {
+                // Selection fixes the View Target; Owned erasure is an obligation after selection, never a ranking rule.
+                adapted = this.Reference(pattern.Semantics, path!.Type, adapted.Origin);
+                quality = ArgumentAdaptation.CrossSemanticsBorrow;
+                kind = ArgumentOperationKind.BaseBorrow;
+            }
+
+            return true;
         }
 
         if (pattern.Kind != BoundTypeKind.Semantics || pattern.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq))
@@ -1077,6 +1090,20 @@ public sealed partial class Binding
         quality = ArgumentAdaptation.Exact;
         kind = ArgumentOperationKind.Value;
         var exclusive = pattern.Semantics == SemanticsKind.ObjUniq;
+        if (receiver && ReferenceTypes.IsStorage(actual) && ObjectTypes.HandleMode(actual.Components[0]) is { } stored)
+        {
+            if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || ReachedThroughShared(source)))
+            {
+                return false;
+            }
+
+            // Inspect the protected handle slot, retaining its Loan; acquiring the owner is unnecessary.
+            adapted = this.Reference(pattern.Semantics, actual.Components[0].Components[0], this.PlaceOrigin(source));
+            kind = ArgumentOperationKind.Borrow;
+            quality = ArgumentAdaptation.CrossSemanticsBorrow;
+            return true;
+        }
+
         if (ObjectTypes.IsBorrow(actual))
         {
             if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))

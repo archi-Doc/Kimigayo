@@ -1947,6 +1947,7 @@ public sealed partial class Binding
         this.callRelations?.Clear();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
+        this.objectErasureFailures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
         this.callableConstraints?.Clear();

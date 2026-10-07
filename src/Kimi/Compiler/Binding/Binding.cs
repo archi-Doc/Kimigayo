@@ -897,6 +897,12 @@ public sealed partial class Binding
             var defaultNote = wrappingConversion || conversion is not null ? null : this.GenericDefaultNote(issue.Node, mismatch.Actual, mismatch.Expected, out defaultAdvice);
             issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? defaultNote ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : defaultAdvice, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
+        else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.objectErasureFailures?.TryGetValue(issue.Node, out var erasure) == true)
+        {
+            var subject = DiagnosticTypeName(erasure.Source);
+            var viewTarget = DiagnosticTypeName(erasure.Target);
+            issue.Node.Report(requirement, issue.Code, note: $"Erasing {subject} to the {viewTarget} object View requires {subject} is Owned", evidence: issue.Code == DiagnosticCode.UnprovenConstraint_Kd ? [subject, "Owned"] : null);
+        }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
             this.ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);

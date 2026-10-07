@@ -34,14 +34,12 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void AValidBaseCallHasALocatedGenerationBoundary()
+    public void AValidObjectBaseCallBindsAndEmits()
     {
         var c = MinimalEmissionTest.Analyze(Base + "func readAgain(self: objref/Self) -> i32 => base.read()\n()");
         c.Binding.ReportDiagnostics();
-        var error = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal("UnsupportedBinding_Kd", error.Code);
-        Assert.Equal("base", error.Text);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.Empty(TestDiagnostics.Of(c));
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
     }
 
     [Theory]
@@ -77,9 +75,7 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Base + "func readAgain(self: objref/Self) -> i32\n        let operation = func[self]() -> i32 => base.read()\n        return operation()\n()");
         c.Binding.ReportDiagnostics();
-        var error = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal("UnsupportedBinding_Kd", error.Code);
-        Assert.Equal("base", error.Text);
+        Assert.Empty(TestDiagnostics.Of(c));
         var reference = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.Akind == KotoKind.BaseReference);
         Assert.Equal(BindingSymbolKind.Capture, reference.BoundSymbol!.Kind);
     }
@@ -99,7 +95,7 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Base + "func readAgain(self: objref/Self) -> i32 => base.read()\n()");
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
-        Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, Assert.Single(c.Binding.Issues).Code);
+        Assert.Empty(c.Binding.Issues);
     }
 
     [Fact]

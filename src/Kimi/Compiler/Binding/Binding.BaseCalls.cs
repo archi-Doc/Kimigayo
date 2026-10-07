@@ -25,7 +25,7 @@ public sealed partial class Binding
 
         if (lexical?.BoundSymbol is not { ReceiverIndex: >= 0, Scope.Owner: StructKoto { BoundSymbol: { } type } structure })
         {
-            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base requires a lexical derived instance function; a named local function has no implicit receiver");
+            return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base requires a derived instance function; named locals have no implicit self");
         }
 
         if (structure.Bases.Count == 0)
@@ -50,13 +50,7 @@ public sealed partial class Binding
         }
 
         reference.BasePath = this.MemberPath(null, structure.Bases[0], baseType);
-        var actual = this.BindReference(reference, receiver, scope);
-        if (actual is not null && IsObjectSemantics(actual.Semantics))
-        {
-            return this.Fail(reference, BindingFailure.Unsupported, true);
-        }
-
-        return actual;
+        return this.BindReference(reference, receiver, scope);
     }
 
     private BindingSymbol? BaseReceiver(FunctionKoto function, FunctionKoto lexical)
@@ -129,7 +123,7 @@ public sealed partial class Binding
         }
         else
         {
-            reference.Report(requirement, code, note: "Object receiver projection and virtual implementation selection for direct base calls are not yet implemented");
+            reference.Report(requirement, code, note: "The selected base operation's receiver or implementation proof is not yet supported");
         }
     }
 }

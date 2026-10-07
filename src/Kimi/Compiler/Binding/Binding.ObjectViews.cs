@@ -6,12 +6,32 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private Dictionary<Koto, (BoundType Source, BoundType Target)>? objectErasureFailures;
+
     internal BoundType PayloadReadReference(ConversionKoto source, BoundType payload)
         => this.SharedReference(payload, this.PlaceOrigin(source));
 
     // SPEC 3.4.1: a field access lends the handle's payload in the access mode already checked by Binding.
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
         => this.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
+
+    private bool RequireObjectErasure(Koto use, BoundType source, BoundType target)
+    {
+        if (ReferenceEquals(source, target))
+        {
+            return true;
+        }
+
+        var proof = this.ProveOwned(source, use);
+        if (proof == ConstraintProof.Proven)
+        {
+            return true;
+        }
+
+        (this.objectErasureFailures ??= new(ReferenceEqualityComparer.Instance))[use] = (source, target);
+        this.RequireConstraint(use, proof, this.capabilityMode);
+        return false;
+    }
 
     private BoundType? BindObjectUpcast(ConversionKoto conversion, BindingScope scope, BoundType actual, BoundType target)
     {
@@ -36,14 +56,9 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
-        if (!ReferenceEquals(core, target.Components[0]))
+        if (!this.RequireObjectErasure(conversion, core, target.Components[0]))
         {
-            var proof = this.ProveOwned(core, conversion);
-            if (proof != ConstraintProof.Proven)
-            {
-                this.RequireConstraint(conversion, proof, this.capabilityMode);
-                return null;
-            }
+            return null;
         }
 
         BoundType result;

@@ -66,13 +66,13 @@ internal sealed partial class BodyLowering
 
             var type = body.Places[operation.Place].Type;
             var output = ValueType(body, id)!;
-            if (type.Semantics == SemanticsKind.Ref && output.Semantics == SemanticsKind.Ref &&
+            if (type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef && output.Semantics == type.Semantics &&
                 !ReferenceTypes.StorageMatches(type.Components[0], output.Components[0]) &&
                 operation.Source is InvocationKoto { BoundCall: { } projectedPlan } &&
                 CallReceiverOperation(projectedPlan) is { Kind: ArgumentOperationKind.BaseBorrow } projectedCall)
             {
                 var sourceType = SignatureType(this, projectedCall.SourceType);
-                var sourceCore = ReferenceTypes.IsReference(sourceType) || ObjectTypes.HandleMode(sourceType) is not null || ObjectTypes.IsBorrow(sourceType) ? sourceType!.Components[0] : sourceType;
+                var sourceCore = ObjectTypes.IsBorrow(output) ? ObjectTypes.ViewTarget(sourceType) : ReferenceTypes.IsReference(sourceType) || ObjectTypes.HandleMode(sourceType) is not null || ObjectTypes.IsBorrow(sourceType) ? sourceType!.Components[0] : sourceType;
                 if (projectedCall.ObjectCompatibility != ConstraintProof.Proven || projectedCall.BasePath is null ||
                     value.Count != 1 ||
                     !ReferenceTypes.StorageMatches(type.Components[0], sourceCore) ||
@@ -83,7 +83,7 @@ internal sealed partial class BodyLowering
                     return Fail("Base receiver borrow requires its proven projection and prepared source reference.", out failure);
                 }
 
-                // Each inline base occupies the prefix of its containing layer.
+                // Inline bases share the payload prefix; object Views retain the original header address.
                 function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
                 return true;
             }
