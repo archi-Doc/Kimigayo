@@ -132,8 +132,8 @@ public sealed partial class Binding
     private bool BindPropertyCall(Koto node, BoundAccessor accessor, BindingScope scope, Koto? input)
     {
         // Accessors use the same complete declaring Type as methods, including nominal Types with only Origin slots.
-        var declaringType = node is MemberAccessKoto selected && this.memberSelections.TryGetValue(selected, out var memberSelection) &&
-            memberSelection.DeclaringType is { } declaring ? declaring : null;
+        var selection = node is MemberAccessKoto selected && this.memberSelections.TryGetValue(selected, out var memberSelection) ? memberSelection : default;
+        var declaringType = selection.DeclaringType;
 
         var receiver = accessor.Receiver is null ? null : (node as MemberAccessKoto)?.Left;
         var requirement = accessor.Property.Declaration.IsContractRequirement && node is MemberAccessKoto requirementUse &&
@@ -156,7 +156,7 @@ public sealed partial class Binding
         bool BindCall()
         {
             var inputType = accessor.Input is { } declaredInput ? Signature(declaredInput) : null;
-            // Origin-bearing inputs and inherited/object receiver projections retain their own execution
+            // Origin-bearing inputs and object receiver projections retain their own execution
             // milestones. An owning or object-form written receiver is the declaration error of SPEC 11.2, not a limit of this path.
             var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
                 (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
@@ -176,13 +176,13 @@ public sealed partial class Binding
             BoundArgumentOperation receiverOperation = default;
             if (accessor.Receiver is { } declaredReceiver && Signature(declaredReceiver) is { } required)
             {
-                if (receiver?.BoundType is not { } actual || (node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) && selection.Path is not null))
+                if (receiver?.BoundType is not { } actual)
                 {
                     this.FailWrite(node, node);
                     return false;
                 }
 
-                if (!this.AdaptInput(receiver, required, actual, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
+                if (!this.AdaptInput(receiver, required, actual, scope, selection.Path, declaringType, out var adapted, out var quality, out var kind, receiver: true))
                 {
                     if (!this.ReceiverRestsOnAccessorShape(node, accessor, receiver, actual, declaringType, null, scope, false))
                     {
@@ -192,7 +192,20 @@ public sealed partial class Binding
                     return false;
                 }
 
-                receiverOperation = new(receiver, actual, adapted, kind, quality, ParameterIndex: 0);
+                var proof = selection.Path is null ? ConstraintProof.Proven : ProjectedReceiverProof(accessor.Property.Symbol, accessor);
+                if (proof != ConstraintProof.Proven)
+                {
+                    this.Fail(node, proof == ConstraintProof.Unknown ? BindingFailure.Unsupported : BindingFailure.UnprovenConstraint, proof == ConstraintProof.Unknown);
+                    return false;
+                }
+
+                if (IsObjectSemantics(actual.Semantics))
+                {
+                    this.Fail(node, BindingFailure.Unsupported, true);
+                    return false;
+                }
+
+                receiverOperation = new(receiver, actual, adapted, kind, quality, selection.Path, 0, proof);
             }
 
             if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||

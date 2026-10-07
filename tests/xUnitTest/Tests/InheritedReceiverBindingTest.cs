@@ -348,27 +348,27 @@ public class InheritedReceiverBindingTest
     }
 
     [Fact]
-    public void ProjectedCustomAccessorWitnessKeepsItsUnprovenEffectObligation()
+    public void ProjectedSharedAccessorWitnessIsProvenByItsReceiverContract()
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32 has get\nopen struct Base\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\nstruct D: Base\n    Self is C");
-        Assert.False(c.Bind().IsComplete);
+        Assert.True(c.Bind().IsComplete, Describe(c));
         var path = Path(c, "D", "C");
         var witness = Assert.Single(path.PropertyWitnesses);
         Assert.Equal(PropertyWitnessKind.AccessorCall, witness.Kind);
-        Assert.Equal(ConstraintProof.Unknown, witness.ObjectCompatibility);
+        Assert.Equal(ConstraintProof.Proven, witness.ObjectCompatibility);
         Assert.NotNull(witness.BasePath);
-        Assert.Null(path.GetPropertyWitness(witness.Requirement.Property.Symbol, PropertyAccessorKind.Get));
+        Assert.NotNull(path.GetPropertyWitness(witness.Requirement.Property.Symbol, PropertyAccessorKind.Get));
     }
 
     [Fact]
     public void ProjectedAccessorAccessRetainsItsBaseBorrowPlan()
     {
         var c = CompilationTestHelper.ParseSuccess("open struct Base\n    public computed item: i32\n        get(self: ref/Self) -> i32 => 1\nstruct D: Base\nfunc use(x: ref/D) -> i32 => x.item");
-        Assert.False(c.Bind().IsComplete);
+        Assert.True(c.Bind().IsComplete, Describe(c));
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.True(c.Binding.TryGetReceiverOperation(use, out var plan));
         Assert.Equal(ArgumentOperationKind.BaseBorrow, plan.Kind);
-        Assert.Equal(ConstraintProof.Unknown, plan.ObjectCompatibility);
+        Assert.Equal(ConstraintProof.Proven, plan.ObjectCompatibility);
         Assert.Same(plan.SourceType!.Origin, plan.ParameterType!.Origin);
     }
 

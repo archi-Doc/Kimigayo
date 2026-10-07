@@ -8,6 +8,10 @@ internal sealed partial class BodyLowering
 {
     private bool[] materializedScalars = [];
 
+    private static BoundArgumentOperation CallReceiverOperation(BoundCall call)
+        => call.Target.Declaration is FunctionKoto { Accessor.Receiver: not null } && call.ArgumentOperations.Length != 0
+            ? call.ArgumentOperations[^1] : call.ReceiverOperation;
+
     // A Scalar or Unit temporary, join result, by-value parameter or Subject receives its own slot only when it is borrowed
     // (SPEC 3.6.2, 10.2, 14.8.3); Unit needs only the address.
     // A temporary or join result is stored at its borrow from its one prepared value; a parameter is stored once at its
@@ -57,7 +61,8 @@ internal sealed partial class BodyLowering
             var output = ValueType(body, id)!;
             if (type.Semantics == SemanticsKind.Ref && output.Semantics == SemanticsKind.Ref &&
                 !ReferenceTypes.StorageMatches(type.Components[0], output.Components[0]) &&
-                operation.Source is InvocationKoto { BoundCall.ReceiverOperation: { Kind: ArgumentOperationKind.BaseBorrow } projectedCall })
+                operation.Source is InvocationKoto { BoundCall: { } projectedPlan } &&
+                CallReceiverOperation(projectedPlan) is { Kind: ArgumentOperationKind.BaseBorrow } projectedCall)
             {
                 var sourceType = SignatureType(this, projectedCall.SourceType);
                 var sourceCore = ReferenceTypes.IsReference(sourceType) ? sourceType!.Components[0] : sourceType;

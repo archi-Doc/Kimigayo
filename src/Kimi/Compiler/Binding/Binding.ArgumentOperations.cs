@@ -204,11 +204,11 @@ public sealed partial class Binding
         return null;
     }
 
-    private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation)
+    private static ConstraintProof ProjectedReceiverProof(BindingSymbol implementation, BoundAccessor? accessor = null)
         // SPEC 12.4.4.2: a shared receiver grants only read/shared-borrow effects.
         // Exclusive receivers still require the receiver-preservation fixed point.
-        => implementation.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error
-            : ReceiverShape(implementation) == SemanticsKind.Ref ? ConstraintProof.Proven : ConstraintProof.Unknown;
+        => implementation.Declaration.BindingState == BindingState.Invalid || accessor?.Declaration?.BindingState == BindingState.Invalid ? ConstraintProof.Error
+            : (accessor?.Receiver?.Semantics ?? ReceiverShape(implementation)) == SemanticsKind.Ref ? ConstraintProof.Proven : ConstraintProof.Unknown;
 
     // SPEC 15.6.2: access through a shared reference cannot grant exclusive
     // authority, even to an exclusive reference stored below it.
