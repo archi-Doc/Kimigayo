@@ -127,7 +127,7 @@ authoring correction re-spelled the pending program 36:
 | 21 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (harness added 2026-09-23) |
 | 22 | YES | PASS | PASS (Debug/Release) | PASS (Debug/Release) | DONE | Unchanged target, O0/O2 variants and required rejections (the InfiniteLayout rejection added 2026-09-23); [evidence](../../docs/dev/PLAN_HISTORY.md#program22-completion) |
 | 23 | YES | PASS | PASS (Debug/Release, O0/O2) | PASS (67 checks/configuration) | DONE | Unchanged target, name/value/compound/restricted-read/setter-Type variants and required rejections pass; focused lifetime/projection/Move tests and both full suites pass. Earlier-program harness scope was reduced by the user. |
-| 24 | YES | FAIL | FAIL (prior Debug/Release, O0/O2 probes) | NOT_RUN | TODO | Current Binding first reports `UnsupportedBinding_Kd` at required `value.item` (a Contract Property requirement read through a generic receiver); ownership-bearing setters/getters and Contract Property calls remain. |
+| 24 | YES | PASS | PASS (Release, O0/O2) | PASS | IN_PROGRESS | Original source exercises Non-Copy replacement, borrowed getter results, standard borrow witnesses and owned receiver consumption. Session completion review remains. |
 | 25 | YES | PASS | FAIL (prior Debug/Release native probes) | NOT_RUN | IN_PROGRESS | Current Binding passes; ownership analysis stops at inherited `value.count` with `UnsupportedOwnership_Kd`. Explicit base construction and layered destruction have focused native coverage. |
 | 26 | YES | PASS | PASS (Release, O0/O2) | PASS (Release) | DONE | Completed 2026-10-05 by user decision with recorded gaps: the unchanged source passes its original-source harness; the held follow-ups (PLAN G75, G76, G77) and the located limits (N25b, N26b, N27b, N27c, N24, LR, `T.compare`) are listed in the PLAN P26 row, and their behavior is in STATUS. [P26 completion](../../docs/dev/PLAN_HISTORY.md#p26-completion). |
 | 27 | YES | PASS | PASS (Debug, O0/O2) | PASS (Debug) | DONE | 97 Debug harness checks (`artifacts/verify/20260926-154051-101-unit-m27-harness1`): the program, 12 variants (Index/Range/ResolvedRange keys, try-prefixed operations, saved bounds reapplied, bounds Aborts) and 11 rejections. [P27 completion](../../docs/dev/PLAN_HISTORY.md#p27-completion). Re-spelled 2026-09-30 for P41 (`FromEnd<i32>` and `Range<S, E>` in place of `Index`/`IndexRange`); the re-spelled harness passes in Release (`artifacts/verify/20260929-163311-215-unit-p41-u45`). |
@@ -1375,7 +1375,7 @@ not expose a Move or exclusive borrow. `Parcel.intoResult()` consumes its receiv
 (an accessor receiver is always shared for `get`, SPEC §11.2) and returns its owned
 field, whose destruction responsibility transfers to `owned`.
 
-Expected stdout (specification-derived; native execution is blocked):
+Expected stdout (original-source Release, O0/O2 harness):
 
 ```text
 Setter entered.

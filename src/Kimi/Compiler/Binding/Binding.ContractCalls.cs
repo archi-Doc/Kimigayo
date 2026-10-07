@@ -100,6 +100,8 @@ public sealed partial class Binding
         group.Active = true;
         group.TypeAccess = typeAccess;
         group.PropertyRequirement = false;
+        group.Properties.Clear();
+        group.PropertyContracts.Clear();
         if (FormattingTypes.IsBuiltin(type) && this.Library.GetSymbol(KimiDeclarationId.Utf8Format)?.Contract is { } formatting)
         {
             Add(formatting);
@@ -147,9 +149,9 @@ public sealed partial class Binding
 
         // Expand the proved contracts of this referenced receiver only, as for an explicit associated
         // projection. Inherited signatures can depend on their refining contract's associated identities.
-        for (var i = 0; i < group.Contracts.Count; i++)
+        for (var i = 0; i < group.Contracts.Count + group.PropertyContracts.Count; i++)
         {
-            var contract = group.Contracts[i];
+            var contract = i < group.Contracts.Count ? group.Contracts[i] : group.PropertyContracts[i - group.Contracts.Count];
             if (this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: contract)), scope) == ConstraintProof.Proven)
             {
                 this.AddContractPremises(contract.Contract!, type, scope);
@@ -184,6 +186,18 @@ public sealed partial class Binding
             return null;
         }
 
+        if (group.Properties.Count != 0 && group.Members.Count == 0)
+        {
+            group.Active = false;
+            if (group.Properties.Count == 1 && !typeAccess)
+            {
+                return group.Properties[0];
+            }
+
+            this.Fail(member, BindingFailure.Unsupported, true);
+            return null;
+        }
+
         group.Active = group.Members.Count != 0;
         return group.Active ? group.Members[0] : null;
 
@@ -207,6 +221,11 @@ public sealed partial class Binding
                 else if (requirement.Kind == BindingSymbolKind.Property)
                 {
                     group.PropertyRequirement = true;
+                    if (group.Seen.Add((requirement, RequirementReference(shape, requirement))))
+                    {
+                        group.Properties.Add(requirement);
+                        group.PropertyContracts.Add(RequirementReference(shape, requirement));
+                    }
                 }
             }
         }
@@ -252,6 +271,10 @@ public sealed partial class Binding
         /// <summary>Gets the Contract, a bound reference where it takes Type arguments, that supplied each member.</summary>
         internal List<BindingSymbol> Contracts { get; } = new();
 
+        internal List<BindingSymbol> Properties { get; } = new();
+
+        internal List<BindingSymbol> PropertyContracts { get; } = new();
+
         internal HashSet<(BindingSymbol Requirement, BindingSymbol Contract)> Seen { get; } = new();
 
         internal BoundType Self { get; set; } = null!;
@@ -260,8 +283,7 @@ public sealed partial class Binding
 
         internal bool TypeAccess { get; set; }
 
-        /// <summary>Gets or sets a value indicating whether a Property requirement matched the name; its use through a
-        /// generic receiver is not yet implemented (P24).</summary>
+        /// <summary>Gets or sets a value indicating whether a Property requirement matched the name.</summary>
         internal bool PropertyRequirement { get; set; }
     }
 

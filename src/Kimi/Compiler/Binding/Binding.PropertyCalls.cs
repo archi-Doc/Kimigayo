@@ -25,6 +25,7 @@ public sealed partial class Binding
         function.BoundSymbol ??= new(function.Name, BindingSymbolKind.Function, function, accessor.Property.Symbol.Scope);
         function.BoundSymbol.Type = accessor.Result;
         function.BoundSymbol.ReceiverIndex = accessor.Receiver is null ? -1 : 0;
+        function.IsRequirement = accessor.Property.Declaration.IsContractRequirement;
         function.BindingState = BindingState.Resolved;
         return function;
     }
@@ -129,113 +130,135 @@ public sealed partial class Binding
             memberSelection.DeclaringType is { } declaring ? declaring : null;
 
         var receiver = accessor.Receiver is null ? null : (node as MemberAccessKoto)?.Left;
-
-        // Origin-bearing inputs, requirement dispatch and inherited/object receiver projections retain their own execution
-        // milestones. An owning or object-form written receiver is the declaration error of SPEC 11.2, not a limit of this path.
-        var receiverUnsupported = accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
-            (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
-        if (accessor.Declaration?.Body is null || accessor.Result is not { } declaredResult ||
-            (declaringType is null ? declaredResult : this.MemberType(declaredResult, declaringType)) is not { } result ||
-            accessor.Input is { CarriesOrigin: true } ||
-            receiverUnsupported)
+        var requirement = accessor.Property.Declaration.IsContractRequirement && node is MemberAccessKoto requirementUse &&
+            this.requirementGroups.TryGetValue(requirementUse, out var requirementGroup) && requirementGroup.Properties.Count == 1 ? requirementGroup : null;
+        var previousContract = this.activeRequirementContract;
+        if (requirement is not null)
         {
-            if (!(receiverUnsupported && receiver?.BoundType is { } shapedActual && this.ReceiverRestsOnAccessorShape(node, accessor, receiver, shapedActual, declaringType, null, scope, false)))
-            {
-                this.Fail(node, BindingFailure.Unsupported, true);
-            }
-
-            return false;
+            this.activeRequirementContract = requirement.PropertyContracts[0];
         }
 
-        BoundArgumentOperation receiverOperation = default;
-        if (accessor.Receiver is { } declaredReceiver && (declaringType is null ? declaredReceiver : this.MemberType(declaredReceiver, declaringType)) is { } required)
+        try
         {
-            if (receiver?.BoundType is not { } actual || (node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) && selection.Path is not null))
-            {
-                this.FailWrite(node, node);
-                return false;
-            }
+            return BindCall();
+        }
+        finally
+        {
+            this.activeRequirementContract = previousContract;
+        }
 
-            if (!this.AdaptInput(receiver, required, actual, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
+        bool BindCall()
+        {
+            // Origin-bearing inputs and inherited/object receiver projections retain their own execution
+            // milestones. An owning or object-form written receiver is the declaration error of SPEC 11.2, not a limit of this path.
+            var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
+                (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
+            if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
+                Signature(declaredResult) is not { } result ||
+                accessor.Input is { CarriesOrigin: true } ||
+                receiverUnsupported)
             {
-                if (!this.ReceiverRestsOnAccessorShape(node, accessor, receiver, actual, declaringType, null, scope, false))
+                if (!(receiverUnsupported && receiver?.BoundType is { } shapedActual && this.ReceiverRestsOnAccessorShape(node, accessor, receiver, shapedActual, declaringType, null, scope, false)))
                 {
-                    this.FailWrite(node, node);
+                    this.Fail(node, BindingFailure.Unsupported, true);
                 }
 
                 return false;
             }
 
-            receiverOperation = new(receiver, actual, adapted, kind, quality, ParameterIndex: 0);
-        }
-
-        if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
-            call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
-            (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
-            (receiver is not null && !ReferenceEquals(call.ArgumentNodes[^1], receiver)))
-        {
-            var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
-            Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
-            call = new(node, method, arguments) { CallStorage = new() };
-            this.propertyCalls[(node, accessor.Kind)] = call;
-        }
-
-        var function = this.AccessorFunction(accessor);
-        call.Method.BoundSymbol = function.BoundSymbol;
-        Complete(call.Method, null);
-        var operations = this.argumentOperationScratch.Rent(call.ArgumentNodes.Count + 1);
-        operations[call.ArgumentNodes.Count] = default; // Common call judgment's separate receiver slot.
-        Span<int> mapping = stackalloc int[2];
-        var count = 0;
-        if (input is not null)
-        {
-            var slot = receiver is null ? 0 : 1;
-            mapping[count] = slot;
-            operations[count++] = new(input, accessor.Input, accessor.Input, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
-        }
-
-        if (receiver is not null)
-        {
-            mapping[count] = 0;
-            operations[count++] = receiverOperation;
-        }
-
-        var originCount = accessor.Declaration.Origins.Count;
-        var inputCount = InputOriginCount(accessor.Binder);
-        var origins = this.originScratch.Rent(originCount);
-        var inputs = this.originScratch.Rent(inputCount);
-        Array.Clear(origins);
-        Array.Clear(inputs);
-        try
-        {
-            if (receiver is not null && accessor.Receiver is { } receiverPattern && receiverOperation.ParameterType is { } acquired)
+            BoundArgumentOperation receiverOperation = default;
+            if (accessor.Receiver is { } declaredReceiver && Signature(declaredReceiver) is { } required)
             {
-                var receiverContract = this.MemberType(receiverPattern, declaringType)!;
-                this.MatchInputOrigins(receiverContract, acquired, accessor.Binder, origins, inputs);
-                operations[count - 1] = receiverOperation with
+                if (receiver?.BoundType is not { } actual || (node is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) && selection.Path is not null))
                 {
-                    ParameterType = this.SubstituteStoredOrigins(receiverContract, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount)),
-                    AdaptedType = acquired,
-                };
+                    this.FailWrite(node, node);
+                    return false;
+                }
+
+                if (!this.AdaptInput(receiver, required, actual, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
+                {
+                    if (!this.ReceiverRestsOnAccessorShape(node, accessor, receiver, actual, declaringType, null, scope, false))
+                    {
+                        this.FailWrite(node, node);
+                    }
+
+                    return false;
+                }
+
+                receiverOperation = new(receiver, actual, adapted, kind, quality, ParameterIndex: 0);
             }
 
-            result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
-            if (HasUnsubstitutedOrigin(result, accessor.Binder))
+            if (!this.propertyCalls.TryGetValue((node, accessor.Kind), out var call) ||
+                call.ArgumentNodes.Count != (input is null ? 0 : 1) + (receiver is null ? 0 : 1) ||
+                (input is not null && !ReferenceEquals(call.ArgumentNodes[0], input)) ||
+                (receiver is not null && !ReferenceEquals(call.ArgumentNodes[^1], receiver)))
             {
-                this.Fail(node, BindingFailure.Unsupported, true);
-                return false;
+                var method = new IdentifierNameKoto(node, accessor.Property.Symbol.Name + "." + accessor.Kind);
+                Koto[] arguments = input is null ? receiver is null ? [] : [receiver] : receiver is null ? [input] : [input, receiver];
+                call = new(node, method, arguments) { CallStorage = new() };
+                this.propertyCalls[(node, accessor.Kind)] = call;
             }
 
-            call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
-            this.JudgeSelectedCall(call, function, operations, count, origins, inputs, declaringType);
-            Complete(call, result);
-            return true;
-        }
-        finally
-        {
-            this.originScratch.Return(inputs, clearArray: true);
-            this.originScratch.Return(origins, clearArray: true);
-            this.argumentOperationScratch.Return(operations, clearArray: true);
+            var function = this.AccessorFunction(accessor);
+            call.Method.BoundSymbol = function.BoundSymbol;
+            Complete(call.Method, null);
+            var operations = this.argumentOperationScratch.Rent(call.ArgumentNodes.Count + 1);
+            operations[call.ArgumentNodes.Count] = default; // Common call judgment's separate receiver slot.
+            Span<int> mapping = stackalloc int[2];
+            var count = 0;
+            if (input is not null)
+            {
+                var slot = receiver is null ? 0 : 1;
+                mapping[count] = slot;
+                operations[count++] = new(input, accessor.Input, accessor.Input, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
+            }
+
+            if (receiver is not null)
+            {
+                mapping[count] = 0;
+                operations[count++] = receiverOperation;
+            }
+
+            var originCount = accessor.Declaration!.Origins.Count;
+            var inputCount = InputOriginCount(accessor.Binder);
+            var origins = this.originScratch.Rent(originCount);
+            var inputs = this.originScratch.Rent(inputCount);
+            Array.Clear(origins);
+            Array.Clear(inputs);
+            try
+            {
+                if (receiver is not null && accessor.Receiver is { } receiverPattern && receiverOperation.ParameterType is { } acquired)
+                {
+                    var receiverContract = Signature(receiverPattern)!;
+                    this.MatchInputOrigins(receiverContract, acquired, accessor.Binder, origins, inputs);
+                    operations[count - 1] = receiverOperation with
+                    {
+                        ParameterType = this.SubstituteStoredOrigins(receiverContract, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount)),
+                        AdaptedType = acquired,
+                    };
+                }
+
+                result = this.SubstituteStoredOrigins(result, accessor.Binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, inputCount));
+                if (HasUnsubstitutedOrigin(result, accessor.Binder))
+                {
+                    this.Fail(node, BindingFailure.Unsupported, true);
+                    return false;
+                }
+
+                call.CallStorage!.Set(function.BoundSymbol!, result, null, mapping[..count], [], conformingType: requirement?.Self, declaringType: declaringType, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, inputCount), operations: operations.AsSpan(0, count));
+                call.CallStorage.RequirementContract = requirement?.PropertyContracts[0];
+                this.JudgeSelectedCall(call, function, operations, count, origins, inputs, declaringType);
+                Complete(call, result);
+                return true;
+            }
+            finally
+            {
+                this.originScratch.Return(inputs, clearArray: true);
+                this.originScratch.Return(origins, clearArray: true);
+                this.argumentOperationScratch.Return(operations, clearArray: true);
+            }
+
+            BoundType? Signature(BoundType type) => this.MemberType(type, declaringType) is { } member ? this.ContractType(member, scope, requirement?.Self) : null;
         }
     }
 }

@@ -10,6 +10,11 @@ public sealed partial class Binding
     private BoundCall? InstantiateRequirementCall(BoundCall call, BoundCall outer, BoundCall? destination = null)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
+        if (requirement.Accessor is not null)
+        {
+            return this.InstantiatePropertyRequirementCall(call, outer, destination);
+        }
+
         var builtin = this.CompilerRequirementTarget(call.Target, call.ConformingType);
         if (builtin.CompilerFunction != CompilerFunctionKind.None)
         {

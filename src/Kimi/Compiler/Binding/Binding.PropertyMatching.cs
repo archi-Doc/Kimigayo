@@ -67,6 +67,7 @@ public sealed partial class Binding
         var input = requirement.Input is { } requiredInput ? this.ContractType(requiredInput, scope, self) : null;
         var kind = PropertyWitnessKind.AccessorCall;
         BoundOrigin[] inputOrigins = [];
+        BoundOrigin[] originBindings = [];
         ConstraintProof proof;
         if (!implementation.IsStandard)
         {
@@ -84,6 +85,7 @@ public sealed partial class Binding
             }
 
             Array.Clear(origins);
+            originBindings = origins;
             Array.Clear(inputOrigins);
             proof = this.CompareCallableContracts(new(requirement), new(implementation), scope, self, selection.DeclaringType, [], origins, inputOrigins, selection.Path);
         }
@@ -126,7 +128,7 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Proven)
         {
             var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? ProjectedReceiverProof(implementation.Property.Symbol) : ConstraintProof.Proven;
-            var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof);
+            var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof) { Origins = originBindings };
             conformance.PropertyWitnessStorage.Add(witness);
             conformance.PropertyWitnessMap.Add((requirement.Property.Symbol, requirement.Kind), witness);
             proof = CombineProof(proof, objectProof, true);

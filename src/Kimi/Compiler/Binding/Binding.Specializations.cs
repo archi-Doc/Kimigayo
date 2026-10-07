@@ -9,7 +9,8 @@ public sealed partial class Binding
     private readonly Dictionary<FunctionKoto, Specialization> specializations = new(ReferenceEqualityComparer.Instance);
 
     // The intermediate call of a forwarded requirement call, before its witness is resolved into the destination.
-    private readonly BoundCall forwardedRequirement = new();
+    // Each template call retains its shape; one shared buffer reallocates when get and set alternate.
+    private readonly Dictionary<BoundCall, BoundCall> forwardedRequirements = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BoundCall Inner, BoundCall Outer), BoundCall> defaultCalls = new();
 
     // Defaults are replicated into pending calls. Retain one selected call per declaration and enclosing call context;
@@ -63,6 +64,15 @@ public sealed partial class Binding
                     if (witnesses[w].Implementation.Declaration is FunctionKoto function && !destination.Contains(function))
                     {
                         destination.Add(function);
+                    }
+                }
+
+                var properties = paths[p].PropertyWitnessStorage;
+                for (var w = 0; w < properties.Count; w++)
+                {
+                    if (this.PropertyWitnessFunction(paths[p], properties[w]) is { } accessor && !destination.Contains(accessor))
+                    {
+                        destination.Add(accessor);
                     }
                 }
             }
@@ -135,7 +145,19 @@ public sealed partial class Binding
 
             // A requirement call is resolved from an intermediate call into the destination, so the two never share storage.
             var requirement = inner.Target.Declaration is FunctionKoto { IsRequirement: true };
-            var call = requirement ? this.forwardedRequirement : destination ?? new BoundCall();
+            BoundCall call;
+            if (requirement)
+            {
+                if (!this.forwardedRequirements.TryGetValue(inner, out call!))
+                {
+                    this.forwardedRequirements.Add(inner, call = new());
+                }
+            }
+            else
+            {
+                call = destination ?? new BoundCall();
+            }
+
             call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: operations.AsSpan(0, inner.ArgumentOperations.Length), receiverOperation: receiver, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
             call.TupleOperator = inner.TupleOperator;
             call.RequirementContract = inner.RequirementContract;

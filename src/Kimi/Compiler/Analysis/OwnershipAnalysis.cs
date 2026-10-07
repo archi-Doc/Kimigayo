@@ -1896,7 +1896,7 @@ public sealed partial class OwnershipAnalysis
         this.body.RequirementEffects!.Add(new(invoke, place, mode, requirement, input, receiver, preserves));
     }
 
-    // A library Type used as a Type argument is reached by generic dispatch; its witnesses are verified like called bodies.
+    // Type arguments reach library bodies and standard Property bridges through their verified witnesses.
     private void CollectLibraryWitnesses(BoundType? type)
     {
         if (type is null)
@@ -1905,7 +1905,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var start = this.witnessScratch.Count;
-        if (type.Symbol is { Declaration: StructKoto or EnumKoto } symbol && ReferenceEquals(symbol.Declaration.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
+        if (type.Symbol is { Declaration: StructKoto or EnumKoto } symbol &&
             this.witnessTypes.Add(symbol))
         {
             this.compilation.Binding.CollectWitnesses(symbol, this.witnessScratch);
@@ -1948,7 +1948,7 @@ public sealed partial class OwnershipAnalysis
     private void CollectLibraryBody(FunctionKoto function)
     {
         if ((function.Body is not null || function.ExpressionBody is not null) &&
-            ReferenceEquals(function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) && !this.libraryBodies.Contains(function))
+            (function.IsPropertyWitness || ReferenceEquals(function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha)) && !this.libraryBodies.Contains(function))
         {
             this.libraryBodies.Add(function);
             if (function.GenericArguments.Count != 0 && function.BoundSymbol is { } original &&

@@ -223,6 +223,11 @@ public sealed class AsteriskKoto : BinaryKoto
 /// <summary>Represents a conversion expression.</summary>
 public sealed class ConversionKoto : BinaryKoto
 {
+    internal ConversionKoto(Koto source, Koto left, Koto right)
+        : base(source, left, right)
+    {
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Conversion;
 
@@ -681,6 +686,11 @@ public sealed class OrKoto : BinaryKoto
 /// <summary>Represents an assignment expression.</summary>
 public sealed class EqualsKoto : BinaryKoto
 {
+    internal EqualsKoto(Koto source, Koto left, Koto right)
+        : base(source, left, right)
+    {
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Equals;
 
