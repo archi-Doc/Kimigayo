@@ -375,6 +375,11 @@ public sealed class FunctionKoto : DeclarationKoto
         {
             this.parameters.Add(new("value", "value", new IdentifierNameKoto(accessor.Declaration, "value"), null));
         }
+
+        foreach (var parameter in this.parameters)
+        {
+            this.AttachParameter(parameter);
+        }
     }
 
     internal BoundAccessor? Accessor { get; }
@@ -385,7 +390,7 @@ public sealed class FunctionKoto : DeclarationKoto
     {
         if (!this.IsPropertyWitness)
         {
-            this.ReturnType = new IdentifierNameKoto(expression, "result");
+            this.ReturnType = new IdentifierNameKoto(expression, "result") { Parent = this };
         }
 
         this.IsPropertyWitness = true;

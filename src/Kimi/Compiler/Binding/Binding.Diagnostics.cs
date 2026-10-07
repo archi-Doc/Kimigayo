@@ -2153,7 +2153,7 @@ public sealed partial class Binding
 
     // A lookup that misses a Name the language defines but the implementation does not yet provide meets an implementation
     // limit, not a missing Name (DIAGNOSTICS.md rule 3): a cataloged declaration without source (PLAN G4), or a Property
-    // requirement read through a generic receiver (P24).
+    // requirement whose combined identities or access path are not yet supported.
     private BindingFailure MissingFailure(Koto name, BindingScope scope, BindingFailure missing)
     {
         var limit = name switch

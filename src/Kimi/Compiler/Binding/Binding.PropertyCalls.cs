@@ -71,7 +71,9 @@ public sealed partial class Binding
     private bool BindPropertyUpdate(MemberAccessKoto node, BindingScope scope)
     {
         var property = node.BoundSymbol!.Property!;
-        if (property.Getter.Result is not { } result || property.Setter.Input is not { } input ||
+        var getterResult = this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType ?? property.Getter.Result;
+        var setterInput = this.PropertySetterInput(node) ?? property.Setter.Input;
+        if (getterResult is not { } result || setterInput is not { } input ||
             !this.FitsTypeAt(result, input, node))
         {
             this.Fail(node, BindingFailure.TypeMismatch);
@@ -79,7 +81,7 @@ public sealed partial class Binding
         }
 
         var owner = node.Left.BoundType!;
-        var referent = ReferenceTypes.IsStruct(owner) ? owner.Components[0] : owner;
+        var referent = owner is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? owner.Components[0] : owner;
         var type = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [referent], origin: this.PlaceOrigin(node.Left));
         if (!this.AdaptInput(node.Left, type, owner, scope, null, null, out var adapted, out var quality, out var kind, receiver: true))
         {
@@ -102,6 +104,10 @@ public sealed partial class Binding
         Complete(storage, property.Type);
         return true;
     }
+
+    private BoundType? PropertySetterInput(Koto node)
+        => this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Set))?.BoundCall is { ArgumentOperations.Length: > 0 } call
+            ? call.ArgumentOperations[0].ParameterType : null;
 
     private void BindStorageProjection(Koto node, BoundAccessor accessor)
     {
@@ -149,13 +155,14 @@ public sealed partial class Binding
 
         bool BindCall()
         {
+            var inputType = accessor.Input is { } declaredInput ? Signature(declaredInput) : null;
             // Origin-bearing inputs and inherited/object receiver projections retain their own execution
             // milestones. An owning or object-form written receiver is the declaration error of SPEC 11.2, not a limit of this path.
             var receiverUnsupported = requirement is null && accessor.Receiver is { } receiverType && (!ReferenceTypes.IsStruct(receiverType) || receiverType.Components[0].Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
                 (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
                 Signature(declaredResult) is not { } result ||
-                accessor.Input is { CarriesOrigin: true } ||
+                (accessor.Input is not null && inputType is null) || inputType is { CarriesOrigin: true } ||
                 receiverUnsupported)
             {
                 if (!(receiverUnsupported && receiver?.BoundType is { } shapedActual && this.ReceiverRestsOnAccessorShape(node, accessor, receiver, shapedActual, declaringType, null, scope, false)))
@@ -210,7 +217,7 @@ public sealed partial class Binding
             {
                 var slot = receiver is null ? 0 : 1;
                 mapping[count] = slot;
-                operations[count++] = new(input, accessor.Input, accessor.Input, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
+                operations[count++] = new(input, inputType, inputType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
             }
 
             if (receiver is not null)

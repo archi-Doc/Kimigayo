@@ -61,6 +61,42 @@ public class PropertyWitnessEmissionTest
         => ScalarEmissionTest.EmitFixture("PropertyWitnessRefinement", "contract A\n    property item: i32 has get\ncontract B: A\ncontract C: A\ncontract D: B, C\nstruct S\n    Self is D\n    public var item: i32 = 7\nfunc read<T>(s: ref/T) -> i32\n    T is D\n    return s.item\nlet s = S.init()\nrequire read(s@ref) == 7 else => $abort(\"refined witness\")", string.Empty);
 
     [Theory]
+    [InlineData("Assign", "s.item = 9")]
+    [InlineData("Compound", "s.item += 2")]
+    [InlineData("Increment", "s.item++\n    s.item++")]
+    public void BoundContractSetterUsesItsSubstitutedInput(string name, string update)
+        => ScalarEmissionTest.EmitFixture("PropertyWitnessBound" + name, "contract C<E>\n    E is Copy\n    property item: E has get, set\nstruct S\n    Self is C<i32>\n    public var item: i32 = 7\nfunc update<T>(s: uniq/T) -> i32\n    T is C<i32>\n    " + update + "\n    return s.item\nvar s = S.init()\nrequire update(s@uniq) == 9 else => $abort(\"bound setter\")", string.Empty);
+
+    [Fact]
+    public void GenericCustomSetterUsesTheSameInputSubstitution()
+        => ScalarEmissionTest.EmitFixture("PropertyWitnessGenericSetter", "struct S<T>\n    T is Copy\n    public var item: T\n        set(value: T) -> () => storage = value\n    public init(value: T) => self.item = value\nvar s = S<i32>.init(7)\ns.item = 9\nrequire s.item == 9 else => $abort(\"generic setter\")", string.Empty);
+
+    [Fact]
+    public void GenericSetterCannotAssumeAnUnpublishedCopyGuarantee()
+    {
+        const string source = "struct S<T>\n    public var item: T\n        set(value: T) -> () => storage = value\n    public init(value: T) => self.item = value@move\n()";
+        Assert.Equal("TransferRequired_Kd", Assert.Single(DiagnosticCorpus.Check(source).Diagnostics).Code);
+    }
+
+    [Fact]
+    public void BoundSetterRejectsAnInputOfTheWrongType()
+    {
+        const string source = "contract C<E>\n    E is Copy\n    property item: E has get, set\nfunc update<T>(s: uniq/T)\n    T is C<i32>\n    s.item = true\n()";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal("TypeMismatch_Kd", record.Code);
+        Assert.Equal(source.IndexOf("true", StringComparison.Ordinal), record.Span!.Value.Start);
+    }
+
+    [Theory]
+    [InlineData("_ = s.item@uniq", "InvalidAssignment_Kd")]
+    [InlineData("s.item = 4", "InaccessibleBinding_Kd")]
+    public void GetterOnlyRequirementNeverExposesImplementationStorage(string expression, string code)
+    {
+        var source = "contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public var item: i32 = 7\nfunc use<T>(s: uniq/T)\n    T is C\n    " + expression + "\nvar s = S.init()\nuse(s@uniq)";
+        Assert.Equal(code, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics).Code);
+    }
+
+    [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void RequirementBorrowBlocksReceiverUpdatesOnlyWhileLive(bool live)
