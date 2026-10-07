@@ -639,6 +639,9 @@
   + Name="Binding.ClosedContractConformance"
     Description="only the Types the language designates conform to the closed Contract"
 
+  + Name="Binding.ArithmeticConformance"
+    Description="the arithmetic provider and counterpart meet their published eligibility conditions for every admitted binding"
+
   + Name="Binding.NotIndexable"
     Description="the receiver can be indexed by the key"
 

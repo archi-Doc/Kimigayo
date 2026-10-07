@@ -188,6 +188,11 @@ public sealed partial class Binding
             var scope = conformance.Scope;
             var self = this.ContractType(this.SelfType(conformance.Type), scope);
             var declarationProof = this.CheckClosedDeclarationConstraints((DeclarationContainerKoto)conformance.Type.Declaration);
+            if (!this.ValidArithmeticConformance(conformance, self))
+            {
+                return ConstraintProof.Error;
+            }
+
             if (conformance.Premises is { } premises)
             {
                 for (var p = 0; p < premises.Operands.Length; p++)

@@ -18,6 +18,7 @@ public sealed partial class KimiLibrary
             Read("Windows.kimi"),
             Read("Time.kimi"),
             Read("Comparison.kimi"),
+            Read("Arithmetic.kimi"),
             Read("Iterator.kimi"),
             Read("LendingIterator.kimi"),
             Read("Iterable.kimi"),

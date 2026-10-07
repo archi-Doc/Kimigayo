@@ -1957,6 +1957,7 @@ public sealed partial class Binding
         this.callableConstraints?.Clear();
         this.referenceConstraints?.Clear();
         this.operatorOperands?.Clear();
+        this.arithmeticConformanceFailures?.Clear();
         this.rangeIterationFailures?.Clear();
         this.writeTargets?.Clear();
         this.captureFailures?.Clear();

@@ -41,6 +41,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.IntoIterable => this.ValidIntoIterable(symbol),
                         KimiDeclarationId.Position or KimiDeclarationId.PositionRange => this.ValidPositionContract(symbol, entry.Id),
                         KimiDeclarationId.Equatable or KimiDeclarationId.Comparable => this.ValidComparisonContract(symbol, entry.Id),
+                        >= KimiDeclarationId.Addable and <= KimiDeclarationId.Negatable => this.ValidArithmeticContract(symbol, entry.Id),
                         KimiDeclarationId.Indexable or KimiDeclarationId.UniqIndexable => this.ValidIndexableContract(symbol, entry.Id),
                         KimiDeclarationId.Slice => this.ValidSlice(symbol),
                         KimiDeclarationId.UniqSlice => this.ValidUniqSlice(symbol),
@@ -137,6 +138,11 @@ public sealed partial class KimiLibrary
             if (matches && entry.Id is KimiDeclarationId.Indexable or KimiDeclarationId.UniqIndexable)
             {
                 matches = this.ValidBoundIndexableContract(symbol, entry.Id);
+            }
+
+            if (matches && ArithmeticContracts.IsArithmetic(entry.Id))
+            {
+                matches = this.ValidBoundArithmeticContract(symbol, entry.Id);
             }
 
             if (!matches)

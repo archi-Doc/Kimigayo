@@ -601,7 +601,11 @@ public sealed partial class Binding
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
-        if (issue.Failure == BindingFailure.CaseLimit)
+        if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
+        {
+            issue.Node.Report(requirement, issue.Code, DiagnosticTypeName(arithmetic.Type), arithmetic.Contract.Name, evidence: [arithmetic.Condition], related: [("contract", arithmetic.Contract.Declaration, "arithmetic Contract declaration")]);
+        }
+        else if (issue.Failure == BindingFailure.CaseLimit)
         {
             this.ReportCaseLimit(issue.Node, requirement);
         }
@@ -1074,6 +1078,7 @@ public sealed partial class Binding
                     BindingFailure.InvalidConstraint => DiagnosticCode.InvalidConstraint_Kd,
                     BindingFailure.InvalidSelfClause => DiagnosticCode.InvalidSelfClause_Kd,
                     BindingFailure.ClosedContractConformance => DiagnosticCode.ClosedContractConformance_Kd,
+                    BindingFailure.ArithmeticConformance => DiagnosticCode.InvalidArithmeticConformance_Kd,
                     BindingFailure.NotIndexable => DiagnosticCode.NotIndexable_Kd,
                     BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,

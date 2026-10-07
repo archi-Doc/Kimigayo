@@ -179,6 +179,17 @@ public enum KimiDeclarationId : byte
     StorageSetArrayLength,
     SliceToArray,
     ArrayAppendCopies,
+    Addable,
+    Subtractable,
+    Multipliable,
+    Dividable,
+    RemainderProvider,
+    LeftAddable,
+    LeftSubtractable,
+    LeftMultipliable,
+    LeftDividable,
+    LeftRemainderProvider,
+    Negatable,
 }
 
 public enum KimiDeclarationState : byte

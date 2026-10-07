@@ -1,0 +1,45 @@
+// Shared arithmetic requirements. Output and failure behavior belong to each conformance.
+public contract Addable<Rhs>
+    associate Output
+    func added(self: ref/Self, right: ref/Rhs) -> Self.Output
+
+public contract Subtractable<Rhs>
+    associate Output
+    func subtracted(self: ref/Self, right: ref/Rhs) -> Self.Output
+
+public contract Multipliable<Rhs>
+    associate Output
+    func multiplied(self: ref/Self, right: ref/Rhs) -> Self.Output
+
+public contract Dividable<Rhs>
+    associate Output
+    func divided(self: ref/Self, right: ref/Rhs) -> Self.Output
+
+public contract RemainderProvider<Rhs>
+    associate Output
+    func remainder(self: ref/Self, right: ref/Rhs) -> Self.Output
+
+// Left requirements compute left op self; parameter order preserves source evaluation order.
+public contract LeftAddable<Lhs>
+    associate Output
+    func addedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
+
+public contract LeftSubtractable<Lhs>
+    associate Output
+    func subtractedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
+
+public contract LeftMultipliable<Lhs>
+    associate Output
+    func multipliedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
+
+public contract LeftDividable<Lhs>
+    associate Output
+    func dividedFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
+
+public contract LeftRemainderProvider<Lhs>
+    associate Output
+    func remainderFrom(left: ref/Lhs, self: ref/Self) -> Self.Output
+
+public contract Negatable
+    associate Output
+    func negated(self: ref/Self) -> Self.Output

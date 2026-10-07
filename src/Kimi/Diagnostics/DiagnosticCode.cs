@@ -29,6 +29,7 @@ public enum DiagnosticCode
     InvalidConstraint_Kd,
     InvalidSelfClause_Kd,
     ClosedContractConformance_Kd,
+    InvalidArithmeticConformance_Kd,
     NotIndexable_Kd,
     NotObjectPayload_Kd,
     UnprovenConstraint_Kd,

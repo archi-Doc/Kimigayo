@@ -197,6 +197,13 @@
     Category="Language"
     Message="This receiver cannot be indexed by this key: element indexing needs an Indexable conformance that takes the key's Type, and range indexing applies only to fixed arrays, Array and Slice"
 
+  + Name="InvalidArithmeticConformance_Kd"
+    Category="Language"
+    Message="Type {0} does not establish the provider conditions of arithmetic Contract {1}"
+    Arguments="type:Type,contract:Text"
+    Evidence="condition:Text"
+    Label="{2}"
+
   + Name="NotObjectPayload_Kd"
     Category="Language"
     Message="The Type {0} opts out of ObjectPayload and cannot be an object target or payload"

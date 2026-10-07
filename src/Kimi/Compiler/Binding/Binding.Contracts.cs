@@ -740,6 +740,7 @@ public sealed partial class Binding
 
         void AddClauses(BoundContract declaration)
         {
+            this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
             for (var i = 0; i < declaration.ClauseStorage.Count; i++)
             {
                 if (declaration.ClauseStorage[i].BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true))
