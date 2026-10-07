@@ -118,6 +118,90 @@ public sealed partial class Binding
                     this.FailOverride(function, BindingFailure.OverrideContractMismatch, "Origin binder names must belong to the original slot; omitted annotations inherit that contract", slot.Original);
                 }
             }
+
+            if (function.BindingFailure == BindingFailure.None)
+            {
+                this.PrepareVirtualOverridePremises(function, slot);
+            }
+        }
+    }
+
+    private void PrepareVirtualOverridePremises(FunctionKoto function, VirtualSlot slot)
+    {
+        var bodyScope = this.scopes[function];
+        var premises = bodyScope.ImplementationPremises ??= new(function);
+        premises.Parent = function.BoundSymbol!.Scope;
+        premises.Function = function;
+        // ResetPass owns this shared environment. Resetting premises would also erase the body's facts.
+        premises.Constraints = bodyScope.Constraints ??= new();
+        this.InheritVirtualConstraints(function, this.scopes[slot.Original], slot, premises);
+        if (slot.Original.BoundSymbol!.ConditionalDeclaration is { } block)
+        {
+            this.InheritVirtualConstraints(function, this.scopes[block], slot, premises);
+        }
+
+        this.ExpandScopeContractPremises(premises);
+    }
+
+    private void InheritVirtualConstraints(FunctionKoto function, BindingScope source, VirtualSlot slot, BindingScope premises)
+    {
+        if (source.Constraints is not { } environment)
+        {
+            return;
+        }
+
+        foreach (var fact in environment.DirectFacts)
+        {
+            var bound = this.SubstituteConstraint(fact, slot.DeclaringType.Symbol!.Declaration, (BoundType[])slot.DeclaringType.Components);
+            // A closed, inapplicable binding is not a contradictory definition premise. Body exclusion
+            // needs the applicability-aware generation plan; keep that intersection unsupported for now.
+            if (this.ProveConstraint(bound, premises) is ConstraintProof.Refuted or ConstraintProof.Error)
+            {
+                this.Fail(function, BindingFailure.Unsupported, true);
+                continue;
+            }
+
+            this.AddConstraintFact(premises.Constraints!, bound);
+        }
+    }
+
+    private void ValidateVirtualOverrideConditions()
+    {
+        foreach (var (function, implementation) in this.virtualOverrides)
+        {
+            if (function.BindingFailure != BindingFailure.None || function.BoundSymbol!.ConditionalDeclaration is not { } block)
+            {
+                continue;
+            }
+
+            var premises = this.scopes[function].ImplementationPremises!;
+            var conditions = (SyntaxFormKoto)block.Operands[1];
+            for (var i = 0; i < conditions.Operands.Length; i++)
+            {
+                var condition = (IsKoto)conditions.Operands[i];
+                if (condition.BoundConstraint is not { } bound)
+                {
+                    this.CompleteDependent(function, condition);
+                    break;
+                }
+
+                var proof = this.ProveConstraint(bound, premises);
+                if (proof != ConstraintProof.Proven)
+                {
+                    if (proof == ConstraintProof.Error)
+                    {
+                        this.CompleteDependent(function, block);
+                    }
+                    else
+                    {
+                        var reason = proof == ConstraintProof.Refuted ? "is refuted by the original slot and derived Type"
+                            : "is not implied by the original slot and derived Type";
+                        this.FailOverride(function, BindingFailure.UnprovenOverrideCondition, reason, implementation.Slot.Original, at: condition);
+                    }
+
+                    break;
+                }
+            }
         }
     }
 
@@ -186,7 +270,11 @@ public sealed partial class Binding
             ? new (string, Koto, string?)[] { ("declaration", failure.First, failure.First.IsVirtual ? "original virtual slot" : "inherited function") }
             : [("declaration", failure.First, "original virtual slot"), ("declaration", failure.Second, "conflicting declaration")];
         var reason = failure.Reason;
-        if (failure.Required is BoundType required && failure.Actual is BoundType actual)
+        if (code == DiagnosticCode.UnprovenOverrideCondition_Kd)
+        {
+            reason = $"{failure.At} {reason}";
+        }
+        else if (failure.Required is BoundType required && failure.Actual is BoundType actual)
         {
             reason = $"expected {ResultModeOf(failure.First!.ReturnType)} {DiagnosticTypeName(required)}, found {ResultModeOf(function.ReturnType)} {DiagnosticTypeName(actual)}; {reason}";
         }

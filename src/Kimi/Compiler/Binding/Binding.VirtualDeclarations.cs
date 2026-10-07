@@ -113,6 +113,11 @@ public sealed partial class Binding
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
             }
+            else if (function.BindingFailure == BindingFailure.Unsupported)
+            {
+                // Binding a body can complete its result Type without discharging the earlier subset gate.
+                function.BindingState = BindingState.Unresolved;
+            }
         }
     }
 

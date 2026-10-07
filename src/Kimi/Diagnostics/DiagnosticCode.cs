@@ -234,6 +234,7 @@ public enum DiagnosticCode
     AmbiguousOverrideTarget_Kd,
     OverrideContractMismatch_Kd,
     DuplicateOverride_Kd,
+    UnprovenOverrideCondition_Kd,
     BoundMethodValue_Kd,
     UnsatisfiedOriginRelation_Kd,
     UnprovenOriginRelation_Kd,

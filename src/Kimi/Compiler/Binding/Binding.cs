@@ -566,6 +566,7 @@ public sealed partial class Binding
             this.CompleteAliasWarnings();
         }
 
+        this.ValidateVirtualOverrideConditions();
         this.GuardPendingVirtualDeclarations();
     }
 
@@ -788,7 +789,7 @@ public sealed partial class Binding
         {
             this.ReportAccessorReceiverShape(shapedAccessor, writtenReceiver, requirement);
         }
-        else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd && issue.Node is FunctionKoto overrideFunction)
+        else if (issue.Code is DiagnosticCode.MissingOverrideTarget_Kd or DiagnosticCode.AmbiguousOverrideTarget_Kd or DiagnosticCode.OverrideContractMismatch_Kd or DiagnosticCode.DuplicateOverride_Kd or DiagnosticCode.UnprovenOverrideCondition_Kd && issue.Node is FunctionKoto overrideFunction)
         {
             this.ReportOverrideFailure(overrideFunction, requirement, issue.Code);
         }
@@ -1073,6 +1074,7 @@ public sealed partial class Binding
                     BindingFailure.AmbiguousOverrideTarget => DiagnosticCode.AmbiguousOverrideTarget_Kd,
                     BindingFailure.OverrideContractMismatch => DiagnosticCode.OverrideContractMismatch_Kd,
                     BindingFailure.DuplicateOverride => DiagnosticCode.DuplicateOverride_Kd,
+                    BindingFailure.UnprovenOverrideCondition => DiagnosticCode.UnprovenOverrideCondition_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))

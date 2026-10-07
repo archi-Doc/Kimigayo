@@ -1074,3 +1074,10 @@
     Message="A derived Type can supply only one override of each bound virtual slot"
     Evidence="condition:Text"
     Label="{0}"
+
+  + Name="UnprovenOverrideCondition_Kd"
+    Category="Proof"
+    Message="The override's containing condition is not proven by its inherited contract"
+    Evidence="condition:Text"
+    Label="{0}"
+    Advice="Use a containing condition established by the original slot and derived Type; the override's own block cannot prove it"

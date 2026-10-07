@@ -201,6 +201,7 @@ internal enum BindingFailure : byte
     AmbiguousOverrideTarget,
     OverrideContractMismatch,
     DuplicateOverride,
+    UnprovenOverrideCondition,
 
     // SPEC 7.3: value.method without invocation forms no bound-method value.
     BoundMethodValue,
@@ -568,6 +569,9 @@ internal sealed class BindingScope(Koto owner)
     internal Dictionary<string, TypeSemanticsKoto>? OriginSets { get; set; }
 
     internal ConstraintEnvironment? Constraints { get; set; }
+
+    // Retained with the declaration scope; never includes an implementation's own conditional block.
+    internal BindingScope? ImplementationPremises { get; set; }
 
     internal BoundConformancePath? ConformancePath { get; set; }
 

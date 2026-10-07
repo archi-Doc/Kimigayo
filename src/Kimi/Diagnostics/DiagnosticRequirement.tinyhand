@@ -732,3 +732,6 @@
 
   + Name="Binding.DuplicateOverride"
     Description="the derived Type supplies at most one implementation of each bound virtual slot"
+
+  + Name="Binding.UnprovenOverrideCondition"
+    Description="the derived Type and original slot's premises imply the override's containing condition"
