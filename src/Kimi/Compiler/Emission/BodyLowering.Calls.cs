@@ -262,7 +262,10 @@ internal sealed partial class BodyLowering
             // SPEC 15.4.4: an instance fits the argument to an Origin this body's local initializer inferred through the substituted bound.
             var fitted = this.instance is { } instanceCall && acquisition.ParameterType is { } declared ? this.instanceBinding!.InstantiateInferredType(declared, parameterType, instanceCall) : parameterType;
             if (!ReferenceEquals(body.Operations[entry].Source, call) ||
-                (fitted is not { } required || !call.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(type, required, call)))
+                (fitted is not { } required || (!call.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(type, required, call) &&
+                !(acquisition is { Kind: ArgumentOperationKind.BaseBorrow, BasePath: not null, ObjectCompatibility: ConstraintProof.Proven } &&
+                type is { Semantics: SemanticsKind.Ref, Components.Count: 1 } && required is { Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
+                ReferenceEquals(required.Components[0], plan.DeclaringType) && ObjectTypes.Supports(type.Components[0], required.Components[0])))))
             {
                 return Fail("Call entry does not match its argument Type or call.", out failure);
             }

@@ -108,7 +108,7 @@ public sealed partial class Binding
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
             path is not { IsVerified: true } || !path.PropertyWitnessMap.TryGetValue((requirement.Property.Symbol, requirement.Kind), out var witness) ||
-            witness.BasePath is not null || this.PropertyWitnessFunction(path, witness) is not { } function ||
+            witness.ObjectCompatibility != ConstraintProof.Proven || this.PropertyWitnessFunction(path, witness) is not { } function ||
             this.StoredType(witness.ImplementationType, self) is not { } declaring)
         {
             return null;
@@ -133,7 +133,7 @@ public sealed partial class Binding
 
             var result = destination ?? new BoundCall();
             result.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
-            return result;
+            return this.ProjectWitnessCall(result, witness.BasePath, declaring) ? result : null;
         }
         finally
         {

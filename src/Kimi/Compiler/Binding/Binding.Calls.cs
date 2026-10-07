@@ -76,6 +76,27 @@ public sealed class BoundCall
     // (SPEC 8.4.9). Null for calls of other functions.
     internal BindingSymbol? RequirementContract { get; set; }
 
+    internal void SetReceiverProjection(BoundArgumentOperation operation, BoundMemberPath path)
+    {
+        this.BasePath = path;
+        if (this.Receiver is not null)
+        {
+            this.ReceiverOperation = operation;
+            return;
+        }
+
+        for (var i = 0; i < this.argumentOperations.Length; i++)
+        {
+            if (this.argumentOperations[i].ParameterIndex == operation.ParameterIndex)
+            {
+                this.argumentOperations[i] = operation;
+                return;
+            }
+        }
+
+        throw new InvalidOperationException("A receiver projection requires an acquired receiver argument.");
+    }
+
     internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
         this.Target = target;
