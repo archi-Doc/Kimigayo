@@ -85,7 +85,8 @@ public sealed partial class Binding
     }
 
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
-        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
+        => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)
+            : this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
@@ -158,7 +159,9 @@ public sealed partial class Binding
                 type = this.WithOrigins(type, origin, (BoundOrigin[])type.OriginArguments);
             }
 
-            if (origin is not null && type.Components.Count != 0)
+            // A conditional pair slot exists only in admitted borrow cases. Its payload keeps its own Origins
+            // in every case, but value/object cases impose no outlives relation to an inactive outer slot.
+            if (origin is not null && type.Components.Count != 0 && !InactiveOuterOrigin(type, this, use))
             {
                 this.RetainInnerOutlives(type.Components[0], origin, use);
             }

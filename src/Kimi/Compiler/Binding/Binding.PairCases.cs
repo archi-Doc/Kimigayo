@@ -17,6 +17,24 @@ public sealed partial class Binding
         SemanticsKind.Owner, SemanticsKind.Ref, SemanticsKind.Uniq, SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc, SemanticsKind.ObjRef, SemanticsKind.ObjUniq, SemanticsKind.Raw,
     ];
 
+    /// <summary>Counts the resolved cases of one body without overflowing the resource counter.</summary>
+    /// <param name="binders">The body's pair binders and their admitted sets.</param>
+    /// <returns>The product, saturated at the largest representable count.</returns>
+    internal static long SemanticsCaseProduct(IReadOnlyList<PairBinder> binders)
+    {
+        var product = 1L;
+        for (var i = 0; i < binders.Count; i++)
+        {
+            if (binders[i].Resolved)
+            {
+                var count = BitOperations.PopCount((uint)binders[i].Admitted);
+                product = product > long.MaxValue / count ? long.MaxValue : product * count;
+            }
+        }
+
+        return product;
+    }
+
     /// <summary>Appends the Semantics of a mask in bit order, separated.</summary>
     /// <param name="text">The text to append to.</param>
     /// <param name="mask">The Semantics.</param>
@@ -74,8 +92,17 @@ public sealed partial class Binding
     /// <param name="type">A Type.</param>
     /// <returns>Whether <paramref name="type"/> is a pair layer with an invariant admitted Semantics.</returns>
     internal bool InvariantAdmitted(BoundType type)
-        => TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } &&
-            (this.AdmittedSemantics(whole, scope) & (SemanticsMask.Uniq | SemanticsMask.Obj | SemanticsMask.ObjUniq | SemanticsMask.Raw)) != 0;
+    {
+        const SemanticsMask invariant = SemanticsMask.Uniq | SemanticsMask.Obj | SemanticsMask.ObjUniq | SemanticsMask.Raw;
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            // Each child is a complete case Type and enforces its own layer variance.
+            return false;
+        }
+
+        return TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } &&
+            (this.AdmittedSemantics(whole, scope) & invariant) != 0;
+    }
 
     /// <summary>Gets the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1): one fixed Origin per pair binder, shared by every
     /// occurrence of the original <c>s/T</c>, present only in the admitted borrow cases and never written in source. The whole Type
@@ -121,6 +148,11 @@ public sealed partial class Binding
         {
             return type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget, Type: { } projection } target && CaseOf(cases, target) is { } semantics
                 ? this.Form(semantics, projection, this.OuterOrigin(type)) : type;
+        }
+
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation && CaseOf(cases, type.Symbol!) is { } selected)
+        {
+            return FamilyCase(type, selected) is { } child ? this.CaseType(child, cases) : type;
         }
 
         if (type.Components.Count == 0)

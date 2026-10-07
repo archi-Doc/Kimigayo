@@ -313,7 +313,7 @@ internal sealed partial class GenericStoragePlan
         for (var i = 0; i < body.Operations.Count; i++)
         {
             var operation = body.Operations[i];
-            if (operation.Kind == OwnershipOperationKind.Call && body.CallAt(i) is { } call &&
+            if (operation.Kind == OwnershipOperationKind.Call && body.CallAt(i) is { AdaptationSource: null } call &&
                 (call.Target.CompilerFunction == CompilerFunctionKind.None || IsFormattingCallback(call) || call.Target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc) && !calls.Contains(call))
             {
                 calls.Add(call);

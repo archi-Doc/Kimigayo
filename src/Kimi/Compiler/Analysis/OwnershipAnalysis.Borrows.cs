@@ -184,11 +184,11 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is BinaryKoto objectPart && !Binding.IsGetterResult(objectPart) && !this.SpecialField(objectPart) &&
-            ObjectTypes.HandleMode(this.Concrete(objectPart.BoundType)) is not null && ReferenceEquals(objectPart.BoundType!.Components[0], type.Components[0]) &&
+            this.Concrete(objectPart.BoundType) is { } storedObject && ObjectTypes.HandleMode(storedObject) is not null && ReferenceEquals(storedObject.Components[0], type.Components[0]) &&
             (ElementAccess.OwnedPathRoot(objectPart) is not null || (objectPart is MemberAccessKoto objectField && ElementAccess.BorrowedPathRoot(objectField) is not null) ||
                 (objectPart is IndexKoto objectIndex && (objectIndex.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(objectIndex.Left.BoundType)))))
         {
-            return this.BorrowStoredObject(objectPart, type, reservation);
+            return this.BorrowStoredObject(objectPart, storedObject, type, reservation);
         }
 
         if (unwrapped is IndexKoto element && element.Right is not RangeKoto && type.Semantics == SemanticsKind.Uniq &&

@@ -9,6 +9,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--adaptation-plans")
+        {
+            CompilerPlanMeasurements.Run(adaptations: true);
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--inheritance-lifecycle")
         {
             InheritanceLifecycleMeasurements.Run();

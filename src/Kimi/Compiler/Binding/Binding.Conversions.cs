@@ -200,8 +200,7 @@ public sealed partial class Binding
 
     internal static bool SupportsIdentityAcquisition(BoundType type)
         => ObjectTypes.HandleMode(type) is not null ||
-            (type.Semantics == SemanticsKind.Owner &&
-            (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Tuple or BoundTypeKind.FixedArray || Kimi.Compiler.EnumStorage.IsEnum(type)));
+            type.Semantics is SemanticsKind.Owner or SemanticsKind.Raw;
 
     // SPEC 13.5.3: E@copy is bound as the Identity acquisition of a proven-Copy value.
     internal static bool IsCopyOperation(ConversionKoto conversion)
@@ -254,12 +253,19 @@ public sealed partial class Binding
 
     // SPEC 13.5.5.2: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
     private static bool BorrowsWrittenSlot(BoundType type)
-        => StructStorage.IsStruct(type) || Compiler.EnumStorage.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
+        => StructStorage.IsStruct(type) || Compiler.EnumStorage.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
             ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
     {
+        var scope = this.ConstraintScope(conversion);
+        // Copy alone admits borrow Types, whose normalized targets select Borrow rather than identity.
+        if (!this.CanSelectIdentity(type, scope))
+        {
+            return this.Fail(conversion, BindingFailure.UnprovenConstraint);
+        }
+
         if (IsBarePlace(conversion.Left) && this.ProveCopy(type, conversion) != ConstraintProof.Proven)
         {
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
@@ -464,6 +470,14 @@ public sealed partial class Binding
                 return Complete(conversion, actual);
             }
 
+            if (TryAdaptationSelector(actual, out _) && IsBorrow(pattern.Semantics))
+            {
+                var origin = pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq
+                    ? this.SlotOrigin(conversion.Left) : this.PlaceOrigin(conversion.Left);
+                var borrowed = this.Reference(pattern.Semantics, pattern.Components[0], pattern.Origin ?? origin);
+                return this.BindCaseAdaptation(conversion, scope, actual, borrowed);
+            }
+
             if (pattern.Semantics == SemanticsKind.ObjUniq && ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref })
             {
                 return this.FailObjectAuthority(conversion, conversion.Left);
@@ -631,7 +645,18 @@ public sealed partial class Binding
             return this.BindWrapConversion(conversion, scope, argument, operation);
         }
 
+        if (syntax is TypeSemanticsKoto { Type: null } or IdentifierNameKoto &&
+            this.LookupAdaptationTarget(syntax, scope, out var genericSemantics) is { } designation && genericSemantics)
+        {
+            return this.BindSemanticsAdaptation(conversion, scope, designation);
+        }
+
         var target = this.BindType(conversion.Right, scope);
+        if (target is not null)
+        {
+            target = this.SubstituteIdentityPremises(target, scope);
+            Complete(conversion.Right, target);
+        }
 
         // Explicit owner targets use the same normalized numeric/identity operation.
         // Borrow and other ownership adaptations retain their separate rules.
@@ -675,6 +700,11 @@ public sealed partial class Binding
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, BoundType.Never);
+        }
+
+        if (TryAdaptationSelector(target, out _) || TryAdaptationSelector(source, out _))
+        {
+            return this.BindCaseAdaptation(conversion, scope, source, target);
         }
 
         if (ObjectTypes.HandleMode(target) is not null)

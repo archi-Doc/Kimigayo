@@ -101,6 +101,10 @@ This command reports input sizes, retained record counts, iteration counts and t
 `StoredObjectViewTest`; fixed conditions and the command are in [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md).
 Allocation assertions remain in the normal Unit/Session suite; timing samples remain opt-in.
 
+`Benchmark --adaptation-plans` measures Binding, ownership and emission for 1, 8 and 32 generic Functions using
+owner/obj/rc/arc adaptation. The single-Function input is shared with `GenericAdaptationTest` through
+`AdaptationWorkloads`; fixed conditions and the command are in [Adaptations.md](../../src/Benchmark/Adaptations.md).
+
 `Benchmark --view-plans` measures Binding, ownership and emission for the exclusive-view and Slice-copy inputs
 shared with `UniqSliceTest` and `SliceToArrayTest`; fixed conditions and native measurement commands are in
 [Views.md](../../src/Benchmark/Views.md).

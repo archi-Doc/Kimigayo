@@ -140,7 +140,7 @@ public class PairCaseTypeTest
         Assert.True(binders[1].Resolved);
         Assert.Equal("V", binders[2].Target.Name);
         Assert.Equal(SemanticsMask.Owner | SemanticsMask.Rc, binders[2].Admitted);
-        Assert.False(binders[2].Resolved);
+        Assert.True(binders[2].Resolved);
 
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
         c.Binding.PairBinders(closure, binders);

@@ -193,6 +193,43 @@ public sealed partial class Binding
         return this.FailExplained(ref this.callableConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
     }
 
+    // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused.
+    private BoundType? FailPendingConstraint(InvocationKoto call, ReferenceConstraintFailure fact)
+    {
+        this.MarkWaitingHeaders(call);
+        return this.FailExplained(ref this.referenceConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+    }
+
+    private ReferenceConstraintFailure? PendingConstraintFailure(FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType)
+    {
+        for (var i = 0; i < function.TypeConstraints.Count; i++)
+        {
+            if (function.TypeConstraints[i] is not IsKoto { BoundConstraint: { HasUnresolved: false } bound } clause)
+            {
+                continue;
+            }
+
+            var substituted = this.SubstituteCandidateConstraint(bound, function, slots, lengths, scope, self, declaringType);
+            if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == ConstraintProof.Unknown)
+            {
+                return new(clause, substituted, ConstraintProof.Unknown, function.BoundSymbol);
+            }
+        }
+
+        return null;
+    }
+
+    private BoundConstraint SubstituteCandidateConstraint(BoundConstraint constraint, FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType)
+    {
+        var substituted = this.SubstituteConstraint(constraint, CallSlotOwner(function), slots.AsSpan(0, CallSlotCount(function)), lengths.AsSpan(0, CallOwnSlots(function).Count), incomplete: true);
+        if (!function.IsConstructor && declaringType?.Symbol?.Declaration is { } owner)
+        {
+            substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
+        }
+
+        return this.ContractConstraint(substituted, scope, self);
+    }
+
     // Omitted header Types need this selection's expectation. Keep that dependency explicit without checking
     // the body or turning an independent written-Type error into a consequence of the selection.
     private void MarkWaitingHeaders(InvocationKoto call)

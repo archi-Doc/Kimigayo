@@ -112,9 +112,9 @@ public sealed partial class Binding
         };
     }
 
-    private bool StopInheritedLookup(BindingScope container, BindingScope scope, Koto use, string name, bool type, bool core, int arity)
+    private bool StopInheritedLookup(BindingScope container, BindingScope scope, Koto use, string name, bool type, bool core, int arity, TypeLookupRole role = TypeLookupRole.Any)
     {
-        if (container.Owner is not StructKoto structure || structure.Bases.Count == 0)
+        if (role == TypeLookupRole.Semantics || container.Owner is not StructKoto structure || structure.Bases.Count == 0)
         {
             return false;
         }
@@ -127,7 +127,7 @@ public sealed partial class Binding
             }
         }
 
-        if (this.InheritedDeclaration(structure, name, scope, type, core, out var baseClause) is not { } member)
+        if (this.InheritedDeclaration(structure, name, scope, type, core, out var baseClause, role) is not { } member)
         {
             return false;
         }
@@ -136,7 +136,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private BindingSymbol? InheritedDeclaration(StructKoto structure, string name, BindingScope scope, bool type, bool core, out Koto? baseClause)
+    private BindingSymbol? InheritedDeclaration(StructKoto structure, string name, BindingScope scope, bool type, bool core, out Koto? baseClause, TypeLookupRole role = TypeLookupRole.Any)
     {
         baseClause = null;
         if (!this.qualificationVisiting.Add(structure.BoundSymbol!))
@@ -158,14 +158,14 @@ public sealed partial class Binding
 
                 for (var candidate = (type ? members.Types : members.Values).GetValueOrDefault(name); candidate is not null; candidate = candidate.Next)
                 {
-                    if (!IsGenericParameter(candidate) && (!core || candidate.Kind != BindingSymbolKind.Container) && this.Accessible(candidate, scope, declarationOnly: true))
+                    if (!IsGenericParameter(candidate) && (!core || candidate.Kind != BindingSymbolKind.Container) && HasTypeLookupRole(candidate, role) && this.Accessible(candidate, scope, declarationOnly: true))
                     {
                         baseClause = syntax;
                         return candidate;
                     }
                 }
 
-                if (this.InheritedDeclaration(baseDeclaration, name, scope, type, core, out _) is { } inherited)
+                if (this.InheritedDeclaration(baseDeclaration, name, scope, type, core, out _, role) is { } inherited)
                 {
                     baseClause = syntax;
                     return inherited;

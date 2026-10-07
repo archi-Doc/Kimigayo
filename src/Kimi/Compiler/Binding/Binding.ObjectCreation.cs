@@ -11,33 +11,27 @@ public sealed partial class Binding
     private BoundType? BindObjectAdaptation(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target)
     {
         Complete(conversion.Right, target);
-        if (ObjectTypes.HandleMode(source) is not null || ObjectTypes.IsBorrow(source))
+        var operation = ExplicitAdaptationPlan.Select(source, target);
+        if (operation == ConversionBinding.Identity)
         {
-            return ReferenceEquals(source, target) ? this.CompleteIdentity(conversion, target) : this.BindObjectUpcast(conversion, scope, source, target);
+            return this.CompleteIdentity(conversion, target);
         }
 
-        if (source.Semantics != SemanticsKind.Owner || !ReferenceEquals(source, target.Components[0]))
+        if (operation == ConversionBinding.ObjectUpcast)
         {
-            return this.FailMismatch(conversion, conversion, source, target);
+            return this.BindObjectUpcast(conversion, scope, source, target);
         }
 
-        if (source.Symbol?.ObjectPayloadOptOut is { } renounced)
+        if (!this.CheckAdaptationCase(conversion, scope, source, target, operation, []))
         {
-            return this.FailObjectPayload(conversion, renounced);
+            return Complete(conversion, null);
         }
 
-        var proof = this.RequestCapability(source, this.Library.ObjectPayload, scope);
-        if (proof != ConstraintProof.Proven)
-        {
-            this.RequireConstraint(conversion, proof, this.capabilityMode);
-            return null;
-        }
+        return this.BindObjectCreationCall(conversion, scope, source, target);
+    }
 
-        if (IsBarePlace(conversion.Left) && this.ProveCopy(source, conversion) != ConstraintProof.Proven)
-        {
-            return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
-        }
-
+    private BoundType? BindObjectCreationCall(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, bool selectedCase = false)
+    {
         var id = target.Semantics switch
         {
             SemanticsKind.Obj => KimiDeclarationId.MakeObj,
@@ -64,7 +58,14 @@ public sealed partial class Binding
         ResetSynthetic(generic);
         ResetSynthetic(call);
         this.nodes.Add(call);
-        if (this.BindCall(call, scope, null) is null)
+        if (selectedCase)
+        {
+            // Every row already proved the exact payload and acquisition. The written operand remains symbolic;
+            // checking it again against one representative row would apply that row to the other cases.
+            call.BoundSymbol = this.ResolveObjectCreation(conversion, source, target, call.CallStorage ??= new()).Target;
+            Complete(call, target);
+        }
+        else if (this.BindCall(call, scope, null) is null)
         {
             return Complete(conversion, null);
         }

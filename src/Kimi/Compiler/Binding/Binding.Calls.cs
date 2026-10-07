@@ -71,6 +71,8 @@ public sealed class BoundCall
     // Selected from source syntax, never inferred again after generic substitution.
     internal bool TupleOperator { get; set; }
 
+    internal ConversionKoto? AdaptationSource { get; set; }
+
     // The Contract reference whose requirement the call selected: a bound reference (Indexable<Name>) when the Contract
     // takes Type arguments, else the Contract itself. Every instance dispatches through the conformance to that reference
     // (SPEC 8.4.9). Null for calls of other functions.
@@ -100,8 +102,34 @@ public sealed class BoundCall
         throw new InvalidOperationException("A receiver projection requires an acquired receiver argument.");
     }
 
+    // Pooled body-local calls release semantic/source references while retaining their reusable array shapes.
+    internal void Clear()
+    {
+        this.AdaptationSource = null;
+        this.Target = null!;
+        this.ReturnType = null!;
+        this.ResultMode = default;
+        this.Receiver = null;
+        this.ConformingType = null;
+        this.DeclaringType = null;
+        this.BasePath = null;
+        this.ReceiverOperation = default;
+        this.TupleOperator = false;
+        this.RequirementContract = null;
+        this.VirtualDispatch = null;
+        Array.Clear(this.typeArguments);
+        Array.Clear(this.lengthArguments);
+        Array.Clear(this.origins, 0, this.originCount);
+        Array.Clear(this.inputOrigins, 0, this.inputOriginCount);
+        Array.Clear(this.argumentOperations);
+        Array.Clear(this.defaultArguments);
+        this.originCount = 0;
+        this.inputOriginCount = 0;
+    }
+
     internal void Set(BindingSymbol target, BoundType result, Koto? receiver, ReadOnlySpan<int> mapping, ReadOnlySpan<BoundType?> typeArguments, BoundType? conformingType = null, BoundType? declaringType = null, ReadOnlySpan<BoundOrigin> origins = default, ReadOnlySpan<BoundOrigin> inputOrigins = default, ReadOnlySpan<BoundArgumentOperation> operations = default, BoundArgumentOperation receiverOperation = default, BoundMemberPath? basePath = null, ReadOnlySpan<BoundDefaultArgument> defaults = default, ReadOnlySpan<BoundLength?> lengthArguments = default)
     {
+        this.AdaptationSource = null;
         this.Target = target;
         this.ReturnType = result;
         this.ResultMode = target.Declaration is FunctionKoto function ? Binding.ResultModeOf(function.ReturnType) : FunctionResultMode.Value;
@@ -201,35 +229,18 @@ public sealed partial class Binding
     }
 
     // The first failed node inside a parameter Type whose outer layer resolved.
-    private static Koto? FailedSignaturePart(FunctionKoto function)
+    private Koto? FailedSignaturePart(FunctionKoto function)
     {
+        var visitor = this.failedSignaturePartVisitor ??= new();
         for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (FailedPart(function.Parameters[i].Type) is { } part)
+            if (visitor.Find(function.Parameters[i].Type, invalidState: true) is { } part)
             {
                 return part;
             }
         }
 
         return null;
-
-        static Koto? FailedPart(Koto node)
-        {
-            if (node.BindingState == BindingState.Invalid)
-            {
-                return node;
-            }
-
-            foreach (var child in node.ChildNodes)
-            {
-                if (FailedPart(child) is { } found)
-                {
-                    return found;
-                }
-            }
-
-            return null;
-        }
     }
 
     private BindingSymbol? Member(MemberAccessKoto member, BindingScope scope, BoundType? expected = null)
@@ -692,6 +703,7 @@ public sealed partial class Binding
             var pending = false;
             var pendingCount = 0;
             CallableConstraintFact? callableFailure = null;
+            ReferenceConstraintFailure? constraintFailure = null;
             var error = false;
             Koto? incompleteSignature = null;
             Koto? failedPendingSignature = null;
@@ -746,12 +758,13 @@ public sealed partial class Binding
                 }
 
                 pending |= state == CandidateApplicability.Pending;
-                failedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? FailedSignaturePart(function) : null;
+                failedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? this.FailedSignaturePart(function) : null;
                 if (state == CandidateApplicability.Pending)
                 {
                     // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
                     pendingCount++;
                     callableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, scratch, lengthArguments, mapping, scope, self, declaringType) : null;
+                    constraintFailure ??= function.TypeConstraints.Count != 0 ? this.PendingConstraintFailure(function, scratch, lengthArguments, scope, self, declaringType) : null;
                 }
 
                 error |= state == CandidateApplicability.Error;
@@ -791,6 +804,7 @@ public sealed partial class Binding
                 return failedPendingSignature is { } failedSignature
                     ? this.CompleteDependent(call, failedSignature)
                     : pendingCount == 1 && callableFailure is { } callable ? this.FailCallableSelection(call, callable)
+                    : pendingCount == 1 && constraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
             }
 
@@ -2242,6 +2256,15 @@ public sealed partial class Binding
             // An associated Type is not an injective constructor: infer its receiver from
             // other inputs, then check the substituted complete parameter in candidate fitting.
             return true;
+        }
+
+        if (pattern.Kind == BoundTypeKind.TargetProjection && pattern.Symbol is { } projected &&
+            ContainerSlot(function, projected) is >= 0 and var projectionSlot)
+        {
+            // The target alone does not determine a pair's Semantics. Once another input, an explicit argument or the
+            // result fixes the whole Type, match its direct target; final candidate fitting checks a still-open projection.
+            return projectionSlot < arguments.Length && (arguments[projectionSlot] is not { } whole ||
+                this.Infer(this.DirectTarget(whole), actual, function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, invariant));
         }
 
         if (pattern.Kind == BoundTypeKind.SemanticsApplication && pattern.Symbol is { } selector &&

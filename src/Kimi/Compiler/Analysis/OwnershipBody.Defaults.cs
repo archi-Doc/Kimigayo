@@ -282,7 +282,9 @@ public sealed partial class OwnershipBody
         => this.Concrete(this.SubstituteDefaultType(type, this.DefaultContextAt(operation)));
 
     internal BoundCall? CallAt(int operation)
-        => this.Values[operation].Kind == OwnershipValueKind.DefaultCall ? null : this.SubstituteDefaultCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.DefaultContextAt(operation));
+        => this.Values[operation].Kind == OwnershipValueKind.DefaultCall ? null
+        : this.resolvedCalls is not null && this.resolvedCalls.TryGetValue(operation, out var resolved) ? resolved
+        : this.SubstituteDefaultCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.DefaultContextAt(operation));
 
     internal BoundCall? SubstituteDefaultCall(BoundCall? call, int context)
     {

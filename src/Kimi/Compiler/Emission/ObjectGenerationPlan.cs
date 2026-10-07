@@ -35,20 +35,9 @@ internal sealed class ObjectGenerationPlan
 
     internal bool PrepareDefault(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, GenericStoragePlan.CallEntry entry, out string? failure)
     {
-        failure = null;
-        var body = entry.Template.Body;
-        for (var i = 0; i < body.Operations.Count; i++)
+        if (!this.PrepareBodyCalls(compilation, module, layouts, entry.Template.Body, out failure))
         {
-            if (body.Operations[i].Source is IsKoto { BoundRuntimeTest: { } test })
-            {
-                this.RegisterType(compilation, body.ConcreteAt(test.TargetType, i)!);
-                module.NeedsObjectRuntime = true;
-            }
-
-            if (body.CallAt(i)?.Target.CompilerFunction == CompilerFunctionKind.Clone)
-            {
-                module.NeedsObjectRuntime = true;
-            }
+            return false;
         }
 
         for (var i = 0; entry.ConcreteCalls is { } calls && i < calls.Length; i++)
@@ -86,35 +75,49 @@ internal sealed class ObjectGenerationPlan
         for (var b = 0; b < compilation.Ownership.Bodies.Count; b++)
         {
             var body = compilation.Ownership.Bodies[b];
-            if (compilation.Binding.IsInapplicableVirtualBody(body.Function))
+            if (GenericStoragePlan.IsGeneric(body.Function) || compilation.Binding.IsInapplicableVirtualBody(body.Function))
             {
                 continue;
             }
 
-            for (var i = 0; i < body.Operations.Count; i++)
+            if (!this.PrepareBodyCalls(compilation, module, layouts, body, out failure))
             {
-                var operation = body.Operations[i];
-                if (operation.Source is IsKoto { BoundRuntimeTest: { } test })
-                {
-                    this.RegisterType(compilation, test.TargetType);
-                    module.NeedsObjectRuntime = true;
-                }
-
-                if (operation.Kind != OwnershipOperationKind.Call || body.CallAt(i) is not { } call ||
-                    call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone))
-                {
-                    continue;
-                }
-
-                module.NeedsObjectRuntime = true;
-                if (!GenericStoragePlan.IsGeneric(body.Function) && !this.AddCall(compilation, module, layouts, call, out failure))
-                {
-                    return false;
-                }
+                return false;
             }
         }
 
         return this.PrepareInstances(compilation, module, layouts, generics, out failure);
+    }
+
+    // A generic adaptation may create only in some cases and select a different factory in each. Read the verified
+    // concrete body's chosen calls, not the first definition case. Ordinary forwarded calls keep their existing map.
+    internal bool PrepareBodyCalls(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, out string? failure)
+    {
+        failure = null;
+        var declaredCalls = !GenericStoragePlan.IsGeneric(body.Function);
+        for (var i = 0; i < body.Operations.Count; i++)
+        {
+            var operation = body.Operations[i];
+            if (operation.Source is IsKoto { BoundRuntimeTest: { } test })
+            {
+                this.RegisterType(compilation, body.ConcreteAt(test.TargetType, i)!);
+                module.NeedsObjectRuntime = true;
+            }
+
+            if (operation.Kind != OwnershipOperationKind.Call || body.CallAt(i) is not { } call ||
+                call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone))
+            {
+                continue;
+            }
+
+            module.NeedsObjectRuntime = true;
+            if ((declaredCalls || call.AdaptationSource is not null) && !this.AddCall(compilation, module, layouts, call, out failure))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     // Append each concrete entry once, including entries discovered by destruction. Existing factory and Type IDs never

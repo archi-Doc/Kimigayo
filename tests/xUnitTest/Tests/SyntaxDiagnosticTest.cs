@@ -91,7 +91,7 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Empty(DiagnosticRequirements.Anomalies);
     }
 
-    // SPEC 23.3.6.8 and 23.4.7: both adapters show the form's label at the underline and the form's advice.
+    // SPEC 23.3.6.8 and 23.4.7: both adapters show the form's label at the underline and its advice when present.
     [Theory]
     [InlineData("missing-body")]
     [InlineData("trailing-token")]
@@ -99,6 +99,8 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
     [InlineData("require-and-symbol")]
     [InlineData("or-symbol")]
     [InlineData("while-stray-token-body")]
+    [InlineData("virtual-modifier")]
+    [InlineData("override-modifier")]
     public void CliAndLspShowTheFormsLabelAndAdvice(string name)
     {
         var syntaxCase = DiagnosticCorpus.Syntax(name);
@@ -112,7 +114,11 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         Assert.Contains("^ " + error.Label, console.Text, StringComparison.Ordinal);
-        Assert.Contains(error.Advice!, console.Text, StringComparison.Ordinal);
+        if (error.Advice is { } advice)
+        {
+            Assert.Contains(advice, console.Text, StringComparison.Ordinal);
+        }
+
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
@@ -120,7 +126,10 @@ public sealed class SyntaxDiagnosticTest(ITestOutputHelper output)
             Assert.Equal(error.Display!.Range, sent.Range);
             Assert.Equal(error.Code, sent.Code);
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
-            Assert.Contains(error.Advice!, sent.Message, StringComparison.Ordinal);
+            if (error.Advice is { } sentAdvice)
+            {
+                Assert.Contains(sentAdvice, sent.Message, StringComparison.Ordinal);
+            }
         }
     }
 

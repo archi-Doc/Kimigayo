@@ -26,7 +26,7 @@ public class SharedObjectCleanupTest
                 require view.value == 7 and view is Leaf else => $abort("identity")
             let copy = label result: do
                 let owner = Kimi.Intrinsics.makeRc(Leaf.init())
-                let widened = owner@rc/Base
+                let widened = owner@move@rc/Base
                 inspect(widened@objref)
                 exit to result Kimi.Intrinsics.clone(widened@ref)
             inspect(copy@objref)

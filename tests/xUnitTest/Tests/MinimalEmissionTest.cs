@@ -145,7 +145,7 @@ public class MinimalEmissionTest
             diagnostics.Add(new SourceSpan(0, 1), DiagnosticCode.TypeMismatch_Kd, sourceDocument: new SourceDocument("Earlier.kimi", "x"));
         }
 
-        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "virtual func unavailable() => ()"));
+        c.Kotonoha.CreateCodeContext(diagnostics).Parse(c.Kotonoha.RootKoto, new SourceDocument("Added.kimi", "virtual struct Invalid"));
         Assert.True(c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);

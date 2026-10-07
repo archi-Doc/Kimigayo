@@ -65,6 +65,7 @@ public enum BoundTypeKind : byte
     Constructed,
     TargetProjection,
     SemanticsApplication,
+    SemanticsAdaptation,
     AssociatedProjection,
     Slice,
     Range,
@@ -104,10 +105,9 @@ internal enum CaptureAcquisition : byte
 /// <param name="Admitted">The admitted Semantics of the binder.</param>
 internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask Admitted)
 {
-    /// <summary>The Semantics with an operation per case: pair layers exist only for sets within <c>value or valueborrow</c>
-    /// (SPEC 13.5.5.1), and conditional plans only for Copy cases in owner, ref, objref or raw with exclusive cases in uniq or
-    /// objuniq (SPEC 8.9); a binder admitting obj, rc or arc admits no such operation and stays symbolic, as a Type parameter does.</summary>
-    internal const SemanticsMask Resolvable = SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.ObjectBorrow | SemanticsMask.Raw;
+    /// <summary>The finite Semantics cases verified by the shared ownership engine, including object creation and acquisition
+    /// (SPEC 8.9, 8.10, 13.5.8). Case substitution does not make an otherwise illegal pair-layer operation legal.</summary>
+    internal const SemanticsMask Resolvable = SemanticsMask.All;
 
     /// <summary>Gets a value indicating whether the binder is analyzed once per admitted Semantics.</summary>
     internal bool Resolved => this.Admitted != SemanticsMask.None && (this.Admitted & ~Resolvable) == 0;
@@ -131,6 +131,7 @@ internal enum BindingFailure : byte
     NoApplicableCandidate,
     Cycle,
     Unsupported,
+    CaseLimit,
     InvalidAssignment,
     InvalidLiteral,
     Access,
@@ -363,8 +364,8 @@ public sealed record BoundType : ControlFlowType
         // Components are complete before interning, so these summaries are exact and never revisited.
         var found = origin is not null || originArguments is { Length: > 0 };
         var slot = found || kind == BoundTypeKind.Parameter;
-        var parameter = kind == BoundTypeKind.Parameter;
-        var pair = (kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget) || kind == BoundTypeKind.SemanticsApplication;
+        var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
+        var pair = (kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget) || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;

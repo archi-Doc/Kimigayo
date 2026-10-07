@@ -472,6 +472,11 @@ public sealed partial class Binding
         {
             return true;
         }
+        else if (this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven)
+        {
+            // SPEC 8.4.7.2: ObjectPayload proves a complete owner value Type, including a pair's target.
+            return true;
+        }
         else if (type.Kind == BoundTypeKind.TargetProjection && type.Symbol?.WholeType is { } whole && this.HasSemanticsRole(whole, SemanticsMask.Owner | SemanticsMask.ValueBorrow | SemanticsMask.Raw, scope))
         {
             return true;

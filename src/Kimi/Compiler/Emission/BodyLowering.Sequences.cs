@@ -26,24 +26,24 @@ internal sealed partial class BodyLowering
         var receiver = body.Places[plan.Receiver].Type;
         var syntaxReceiver = operation.Source switch
         {
-            FromEndIndexKoto { Parent: BinaryKoto selection } => ElementAccess.ValueSource(selection.Left),
-            BinaryKoto binary => ElementAccess.ValueSource(binary.Left),
-            ForKoto loop => ElementAccess.ValueSource(loop.Iterable),
+            FromEndIndexKoto { Parent: BinaryKoto selection } => ElementAccess.ValueSource(selection.Left, body, id),
+            BinaryKoto binary => ElementAccess.ValueSource(binary.Left, body, id),
+            ForKoto loop => ElementAccess.ValueSource(loop.Iterable, body, id),
             _ => null,
         };
         var receiverPlace = body.Places[plan.Receiver];
         if (syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } followed &&
-            !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source), syntaxReceiver))
+            !ReferenceEquals(ElementAccess.ValueSource(receiverPlace.Source, body, id), syntaxReceiver))
         {
             // SPEC 13.5.5: a followed collection is reached through its reference, or is the operand Place for an owner layer.
-            syntaxReceiver = ElementAccess.ValueSource(followed.Left);
+            syntaxReceiver = ElementAccess.ValueSource(followed.Left, body, id);
         }
 
-        var acquiredSource = syntaxReceiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow &&
-            (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, SignatureType(this, borrow.BoundType))
-            ? ElementAccess.ValueSource(borrow.Left) : syntaxReceiver;
+        var acquiredSource = syntaxReceiver is ConversionKoto borrow && ElementAccess.ConversionKind(borrow, body, id) == ConversionBinding.Borrow &&
+            (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, body.ConcreteAt(borrow.BoundType, id))
+            ? ElementAccess.ValueSource(borrow.Left, body, id) : syntaxReceiver;
         // A shared iterable written as an explicit borrow (dictionary@ref) is reborrowed from the evaluated borrow itself.
-        var receiverSource = ElementAccess.ValueSource(receiverPlace.Source);
+        var receiverSource = ElementAccess.ValueSource(receiverPlace.Source, body, id);
         if (syntaxReceiver is null || plan.Projection < -1 ||
             (plan.Projection < 0 && !ReferenceEquals(receiverSource, acquiredSource) && !ReferenceEquals(receiverSource, syntaxReceiver) &&
                 !(syntaxReceiver.BoundSymbol is { } symbol && body.TrySymbolPlaceAt(symbol, id, out var local) && local == plan.Receiver)))
@@ -221,7 +221,7 @@ internal sealed partial class BodyLowering
 
             if (resolvedKey is not null)
             {
-                if (plan.End != -1 || (uint)plan.Index >= (uint)id || !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(resolvedKey)) ||
+                if (plan.End != -1 || (uint)plan.Index >= (uint)id || !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(resolvedKey, body, plan.Index)) ||
                     !ReferenceTypes.IsResolvedRange(ValueType(body, plan.Index)) || (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
                     FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } resolvedElement ||
                     !this.TryGetLocation(operation.Source, directory, constants, out var resolvedLocation))
@@ -253,7 +253,7 @@ internal sealed partial class BodyLowering
             // An isize boundary is used as evaluated, so its producer is the boundary's value source (parentheses, labels and
             // identity conversions removed); a boundary of another integer Type is converted at the written syntax.
             bool Endpoint(Koto? syntax, int producer) => syntax is null ? producer == -1 :
-                (uint)producer < (uint)id && (ReferenceEquals(body.Operations[producer].Source, syntax) || ReferenceEquals(body.Operations[producer].Source, ElementAccess.ValueSource(syntax))) &&
+                (uint)producer < (uint)id && (ReferenceEquals(body.Operations[producer].Source, syntax) || ReferenceEquals(body.Operations[producer].Source, ElementAccess.ValueSource(syntax, body, producer))) &&
                 ReferenceEquals(ValueType(body, producer), BoundType.ISize) && (!body.IsReachable(id) || this.Dominates(producer, id));
         }
 

@@ -30,9 +30,12 @@ internal sealed partial class BodyLowering
                 // reference layers (SPEC 13.5.2) supplies the read Type.
                 var left = OperandType(source);
                 var context = (uint)identity.Place < (uint)body.Places.Count ? body.Places[identity.Place].DefaultContext : -1;
-                if ((uint)identity.Place >= (uint)body.Places.Count || source.ConversionBinding is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
+                var selected = source.Adaptation is { } plan
+                    ? ExplicitAdaptationPlan.Select(body.Concrete(body.SubstituteDefaultType(plan.Source, context))!, body.Concrete(body.SubstituteDefaultType(plan.Target, context))!, plan.IsShorthand)
+                    : source.ConversionBinding;
+                if ((uint)identity.Place >= (uint)body.Places.Count || selected is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
                     body.Concrete(body.SubstituteDefaultType(source.BoundType, context)) is not { } type ||
-                    (source.ConversionBinding == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type) && !Binding.IsCopyOperation(source)) ||
+                    (selected == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type) && !Binding.IsCopyOperation(source)) ||
                     !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(left, context))) || !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(source.Right.BoundType, context))) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {
@@ -135,9 +138,9 @@ internal sealed partial class BodyLowering
                     : value.Constant == OwnershipValue.RawPlaceBorrow
                     ? !ReferenceTypes.IsPointer(ValueType(body, Input(body, id, 0))) || !ReferenceTypes.IsReference(ValueType(body, id))
                     : operation.Source is not Parsing.ConversionKoto conversion ||
-                        !ReferenceEquals(ValueType(body, id), SignatureType(lowering, conversion.BoundType)) ||
-                        !ReferenceEquals(ValueType(body, Input(body, id, 0)), SignatureType(lowering, OperandType(conversion))) ||
-                        !ValidScalarConversion(conversion.ConversionBinding, ValueType(body, Input(body, id, 0)), ValueType(body, id)))))
+                        !ReferenceEquals(ValueType(body, id), body.ConcreteAt(conversion.BoundType, id)) ||
+                        !ReferenceEquals(ValueType(body, Input(body, id, 0)), OperandType(body, conversion, id)) ||
+                        !ValidScalarConversion(ElementAccess.ConversionKind(conversion, body, id), ValueType(body, Input(body, id, 0)), ValueType(body, id)))))
             {
                 return false;
             }
@@ -285,6 +288,16 @@ internal sealed partial class BodyLowering
     private static BoundType? OperandType(Parsing.ConversionKoto conversion)
         => conversion.ConversionBinding == ConversionBinding.Address ? conversion.Right.BoundType :
             conversion.CodeContext.Compilation.Binding.TryGetAdaptation(conversion.Left, out var read) && read.Kind == ExpectedAdaptationKind.ReferentRead ? read.Type : conversion.Left.BoundType;
+
+    private static BoundType? OperandType(OwnershipBody body, Parsing.ConversionKoto conversion, int operation)
+    {
+        if (conversion.Adaptation is { } plan && ElementAccess.ConversionKind(conversion, body, operation) == ConversionBinding.Address)
+        {
+            return body.ConcreteAt(plan.AddressBorrow, operation);
+        }
+
+        return body.ConcreteAt(OperandType(conversion), operation);
+    }
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :

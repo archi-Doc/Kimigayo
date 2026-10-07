@@ -2,14 +2,14 @@
 
 namespace Kimi.Compiler;
 
-/// <summary>SPEC 8.4.3: a generic parameter, an associated or target projection, or a Semantics application stands for any complete Type of an instance.</summary>
+/// <summary>A generic parameter, projection, Semantics application or adaptation result stands for a complete Type of an instance.</summary>
 internal static class AbstractTypes
 {
     /// <summary>Gets a value indicating whether a Type stands for any complete Type of an instance.</summary>
     /// <param name="type">The Type.</param>
-    /// <returns><see langword="true"/> for a parameter, projection or Semantics application.</returns>
+    /// <returns><see langword="true"/> for a parameter, projection or dependent Semantics term.</returns>
     internal static bool IsAbstract(BoundType type)
-        => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication;
+        => type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
 
     /// <summary>Gets a value indicating whether a Type is abstract or has an abstract part, whose Loans its Origins do not show.</summary>
     /// <param name="type">The Type.</param>

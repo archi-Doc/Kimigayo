@@ -259,7 +259,7 @@ public sealed partial class Binding
     private bool IsFreeTerm(CollisionTerm value)
     {
         value = this.ResolveSubstitution(value);
-        if (value.Type.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        if (value.Type.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation)
         {
             return false;
         }
@@ -299,8 +299,8 @@ public sealed partial class Binding
             return true;
         }
 
-        if (a.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication ||
-            b.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+        if (a.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
+            b.Kind is BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation)
         {
             return true; // Residual terms are not injective constructors.
         }

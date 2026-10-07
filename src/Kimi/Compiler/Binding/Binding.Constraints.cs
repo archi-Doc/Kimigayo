@@ -49,7 +49,7 @@ public sealed partial class Binding
     // Self is an obligation of every conformer rather than a closed proposition.
     private static bool DependentType(BoundType type, bool unresolvedProjection = true, bool contractSelf = false)
     {
-        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
+        if ((type.Kind == BoundTypeKind.Parameter && (contractSelf || !IsContractSelf(type))) || type.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation || (unresolvedProjection && type.Kind == BoundTypeKind.AssociatedProjection) || type.LengthExpression is not null || (type.Origin is not null && type.Origin.Kind != OriginKind.Static))
         {
             return true;
         }
@@ -250,10 +250,10 @@ public sealed partial class Binding
         if (proposition.Kind == ConstraintKind.Semantics)
         {
             var subject = proposition.Subject!;
-            if (subject.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication)
+            if (AbstractTypes.IsAbstract(subject))
             {
                 // SPEC 8.7: a requirement on a Semantics binding is decided by containment of its admitted set.
-                var admitted = this.AdmittedSemantics(subject, scope);
+                var admitted = this.ResultSemantics(subject, scope);
                 return admitted == SemanticsMask.None ? ConstraintProof.Error :
                     (admitted & ~proposition.Mask) == 0 ? ConstraintProof.Proven :
                     (admitted & proposition.Mask) == 0 ? ConstraintProof.Refuted : ConstraintProof.Unknown;
@@ -648,6 +648,21 @@ public sealed partial class Binding
             ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), false),
             _ => !ReferenceEquals(proposition, normalized) && this.JudgeConstraintAtom(proposition, scope) == ConstraintProof.Error ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),
         };
+        if (structural != ConstraintProof.Error && normalized.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+        {
+            var atom = normalized;
+            while (atom.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+            {
+                atom = atom.Left!;
+            }
+
+            if (atom.Kind == ConstraintKind.Semantics && SemanticsPremise(normalized, atom.Subject!))
+            {
+                // Universal case evidence must judge the whole set: neither disjunct alone need cover every case.
+                structural = this.JudgeConstraintAtom(this.InternConstraint(new(ConstraintKind.Semantics, atom.Subject, mask: SemanticsSet(normalized))), scope);
+            }
+        }
+
         positive |= structural == ConstraintProof.Proven;
         negative |= structural == ConstraintProof.Refuted;
         if (structural != ConstraintProof.Error && (positive || negative) && UnresolvedConstraintOperand(proposition))

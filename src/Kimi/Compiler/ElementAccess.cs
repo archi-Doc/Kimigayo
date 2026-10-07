@@ -98,7 +98,7 @@ internal static class ElementAccess
 
     // A transferred operand (x@move), an Identity acquisition or an adapted literal (5@isize) is the operand Place's own
     // value: its temporary keeps the Place's syntax, so each unwraps like a label.
-    internal static Koto ValueSource(Koto source)
+    internal static Koto ValueSource(Koto source, OwnershipBody? body = null, int operation = -1)
     {
         while (true)
         {
@@ -113,6 +113,15 @@ internal static class ElementAccess
                     break;
                 case ConversionKoto { CreationCall: { } creation }:
                     return creation;
+                case ConversionKoto { Adaptation: not null } conversion when body is not null:
+                    var selected = ConversionKind(conversion, body, operation);
+                    if (selected == ConversionBinding.Identity)
+                    {
+                        source = conversion.Left;
+                        break;
+                    }
+
+                    return selected == ConversionBinding.ObjectCreation ? conversion.CreationStorage! : conversion;
                 case InvocationKoto { Parent: IndexKoto index } call when ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call):
                     source = index; // Both acquisition modes denote the same published element Place.
                     break;
@@ -126,6 +135,13 @@ internal static class ElementAccess
             }
         }
     }
+
+    // A conversion's operation is fixed by the same complete Types that this ownership body analyzed. An operation's
+    // default-argument context precedes the body's Semantics-case or closed-call substitution.
+    internal static ConversionBinding ConversionKind(ConversionKoto conversion, OwnershipBody body, int operation)
+        => conversion.Adaptation is { } plan
+            ? ExplicitAdaptationPlan.Select(body.ConcreteAt(plan.Source, operation)!, body.ConcreteAt(plan.Target, operation)!, plan.IsShorthand)
+            : conversion.ConversionBinding;
 
     internal static IdentifierNameKoto? WritableRoot(Koto source)
     {

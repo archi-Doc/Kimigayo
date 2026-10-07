@@ -33,10 +33,10 @@ public sealed partial class OwnershipAnalysis
 
     // A stored handle is inspected through a protected slot, never acquired as another owner. The ordinary object view
     // and payload borrow keep that slot's Loan, so every containing storage shape has the same lifetime contract.
-    private int BorrowStoredObject(Koto source, BoundType type, int reservation)
+    private int BorrowStoredObject(Koto source, BoundType stored, BoundType type, int reservation)
     {
         var exclusive = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
-        var slotType = this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, source.BoundType!, type.Origin);
+        var slotType = this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, stored, type.Origin);
         var slot = this.BorrowIntermediate(source, slotType, reservation);
         if (slot < 0)
         {

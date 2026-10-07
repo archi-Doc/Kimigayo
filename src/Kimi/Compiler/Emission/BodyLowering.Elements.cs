@@ -33,7 +33,7 @@ internal sealed partial class BodyLowering
     }
 
     private static bool MatchesSelectionKeySource(OwnershipBody body, int value, IndexKoto source)
-        => ReferenceEquals(body.Operations[value].Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(source))) ||
+        => ReferenceEquals(body.Operations[value].Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(source), body, value)) ||
             (body.Values[value].Kind == OwnershipValueKind.Convert && body.Values[value].Constant == OwnershipValue.PositionConversion &&
                 ReferenceEquals(body.Operations[value].Source, source.Right));
 
@@ -125,7 +125,7 @@ internal sealed partial class BodyLowering
         return ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), place.Type) &&
             (operation.Source is IdentifierNameKoto { BoundSymbol.Kind: not BindingSymbolKind.PatternCandidate } identifier
                 ? identifier.BoundSymbol is { } symbol && ((body.TrySymbolPlaceAt(symbol, id, out var root) && root == place.Id) || this.IsPreparedArgument(body, id, symbol, place.Id))
-                : ReferenceEquals(ElementAccess.ValueSource(operation.Source), place.Source)) &&
+                : ReferenceEquals(ElementAccess.ValueSource(operation.Source, body, id), place.Source)) &&
             this.IsElementOwnerStorage(place) &&
             (!body.IsReachable(id) || (body.GetStorageState(id, place.Id) & PlaceState.MustInit) != 0);
     }
@@ -377,9 +377,9 @@ internal sealed partial class BodyLowering
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
             !ReferenceEquals(WrittenPlace(assignment.Left), target) || !ReferenceEquals(SignatureType(this, source.BoundType), BoundType.Unit) ||
-            (!ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right)) &&
-                !(KotoHelper.UnwrapParentheses(assignment.Right) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrowed &&
-                    ReferenceEquals(SignatureType(this, borrowed.BoundType), input.Type) && ReferenceEquals(input.Source, ElementAccess.ValueSource(borrowed.Left)))) ||
+            (!ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right, body, plan.Write)) &&
+                !(KotoHelper.UnwrapParentheses(assignment.Right) is ConversionKoto borrowed && ElementAccess.ConversionKind(borrowed, body, plan.Write) == ConversionBinding.Borrow &&
+                    ReferenceEquals(body.ConcreteAt(borrowed.BoundType, plan.Write), input.Type) && ReferenceEquals(input.Source, ElementAccess.ValueSource(borrowed.Left, body, plan.Write)))) ||
             (IsScalar(element) && value >= body.ComparisonLoans[plan.Loan].Read))
         {
             return Fail("Simple element assignment must secure its RHS before locating the destination.", out failure);
@@ -429,7 +429,7 @@ internal sealed partial class BodyLowering
 
         if (unary ? body.Operations[update.Right].Kind != OwnershipOperationKind.Produce ||
             !ReferenceEquals(body.Operations[update.Right].Source, source) || body.Values[update.Right].Kind != OwnershipValueKind.Constant || body.Values[update.Right].Constant != 1
-            : !ReferenceEquals(body.Operations[update.Right].Source, ElementAccess.ValueSource(((BinaryKoto)source).Right)))
+            : !ReferenceEquals(body.Operations[update.Right].Source, ElementAccess.ValueSource(((BinaryKoto)source).Right, body, update.Right)))
         {
             return Fail("Element update has no matching RHS or increment constant.", out failure);
         }

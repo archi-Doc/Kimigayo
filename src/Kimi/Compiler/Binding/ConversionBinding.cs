@@ -23,6 +23,7 @@ internal enum ConversionBinding : byte
     Borrow,
     ObjectUpcast,
     ObjectCreation,
+    CaseAdaptation,
 
     // SPEC 13.5.5.1: E@follow selects the Place a ref/uniq value points to, or a proven complete Sealed payload.
     Follow,

@@ -381,6 +381,8 @@ public sealed partial class OwnershipBody
     // Concrete, from building and solving to lowering, sees the substituted Type.
     internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
+        this.ResetResolvedCalls();
+        this.ResetCleanupEffects();
         this.Function = function;
         this.DefaultParameter = -1;
         this.Instance = instance;

@@ -26,7 +26,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication && type.Symbol is { } symbol &&
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && type.Symbol is { } symbol &&
             ContainerSlot(function, symbol) is var slot && slots.Contains(slot))
         {
             return true;

@@ -305,7 +305,7 @@ public sealed partial class Binding
             return a.Symbol is not null && ReferenceEquals(a.Symbol, b.Symbol);
         }
 
-        if (a.Kind == BoundTypeKind.SemanticsApplication ? !SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder) : a.Symbol != b.Symbol)
+        if (a.Kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ? !SignatureSlotEquals(a.Symbol, b.Symbol, aBinder, bBinder) : a.Symbol != b.Symbol)
         {
             return false;
         }
@@ -601,7 +601,11 @@ public sealed partial class Binding
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
-        if (issue.Failure == BindingFailure.QualificationRequired)
+        if (issue.Failure == BindingFailure.CaseLimit)
+        {
+            this.ReportCaseLimit(issue.Node, requirement);
+        }
+        else if (issue.Failure == BindingFailure.QualificationRequired)
         {
             this.ReportQualification(issue.Node, requirement);
         }
@@ -1038,6 +1042,7 @@ public sealed partial class Binding
                     BindingFailure.NotCallable => DiagnosticCode.NotCallable_Kd,
                     BindingFailure.NoApplicableCandidate => DiagnosticCode.NoApplicableOverload_Kd,
                     BindingFailure.Cycle => DiagnosticCode.CyclicBinding_Kd,
+                    BindingFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
                     BindingFailure.InvalidAssignment => DiagnosticCode.InvalidAssignment_Kd,
                     BindingFailure.InvalidLiteral => DiagnosticCode.InvalidNumericLiteral_Kd,
                     BindingFailure.Access => DiagnosticCode.InaccessibleBinding_Kd,

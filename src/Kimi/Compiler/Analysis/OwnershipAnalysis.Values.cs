@@ -231,8 +231,9 @@ public sealed partial class OwnershipAnalysis
         return output;
     }
 
-    private int ConversionValue(ConversionKoto conversion)
+    private int ConversionValue(ConversionKoto conversion, ConversionBinding? selected = null)
     {
+        var operation = selected ?? conversion.ConversionBinding;
         if (conversion.FoldedConstant is { } folded)
         {
             // SPEC 13.5.4.2: a direct literal converted at compile time is a constant of the target Type; the literal itself,
@@ -243,21 +244,21 @@ public sealed partial class OwnershipAnalysis
         }
 
         // SPEC 13.5.3: a transfer consumes its Place by Move even when the Type is Copy; a temporary passes its ownership.
-        var transfer = conversion.ConversionBinding == ConversionBinding.Transfer;
-        var identity = conversion.ConversionBinding == ConversionBinding.Identity || transfer;
+        var transfer = operation == ConversionBinding.Transfer;
+        var identity = operation == ConversionBinding.Identity || transfer;
         var input = this.Expression(conversion.Left, identity ? PlaceUseKind.Consume : PlaceUseKind.Read, transfer ? AcquisitionKind.Move : null);
-        if (conversion.ConversionBinding == ConversionBinding.None)
+        if (operation == ConversionBinding.None)
         {
             this.Unsupported(conversion);
             return -1;
         }
 
-        if (input < 0 || conversion.ConversionBinding == ConversionBinding.Abrupt)
+        if (input < 0 || operation == ConversionBinding.Abrupt)
         {
             return -1;
         }
 
-        if (conversion.ConversionBinding == ConversionBinding.Literal)
+        if (operation == ConversionBinding.Literal)
         {
             return input;
         }
@@ -271,7 +272,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var output = this.Temporary(conversion);
-        var marker = conversion.ConversionBinding switch
+        var marker = operation switch
         {
             ConversionBinding.Wrap => OwnershipValue.WrapConversion,
             ConversionBinding.Bits => OwnershipValue.BitConversion,

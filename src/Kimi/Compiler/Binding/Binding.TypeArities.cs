@@ -6,6 +6,18 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private enum TypeLookupRole : byte
+    {
+        Any,
+        Type,
+        Semantics,
+    }
+
+    private static bool HasTypeLookupRole(BindingSymbol candidate, TypeLookupRole role)
+        => role == TypeLookupRole.Any || (role == TypeLookupRole.Semantics
+            ? candidate.Kind == BindingSymbolKind.SemanticsParameter
+            : (candidate.Kind is BindingSymbolKind.Type or BindingSymbolKind.TypeParameter or BindingSymbolKind.SemanticsTarget or BindingSymbolKind.AssociatedType) && candidate.Declaration is not ContractKoto);
+
     private static bool DistinctTypeArities(DeclarationContainerKoto declaration, BindingSymbol head)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
@@ -48,11 +60,11 @@ public sealed partial class Binding
         internal BoundType? Environment;
     }
 
-    private void AddTypeCandidates(ref TypeCandidates result, BindingSymbol? head, BindingScope scope, bool core, int arity, BoundType? environment = null)
+    private void AddTypeCandidates(ref TypeCandidates result, BindingSymbol? head, BindingScope scope, bool core, int arity, BoundType? environment = null, TypeLookupRole role = TypeLookupRole.Any)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
-            if ((core && candidate.Kind == BindingSymbolKind.Container) || !this.Accessible(candidate, scope))
+            if ((core && candidate.Kind == BindingSymbolKind.Container) || !HasTypeLookupRole(candidate, role) || !this.Accessible(candidate, scope))
             {
                 continue;
             }

@@ -1198,7 +1198,7 @@ A by-value acquisition's effect follows its spelling:
 - a bare Place follows the bare acquisition of §3.5 in each admitted case: it Copies where Copy is proven and Reborrows in the same Semantics where its stored Type is proven to be a `uniq` or `objuniq` reference; a case with neither proof is an error at definition checking, never deferred checking or an inferred Move, and the Copy proof is part of a candidate's applicability (§10.1);
 - `@copy` Copies and requires the same evidence;
 - `@move` transfers;
-- `@s` follows the binding of `s`: it borrows for a borrow binding and, for an owning binding, performs an ordinary same-Type acquisition, which needs Copy evidence.
+- `@s`, `@s/T` and `@Type` use the resolved adaptation table (§13.5), including object creation (§13.5.8). Value acquisition follows the ordinary Copy, explicit Move and temporary-transfer rules; borrow cases use their specified Borrow or Reborrow.
 
 Unresolved Copy capability is never treated as proof of Non-Copy. Borrow effects may remain symbolic until instantiation only if every admitted case is legal, including subsequent uses, Loans and cleanup. This delays the determination of an effect, not the discovery of a required capability. Environment-changing directives still obey their earlier [selection deadlines](19-compile-time-directives.md#194-name-resolution-boundary).
 

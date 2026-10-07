@@ -70,22 +70,26 @@ public sealed partial class Binding
         return true;
     }
 
-    private BindingSymbol? Lookup(string name, BindingScope scope, Koto use, bool type, bool core = false, int arity = 0)
+    private BindingSymbol? Lookup(string name, BindingScope scope, Koto use, bool type, bool core = false, int arity = 0, TypeLookupRole role = TypeLookupRole.Any)
     {
         this.importCandidates?.GetValueOrDefault(use)?.Clear();
-        this.qualificationStops?.Remove((use, type));
+        if (role != TypeLookupRole.Semantics)
+        {
+            this.qualificationStops?.Remove((use, type));
+        }
+
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (type)
             {
                 var candidates = default(TypeCandidates);
-                this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, core, arity);
+                this.AddTypeCandidates(ref candidates, current.Types.GetValueOrDefault(name), scope, core, arity, role: role);
                 if (candidates.First is not null)
                 {
                     return this.SelectTypeCandidate(candidates, use);
                 }
 
-                if (this.StopInheritedLookup(current, scope, use, name, type, core, arity))
+                if (this.StopInheritedLookup(current, scope, use, name, type, core, arity, role))
                 {
                     return null;
                 }
@@ -149,7 +153,7 @@ public sealed partial class Binding
         if (type && use.CodeContext.SourceDocument is { } source &&
             this.namedAliases.TryGetValue((source, name), out var named) && named.BindingState == BindingState.Resolved)
         {
-            this.AddTypeCandidates(ref importedTypes, named.BoundSymbol, scope, core, arity, named.BoundType);
+            this.AddTypeCandidates(ref importedTypes, named.BoundSymbol, scope, core, arity, named.BoundType, role);
         }
 
         for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
@@ -163,7 +167,7 @@ public sealed partial class Binding
 
             if (type)
             {
-                this.AddTypeCandidates(ref importedTypes, candidate, scope, core, arity, alias.BoundType);
+                this.AddTypeCandidates(ref importedTypes, candidate, scope, core, arity, alias.BoundType, role);
                 continue;
             }
 
@@ -205,7 +209,7 @@ public sealed partial class Binding
             var target = this.DefaultAliasTarget(use, path);
             if (type)
             {
-                this.AddTypeCandidates(ref importedTypes, target?.Types.GetValueOrDefault(name), scope, core, arity);
+                this.AddTypeCandidates(ref importedTypes, target?.Types.GetValueOrDefault(name), scope, core, arity, role: role);
                 continue;
             }
 
@@ -227,6 +231,54 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    // SPEC 13.5.1: each role fixes its own first eligible lookup stage before the two roles are compared.
+    // Operand or target fitting never resolves an ambiguity or reopens either search.
+    private BindingSymbol? LookupAdaptationTarget(Koto syntax, BindingScope scope, out bool semantics)
+    {
+        semantics = false;
+        if (TypeSpelling(syntax) is not { } name)
+        {
+            return null;
+        }
+
+        if (name == "Self")
+        {
+            for (var current = scope; current is not null; current = current.Parent)
+            {
+                if (current.Owner is DeclarationContainerKoto and not GroupKoto)
+                {
+                    return current.Owner.BoundSymbol;
+                }
+            }
+
+            return null;
+        }
+
+        var target = this.Lookup(name, scope, syntax, true, true, role: TypeLookupRole.Type);
+        if (syntax.BindingState == BindingState.Invalid)
+        {
+            return null;
+        }
+
+        var parameter = this.Lookup(name, scope, syntax, true, true, role: TypeLookupRole.Semantics);
+        if (syntax.BindingState == BindingState.Invalid)
+        {
+            return null;
+        }
+
+        if (target is not null && parameter is not null)
+        {
+            this.Fail(syntax, BindingFailure.Ambiguous, true);
+            return null;
+        }
+
+        semantics = parameter is not null;
+        // Preserve the ordinary wrong-role or missing-name diagnostic when neither role applies.
+        var selected = parameter ?? target ?? this.Lookup(name, scope, syntax, true, true);
+        syntax.BoundSymbol = selected;
+        return selected;
     }
 
     private BindingScope? AliasTarget(AliasKoto alias)
@@ -333,6 +385,17 @@ public sealed partial class Binding
                         return current.Owner.BoundSymbol;
                     }
                 }
+            }
+
+            var target = syntax;
+            while (target.Parent is TypeSemanticsKoto { IsTransparentWrapper: true } wrapper)
+            {
+                target = wrapper;
+            }
+
+            if (target.Parent is ConversionKoto conversion && ReferenceEquals(conversion.Right, target))
+            {
+                return this.LookupAdaptationTarget(syntax, scope, out _);
             }
 
             return this.Lookup(name, scope, syntax, true, core, arity);
@@ -539,7 +602,7 @@ public sealed partial class Binding
                             inner = this.BindType(semantics.Type, scope, innerContext);
                         }
 
-                        var parameter = this.Lookup(semantics.SemanticsParameter, scope, syntax, true);
+                        var parameter = this.Lookup(semantics.SemanticsParameter, scope, syntax, true, role: TypeLookupRole.Semantics);
                         if (parameter?.Kind != BindingSymbolKind.SemanticsParameter)
                         {
                             return this.Fail(syntax, BindingFailure.InvalidTypeFormation);
@@ -763,6 +826,20 @@ public sealed partial class Binding
 
     private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, BoundCall? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
     {
+        if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
+        {
+            var same = true;
+            for (var i = 1; i < components.Length; i++)
+            {
+                same &= ReferenceEquals(components[0], components[i]);
+            }
+
+            if (same)
+            {
+                return components[0];
+            }
+        }
+
         // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
         // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
         if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&

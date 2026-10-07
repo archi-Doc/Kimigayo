@@ -701,6 +701,11 @@ public sealed class ControlFlowAnalysis
             case ConversionKoto { CreationCall: { } creation }:
                 flow = this.Visit(creation) with { Type = this.types.GetExpressionType(node) };
                 break;
+            case ConversionKoto { Adaptation.Creates: true, CreationStorage: { } conditionalCreation }:
+                // Every case evaluates the same input once. Register the retained invocation's completion so a closed
+                // creation case can lower it; an identity case uses only that input and never executes the invocation.
+                flow = this.Visit(conditionalCreation) with { Type = this.types.GetExpressionType(node) };
+                break;
             case BinaryKoto { Akind: KotoKind.Equals } assignment when node.CodeContext.Compilation.Binding.PropertyCall(assignment.Left, PropertyAccessorKind.Set) is { } setter:
                 flow = this.Visit(setter) with { Type = this.types.GetExpressionType(node) };
                 break;

@@ -57,7 +57,7 @@ public sealed partial class Binding
         if (kind == IntrinsicKind.PrimitiveInteger)
         {
             // SPEC 8.4.7.3: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            if (AbstractTypes.IsAbstract(type))
             {
                 return false;
             }
@@ -75,7 +75,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.4.7.2: symbolic targets, a Contract's Self among them, are decided by their premises.
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            if (AbstractTypes.IsAbstract(type))
             {
                 return false;
             }
@@ -94,7 +94,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            if (AbstractTypes.IsAbstract(type))
             {
                 return false;
             }
@@ -328,7 +328,24 @@ public sealed partial class Binding
             return leaf;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+        if (type.Kind == BoundTypeKind.SemanticsAdaptation)
+        {
+            var result = ConstraintProof.Unknown;
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                var child = this.RequestCapability(type.Components[i], work.Intrinsic, work.Scope);
+                if (child == ConstraintProof.Error)
+                {
+                    return child;
+                }
+
+                result = i == 0 || result == child ? child : ConstraintProof.Unknown;
+            }
+
+            return result;
+        }
+
+        if (AbstractTypes.IsAbstract(type))
         {
             // A Contract's Self, a Type parameter, has no structure of its own; its ObjectPayload evidence is the Contract's clause
             // (SPEC 8.4.7.2).
@@ -603,7 +620,7 @@ public sealed partial class Binding
         }
 
         private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && type.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection)
+            => intrinsic.Intrinsic == IntrinsicKind.Owned && !AbstractTypes.IsAbstract(type)
                 ? ConstraintProof.Proven
                 : ConstraintProof.Unknown;
     }

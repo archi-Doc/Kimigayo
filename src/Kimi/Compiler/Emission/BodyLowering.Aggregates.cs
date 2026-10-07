@@ -480,8 +480,9 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.Consume:
                 // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
-                var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } conversion &&
-                    ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(conversion.BoundType) == sourceMode &&
+                var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto conversion &&
+                    ElementAccess.ConversionKind(conversion, body, id) == ConversionBinding.ObjectUpcast &&
+                    ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(body.ConcreteAt(conversion.BoundType, id)) == sourceMode &&
                     ReferenceEquals(body.ConcreteAt(conversion.Left.BoundType, id), place.Type) &&
                     (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(body.ConcreteAt(conversion.BoundType, id), body.Places[operation.Input].Type) &&
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);

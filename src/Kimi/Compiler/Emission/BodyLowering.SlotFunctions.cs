@@ -113,7 +113,7 @@ internal sealed partial class BodyLowering
             var call = body.Operations[id];
             // SPEC 7.1.1: a Place call returns its reference, whatever the stored Type its syntax designates.
             var evaluator = body.Values[id].Kind == OwnershipValueKind.DefaultCall;
-            if (call.Kind != OwnershipOperationKind.Call || !SlotTypes.IsResult(evaluator ? body.Places[call.Place].Type : SignatureType(this, ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType)))
+            if (call.Kind != OwnershipOperationKind.Call || !SlotTypes.IsResult(evaluator ? body.Places[call.Place].Type : body.ConcreteAt(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, id)))
             {
                 continue;
             }

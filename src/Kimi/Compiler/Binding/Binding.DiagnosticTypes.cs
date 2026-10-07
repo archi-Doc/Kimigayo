@@ -41,7 +41,7 @@ public sealed partial class Binding
         {
             using var guard = budget?.Enter();
             budget?.Charge(current.Name.Length);
-            if (current.Kind == BoundTypeKind.Semantics && current.Components.Count == 1)
+            if (current.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication && current.Components.Count == 1)
             {
                 var mark = complete ? current.Origin is not null : shown is not null && ReferenceEquals(current.Origin, shown);
                 if (mark)
@@ -53,7 +53,7 @@ public sealed partial class Binding
                     }
                 }
 
-                text.Append(current.Semantics.ToText()).Append('/');
+                text.Append(current.Kind == BoundTypeKind.Semantics ? current.Semantics.ToText() : current.Symbol?.Pair?.Name ?? current.Symbol?.Name ?? current.Name).Append('/');
                 var group = complete && current.Components[0].Kind == BoundTypeKind.Function;
                 if (group)
                 {
@@ -78,15 +78,25 @@ public sealed partial class Binding
                 return;
             }
 
-            if (complete && current.Kind == BoundTypeKind.SemanticsApplication && current.Components.Count == 1)
+            if (current.Kind == BoundTypeKind.SemanticsAdaptation)
             {
-                text.Append(current.Symbol?.Pair?.Name ?? current.Symbol?.Name ?? current.Name).Append('/');
-                Append(current.Components[0]);
-                if (current.Origin is { } appliedOrigin)
+                text.Append("case ").Append(current.Symbol?.Pair?.Name ?? current.Symbol?.Name).Append(" { ");
+                var index = 0;
+                foreach (var mode in SemanticsOrder)
                 {
-                    text.Append(" during ").Append(HoverOriginName(appliedOrigin, budget!));
+                    if (((SemanticsMask)current.Length).Contains(mode))
+                    {
+                        if (index != 0)
+                        {
+                            text.Append("; ");
+                        }
+
+                        text.Append(mode.ToText()).Append(" => ");
+                        Append(current.Components[index++]);
+                    }
                 }
 
+                text.Append(" }");
                 return;
             }
 

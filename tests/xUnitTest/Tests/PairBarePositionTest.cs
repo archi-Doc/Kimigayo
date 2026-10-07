@@ -34,11 +34,16 @@ public sealed class PairBarePositionTest
         Assert.Equal(("case", "s = uniq"), (fact.Name, fact.Value));
     }
 
-    // SPEC 11.6 of plan C: `@s` on a pair binding does not bind today (STATUS).
+    // SPEC 13.5.5.2: an exclusive short adaptation borrows the written slot, which must be writable.
     [Fact]
-    public void ASemanticsOperationOnAPairBindingDoesNotBind()
+    public void AnExclusiveShorthandNeedsAWritableWrittenSlot()
     {
-        var source = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let v = value@s\n    _ = v@follow\npublic func main() -> ()\n    var n: i32 = 1\n    f(n)\n";
-        Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidTypeFormation_Kd));
+        var source = "func f<s/T>(value: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    let v = value@s\n    _ = v@move\npublic func main() -> ()\n    var n: i32 = 1\n    f(n)\n    f(n@uniq)\n";
+        Assert.Contains(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Code == nameof(DiagnosticCode.InvalidAssignment_Kd));
+        var valid = source.Replace("let v = value@s", "var slot = value@move\n    let v = slot@s", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(valid);
+        Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        NativeAllocationAudit.WriteFixture("GenericAdaptationWritableSlot", valid, 0, 0, 0);
     }
 }

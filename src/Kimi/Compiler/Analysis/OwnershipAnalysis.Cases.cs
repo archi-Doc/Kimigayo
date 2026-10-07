@@ -94,18 +94,16 @@ public sealed partial class OwnershipAnalysis
         }
 
         var at = 0;
-        var product = 1L;
         for (var i = 0; i < this.caseBinders.Count; i++)
         {
             if (this.caseBinders[i].Resolved)
             {
                 this.cases[at++] = new(this.caseBinders[i].Target, NextAdmitted(this.caseBinders[i].Admitted, 0)!.Value);
-                product *= BitOperations.PopCount((uint)this.caseBinders[i].Admitted);
             }
         }
 
         this.caseCount = resolved;
-        this.caseProduct = product;
+        this.caseProduct = Binding.SemanticsCaseProduct(this.caseBinders);
         return true;
     }
 
@@ -144,6 +142,8 @@ public sealed partial class OwnershipAnalysis
         this.BuildOnce(function, declarationDefault);
         var listed = this.body;
         this.caseListed = listed;
+        listed.AppendCleanupCase(listed.Cases.Span);
+        this.compilation.Binding.CollectCaseDestructions(listed, listed, this.caseBit);
         var run = 1;
         if (this.caseProduct > CaseBound)
         {
@@ -164,6 +164,8 @@ public sealed partial class OwnershipAnalysis
                 this.caseBody = side;
                 this.BuildOnce(function, declarationDefault);
                 this.caseBody = null;
+                listed.AppendCleanupCase(side.Cases.Span);
+                this.compilation.Binding.CollectCaseDestructions(side, listed, this.caseBit);
                 listed.IsVerified &= side.IsVerified;
                 run++;
             }
@@ -350,15 +352,6 @@ public sealed partial class OwnershipAnalysis
     private long CaseProduct(FunctionKoto function)
     {
         this.compilation.Binding.PairBinders(function, this.caseBinders);
-        var product = 1L;
-        for (var i = 0; i < this.caseBinders.Count; i++)
-        {
-            if (this.caseBinders[i].Resolved)
-            {
-                product *= BitOperations.PopCount((uint)this.caseBinders[i].Admitted);
-            }
-        }
-
-        return product;
+        return Binding.SemanticsCaseProduct(this.caseBinders);
     }
 }

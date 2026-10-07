@@ -1940,6 +1940,9 @@ public sealed partial class Binding
 
     private void ResetPrerequisites()
     {
+        this.caseLimits?.Clear();
+        this.caseLimitCauses?.Clear();
+        this.adaptationBinders?.Clear();
         this.mismatches?.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();
@@ -2290,11 +2293,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var visitor = this.failedSignaturePartVisitor ??= new();
-        visitor.Visit(generic.TypeArguments[^1]);
-        var part = visitor.Part;
-        visitor.Part = null;
-        return part;
+        return (this.failedSignaturePartVisitor ??= new()).Find(generic.TypeArguments[^1]);
     }
 
     // SPEC 8.6, 23.3.6.4: a call through F whose only Callable clause failed for a part of its signature rests on that clause.
@@ -2343,22 +2342,32 @@ public sealed partial class Binding
 
     private sealed class FailedSignaturePartVisitor : KotoVisitor
     {
-        internal Koto? Part { get; set; }
+        private Koto? part;
+        private bool invalidState;
 
         public override void Visit(Koto node)
         {
-            if (this.Part is not null)
+            if (this.part is not null)
             {
                 return;
             }
 
-            if (node.BindingFailure is BindingFailure.Unsupported or BindingFailure.MissingName or BindingFailure.MissingType)
+            if (this.invalidState ? node.BindingState == BindingState.Invalid : node.BindingFailure is BindingFailure.Unsupported or BindingFailure.MissingName or BindingFailure.MissingType)
             {
-                this.Part = node;
+                this.part = node;
                 return;
             }
 
             node.VisitChildren(this);
+        }
+
+        internal Koto? Find(Koto node, bool invalidState = false)
+        {
+            this.invalidState = invalidState;
+            this.Visit(node);
+            var found = this.part;
+            this.part = null;
+            return found;
         }
     }
 

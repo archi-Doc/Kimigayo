@@ -297,7 +297,7 @@ public sealed partial class OwnershipAnalysis
 
         var index = source is IndexKoto keyed ? this.Value(this.SelectionKey(keyed, root, parent, PlaceUseKind.Read)) : -1;
         if (this.defaultFunction is not null && source is IndexKoto keyedRead &&
-            this.body.Operations[^1] is { Kind: OwnershipOperationKind.Read } read && ReferenceEquals(read.Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(keyedRead))))
+            this.body.Operations[^1] is { Kind: OwnershipOperationKind.Read } read && ReferenceEquals(read.Source, ElementAccess.ValueSource(ElementAccess.KeySyntax(keyedRead), this.body, this.body.Operations.Count - 1)))
         {
             // Prepared scalar reads retain their acquired value for subsequent uses.
             // The index plan also needs this declaration-side read's source identity.

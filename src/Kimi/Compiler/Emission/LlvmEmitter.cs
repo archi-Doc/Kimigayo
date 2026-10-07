@@ -435,7 +435,8 @@ public sealed partial class LlvmEmitter
 
             var lowered = false;
             this.generics.ExpansionParent = entry;
-            if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body)
+            if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body &&
+                this.objects.PrepareBodyCalls(c, module, this.lowering.AggregateLayouts, body, out failure))
             {
                 var function = module.AddFunction(entry.Abi, exported: false);
                 this.lowering.SetInstance(c.Binding, call, entry);

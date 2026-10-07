@@ -10,7 +10,7 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, BoundCall> functionItemContexts = new(ReferenceEqualityComparer.Instance);
     private Dictionary<Koto, ReferenceConstraintFailure>? referenceConstraints;
 
-    private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof);
+    private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
 
     // Generation-only context of an already selected declaration. An override never becomes a public Item.
     internal BoundCall? ImplementationContext(FunctionKoto function, BoundType declaring)
@@ -505,7 +505,8 @@ public sealed partial class Binding
 
     private void ReportReferenceConstraint(Koto use, ReferenceConstraintFailure fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        var member = use.BoundSymbol?.Name ?? "the referenced function";
+        var call = fact.Declaration is not null;
+        var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
         var subject = fact.Constraint.Subject is { } type ? DiagnosticTypeName(type) : null;
         var clause = fact.Clause.ToString();
         var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
@@ -513,8 +514,8 @@ public sealed partial class Binding
             requirement,
             code,
             evidence: [subject, member, clause],
-            note: $"Function Item {member} requires {clause}; this condition {outcome}" + (subject is null ? " under the supplied bindings" : $" for {subject}"),
-            related: [("constraint", fact.Clause, "required by the referenced declaration")],
-            advice: "Choose Type arguments that satisfy the referenced declaration's constraints");
+            note: $"{(call ? "Call" : "Function Item")} {member} requires {clause}; this condition {outcome}" + (subject is null ? " under the supplied bindings" : $" for {subject}"),
+            related: [("constraint", fact.Clause, call ? "required by the called declaration" : "required by the referenced declaration")],
+            advice: call ? "Provide arguments or declared premises that establish the required constraint" : "Choose Type arguments that satisfy the referenced declaration's constraints");
     }
 }

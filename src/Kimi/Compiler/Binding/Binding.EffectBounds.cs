@@ -11,6 +11,12 @@ public sealed partial class Binding
     // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.4.5).
     private EffectSummary? destructionSummary;
 
+    // Cleanup extraction may run while a transitive effect check requests a library body; keep its scratch independent.
+    private EffectSummary? cleanupCollector;
+
+    internal void CollectCaseDestructions(OwnershipBody source, OwnershipBody target, ulong cases)
+        => (this.cleanupCollector ??= new(this)).CollectDestructions(source, target, cases);
+
     /// <summary>
     /// SPEC 8.4.5, 22.1.2.4: checks every effect bound again after ownership analysis, now counting the destructions each
     /// reached body performs, as its planned cleanups show. An implementation whose body ownership analysis did not reach,
@@ -124,6 +130,9 @@ public sealed partial class Binding
         private Koto? last;
         private bool valid;
         private bool destructions;
+        private OwnershipBody? cleanupSource;
+        private OwnershipBody? cleanupTarget;
+        private ulong cleanupCases;
 
         /// <summary>Gets the kind of the first effect that violated a bound in the last check.</summary>
         internal EffectViolation Violation { get; private set; }
@@ -236,6 +245,34 @@ public sealed partial class Binding
         // Keep one pool slot per call across the whole validation pass. Resetting for each implementation makes
         // unrelated signatures repeatedly resize the same call's argument and substitution arrays on every rebind.
         internal void BeginPass() => this.callCount = 0;
+
+        // Capture the same remaining parts that ordinary effect checking visits, before this pooled case body is reused.
+        internal void CollectDestructions(OwnershipBody source, OwnershipBody target, ulong cases)
+        {
+            if (source.Issues.Count != 0)
+            {
+                return;
+            }
+
+            this.valid = true;
+            this.destructions = true;
+            this.contexts.Clear();
+            this.contexts.Add(null);
+            this.context = 0;
+            this.cleanupSource = source;
+            this.cleanupTarget = target;
+            this.cleanupCases = cases;
+            try
+            {
+                this.Cleanups(source);
+            }
+            finally
+            {
+                this.cleanupSource = null;
+                this.cleanupTarget = null;
+                this.cleanupCases = 0;
+            }
+        }
 
         // SPEC 8.4.8.2: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
@@ -425,6 +462,19 @@ public sealed partial class Binding
         // An associated projection, whose root Type is not a part of its values.
         private static bool IsProjection(BoundType type) => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 2 };
 
+        private SemanticsMask AdaptationSemantics(BoundType type, Koto use)
+        {
+            if (this.Type(type) is not { } selected)
+            {
+                this.Violate(EffectViolation.UnclassifiedAccess, use);
+                return SemanticsMask.None;
+            }
+
+            var scope = !ReferenceEquals(selected, type) && TryAdaptationSelector(selected, out var whole) && whole.Symbol is { } selector
+                ? selector.Scope : binding.ConstraintScope(use);
+            return binding.ResultSemantics(selected, scope);
+        }
+
         // Whether a value of `type` holds a raw pointer at any depth: in a Type argument, a component, a stored Field or a
         // Case payload. A recursive struct is cut off at a fixed depth, which counts as holding one.
         private bool ContainsRawPointer(BoundType? type, int depth)
@@ -508,6 +558,16 @@ public sealed partial class Binding
                 case ConversionKoto { CreationCall: { } creation }:
                     this.Queue(creation);
                     break;
+                case ConversionKoto { Adaptation: { Creates: true } plan, CreationStorage.BoundCall: { } factory } conversion:
+                    if ((this.AdaptationSemantics(plan.Source, conversion) & SemanticsMask.Owner) != 0 &&
+                        (this.AdaptationSemantics(plan.Target, conversion) & SemanticsMask.Object) != 0)
+                    {
+                        // Every creation case has the same confined allocation effect. Its ordinary input acquisition
+                        // and written operand are inspected below once, without revisiting a synthetic argument tree.
+                        this.Target(factory, conversion);
+                    }
+
+                    break;
                 case IndexKoto:
                     this.Queue(binding.ResolvedKeyCall(node));
                     break;
@@ -569,6 +629,21 @@ public sealed partial class Binding
                     this.Access(borrow.BoundType, Mode(borrow.BoundType), node);
                     this.PlaceAccess(borrow.Left, Mode(borrow.BoundType), node);
                     break;
+                case ConversionKoto { Adaptation: { } explicitPlan } explicitAdaptation:
+                    var admitted = this.AdaptationSemantics(explicitPlan.Target, explicitAdaptation);
+                    if ((explicitPlan.Operations & ((1U << (int)ConversionBinding.Borrow) | (1U << (int)ConversionBinding.ObjectUpcast))) != 0 &&
+                        (admitted & SemanticsMask.Borrow) != 0)
+                    {
+                        var borrowing = (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 ? LoanRequirement.Uniq : LoanRequirement.Ref;
+                        this.Access(explicitPlan.Target, borrowing, node);
+                        this.PlaceAccess(explicitAdaptation.Left, borrowing, node);
+                    }
+                    else
+                    {
+                        this.Argument(new(explicitAdaptation.Left, explicitPlan.Source, explicitPlan.Source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact), node);
+                    }
+
+                    break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Address } address:
                     this.PlaceAccess(address.Left, LoanRequirement.Ref, node); // SPEC 5.4: an immediately ending borrow.
                     break;
@@ -608,7 +683,7 @@ public sealed partial class Binding
 
             switch (parent)
             {
-                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address or ConversionBinding.Transfer or ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } conversion:
+                case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address or ConversionBinding.Transfer or ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow or ConversionBinding.CaseAdaptation } conversion:
                     return ReferenceEquals(conversion.Left, node);
                 case BinaryKoto assignment when IsAssignment(assignment.Akind):
                     return ReferenceEquals(assignment.Left, node);
@@ -1426,6 +1501,26 @@ public sealed partial class Binding
                 return;
             }
 
+            if (body.HasCaseDestructions)
+            {
+                var cases = body.ApplicableCleanupCases(binding, this.contexts[this.context]);
+                for (var i = 0; this.valid && i < body.CaseDestructions.Count; i++)
+                {
+                    var destroyed = body.CaseDestructions[i];
+                    if ((destroyed.Cases & cases) != 0)
+                    {
+                        this.Destruction(destroyed.Type is { } type ? this.Type(type) : null, destroyed.Source);
+                    }
+                }
+
+                return;
+            }
+
+            this.Cleanups(body);
+        }
+
+        private void Cleanups(OwnershipBody body)
+        {
             for (var id = 0; this.valid && id < body.Operations.Count; id++)
             {
                 if (!body.IsReachable(id))
@@ -1654,6 +1749,12 @@ public sealed partial class Binding
 
         private void Destruction(BoundType? type, Koto use)
         {
+            if (this.cleanupTarget is { } target)
+            {
+                target.AddCaseDestruction(type, use, this.cleanupCases);
+                return;
+            }
+
             if (!this.destructions)
             {
                 return; // Binding checks accesses and calls; destruction is counted after ownership analysis.
@@ -1882,6 +1983,12 @@ public sealed partial class Binding
         // Records the first effect that violates a bound, at its node and at the own-body syntax that reaches it.
         private void Violate(EffectViolation kind, Koto? at)
         {
+            if (this.cleanupTarget is { } target && kind == EffectViolation.UnknownDestruction)
+            {
+                target.AddCaseDestruction(null, at ?? this.cleanupSource!.Function, this.cleanupCases);
+                return;
+            }
+
             if (!this.valid)
             {
                 return;
@@ -1894,7 +2001,8 @@ public sealed partial class Binding
         }
 
         private BoundType? Type(BoundType type)
-            => this.contexts[this.context] is { } call ? binding.InstantiateStorageType(type, call) : type;
+            => this.cleanupSource is { } body ? body.Concrete(type)
+            : this.contexts[this.context] is { } call ? binding.InstantiateStorageType(type, call) : type;
 
         // A call instantiates the callee's parameters, lengths and Origins; a call that substitutes nothing reads
         // the callee's Types as declared.

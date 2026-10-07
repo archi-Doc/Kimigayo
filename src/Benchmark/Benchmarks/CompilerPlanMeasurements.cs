@@ -18,11 +18,13 @@ internal static class CompilerPlanMeasurements
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false)
+    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false, bool adaptations = false)
     {
-        var allPhases = callable || views || regions || properties || inheritance;
+        var allPhases = callable || views || regions || properties || inheritance || adaptations;
         var results = new List<object>();
-        var workloads = inheritance
+        var workloads = adaptations
+            ? new[] { ("adaptation-cases", 1), ("adaptation-cases", 8), ("adaptation-cases", 32) }
+            : inheritance
             ? new[] { ("milestone25", 0), ("inheritance-depth", 1), ("inheritance-depth", 8), ("inheritance-depth", 32), ("inheritance-width", 8), ("inheritance-width", 32) }
             : regions
             ? new[] { ("candidates", 4), ("candidates", 8), ("candidates", 16), ("results", 4), ("results", 8), ("results", 16), ("regions", 4), ("regions", 8), ("regions", 16) }
@@ -34,6 +36,7 @@ internal static class CompilerPlanMeasurements
             {
                 "milestone24" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone24.kimi")),
                 "milestone25" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone25.kimi")),
+                "adaptation-cases" => size == 1 ? AdaptationWorkloads.Single : AdaptationWorkloads.Create(size),
                 "inheritance-depth" => VerificationWorkloads.InheritedPlans(size, 1),
                 "inheritance-width" => VerificationWorkloads.InheritedPlans(4, size),
                 "candidates" or "results" or "regions" => VerificationWorkloads.CallableRegions(name, size),
@@ -52,7 +55,7 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");

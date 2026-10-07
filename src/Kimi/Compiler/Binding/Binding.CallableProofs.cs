@@ -100,13 +100,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var substituted = this.SubstituteConstraint(bound, function, slots.AsSpan(0, function.GenericArguments.Count), lengths.AsSpan(0, function.GenericArguments.Count));
-            if (declaringType?.Symbol?.Declaration is { } owner)
-            {
-                substituted = this.SubstituteConstraint(substituted, owner, (BoundType[])declaringType.Components);
-            }
-
-            substituted = this.ContractConstraint(substituted, scope, self);
+            var substituted = this.SubstituteCandidateConstraint(bound, function, slots, lengths, scope, self, declaringType);
             if (substituted is not { Kind: ConstraintKind.Callable, Subject: { } subject, RequiredType: { } required } || this.ProveConstraint(substituted, scope) != ConstraintProof.Unknown)
             {
                 continue;

@@ -867,7 +867,7 @@ public sealed partial class OwnershipAnalysis
         return place;
     }
 
-    private int Use(Koto source, int place, PlaceUseKind use, AcquisitionKind? acquisition = null)
+    private int Use(Koto source, int place, PlaceUseKind use, AcquisitionKind? acquisition = null, BoundType? resultType = null)
     {
         if (place < 0)
         {
@@ -900,9 +900,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.CheckAcquisition(place, acquisition);
-        // An explicit object upcast changes the view Type while transferring the same handle responsibility.
-        var resultType = source is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast } ? this.Concrete(source.BoundType)! : stored.Type;
-        var value = this.Place(source, resultType, OwnershipPlaceKind.Temporary, true);
+        // A selected object upcast supplies its complete view Type while transferring the same handle responsibility.
+        var value = this.Place(source, resultType ?? stored.Type, OwnershipPlaceKind.Temporary, true);
         this.Emit(OwnershipOperationKind.Consume, source, place, value, acquisition ?? stored.Acquisition);
         return this.RegisterTemporary(value);
     }
@@ -1210,6 +1209,51 @@ public sealed partial class OwnershipAnalysis
             case IsKoto { IsRuntimeTest: true } test:
                 return this.RuntimeTypeTest(test);
             case ConversionKoto conversion:
+                if (conversion.Adaptation is { } adaptation)
+                {
+                    var sourceType = this.Concrete(adaptation.Source)!;
+                    var targetType = this.Concrete(adaptation.Target)!;
+                    var operation = ExplicitAdaptationPlan.Select(sourceType, targetType, adaptation.IsShorthand);
+                    if ((adaptation.Operations & (1U << (int)operation)) == 0)
+                    {
+                        this.Unsupported(conversion);
+                        return -1;
+                    }
+
+                    if (operation == ConversionBinding.ObjectCreation)
+                    {
+                        var selected = this.compilation.Binding.ResolveObjectCreation(conversion, sourceType, targetType, this.body.NextResolvedCall());
+                        return this.Call(conversion.CreationStorage!, selected: selected);
+                    }
+
+                    if (operation == ConversionBinding.Address)
+                    {
+                        var referenceType = this.Concrete(adaptation.AddressBorrow)!;
+                        var adaptedBorrow = this.BorrowStruct(conversion.Left, referenceType);
+                        if (adaptedBorrow < 0)
+                        {
+                            return -1;
+                        }
+
+                        var adaptedAddress = this.Temporary(conversion);
+                        this.SetValue(this.Value(adaptedAddress), OwnershipValueKind.Convert, [this.Value(adaptedBorrow)]);
+                        return adaptedAddress;
+                    }
+
+                    if (operation == ConversionBinding.Borrow || (operation == ConversionBinding.ObjectUpcast && ObjectTypes.IsBorrow(targetType)))
+                    {
+                        return this.BorrowStruct(conversion.Left, targetType);
+                    }
+
+                    if (operation == ConversionBinding.ObjectUpcast)
+                    {
+                        var adaptedOwner = this.Expression(conversion.Left, PlaceUseKind.Read);
+                        return this.Use(conversion, adaptedOwner, PlaceUseKind.Consume, AcquisitionKind.Move, targetType);
+                    }
+
+                    return this.ConversionValue(conversion, operation);
+                }
+
                 if (conversion.CreationCall is { } creation)
                 {
                     return this.Call(creation);
@@ -1223,7 +1267,7 @@ public sealed partial class OwnershipAnalysis
                     }
 
                     var owner = this.Expression(conversion.Left, PlaceUseKind.Read);
-                    return this.Use(conversion, owner, PlaceUseKind.Consume, AcquisitionKind.Move);
+                    return this.Use(conversion, owner, PlaceUseKind.Consume, AcquisitionKind.Move, this.Concrete(conversion.BoundType));
                 }
 
                 if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsBorrow(conversion.BoundType))
@@ -1682,28 +1726,29 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int Call(InvocationKoto call, int preparedInput = -1, int preparedReceiver = -1)
+    private int Call(InvocationKoto call, int preparedInput = -1, int preparedReceiver = -1, BoundCall? selected = null)
     {
         if (call.BoundValueCall is { } valueCall)
         {
             return this.CallValue(call, valueCall);
         }
 
-        if (call.BoundCall is not { } plan)
+        if ((selected ?? call.BoundCall) is not { } plan)
         {
             this.Unsupported(call);
             return -1;
         }
 
-        if (this.defaultContext >= 0)
+        // A selected case call already carries its default and case/instance context.
+        if (selected is null && this.defaultContext >= 0)
         {
-            if (this.body.SubstituteDefaultCall(plan, this.defaultContext) is not { } selected)
+            if (this.body.SubstituteDefaultCall(plan, this.defaultContext) is not { } substituted)
             {
                 this.Unsupported(call);
                 return -1;
             }
 
-            plan = selected;
+            plan = substituted;
         }
 
         if (plan.Target.CompilerFunction is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap)
@@ -1774,6 +1819,11 @@ public sealed partial class OwnershipAnalysis
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         var invoke = this.Emit(OwnershipOperationKind.Call, call);
+        if (selected is not null)
+        {
+            this.body.RecordResolvedCall(invoke, plan);
+        }
+
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         if (!acquired || ReferenceEquals(call.BoundType, BoundType.Never))
         {
