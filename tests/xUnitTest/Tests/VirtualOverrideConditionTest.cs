@@ -24,7 +24,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
             : "open struct Base<T>\n    public virtual func copy(self: objref/Self, value: ref/T) -> T\n        T is Copy\n        return Operations.duplicate(value)\n";
         var c = MinimalEmissionTest.Analyze(Helper + original + "struct Derived<U> : Base<U>\n    override func copy(self: objref/Self, value: ref/U) -> U => Operations.duplicate(value)\n()");
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
-        Assert.Equal(2, c.Binding.Issues.Count);
+        Assert.True(c.Binding.Result.IsComplete);
     }
 
     [Theory]
@@ -49,7 +49,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     public void EnclosingDerivedConstraintsCanEstablishTheCondition()
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived<U> : Base<U>\n    U is Copy\n    Self is Marker when U is Copy\n        override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.Equal(2, c.Binding.Issues.Count);
+        Assert.True(c.Binding.Result.IsComplete);
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
     }
 
@@ -57,7 +57,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     public void InheritedPremisesFollowTheCompleteBoundBasePath()
     {
         var c = MinimalEmissionTest.Analyze(Helper + "open struct Base<T>\n    public virtual func copy(self: objref/Self, value: ref/T) -> T\n        T is Copy\n        return Operations.duplicate(value)\nopen struct Middle<V> : Base<V>\nstruct Derived<U> : Middle<U>\n    override func copy(self: objref/Self, value: ref/U) -> U => Operations.duplicate(value)\n()");
-        Assert.Equal(2, c.Binding.Issues.Count);
+        Assert.True(c.Binding.Result.IsComplete);
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
     }
 
@@ -73,7 +73,7 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
     public void ClosedInapplicabilityIsNotAContradictoryDefinitionPremise()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32\n        T is Copy\n        return 1\nstruct Derived : Base<string>\n    override func read(self: objref/Self) -> i32 => 2\n()");
-        Assert.Equal(2, c.Binding.Issues.Count);
+        Assert.Single(c.Binding.Issues);
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
     }
 

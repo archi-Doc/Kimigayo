@@ -107,13 +107,13 @@ public sealed partial class Binding
         }
     }
 
-    // V1 retains valid declarations without accepting their bodies as statically dispatched code.
-    // Remove this boundary only after slot correspondence, public guarantees and generation agree.
+    // Shared receivers preserve completeness by their authority (SPEC 12.4.4.2) and proceed
+    // through ordinary ownership checking. Exclusive OCC still needs its fixed point.
     private void GuardPendingVirtualDeclarations()
     {
         foreach (var function in this.virtualDeclarations)
         {
-            if (function.BindingFailure == BindingFailure.None)
+            if (function.BindingFailure == BindingFailure.None && ReceiverShape(function.BoundSymbol!) != SemanticsKind.ObjRef)
             {
                 this.Fail(function, BindingFailure.Unsupported, true);
             }

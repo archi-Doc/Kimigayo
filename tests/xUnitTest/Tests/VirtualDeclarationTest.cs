@@ -43,7 +43,8 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         var source = $"open struct Base<T>\n    public virtual func read(self: {receiver}/Self, value: ref/T) -> i32 => 1\nstruct Derived : Base<i32>\n    override func read(self: {receiver}/Self, value: ref/i32) -> i32 => 2\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
-        Assert.Equal(2, c.Binding.Issues.Count);
+        Assert.Equal(receiver == "objref" ? 0 : 2, c.Binding.Issues.Count);
+        Assert.Equal(receiver == "objref", c.Binding.Result.IsComplete);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         Assert.Equal(2, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Count(x => x.IsVirtual || x.IsOverride));
     }
@@ -101,7 +102,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        " + body + "\n()");
         Assert.Equal(rejected, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.InvalidEffectBound_Kd));
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Equal(!rejected, c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "CheckFaulted_Kd");
     }
@@ -122,10 +123,10 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     public void RepeatedDeclarationCheckingReusesStorage()
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func read(self: objref/Self) -> i32 => 1\n()");
-        var incomplete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => incomplete &= !c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
-        Assert.True(incomplete);
-        Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, Assert.Single(c.Binding.Issues).Code);
+        var complete = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.True(complete);
+        Assert.Empty(c.Binding.Issues);
     }
 
     [Fact]

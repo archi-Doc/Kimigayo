@@ -693,6 +693,9 @@
   + Name="Ownership.CallableEffectBound"
     Description="The selected callable binding satisfies every declared effect bound"
 
+  + Name="Ownership.VirtualEffectBound"
+    Description="Every virtual implementation's cleanup satisfies the original public bounds"
+
   + Name="Ownership.CallEffectConflict"
     Description="the requirement call's derived effects conflict with no Loan an earlier result keeps"
 

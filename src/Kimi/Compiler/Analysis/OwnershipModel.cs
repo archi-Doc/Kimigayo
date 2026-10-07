@@ -159,6 +159,7 @@ public enum OwnershipFailure : byte
     // published effect bound of its Contract.
     EffectBound,
     CallableEffectBound,
+    VirtualEffectBound,
 
     // SPEC 4.6.1, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
     // owned fixed array.
@@ -245,6 +246,7 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
         OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
         OwnershipFailure.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
+        OwnershipFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
         OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
         OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,

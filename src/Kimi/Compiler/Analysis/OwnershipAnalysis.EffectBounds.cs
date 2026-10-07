@@ -55,5 +55,12 @@ public sealed partial class OwnershipAnalysis
         {
             this.issues.Add(new(this.effectViolations[i], OwnershipFailure.CallableEffectBound));
         }
+
+        this.effectViolations.Clear();
+        this.compilation.Binding.ValidateVirtualDestructionEffects(this.effectViolations);
+        for (var i = 0; i < this.effectViolations.Count; i++)
+        {
+            this.issues.Add(new(this.effectViolations[i], OwnershipFailure.VirtualEffectBound));
+        }
     }
 }

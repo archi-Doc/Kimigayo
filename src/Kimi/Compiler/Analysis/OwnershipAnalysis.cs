@@ -278,6 +278,12 @@ public sealed partial class OwnershipAnalysis
                 continue;
             }
 
+            if (issue.Failure == OwnershipFailure.VirtualEffectBound && issue.Source is FunctionKoto implementation)
+            {
+                this.compilation.Binding.ReportVirtualEffectViolation(implementation, requirement);
+                continue;
+            }
+
             // The delivery at the normal end is the only use at the function itself apart from a constructor's field checks, whose
             // discarded body never falls through; a return delivers at its jump.
             if (issue.Failure == OwnershipFailure.UninitializedUse && issue.Source is FunctionKoto { Body: { } body } &&

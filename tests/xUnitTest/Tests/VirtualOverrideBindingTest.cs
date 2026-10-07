@@ -67,7 +67,7 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         Assert.Same(BoundType.I32, selected.Slot.DeclaringType.Components[0]);
         Assert.NotNull(selected.Path?.Parent);
         Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
-        Assert.False(c.Bind().IsComplete);
+        Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var rebound));
         Assert.Equal(selected.Slot, rebound.Slot);
         Assert.Same(selected.Path, rebound.Path);
@@ -90,10 +90,10 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
     {
         const string Source = "open struct Base<T>\n    public virtual func read(self: objref/Self, value: ref/T) -> i32 => 1\nstruct Derived : Base<i32>\n    override func read(self: objref/Self, value: ref/i32) -> i32 => 2\n()";
         var c = MinimalEmissionTest.Analyze(Source);
-        var incomplete = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => incomplete &= !c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
-        Assert.True(incomplete);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        var complete = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 64, warmupIterations: 32));
+        Assert.True(complete);
+        Assert.Empty(c.Binding.Issues);
     }
 
     [Fact]

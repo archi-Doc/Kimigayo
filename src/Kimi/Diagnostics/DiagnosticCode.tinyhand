@@ -795,6 +795,12 @@
     Category="Internal"
     Message="LLVM artifact generation failed"
 
+  + Name="UnsupportedEmission_Kd"
+    Category="Unsupported"
+    Message="This declaration requires code generation outside the implemented subset"
+    Evidence="feature:Text"
+    Label="{0} is not implemented"
+
   + Name="GenerationResourceLimit_Kd"
     Category="Resource"
     Message="Generic generation exceeds a mandatory resource limit"

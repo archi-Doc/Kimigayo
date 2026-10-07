@@ -156,6 +156,7 @@ public enum DiagnosticCode
     OuterCloserInBody_Kd,
 
     GenerationFailed_Kd,
+    UnsupportedEmission_Kd,
     GenerationResourceLimit_Kd,
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,
