@@ -65,8 +65,9 @@ requirement identities and generic Property requirements, remain unavailable rat
 projection, shared Semantics descriptions, normal-size declaration rendering and a reserved source footer. These additions
 are not yet claimed as verified support: Windows Smart App Control blocked the latest xUnit assembly (0x800711C7), and the
 user explicitly instructed that execution be skipped. Final focused/full Session functional and allocation regressions remain
-unexecuted; the actual VS Code display inspection was stopped by the user. Build/measurement evidence and remaining checks
-are recorded in [HOVER.md](dev/HOVER.md) and PLAN_HISTORY. Runtime Contract Views remain deferred under SPEC §8.5/Appendix D.
+unexecuted. The user will perform the actual VS Code display inspection manually; agents must not automate it, and its result
+awaits the user's report. Build/measurement evidence and remaining checks are recorded in [HOVER.md](dev/HOVER.md) and
+PLAN_HISTORY. Runtime Contract Views remain deferred under SPEC §8.5/Appendix D.
 
 **Accepted fixed-array and view revision (2026-10-06):** SPEC §4.3.1 / §4.3.4 / §4.6.6.1 / §4.6.11 now require local
 length holes, `noinit`, UniqSlice, view methods and Slice.toArray. Local annotation holes now use written dimensions,

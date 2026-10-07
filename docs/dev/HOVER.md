@@ -95,9 +95,11 @@ The last executable feedback suite exposed six defects in implementation/test in
 formatting and avoiding assumptions about Markdown escaping or deferred Contract Views. Later builds succeeded, but Windows
 Smart App Control rejected the latest xUnit assembly with 0x800711C7 (CodeIntegrity events 3077/3033/3118). The user explicitly
 instructed that test execution be skipped. Final focused and full Session tests, including allocation assertions, are therefore
-unverified; earlier passing tests do not establish the final source's correctness. The actual VS Code display inspection was
-stopped by the user's physical Escape key, before a Hover was inspected. Do not infer new client evidence from the older run
-below. Build-only Verify, whole-solution build and measurement outcomes are recorded in PLAN_HISTORY and artifacts/verify.
+unverified; earlier passing tests do not establish the final source's correctness. The user owns the manual VS Code display
+inspection (font size, wrapping, headings and source readability); agents must not automate or repeat this visual inspection.
+Its result awaits the user's report and is not an outstanding agent task. The earlier automated attempt stopped before a
+Hover was inspected; neither that attempt nor the older client evidence below certifies the new presentation. Build-only
+Verify, whole-solution build and measurement outcomes are recorded in PLAN_HISTORY and artifacts/verify.
 
 ## Responsiveness measurements
 
