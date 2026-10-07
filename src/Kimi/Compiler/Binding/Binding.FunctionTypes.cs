@@ -529,6 +529,10 @@ public sealed partial class Binding
         {
             var index = 0;
             var applicable = 0;
+            ReferenceConstraintFailure? pending = null;
+            var pendingProof = false;
+            Koto? invalid = null;
+            var error = false;
             for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
             {
                 this.BindHeader(candidate);
@@ -539,23 +543,55 @@ public sealed partial class Binding
 
                 this.perCallReferenceSlot = null;
                 this.referenceSlotFailure = default;
-                var fits = this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required, scope, operations.AsSpan(index * stride, stride - 1));
+                ReferenceConstraintFailure? constraint = null;
+                var state = this.Accessible(candidate, scope)
+                    ? this.FunctionReferenceApplicability(use, candidate, function, required, scope, out constraint, operations.AsSpan(index * stride, stride - 1))
+                    : CandidateApplicability.Inapplicable;
                 if (count == 1)
                 {
                     perCall = this.perCallReferenceSlot;
                     slotFailure = this.referenceSlotFailure;
                 }
 
-                evaluated[index] = new(candidate, fits ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable, null, 0);
-                if (fits)
+                evaluated[index] = new(candidate, state, null, 0, ConstraintFailure: constraint);
+                pendingProof |= state == CandidateApplicability.Pending;
+                if (state == CandidateApplicability.Pending)
+                {
+                    pending ??= constraint;
+                }
+
+                if (state == CandidateApplicability.Error)
+                {
+                    error = true;
+                    invalid ??= InvalidDeclarationContextCause(function) ?? this.FailedSignaturePart(function);
+                }
+
+                if (state == CandidateApplicability.Applicable)
                 {
                     applicable++;
                 }
             }
 
+            if (error)
+            {
+                return invalid is not null ? this.CompleteDependent(use, invalid) : this.Fail(use, BindingFailure.InvalidConstraint);
+            }
+
+            if (pendingProof)
+            {
+                return pending is { } fact
+                    ? this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnprovenConstraint, fact)
+                    : this.Fail(use, BindingFailure.UnprovenConstraint);
+            }
+
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);
             if (winner < 0)
             {
+                if (count == 1 && evaluated[0].ConstraintFailure is { } failure)
+                {
+                    return this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnsatisfiedConstraint, failure);
+                }
+
                 if (perCall is { } slot)
                 {
                     // SPEC 10.6, 15.3.6: the one candidate's slot is left unsolved by a per-call Origin of S. The advised wrapper exists
@@ -590,7 +626,7 @@ public sealed partial class Binding
                     {
                         var candidate = evaluated[i].Symbol!;
                         var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
-                        rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true);
+                        rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true, ConstraintFailure: evaluated[i].ConstraintFailure);
                     }
                 }
 
@@ -687,7 +723,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (this.Accessible(candidate, scope) && this.FunctionReferenceFits(use, candidate, function, required, scope))
+            if (this.Accessible(candidate, scope) && this.FunctionReferenceApplicability(use, candidate, function, required, scope, out _) != CandidateApplicability.Inapplicable)
             {
                 return true;
             }
@@ -700,8 +736,9 @@ public sealed partial class Binding
     // against the result of S, without adaptations; it applies when every slot is bound and its Constraints are Proven.
     // Origins are left to the per-call solver, and a per-call Origin of S never becomes part of a bound argument. Explicit Type
     // arguments are compared with that binding as normalized Types, so equivalent Function Types with distinct binders agree.
-    private bool BindReferenceArguments(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType?[] arguments, BindingScope scope, GenericsKoto? explicitReference, BoundType? container, BoundLength?[] lengths)
+    private bool BindReferenceArguments(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BoundType?[] arguments, BindingScope scope, GenericsKoto? explicitReference, BoundType? container, BoundLength?[] lengths, out ConstraintProof proof)
     {
+        proof = ConstraintProof.Proven;
         var count = function.GenericArguments.Count;
         if (!this.InferReferenceSlots(symbol, function, required, arguments, container, false, true, lengths) ||
             (explicitReference is not null && !this.ExplicitReferenceAgrees(explicitReference, arguments, count, false, function, scope, lengths)))
@@ -713,7 +750,7 @@ public sealed partial class Binding
             if (this.InferReferenceSlots(symbol, function, required, arguments, container, true, true, lengths) &&
                 (explicitReference is null || this.ExplicitReferenceAgrees(explicitReference, arguments, count, true, function, scope, lengths)))
             {
-                if (ReferenceSlotsComplete(function, arguments, lengths) && this.ReferenceArgumentProof(function, arguments, scope, container, lengths) != ConstraintProof.Proven)
+                if (ReferenceSlotsComplete(function, arguments, lengths) && (proof = this.ReferenceArgumentProof(function, arguments, scope, container, lengths)) != ConstraintProof.Proven)
                 {
                     this.referenceSlotFailure = (-1, ReferenceSlotFailure.Constraint);
                 }
@@ -740,7 +777,7 @@ public sealed partial class Binding
             }
         }
 
-        var proof = this.ReferenceArgumentProof(function, arguments, scope, container, lengths);
+        proof = this.ReferenceArgumentProof(function, arguments, scope, container, lengths);
         var parameters = required.Components[0];
         var binder = FunctionTypeBinder(required);
         for (var i = 0; i < count; i++)
@@ -1035,13 +1072,17 @@ public sealed partial class Binding
 
     // With `presolved`, `boundArguments` already holds the slots and only the substituted signature is checked against S.
     private bool FunctionReferenceFits(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, Span<BoundArgumentOperation> operations = default, BoundType?[]? boundArguments = null, bool presolved = false, BoundLength?[]? boundLengths = null)
+        => this.FunctionReferenceApplicability(use, symbol, function, required, scope, out _, operations, boundArguments, presolved, boundLengths) == CandidateApplicability.Applicable;
+
+    private CandidateApplicability FunctionReferenceApplicability(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, out ReferenceConstraintFailure? failure, Span<BoundArgumentOperation> operations = default, BoundType?[]? boundArguments = null, bool presolved = false, BoundLength?[]? boundLengths = null)
     {
+        failure = null;
         var parameters = required.Components[0];
         var explicitReference = KotoHelper.UnwrapParentheses(use) as GenericsKoto;
         if (parameters.Components.Count != function.Parameters.Count ||
             (explicitReference is not null && explicitReference.TypeArguments.Count != function.GenericArguments.Count))
         {
-            return false;
+            return CandidateApplicability.Inapplicable;
         }
 
         var generic = function.GenericArguments.Count;
@@ -1055,12 +1096,39 @@ public sealed partial class Binding
         Array.Clear(inputs, 0, inputCount);
         try
         {
-            if (arguments is not null && !presolved && !this.BindReferenceArguments(use, symbol, function, required, arguments, scope, explicitReference, container, lengths!))
+            var proof = ConstraintProof.Proven;
+            if (arguments is not null && !presolved && !this.BindReferenceArguments(use, symbol, function, required, arguments, scope, explicitReference, container, lengths!, out proof))
             {
-                return false;
+                if (proof == ConstraintProof.Proven)
+                {
+                    return CandidateApplicability.Inapplicable;
+                }
+            }
+            else if (!this.ContractFits(use, symbol, function, required, container, null, arguments, operations, origins, inputs, lengths: lengths))
+            {
+                return CandidateApplicability.Inapplicable;
             }
 
-            return this.ContractFits(use, symbol, function, required, container, null, arguments, operations, origins, inputs, lengths: lengths);
+            // A bound enclosing Type can supply conditions even when the function has no own slots.
+            // Keep Unknown distinct from Refuted so another reference cannot win by missing proof.
+            if (arguments is null && !presolved)
+            {
+                proof = this.ReferenceArgumentProof(function, [], scope, container);
+            }
+
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
+            {
+                failure = this.CandidateConstraintFailure(function, arguments ?? [], lengths ?? [], scope, null, container, proof) is { } fact
+                    ? fact with { Declaration = null } : null;
+            }
+
+            return proof switch
+            {
+                ConstraintProof.Proven => CandidateApplicability.Applicable,
+                ConstraintProof.Refuted => CandidateApplicability.Inapplicable,
+                ConstraintProof.Error => CandidateApplicability.Error,
+                _ => CandidateApplicability.Pending,
+            };
         }
         finally
         {

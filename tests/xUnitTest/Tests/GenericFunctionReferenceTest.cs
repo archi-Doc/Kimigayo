@@ -75,8 +75,6 @@ public class GenericFunctionReferenceTest
 
     [Theory]
     [InlineData(Identity + "let g: (ref/i32) -> ref/i64 = identity")] // The structure fails before any Origin is judged.
-    [InlineData("func keep<T>(value: T) -> T\n    T is Owned\n    return value@move\nlet h: (ref/i32) -> ref/i32 = keep")] // T is Owned is refuted whatever the Origin.
-    [InlineData("func pair<T>(value: T) -> (T, T)\n    T is Copy\n    return (value, value)\nlet f: (string) -> (string, string) = pair")] // T is Copy is refuted.
     [InlineData(Identity + "let f: (i32, i32) -> i32 = identity")] // Arity differs.
     public void InapplicableGenericReferencesAreTypeMismatches(string source)
     {
@@ -181,16 +179,13 @@ public class GenericFunctionReferenceTest
         Assert.True(spans[0].Start < spans[1].Start, name);
     }
 
-    // SPEC 10.5: a single generic candidate that S cannot bind keeps TypeMismatch_Kd, and its Note names the cause: a structural failure,
-    // unproven Constraints, or bindings that differ only in Origins that no per-call solution satisfies, where wrapping would not help.
+    // SPEC 10.5: failed slot binding keeps TypeMismatch_Kd and names the structural or Origin conflict.
+    // A reached constraint failure is tested separately with its actual obligation.
     [Theory]
     [InlineData(Identity + "let h: (ref/i32) -> ref/i32 during static = identity", "identity", "its parameters and result bind Type parameter 'T' to Types that differ only in their Origins")]
     [InlineData(Identity + "func outer(x: ref/i32) -> i32\n    let h: (ref/i32) -> ref/i32 during x = identity\n    return 0", "identity", "its parameters and result bind Type parameter 'T' to Types that differ only in their Origins")]
     [InlineData(Identity + "let f: (ref/i32) -> ref/i32 = identity<ref/i32 during static>", "identity<ref/i32 during static>", "the written Type arguments and the signature give Type parameter 'T' Types that differ only in their Origins")]
     [InlineData(FirstOf + "let f: (ref/i32, ref/i64) -> ref/i32 = firstOf", "firstOf", "no binding of them fits its structure")]
-    [InlineData("func keep<T>(value: T) -> T\n    T is Owned\n    return value@move\nlet h: (ref/i32) -> ref/i32 = keep", "keep", "the binding fits, but it is not proven to satisfy the declaration's Constraints")]
-    // The Constraint is judged on the met binding too, before the Origin conflict of the elided result's meet (2026-10-05).
-    [InlineData("func firstOf<T>(a: T, b: ref/i32) -> T\n    T is Owned\n    return a@move\nlet f: (ref/i32, ref/i32) -> ref/i32 = firstOf", "firstOf", "the binding fits, but it is not proven to satisfy the declaration's Constraints")]
     public void ReferenceSlotFailuresNameTheirCause(string source, string reference, string cause)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -375,7 +370,7 @@ public class GenericFunctionReferenceTest
     [InlineData(Identity + "let h: (ref/i32) -> ref/i32 during static = identity", nameof(DiagnosticCode.TypeMismatch_Kd))]
     [InlineData(Tagged + "let f: (ref/i32, string) -> ref/i32 = tagged", nameof(DiagnosticCode.MissingOriginBinding_Kd))] // The @move proof.
     [InlineData("func tag<T, M>(a: T) -> T => a@move\nlet f: (ref/i32) -> ref/i32 = tag<ref/i32, i64>", nameof(DiagnosticCode.MissingOriginBinding_Kd))]
-    [InlineData("func firstOf<T>(a: T, b: ref/i32) -> T\n    T is Owned\n    return a@move\nlet f: (ref/i32, ref/i32) -> ref/i32 = firstOf", nameof(DiagnosticCode.TypeMismatch_Kd))]
+    [InlineData("func firstOf<T>(a: T, b: ref/i32) -> T\n    T is Owned\n    return a@move\nlet f: (ref/i32, ref/i32) -> ref/i32 = firstOf", nameof(DiagnosticCode.UnprovenConstraint_Kd))]
     public void WarmPerCallSlotFailureAllocatesNothing(string source, string code)
     {
         var c = MinimalEmissionTest.Analyze(source);
