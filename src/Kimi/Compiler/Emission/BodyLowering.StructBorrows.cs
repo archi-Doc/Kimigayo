@@ -12,6 +12,13 @@ internal sealed partial class BodyLowering
         => call.Target.Declaration is FunctionKoto { Accessor.Receiver: not null } && call.ArgumentOperations.Length != 0
             ? call.ArgumentOperations[^1] : call.ReceiverOperation;
 
+    private static BoundArgumentOperation MemberReceiverOperation(MemberAccessKoto member, SemanticsKind semantics)
+    {
+        var call = member.Parent is InvocationKoto invocation && ReferenceEquals(invocation.Method, member) ? invocation.BoundCall
+            : member.CodeContext.Compilation.Binding.PropertyCall(member, semantics == SemanticsKind.Ref ? PropertyAccessorKind.Get : PropertyAccessorKind.Set)?.BoundCall;
+        return call is null ? default : CallReceiverOperation(call);
+    }
+
     // A Scalar or Unit temporary, join result, by-value parameter or Subject receives its own slot only when it is borrowed
     // (SPEC 3.6.2, 10.2, 14.8.3); Unit needs only the address.
     // A temporary or join result is stored at its borrow from its one prepared value; a parameter is stored once at its
@@ -65,7 +72,7 @@ internal sealed partial class BodyLowering
                 CallReceiverOperation(projectedPlan) is { Kind: ArgumentOperationKind.BaseBorrow } projectedCall)
             {
                 var sourceType = SignatureType(this, projectedCall.SourceType);
-                var sourceCore = ReferenceTypes.IsReference(sourceType) ? sourceType!.Components[0] : sourceType;
+                var sourceCore = ReferenceTypes.IsReference(sourceType) || ObjectTypes.HandleMode(sourceType) is not null || ObjectTypes.IsBorrow(sourceType) ? sourceType!.Components[0] : sourceType;
                 if (projectedCall.ObjectCompatibility != ConstraintProof.Proven || projectedCall.BasePath is null ||
                     value.Count != 1 ||
                     !ReferenceTypes.StorageMatches(type.Components[0], sourceCore) ||
@@ -159,9 +166,11 @@ internal sealed partial class BodyLowering
                     ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(SignatureType(this, selected.BoundType), output.Components[0]) &&
                     (output.Semantics == SemanticsKind.Ref ||
                         (selected.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } conversion && ReferenceEquals(conversion.Left, selected) && ReferenceEquals(SignatureType(this, conversion.BoundType), output)));
-                var memberProjection = operation.Source.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } call } } &&
-                    ReferenceEquals(call.Receiver, operation.Source) && call.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection &&
-                    call.ReceiverOperation.ObjectCompatibility == ConstraintProof.Proven && ReferenceEquals(call.ReceiverOperation.ParameterType, output);
+                var memberProjection = operation.Source.Parent is MemberAccessKoto selectedMember &&
+                    MemberReceiverOperation(selectedMember, output.Semantics) is { ObjectCompatibility: ConstraintProof.Proven } memberReceiver &&
+                    ReferenceEquals(memberReceiver.Source, operation.Source) &&
+                    ((memberReceiver.Kind == ArgumentOperationKind.PayloadProjection && ReferenceTypes.StorageMatches(SignatureType(this, memberReceiver.ParameterType), output)) ||
+                    (memberReceiver.Kind == ArgumentOperationKind.BaseBorrow && output.Semantics == SemanticsKind.Ref && memberReceiver.BasePath is not null));
                 if (!ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.ObjUniq &&
                         ObjectTypes.HandleMode(type) is not { PayloadAuthority: LoanRequirement.Uniq }))

@@ -934,6 +934,19 @@ public sealed partial class Binding
             return true;
         }
 
+        // A shared receiver can inspect an open payload or its selected base without granting replacement authority.
+        // The selected implementation still supplies the per-operation proof before the call is accepted.
+        if (receiver && pattern.Semantics == SemanticsKind.Ref && declaringType is not null &&
+            IsObjectSemantics(actual.Semantics) && actual.Components.Count == 1 && ReferenceEquals(pattern.Components[0], declaringType) &&
+            (projected || ReferenceEquals(actual.Components[0], declaringType)) &&
+            (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.BorrowablePlace(source, scope, false)))
+        {
+            adapted = this.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
+            quality = ArgumentAdaptation.CrossSemanticsBorrow;
+            kind = projected ? ArgumentOperationKind.BaseBorrow : ArgumentOperationKind.PayloadProjection;
+            return true;
+        }
+
         if (!projected && declaringType is not null && this.TryPayloadProjection(source, pattern, actual, scope, out adapted))
         {
             quality = ArgumentAdaptation.CrossSemanticsBorrow;

@@ -106,7 +106,7 @@ public sealed partial class OwnershipAnalysis
             // Acquire the complete source once by the ordinary Place path, then lend its base prefix.
             // Keeping the parent reference retains the original storage/Loan anchor through the call and its result.
             var type = argument.AdaptedType ?? this.compilation.Binding.PreparedBorrowType(source, argument.ParameterType);
-            var core = ReferenceTypes.IsReference(receiverType) ? receiverType.Components[0] : receiverType;
+            var core = ReferenceTypes.IsReference(receiverType) || ObjectTypes.HandleMode(receiverType) is not null || ObjectTypes.IsBorrow(receiverType) ? receiverType.Components[0] : receiverType;
             var whole = this.compilation.Binding.Reference(SemanticsKind.Ref, core, type.Origin);
             var reference = this.BorrowStruct(source, whole);
             return reference < 0 ? -1 : this.BorrowThrough(call, reference, type, -1);

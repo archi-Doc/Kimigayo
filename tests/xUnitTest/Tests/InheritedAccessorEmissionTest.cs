@@ -44,14 +44,16 @@ public class InheritedAccessorEmissionTest
     public void GetterResultsRetainTheirSourceLoan(string body)
         => Assert.Equal("ComparisonLoanConflict_Kd", Assert.Single(DiagnosticCorpus.Check(Source + body).Diagnostics).Code);
 
-    [Fact]
-    public void ASharedGetterDoesNotProveTheSeparateExclusiveSetter()
+    [Theory]
+    [InlineData("Leaf.init()")]
+    [InlineData("Kimi.Intrinsics.makeObj(Leaf.init())")]
+    public void ASharedGetterDoesNotProveTheSeparateExclusiveSetter(string value)
     {
-        const string Code = "open struct Base\n    public computed number: i32\n        get(self: ref/Self) -> i32 => 42\n        set(self: uniq/Self, value: i32) -> () => ()\nstruct Leaf: Base\n    public init() => ()\nvar x = Leaf.init()\nx.number = 3";
-        var result = DiagnosticCorpus.Check(Code);
+        var code = "open struct Base\n    public computed number: i32\n        get(self: ref/Self) -> i32 => 42\n        set(self: uniq/Self, value: i32) -> () => ()\nstruct Leaf: Base\n    public init() => ()\nvar x = " + value + "\nx.number = 3";
+        var result = DiagnosticCorpus.Check(code);
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal("UnsupportedBinding_Kd", record.Code);
-        Assert.Equal("x.number", Code.Substring(record.Span!.Value.Start, record.Span.Value.Length));
+        Assert.Equal("x.number", code.Substring(record.Span!.Value.Start, record.Span.Value.Length));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(new(result.Diagnostics, result.Sources), string.Empty);
         Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
@@ -63,15 +65,32 @@ public class InheritedAccessorEmissionTest
         }
     }
 
-    [Fact]
-    public void ObjectGetterExecutionKeepsItsLocatedUnsupportedBoundary()
-        => Assert.Equal("UnsupportedBinding_Kd", Assert.Single(DiagnosticCorpus.Check(Source + "let x = Kimi.Intrinsics.makeObj(Leaf.init())\n_ = x.number").Diagnostics).Code);
+    [Theory]
+    [InlineData("Owner", "let x = Kimi.Intrinsics.makeObj(Leaf.init())\nrequire x.number == 42 else => $abort(\"object getter\")")]
+    [InlineData("Rc", "let x = Kimi.Intrinsics.makeRc(Leaf.init())\nrequire x.number == 42 else => $abort(\"shared getter\")")]
+    [InlineData("Arc", "let x = Kimi.Intrinsics.makeArc(Leaf.init())\nrequire x.number == 42 else => $abort(\"shared getter\")")]
+    [InlineData("Borrow", "let x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x@objref\nrequire r.number == 42 else => $abort(\"object getter\")")]
+    [InlineData("Result", "let x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x.view\nrequire r == 42 else => $abort(\"object result\")")]
+    [InlineData("OpenView", "let x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x@objref@objref/Base<i64>\nrequire r.number == 42 else => $abort(\"open view\")")]
+    [InlineData("OwnSealed", "struct Plain\n    public computed value: i32\n        get(self: ref/Self) -> i32 => 42\nlet x = Kimi.Intrinsics.makeObj(Plain.init())\nrequire x.value == 42 else => $abort(\"own getter\")")]
+    [InlineData("Generic", "struct Generic<T>: Base<T>\n    public init() => ()\nfunc read<T>(x: objref/Generic<T>) -> i32 => x.number\nlet x = Kimi.Intrinsics.makeObj(Generic<bool>.init())\nrequire read(x@objref) == 42 else => $abort(\"generic getter\")")]
+    public void ObjectGettersUseTheProvenPayloadProjection(string name, string body)
+        => ScalarEmissionTest.EmitFixture("InheritedObjectGetter" + name, Source + body, string.Empty);
+
+    [Theory]
+    [InlineData("var x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x.view\nx.item = 0\n_ = r")]
+    [InlineData("let x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x.view\nlet moved = x@move\n_ = r")]
+    [InlineData("var x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x.view\nx = Kimi.Intrinsics.makeObj(Leaf.init())\n_ = r")]
+    public void ObjectGetterResultsRetainTheirOriginalObjectLoan(string body)
+        => Assert.Equal("ComparisonLoanConflict_Kd", Assert.Single(DiagnosticCorpus.Check(Source + body).Diagnostics).Code);
 
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void SharedGetterPlansAreReused()
+    [Theory]
+    [InlineData("Leaf.init()")]
+    [InlineData("Kimi.Intrinsics.makeObj(Leaf.init())")]
+    public void SharedGetterPlansAreReused(string value)
     {
-        var c = MinimalEmissionTest.Analyze(Source + "let x = Leaf.init()\n_ = x.number\nlet r = x.view\n_ = r");
+        var c = MinimalEmissionTest.Analyze(Source + "let x = " + value + "\n_ = x.number\nlet r = x.view\n_ = r");
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));

@@ -29,6 +29,9 @@ public class InheritedSharedCallTest
     [InlineData("Result", "let x = Leaf.init()\nlet r = x.view()\nrequire r == 42 else => $abort(\"base call\")")]
     [InlineData("BorrowedNested", "func read(x: ref/(Leaf, i32)) -> i32 => x.0.read()\nlet x = (Leaf.init(), 0)\nrequire read(x@ref) == 42 else => $abort(\"base call\")")]
     [InlineData("Repeated", "let x = Leaf.init()\nrequire x.read() + x.read() == 84 else => $abort(\"base call\")")]
+    [InlineData("Object", "let x = Kimi.Intrinsics.makeObj(Leaf.init())\nrequire x.read() == 42 else => $abort(\"object method\")")]
+    [InlineData("ObjectReference", "let x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x@objref\nrequire r.read() == 42 else => $abort(\"object method\")")]
+    [InlineData("ObjectResult", "let x = Kimi.Intrinsics.makeObj(Leaf.init())\nlet r = x.view()\nrequire r == 42 else => $abort(\"object method result\")")]
     [InlineData("Generic", "struct Generic<V>: Middle<V>\n    public init() => ()\nfunc read<T>(x: ref/Generic<T>) -> i32 => x.read()\nlet x = Generic<bool>.init()\nrequire read(x@ref) == 42 else => $abort(\"base call\")")]
     public void SharedBaseMethodPreservesTheOriginalReceiver(string name, string body)
         => ScalarEmissionTest.EmitFixture("InheritedShared" + name, Layers + body, string.Empty);
