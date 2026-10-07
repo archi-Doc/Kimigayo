@@ -151,8 +151,8 @@ public sealed partial class Binding
                     return new(candidate, type, path);
                 }
 
-                // An existing but inaccessible Property is an access fault, not an unresolved Name (SPEC 20.4).
-                hidden ??= candidate.Kind == BindingSymbolKind.Property ? candidate : null;
+                // Inaccessible declarations are diagnostic evidence, never a layer that stops lookup (SPEC 9.3).
+                hidden ??= candidate;
             }
         }
 

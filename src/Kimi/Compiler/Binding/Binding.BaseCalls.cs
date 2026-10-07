@@ -85,7 +85,7 @@ public sealed partial class Binding
         }
 
         var selection = this.LookupTypeMember(path.Type, name.IdentifierName, scope, actual, path);
-        var selected = selection.Member ?? selection.Hidden;
+        var selected = selection.Member;
         if (selection.Pending)
         {
             this.Fail(reference, BindingFailure.Unsupported, true);
@@ -95,6 +95,13 @@ public sealed partial class Binding
         if (selection.Ambiguous)
         {
             this.Fail(member, BindingFailure.Ambiguous, true);
+            return null;
+        }
+
+        if (selected is null && selection.Hidden is { } hidden)
+        {
+            member.BoundSymbol = hidden;
+            this.Fail(member, BindingFailure.Access);
             return null;
         }
 

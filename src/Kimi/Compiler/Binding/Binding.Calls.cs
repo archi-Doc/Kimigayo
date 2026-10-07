@@ -327,7 +327,7 @@ public sealed partial class Binding
                     // A nominal member takes priority over a requirement member of the same receiver.
                     valueMember = this.RequirementMember(member, scope, receiverType, false);
                     valueSelection = this.LookupTypeMember(receiverType, right.IdentifierName, scope, receiverType);
-                    valueMember = valueSelection.Member ?? valueMember ?? valueSelection.Hidden;
+                    valueMember = valueSelection.Member ?? valueMember;
                 }
 
                 // SPEC 3.4.1: a qualifying pair layer without the member, declared or published, continues at its target.
@@ -347,6 +347,13 @@ public sealed partial class Binding
         }
 
         var selected = typeMember ?? valueMember;
+        if (selected is null && (typeSelection.Hidden ?? valueSelection.Hidden) is { } hidden)
+        {
+            member.BoundSymbol = hidden;
+            this.Fail(member, BindingFailure.Access);
+            return null;
+        }
+
         if (selected is not null)
         {
             if (typeMember is not null && selected.EnumCase is null && qualifier?.Declaration is EnumKoto)
