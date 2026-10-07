@@ -1081,3 +1081,9 @@
     Evidence="condition:Text"
     Label="{0}"
     Advice="Use a containing condition established by the original slot and derived Type; the override's own block cannot prove it"
+
+  + Name="InvalidBaseCall_Kd"
+    Category="Language"
+    Message="This use of base is not a direct base instance call"
+    Evidence="condition:Text"
+    Label="{0}"

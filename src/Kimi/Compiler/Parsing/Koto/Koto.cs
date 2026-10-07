@@ -369,6 +369,9 @@ public enum KotoKind : byte
     /// <summary>A declaration directive skipping initial Scalar-array stores.</summary>
     NoInit,
 
+    /// <summary>The lexical receiver marker of a direct base call; it has no value.</summary>
+    BaseReference,
+
     /// <summary>The upper-bound sentinel for node kinds.</summary>
     Omega,
 }

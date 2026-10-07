@@ -797,6 +797,10 @@ public sealed partial class Binding
         {
             this.ReportVirtualDeclaration(virtualFunction, requirement, issue.Code);
         }
+        else if (issue.Node is SyntaxFormKoto { Akind: KotoKind.BaseReference } baseReference && issue.Code is DiagnosticCode.InvalidBaseCall_Kd or DiagnosticCode.UnsupportedBinding_Kd)
+        {
+            this.ReportBaseCall(baseReference, requirement, issue.Code);
+        }
         else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
         {
             ReportProtectedPlacement(issue.Node, requirement);
@@ -1075,6 +1079,7 @@ public sealed partial class Binding
                     BindingFailure.OverrideContractMismatch => DiagnosticCode.OverrideContractMismatch_Kd,
                     BindingFailure.DuplicateOverride => DiagnosticCode.DuplicateOverride_Kd,
                     BindingFailure.UnprovenOverrideCondition => DiagnosticCode.UnprovenOverrideCondition_Kd,
+                    BindingFailure.BaseCall => DiagnosticCode.InvalidBaseCall_Kd,
                     _ => DiagnosticCode.UnsupportedBinding_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))

@@ -81,6 +81,7 @@ public sealed partial class Binding
         this.virtualOverrides.Clear();
         this.overridesBySlot.Clear();
         this.overrideFailures?.Clear();
+        this.baseCallFailures?.Clear();
     }
 
     // SPEC 6.2.4: declaration eligibility precedes slot matching and body proofs.
