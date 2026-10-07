@@ -155,6 +155,71 @@ internal static class VerificationWorkloads
         => ObjectItem + "let owner = Kimi.Intrinsics.makeObj(Item.init())\n" +
             (stored ? "let stored = (owner@move, 1)\nrequire stored.0.id == 7" : "require owner.id == 7") + " else => $abort(\"read\")";
 
+    internal static string VirtualPlans(int depth, int slots, int aliases = 0, string mode = "obj", bool factory = false)
+    {
+        var source = new StringBuilder();
+        for (var layer = 0; layer < depth; layer++)
+        {
+            source.Append("open struct Layer").Append(layer).Append("<T>");
+            if (layer > 0)
+            {
+                source.Append(" : Layer").Append(layer - 1).Append("<T>");
+            }
+
+            source.Append("\n    public init() => ()\n");
+            if (layer == 0)
+            {
+                source.Append("    public func ordinary(self: objref/Self) -> i32 => 7\n");
+            }
+
+            for (var slot = 0; slot < slots; slot++)
+            {
+                source.Append(layer == 0 ? "    public virtual func f" : "    override func f").Append(slot).Append("(self: objref/Self) -> i32");
+                if (layer == depth - 1 && slot == 0 && aliases > 0)
+                {
+                    source.Append("\n        let a0 = self\n");
+                    for (var alias = 1; alias < aliases; alias++)
+                    {
+                        source.Append("        let a").Append(alias).Append(" = a").Append(alias - 1).Append('\n');
+                    }
+
+                    source.Append("        return a").Append(aliases - 1).Append(".ordinary() + ");
+                }
+                else
+                {
+                    source.Append(" => ");
+                }
+
+                if (layer == 0)
+                {
+                    source.Append(slot);
+                }
+                else
+                {
+                    source.Append("base.f").Append(slot).Append("() + 1");
+                }
+
+                source.Append('\n');
+            }
+        }
+
+        source.Append("let instance = ");
+        if (factory)
+        {
+            source.Append("Kimi.Intrinsics.").Append(mode == "obj" ? "makeObj(" : mode == "rc" ? "makeRc(" : "makeArc(");
+        }
+
+        source.Append("Layer").Append(depth - 1).Append("<i32>.init()");
+        source.Append(factory ? ")" : "@" + mode).Append('\n');
+        for (var slot = 0; slot < slots; slot++)
+        {
+            source.Append("require instance.f").Append(slot).Append("() == ").Append(slot + depth - 1 + (slot == 0 && aliases > 0 ? 7 : 0));
+            source.Append(" else => $abort(\"virtual workload\")\n");
+        }
+
+        return source.ToString();
+    }
+
     internal static string InspectionLoans(int count, bool stored = false)
     {
         var source = new StringBuilder("func inspect(value: ref/string) -> bool => value == \"x\"\nfunc check()\n");
