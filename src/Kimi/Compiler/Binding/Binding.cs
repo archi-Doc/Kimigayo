@@ -1596,6 +1596,7 @@ public sealed partial class Binding
                     this.Scope = container.IsRoot ? binding.ModuleScope(node) : binding.GetScope(node, this.Scope);
                     break;
                 case FunctionKoto function:
+                    function.PrepareBaseInitializer();
                     if (function.IsAnonymous)
                     {
                         if (!binding.symbols.TryGetValue(function, out var closureSymbol))

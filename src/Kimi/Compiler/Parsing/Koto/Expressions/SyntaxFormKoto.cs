@@ -27,6 +27,16 @@ public sealed class SyntaxFormKoto : ExpressionKoto, IOriginClauseOwner
         this.Adopt(children);
     }
 
+    internal SyntaxFormKoto(FunctionKoto constructor)
+        : base(constructor.CodeContext, constructor.SignatureSpan)
+    {
+        this.kind = KotoKind.ConstructorReference;
+        this.prefix = "base";
+        this.separator = ", ";
+        this.suffix = string.Empty;
+        this.children = [];
+    }
+
     /// <inheritdoc/>
     public override KotoKind Akind => this.kind;
 

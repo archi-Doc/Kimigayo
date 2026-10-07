@@ -237,6 +237,29 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the base constructor initializer.</summary>
     public InvocationKoto? BaseInitializer { get; private set; }
 
+    private InvocationKoto? implicitBaseInitializer;
+
+    internal void PrepareBaseInitializer()
+    {
+        if (this.BaseInitializer is not null && !ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer))
+        {
+            return;
+        }
+
+        this.BaseInitializer = null;
+        if (this.IsConstructor && this.Parent is StructKoto { Bases.Count: > 0 })
+        {
+            if (this.implicitBaseInitializer is null)
+            {
+                var target = new SyntaxFormKoto(this);
+                this.implicitBaseInitializer = new(this, target, []) { Span = this.SignatureSpan };
+                target.Parent = this.implicitBaseInitializer;
+            }
+
+            this.SetBaseInitializer(this.implicitBaseInitializer);
+        }
+    }
+
     internal BoundClosure? ClosureStorage { get; set; }
 
     /// <summary>Gets or sets the end of the header, the closing parenthesis of the parameter list (SPEC 23.3.6.5 relates a closure end there).</summary>
@@ -845,7 +868,7 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         builder.Append(')');
-        if (!headerOnly && this.BaseInitializer is not null)
+        if (!headerOnly && this.BaseInitializer is not null && !ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer))
         {
             builder.Append(" : ");
             this.BaseInitializer.WriteTo(ref builder);
