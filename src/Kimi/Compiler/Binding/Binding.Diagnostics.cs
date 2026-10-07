@@ -1094,7 +1094,7 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 9.6.1: a Type's own Type arguments are written in full, and those of a container are never inferred from call
+    // SPEC 9.6.1: outside constructor-own inference, required Type arguments are written in full; an outer container never takes call
     // arguments or an expected Type; outside a generic container, a nested declaration is named through that container.
     private static void ReportArity(Koto node, (BindingSymbol Declaration, int Declared, int Written, bool Outer) arity, DiagnosticRequirement requirement, DiagnosticCode code)
     {
@@ -1110,7 +1110,7 @@ public sealed partial class Binding
         }
         else if (arity.Written == 0 && member is not null)
         {
-            note = $"{declared} is named without its Type arguments; the Type arguments of a container are never inferred from call arguments or an expected Type (SPEC 9.6.1)";
+            note = $"{declared} is named without its Type arguments; this qualifier requires explicit Type arguments; only the construction target itself can infer its own slots (SPEC 9.6.1, 10.8.1)";
             advice = $"Write them on the qualifier, one for each of {parameters}, as in {name}<...>.{member}";
         }
         else

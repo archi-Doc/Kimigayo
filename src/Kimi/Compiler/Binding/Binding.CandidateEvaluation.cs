@@ -132,7 +132,7 @@ public sealed partial class Binding
                 SemanticsKind? mode = borrowed ? pattern.Semantics : null;
                 // SPEC 10.5: a waiting reference, like an anonymous body, never ranks the outer candidates; once their ordinary
                 // inputs and defaults select one, its fixed call signature selects the reference, even when the signatures differ.
-                if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(function, slot.Symbol!) < 0 || (!first && acquisition != mode))
+                if (slot.Kind != BoundTypeKind.Parameter || ContainerSlot(CallSlotOwner(function), slot.Symbol!) < 0 || (!first && acquisition != mode))
                 {
                     return false;
                 }
@@ -203,7 +203,7 @@ public sealed partial class Binding
 
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, ulong Unsolved = 0, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default);
+    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false);
 
     // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);

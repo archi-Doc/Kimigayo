@@ -226,6 +226,8 @@ public enum DiagnosticCode
     InvalidTryReturn_Kd,
     TryPayloadMismatch_Kd,
     UnboundTypeArgument_Kd,
+    UnprovenAcquisitionCorrelation_Kd,
+    ConstructorSelectionChanged_Kd,
     BoundMethodValue_Kd,
     UnsatisfiedOriginRelation_Kd,
     UnprovenOriginRelation_Kd,

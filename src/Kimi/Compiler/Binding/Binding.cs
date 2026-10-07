@@ -325,6 +325,8 @@ public sealed partial class Binding
     // symbols (reset here, removed by the prune steps), synthesized nodes, pooled plans and scratch buffers.
     private void ResetPass(BindingMode mode)
     {
+        this.inferredConstructorTargets.Clear();
+        this.callInferenceFailures?.Clear();
         this.storageVersion++;
         this.issues.Clear();
         this.callableSelectionFailures.Clear();
@@ -739,6 +741,10 @@ public sealed partial class Binding
             var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
             issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: advice, at: at);
         }
+        else if (this.callInferenceFailures?.TryGetValue(issue.Node, out var callInference) == true)
+        {
+            this.ReportCallInferenceFailure(issue.Node, requirement, issue.Code, callInference);
+        }
         else if (issue.Code == DiagnosticCode.UnboundTypeArgument_Kd && this.unboundSlots?.TryGetValue(issue.Node, out var unboundSlot) == true)
         {
             // SPEC 10.6, 10.8: the selected call's slot that no evidence binds, with the waiting argument whose signature holds it.
@@ -1012,6 +1018,8 @@ public sealed partial class Binding
                     BindingFailure.ExclusiveBorrowRequired => DiagnosticCode.ExclusiveBorrowRequired_Kd,
                     BindingFailure.ParameterShapeMismatch => DiagnosticCode.ParameterShapeMismatch_Kd,
                     BindingFailure.UnboundTypeArgument => DiagnosticCode.UnboundTypeArgument_Kd,
+                    BindingFailure.UnprovenAcquisitionCorrelation => DiagnosticCode.UnprovenAcquisitionCorrelation_Kd,
+                    BindingFailure.ConstructorSelectionChanged => DiagnosticCode.ConstructorSelectionChanged_Kd,
                     BindingFailure.BoundMethodValue => DiagnosticCode.BoundMethodValue_Kd,
                     BindingFailure.OriginRelation => this.OriginRelationCode(node),
                     BindingFailure.OriginContract => DiagnosticCode.UnprovenOriginContract_Kd,

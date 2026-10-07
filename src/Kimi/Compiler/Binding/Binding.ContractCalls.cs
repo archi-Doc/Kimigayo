@@ -214,7 +214,7 @@ public sealed partial class Binding
 
     private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)
     {
-        if (this.MemberType(type, declaringType) is not { } memberType)
+        if (this.CallMemberPattern(type, function, declaringType) is not { } memberType)
         {
             return null;
         }
@@ -225,13 +225,13 @@ public sealed partial class Binding
             type = this.ContractType(type, scope, self);
         }
 
-        var result = this.SubstituteType(type, function, arguments, lengths);
+        var result = this.SubstituteType(type, CallSlotOwner(function), arguments, lengths);
         if (result is not null)
         {
             for (var i = 0; i < function.Parameters.Count && i < inputs.Length; i++)
             {
                 if (function.Parameters[i].Type.BoundType?.Origin is { BorrowCondition: { } selector } &&
-                    ContainerSlot(function, selector) is var slot && slot >= 0 && slot < arguments.Length &&
+                    ContainerSlot(CallSlotOwner(function), selector) is var slot && slot >= 0 && slot < arguments.Length &&
                     arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
                 {
                     inputs[i] = BoundOrigin.Static;

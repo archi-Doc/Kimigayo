@@ -101,28 +101,11 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 7.3.1: two outer layers that are the same binding always bind to one Type and plan one acquisition, so they are not
-    // compared: the same enclosing slot (one interned instance), or the same-numbered own slot of declarations with equal generic
-    // counts, including the same application of it.
+    // Equality of a normalized outer layer is unconditional only for fixed bindings;
+    // inferred slots contribute the explicit correlation retained by JudgeParameterShapes.
     private static bool SameBinding(BoundType a, BoundType b, FunctionKoto fa, FunctionKoto fb, bool sameGenerics)
-    {
-        if (a.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || a.Kind != b.Kind)
-        {
-            return false;
-        }
-
-        if (ReferenceEquals(a, b))
-        {
-            return true;
-        }
-
-        if (!sameGenerics || a.Symbol is not { } sa || b.Symbol is not { } sb || !ReferenceEquals(sa.Scope.Owner, fa) || !ReferenceEquals(sb.Scope.Owner, fb) || sa.Slot != sb.Slot)
-        {
-            return false;
-        }
-
-        return a.Kind != BoundTypeKind.SemanticsApplication || SignatureEquals(a.Components[0], b.Components[0], fa, fb);
-    }
+        => a.Kind is BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.AssociatedProjection &&
+            a.Kind == b.Kind && (ReferenceEquals(a, b) || (sameGenerics && PermittedSlotSharing(fa, fb) && SignatureEquals(a, b, CallSlotOwner(fa), CallSlotOwner(fb))));
 
     // SPEC 7.3, 7.3.1: a shape violation is an error of the group, not of the declaration's own signature or conditions, so the
     // declaration stays a candidate and the calls that select it are checked normally. SPEC 9.3: a misplaced protected form is
@@ -216,7 +199,7 @@ public sealed partial class Binding
         => this.scopes.TryGetValue(function, out var scope) ? this.AdmittedSemantics(whole, scope) : SemanticsMask.All;
 
     // SPEC 7.3.1: two keys overlap when steps 2-4 of the collision test of SPEC 8.4.9.1 unify them; Value and Object never meet.
-    private bool KeysOverlap(in ParameterShape a, in ParameterShape b)
+    private bool KeysOverlap(in ParameterShape a, in ParameterShape b, FunctionKoto? left = null, FunctionKoto? right = null, bool shared = false)
     {
         if (a.Key == ParameterKey.Any || b.Key == ParameterKey.Any)
         {
@@ -228,7 +211,7 @@ public sealed partial class Binding
             return false;
         }
 
-        return this.MayUnify(a.Target, b.Target);
+        return this.MayUnify(a.Target, b.Target, left, right, shared);
     }
 
     // SPEC 7.3.1: whether the parameters i of `earlier` and j of `later` are invalid together, with the colliding case of each.
@@ -242,24 +225,21 @@ public sealed partial class Binding
             return false;
         }
 
-        var sameGenerics = SameExplicitArgumentShape(earlier, later);
-        if (SameBinding(ta, tb, earlier, later, sameGenerics))
-        {
-            return false;
-        }
-
-        var sa = this.ShapeOf(ta, earlier, sameGenerics);
-        var sb = this.ShapeOf(tb, later, sameGenerics);
-        return this.ParameterShapesConflict(ta, tb, sa, sb, out mode, out other, out shape, out conservative);
+        var result = this.JudgeParameterShapes(new(earlier, i, later, j), ta, tb);
+        mode = result.Mode;
+        other = result.Other;
+        shape = result.Shape;
+        conservative = result.Conservative;
+        return result.Conflict;
     }
 
-    private bool ParameterShapesConflict(BoundType ta, BoundType tb, ParameterShape sa, ParameterShape sb, out AcquisitionMode mode, out AcquisitionMode other, out ParameterShape shape, out bool conservative)
+    private bool ParameterShapesConflict(BoundType ta, BoundType tb, ParameterShape sa, ParameterShape sb, out AcquisitionMode mode, out AcquisitionMode other, out ParameterShape shape, out bool conservative, bool? overlap = null)
     {
         mode = other = default;
         shape = default;
         conservative = false;
         var union = sa.Modes | sb.Modes;
-        if (union == AcquisitionModes.None || IsSingleMode(union) || !this.KeysOverlap(sa, sb))
+        if (union == AcquisitionModes.None || IsSingleMode(union) || !(overlap ?? this.KeysOverlap(sa, sb)))
         {
             return false;
         }
@@ -535,6 +515,13 @@ public sealed partial class Binding
 
     private void ResetParameterShapes()
     {
+        this.shapeCallCandidates.Clear();
+        this.shapeJudgments.Clear();
+        this.shapeContractHeads.Clear();
+        this.shapeContracts.Clear();
+        this.shapeDependencies.Clear();
+        this.shapeSharedSlots.Clear();
+        this.collisionLeft = this.collisionRight = null;
         this.parameterShapeConflicts.Clear();
         this.parameterShapeStore.Clear();
         this.parameterShapePartyStore.Clear();

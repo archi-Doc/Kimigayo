@@ -41,13 +41,13 @@ public sealed partial class Binding
 
         if (pattern.Kind == BoundTypeKind.Parameter)
         {
-            if (this.SubstituteType(pattern, function, types, lengths) is { } fixedType)
+            if (this.SubstituteType(pattern, CallSlotOwner(function), types, lengths) is { } fixedType)
             {
                 pattern = fixedType;
             }
             else if (this.IndependentAggregateType(source, fitLiterals) is { } inferred)
             {
-                return this.Infer(pattern, inferred, function, types, lengths: lengths);
+                return this.Infer(pattern, inferred, CallSlotOwner(function), types, lengths: lengths);
             }
         }
 
@@ -109,15 +109,15 @@ public sealed partial class Binding
             actual = KotoHelper.UnwrapParentheses(source.Parent!) is RangeKoto && this.ReadTypeReferent(actual, source) is { } read ? read : actual;
             this.MatchInputOrigins(pattern, actual, function, origins, inputs);
             pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-            return this.Infer(pattern, actual, function, types, true, lengths);
+            return this.Infer(pattern, actual, CallSlotOwner(function), types, true, lengths);
         }
 
-        if (!fitLiterals || this.SubstituteType(pattern, function, types, lengths) is not null)
+        if (!fitLiterals || this.SubstituteType(pattern, CallSlotOwner(function), types, lengths) is not null)
         {
             return true;
         }
 
-        return this.LiteralDefault(source) is not { } literalDefault || this.Infer(pattern, literalDefault, function, types, lengths: lengths);
+        return this.LiteralDefault(source) is not { } literalDefault || this.Infer(pattern, literalDefault, CallSlotOwner(function), types, lengths: lengths);
     }
 
     // Obtain independent tuple/fill Types without committing candidate-local numeric defaults.
@@ -172,8 +172,8 @@ public sealed partial class Binding
     }
 
     private bool InferLiteralBoundary(BoundType pattern, Koto boundary, BoundType? other, FunctionKoto function, BoundType?[] types, BoundLength?[] lengths, bool fitLiterals)
-        => !fitLiterals || this.SubstituteType(pattern, function, types, lengths) is not null ||
-            this.Infer(pattern, this.OtherBoundaryType(boundary, other), function, types, lengths: lengths);
+        => !fitLiterals || this.SubstituteType(pattern, CallSlotOwner(function), types, lengths) is not null ||
+            this.Infer(pattern, this.OtherBoundaryType(boundary, other), CallSlotOwner(function), types, lengths: lengths);
 
     // The independent Type of a written range boundary: Start or End when omitted, the read Type of a typed one, or null for a
     // literal-only one.

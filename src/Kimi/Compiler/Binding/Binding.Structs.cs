@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
     private ulong storageVersion;
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
@@ -149,14 +150,14 @@ public sealed partial class Binding
             return null;
         }
 
-        var qualifier = this.TypeName(member.Left, scope, false);
+        var qualifier = this.TypeName(member.Left, scope, false, arity: -1);
         if (qualifier is null)
         {
             // A qualifier that names no Type is reported by the call as missing or inaccessible (BindCall).
             return null;
         }
 
-        var type = this.EnumQualifierType(member.Left, qualifier, scope, null);
+        var type = this.ConstructorQualifierType(member.Left, qualifier, scope);
         if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
@@ -168,6 +169,36 @@ public sealed partial class Binding
         member.Right.BoundSymbol = constructor;
         member.BoundSymbol = constructor;
         return constructor;
+    }
+
+    private BoundType? ConstructorQualifierType(Koto syntax, BindingSymbol symbol, BindingScope scope)
+    {
+        var unwrapped = UnwrapTypeSyntax(syntax);
+        while (unwrapped is ParenthesizedTypeKoto grouped)
+        {
+            unwrapped = UnwrapTypeSyntax(grouped.Type);
+        }
+
+        if (unwrapped is SyntaxFormKoto { Akind: KotoKind.RootName, Operands.Length: 1 } root)
+        {
+            unwrapped = UnwrapTypeSyntax(root.Operands[0]);
+        }
+
+        if (unwrapped is GenericsKoto || TypeSpelling(unwrapped) == "Self" ||
+            symbol.Declaration is not StructKoto { GenericParameterNodes.Count: > 0 } declaration)
+        {
+            return this.EnumQualifierType(syntax, symbol, scope, null);
+        }
+
+        var pattern = this.SelfType(symbol);
+        var type = this.BindContainerReference(syntax, symbol, scope, this.TypeContext(syntax, scope), ((BoundType[])pattern.Components).AsSpan(0, declaration.GenericParameterNodes.Count));
+        if (type is not null)
+        {
+            this.inferredConstructorTargets.Add(syntax);
+        }
+
+        syntax.BoundSymbol = symbol;
+        return Complete(syntax, type);
     }
 
     private BoundType? BindBaseConstructor(SyntaxFormKoto node, BindingScope scope)

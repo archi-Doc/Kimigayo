@@ -188,6 +188,12 @@ internal enum BindingFailure : byte
     // SPEC 10.5: a reference without a fixed expected call signature needs every Type parameter bound explicitly.
     UnboundTypeArgument,
 
+    /// <summary>Independent call evidence does not establish a required acquisition correlation.</summary>
+    UnprovenAcquisitionCorrelation,
+
+    /// <summary>Fixing inferred constructor arguments changes or cannot verify selection.</summary>
+    ConstructorSelectionChanged,
+
     // SPEC 7.3: value.method without invocation forms no bound-method value.
     BoundMethodValue,
 

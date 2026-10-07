@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Numerics;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -20,15 +19,15 @@ public sealed partial class Binding
     private Dictionary<Koto, UnboundSlotFact>? unboundSlots;
 
     // Whether `type` names one of the callee's Type slots in `slots`, directly or as the selector of an `s/U` application.
-    private static bool MentionsSlots(BoundType type, Koto function, ulong slots, int depth = 0)
+    private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots, int depth = 0)
     {
-        if (slots == 0 || depth > 64)
+        if (slots.IsEmpty || depth > 64)
         {
             return false;
         }
 
         if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication && type.Symbol is { } symbol &&
-            ContainerSlot(function, symbol) is var slot && slot is >= 0 and < 64 && (slots & (1UL << slot)) != 0)
+            ContainerSlot(function, symbol) is var slot && slots.Contains(slot))
         {
             return true;
         }
@@ -45,14 +44,14 @@ public sealed partial class Binding
     }
 
     // The callee's Type slots that are still unbound.
-    private static ulong UnboundTypeSlots(FunctionKoto function, BoundType?[] arguments)
+    private static SlotSet UnboundTypeSlots(FunctionKoto function, BoundType?[] arguments, ref SlotSet slots)
     {
-        var slots = 0UL;
-        for (var g = 0; g < function.GenericArguments.Count && g < 64; g++)
+        slots.Clear();
+        for (var g = 0; g < CallOwnSlots(function).Count; g++)
         {
-            if (function.GenericArguments[g] is GenericParameterKoto && arguments[g] is null)
+            if (CallOwnSlots(function)[g] is GenericParameterKoto && arguments[g] is null)
             {
-                slots |= 1UL << g;
+                slots.Add(g);
             }
         }
 
@@ -60,14 +59,14 @@ public sealed partial class Binding
     }
 
     // SPEC 10.8: the required structural slots that no evidence binds, other than an F that a waiting argument binds (SPEC 10.5).
-    // A length slot that stays unbound, or an unbound slot beyond the masks, is unrepresentable here.
-    private static ulong UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, out bool unrepresentable)
+    // An unresolved length remains pending; structural slots have no fixed-width limit.
+    private static void UnsolvedSlots(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, BoundLength?[] lengths, int[] mapping, ref SlotSet unsolved, out bool unrepresentable)
     {
         unrepresentable = false;
-        var unsolved = 0UL;
-        for (var g = 0; g < function.GenericArguments.Count; g++)
+        unsolved.Clear();
+        for (var g = 0; g < CallOwnSlots(function).Count; g++)
         {
-            if (function.GenericArguments[g] is LengthParameterKoto)
+            if (CallOwnSlots(function)[g] is LengthParameterKoto)
             {
                 unrepresentable |= lengths[g] is null;
                 continue;
@@ -78,16 +77,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (g >= 64)
-            {
-                unrepresentable = true;
-                continue;
-            }
-
-            unsolved |= 1UL << g;
+            unsolved.Add(g);
         }
-
-        return unsolved;
     }
 
     // Whether a waiting argument binds the slot as its F, `ref/F` or `uniq/F` (SPEC 10.5).
@@ -97,7 +88,7 @@ public sealed partial class Binding
         {
             var pattern = function.Parameters[mapping[a]].Type.BoundType!;
             var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-            if (IsWaitingCallable(call.ArgumentNodes[a]) && slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(function, slotType.Symbol!) == slot)
+            if (IsWaitingCallable(call.ArgumentNodes[a]) && slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(function), slotType.Symbol!) == slot)
             {
                 return true;
             }
@@ -119,7 +110,7 @@ public sealed partial class Binding
     private BoundType? ExpectedCallSignature(FunctionKoto function, BoundType pattern)
     {
         var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? pattern.Components[0] : pattern;
-        if (slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(function, slotType.Symbol!) >= 0)
+        if (slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(function), slotType.Symbol!) >= 0)
         {
             return this.TryCallable(slotType, this.ConstraintScope(function), out var required, out _) ? required : null;
         }
@@ -129,19 +120,18 @@ public sealed partial class Binding
 
     // An open position stays open only while its parameter Type still holds an unsolved slot; a later literal default may have closed it,
     // and then the position was never fitted, so the candidate stays pending.
-    private bool OpenPositionsHold(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, int[] mapping, ulong open, ulong openSignatures, ulong unsolved, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, BoundLength?[] lengths)
+    private bool OpenPositionsHold(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, int[] mapping, SlotSet open, SlotSet openSignatures, SlotSet unsolved, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, BoundLength?[] lengths)
     {
-        for (var i = 0; i < call.ArgumentNodes.Count && i < 64; i++)
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            var bit = 1UL << i;
-            if ((open & bit) == 0 && (openSignatures & bit) == 0)
+            if (!open.Contains(i) && !openSignatures.Contains(i))
             {
                 continue;
             }
 
             var pattern = function.Parameters[mapping[i]].Type.BoundType!;
-            var signature = (open & bit) != 0 ? pattern : this.ExpectedCallSignature(function, pattern);
-            if (signature is null || !MentionsSlots(signature, function, unsolved) ||
+            var signature = open.Contains(i) ? pattern : this.ExpectedCallSignature(function, pattern);
+            if (signature is null || !MentionsSlots(signature, CallSlotOwner(function), unsolved) ||
                 this.CallType(signature, function, arguments, scope, self, origins, inputs, declaringType, lengths) is not null)
             {
                 return false;
@@ -156,169 +146,180 @@ public sealed partial class Binding
     // derived. An anonymous argument whose fixed expected call signature has closed parameter Types is still checked with them, its result
     // inferred from its body, so that its independent problems stay visible; one with open parameter Types, and every other argument that
     // the open slot leaves without a Type, rests on the call.
-    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, ulong unsolved, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
+    private BoundType? FailUnboundSlots(InvocationKoto call, FunctionKoto selected, BindingScope scope, BoundType?[] slots, BoundLength?[] lengths, int[] mapping, ReadOnlySpan<BoundArgumentOperation> operations, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)
     {
-        var first = BitOperations.TrailingZeroCount(unsolved);
-        var bit = 1UL << first;
-        var name = selected.GenericArguments[first].Identifier;
-        Koto? waiting = null;
-        string? headerParts = null;
-        string? reference = null;
-        var overloads = false;
-        var contract = this.activeRequirementContract;
-        this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
+        var unsolved = this.RentSlotSet(CallSlotCount(selected));
+        UnsolvedSlots(call, selected, slots, lengths, mapping, ref unsolved, out _);
+        var firstSlot = this.RentSlotSet(CallSlotCount(selected));
         try
         {
-            for (var i = 0; i < call.ArgumentNodes.Count; i++)
+            var first = unsolved.First();
+            firstSlot.Add(first);
+            var name = CallOwnSlots(selected)[first].Identifier;
+            Koto? waiting = null;
+            string? headerParts = null;
+            string? reference = null;
+            var overloads = false;
+            var contract = this.activeRequirementContract;
+            this.activeRequirementContract = null; // The arguments are expressions of the caller's context.
+            try
             {
-                var argument = call.ArgumentNodes[i];
-                var inner = KotoHelper.UnwrapParentheses(argument);
-                var pattern = selected.Parameters[mapping[i]].Type.BoundType!;
-                var signature = IsWaitingCallable(inner) ? this.ExpectedCallSignature(selected, pattern) : null;
-                var holds = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } && MentionsSlots(signature, selected, bit);
-                if (holds && waiting is null)
+                for (var i = 0; i < call.ArgumentNodes.Count; i++)
                 {
-                    waiting = argument;
-                }
-
-                if (inner is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
-                {
-                    var parameters = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } ? this.CallType(signature.Components[0], selected, slots, scope, self, origins, inputs, declaringType, lengths) : null;
-                    var result = parameters is null ? null : this.CallType(signature!.Components[1], selected, slots, scope, self, origins, inputs, declaringType, lengths);
-                    if (holds && ReferenceEquals(waiting, argument))
+                    var argument = call.ArgumentNodes[i];
+                    var inner = KotoHelper.UnwrapParentheses(argument);
+                    var pattern = selected.Parameters[mapping[i]].Type.BoundType!;
+                    var signature = IsWaitingCallable(inner) ? this.ExpectedCallSignature(selected, pattern) : null;
+                    var holds = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } && MentionsSlots(signature, CallSlotOwner(selected), firstSlot);
+                    if (holds && waiting is null)
                     {
-                        var inParameters = MentionsSlots(signature!.Components[0], selected, bit);
-                        var inResult = MentionsSlots(signature.Components[1], selected, bit);
-                        headerParts = inParameters && inResult ? "parameter and result Types" : inParameters ? "parameter Types" : "result Type";
+                        waiting = argument;
                     }
 
-                    if (parameters is not null)
+                    if (inner is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
                     {
-                        // SPEC 10.5: the closed parts of S guide the body; its inferred result is never evidence for the slot.
-                        this.BindClosureArgument(argument, closure, scope, this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit], resultMode: signature!.ResultMode), openResult: result is null);
-                    }
-                    else
-                    {
-                        this.MarkOmittedHeaders(closure, call);
-                    }
-
-                    continue;
-                }
-
-                if (IsWaitingFunctionReference(inner))
-                {
-                    if (holds && ReferenceEquals(waiting, argument))
-                    {
-                        var group = inner.BoundSymbol!;
-                        overloads = group.Next is not null;
-                        for (var candidate = group; candidate is not null && reference is null; candidate = candidate.Next)
+                        var parameters = signature is { Kind: BoundTypeKind.Function, Components.Count: 2 } ? this.CallType(signature.Components[0], selected, slots, scope, self, origins, inputs, declaringType, lengths) : null;
+                        var result = parameters is null ? null : this.CallType(signature!.Components[1], selected, slots, scope, self, origins, inputs, declaringType, lengths);
+                        if (holds && ReferenceEquals(waiting, argument))
                         {
-                            if (candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+                            var inParameters = MentionsSlots(signature!.Components[0], CallSlotOwner(selected), firstSlot);
+                            var inResult = MentionsSlots(signature.Components[1], CallSlotOwner(selected), firstSlot);
+                            headerParts = inParameters && inResult ? "parameter and result Types" : inParameters ? "parameter Types" : "result Type";
+                        }
+
+                        if (parameters is not null)
+                        {
+                            // SPEC 10.5: the closed parts of S guide the body; its inferred result is never evidence for the slot.
+                            this.BindClosureArgument(argument, closure, scope, this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result ?? BoundType.Unit], resultMode: signature!.ResultMode), openResult: result is null);
+                        }
+                        else
+                        {
+                            this.MarkOmittedHeaders(closure, call);
+                        }
+
+                        continue;
+                    }
+
+                    if (IsWaitingFunctionReference(inner))
+                    {
+                        if (holds && ReferenceEquals(waiting, argument))
+                        {
+                            var group = inner.BoundSymbol!;
+                            overloads = group.Next is not null;
+                            for (var candidate = group; candidate is not null && reference is null; candidate = candidate.Next)
                             {
-                                reference = $"{group.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
+                                if (candidate.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
+                                {
+                                    reference = $"{group.Name}<{string.Join(", ", Enumerable.Repeat("Type", generic.GenericArguments.Count))}>";
+                                }
                             }
                         }
+
+                        continue;
                     }
 
-                    continue;
+                    if (argument.BoundType is null && operations[i].ParameterType is null)
+                    {
+                        // SPEC 23.3.6.4: an argument at an open position, such as `.None` at Option<T>, has no Type without the slot.
+                        this.CompleteDependent(argument, call);
+                    }
+                }
+            }
+            finally
+            {
+                this.activeRequirementContract = contract;
+            }
+
+            var clauses = new List<string>(3);
+            if (waiting is not null)
+            {
+                if (headerParts is not null)
+                {
+                    clauses.Add($"write the anonymous function's {headerParts}");
+                }
+                else if (reference is not null)
+                {
+                    clauses.Add($"write explicit Type arguments for the function reference, as in {reference}");
+                }
+                else if (overloads)
+                {
+                    clauses.Add("bind the function reference to a local whose Function Type is written");
+                }
+            }
+            else if (NameableSlots(selected, slots, unsolved))
+            {
+                clauses.Add(selected.IsConstructor ? "write explicit Type arguments for the construction target" : $"write explicit Type arguments for {selected.Name}");
+            }
+
+            if (expected is null && selected.BoundSymbol?.Type is { } resultPattern && MentionsSlots(resultPattern, CallSlotOwner(selected), firstSlot))
+            {
+                clauses.Add("annotate the Type of the call's result");
+            }
+
+            if (clauses.Count == 0)
+            {
+                clauses.Add($"give an argument a Type that binds {name}, such as through a local whose Type is written");
+            }
+
+            var advice = string.Join(", or ", clauses);
+            advice = char.ToUpperInvariant(advice[0]) + advice[1..];
+            var others = new List<string>();
+            for (var g = first + 1; g < CallOwnSlots(selected).Count; g++)
+            {
+                if (unsolved.Contains(g))
+                {
+                    others.Add(CallOwnSlots(selected)[g].Identifier);
+                }
+            }
+
+            var also = others.Count == 0 ? string.Empty : $"; {string.Join(" and ", others)} {(others.Count == 1 ? "is" : "are")} also unbound";
+            var note = waiting is not null
+                ? $"No explicit Type argument or evidence binds {name}; it appears in the fixed expected call signature of a waiting argument, which is never evidence for an outer slot{also} (SPEC 10.5, 10.8)"
+                : $"No explicit Type argument or evidence binds {name}{also} (SPEC 10.8)";
+            return this.FailExplained(ref this.unboundSlots, call, BindingFailure.UnboundTypeArgument, new UnboundSlotFact(selected, name, waiting, note, advice), true);
+
+            // Explicit Type arguments are a complete list (SPEC 8.1): every slot must be writable, so a slot that a waiting argument binds or
+            // that holds a Closure or Function Item Type leaves none to write.
+            static bool NameableSlots(FunctionKoto function, BoundType?[] slots, SlotSet unsolved)
+            {
+                for (var g = 0; g < CallOwnSlots(function).Count; g++)
+                {
+                    if (CallOwnSlots(function)[g] is LengthParameterKoto)
+                    {
+                        continue;
+                    }
+
+                    if (slots[g] is { } bound ? Unnameable(bound, 0) : !unsolved.Contains(g))
+                    {
+                        return false;
+                    }
                 }
 
-                if (argument.BoundType is null && operations[i].ParameterType is null)
+                return true;
+            }
+
+            static bool Unnameable(BoundType type, int depth)
+            {
+                if (type.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem)
                 {
-                    // SPEC 23.3.6.4: an argument at an open position, such as `.None` at Option<T>, has no Type without the slot.
-                    this.CompleteDependent(argument, call);
+                    return true;
                 }
+
+                for (var i = 0; i < type.Components.Count && depth < 64; i++)
+                {
+                    if (Unnameable(type.Components[i], depth + 1))
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
             }
         }
         finally
         {
-            this.activeRequirementContract = contract;
-        }
-
-        var clauses = new List<string>(3);
-        if (waiting is not null)
-        {
-            if (headerParts is not null)
-            {
-                clauses.Add($"write the anonymous function's {headerParts}");
-            }
-            else if (reference is not null)
-            {
-                clauses.Add($"write explicit Type arguments for the function reference, as in {reference}");
-            }
-            else if (overloads)
-            {
-                clauses.Add("bind the function reference to a local whose Function Type is written");
-            }
-        }
-        else if (NameableSlots(selected, slots, unsolved))
-        {
-            clauses.Add($"write explicit Type arguments for {selected.Name}");
-        }
-
-        if (expected is null && selected.BoundSymbol?.Type is { } resultPattern && MentionsSlots(resultPattern, selected, bit))
-        {
-            clauses.Add("annotate the Type of the call's result");
-        }
-
-        if (clauses.Count == 0)
-        {
-            clauses.Add($"give an argument a Type that binds {name}, such as through a local whose Type is written");
-        }
-
-        var advice = string.Join(", or ", clauses);
-        advice = char.ToUpperInvariant(advice[0]) + advice[1..];
-        var others = new List<string>();
-        for (var g = first + 1; g < selected.GenericArguments.Count && g < 64; g++)
-        {
-            if ((unsolved & (1UL << g)) != 0)
-            {
-                others.Add(selected.GenericArguments[g].Identifier);
-            }
-        }
-
-        var also = others.Count == 0 ? string.Empty : $"; {string.Join(" and ", others)} {(others.Count == 1 ? "is" : "are")} also unbound";
-        var note = waiting is not null
-            ? $"No explicit Type argument or evidence binds {name}; it appears in the fixed expected call signature of a waiting argument, which is never evidence for an outer slot{also} (SPEC 10.5, 10.8)"
-            : $"No explicit Type argument or evidence binds {name}{also} (SPEC 10.8)";
-        return this.FailExplained(ref this.unboundSlots, call, BindingFailure.UnboundTypeArgument, new UnboundSlotFact(selected, name, waiting, note, advice), true);
-
-        // Explicit Type arguments are a complete list (SPEC 8.1): every slot must be writable, so a slot that a waiting argument binds or
-        // that holds a Closure or Function Item Type leaves none to write.
-        static bool NameableSlots(FunctionKoto function, BoundType?[] slots, ulong unsolved)
-        {
-            for (var g = 0; g < function.GenericArguments.Count; g++)
-            {
-                if (function.GenericArguments[g] is LengthParameterKoto)
-                {
-                    continue;
-                }
-
-                if (slots[g] is { } bound ? Unnameable(bound, 0) : g >= 64 || (unsolved & (1UL << g)) == 0)
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        static bool Unnameable(BoundType type, int depth)
-        {
-            if (type.Kind is BoundTypeKind.Closure or BoundTypeKind.FunctionItem)
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.Components.Count && depth < 64; i++)
-            {
-                if (Unnameable(type.Components[i], depth + 1))
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            this.ReturnSlotSet(firstSlot);
+            this.ReturnSlotSet(unsolved);
         }
     }
 

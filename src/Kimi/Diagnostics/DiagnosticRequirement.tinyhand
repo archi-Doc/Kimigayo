@@ -704,3 +704,9 @@
 
   + Name="Emission"
     Description="generation succeeds"
+
+  + Name="Binding.UnprovenAcquisitionCorrelation"
+    Description="the whole resolved function group preserves its declared acquisition correlations before applicability filtering"
+
+  + Name="Binding.ConstructorSelectionChanged"
+    Description="fixing inferred construction arguments preserves the same unique constructor and waiting contexts"

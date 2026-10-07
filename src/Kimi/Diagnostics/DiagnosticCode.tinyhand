@@ -996,7 +996,7 @@
 
   + Name="UnboundTypeArgument_Kd"
     Category="Language"
-    Message="Neither explicit generic arguments nor inference evidence bind a parameter of the referenced or called function"
+    Message="Neither explicit generic arguments nor inference evidence bind a required parameter of this reference or call"
     Evidence="parameter:Text"
     Label="Generic parameter '{0}' is not bound"
 
@@ -1024,3 +1024,15 @@
     Message="This implementation's Origin contract is not proven to admit every call of the required contract and provide its result guarantees"
     Evidence="comparison:Text,member:Text,relation:Text,longer:Origin,shorter:Origin"
     Label="{1} requires {3} {2} {4}, which is not proven"
+
+  + Name="UnprovenAcquisitionCorrelation_Kd"
+    Category="Language"
+    Message="The call does not establish the acquisition correlation required by its function group"
+    Evidence="parameter:Text,left:Type,right:Type|parameter:Text"
+    Label="The required correlation for '{0}' is not established across the corresponding candidates"
+
+  + Name="ConstructorSelectionChanged_Kd"
+    Category="Language"
+    Message="Fixing the inferred construction Type does not preserve one verifiable constructor selection"
+    Evidence="construction:Type"
+    Label="Rechecking the original constructor group with {0} does not preserve the selected declaration"
