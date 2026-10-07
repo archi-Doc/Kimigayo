@@ -64,10 +64,10 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void PendingGenericDispatchHasALocatedUnsupportedRecordAndWritesNoIr()
+    public void PendingConditionalDispatchHasALocatedUnsupportedRecordAndWritesNoIr()
     {
         var path = Path.GetFullPath("virtual-dispatch-pending.kimi");
-        var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\n()", path);
+        var c = MinimalEmissionTest.Analyze("contract Marker\nopen struct Base<T>\n    Self is Marker when T is Copy\n        public virtual func read(self: objref/Self) -> i32 => 1\n()", path);
         using var ir = new StringWriter();
         Assert.False(c.Emission.WriteIr(ir, out var failure));
         Assert.Empty(ir.ToString());

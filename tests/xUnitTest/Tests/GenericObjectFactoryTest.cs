@@ -113,7 +113,7 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
         using var ir = new StringWriter();
         Assert.False(c.Emission.WriteIr(ir, out var failure));
         Assert.True(c.Emission.FailureIsResourceLimit, failure);
-        Assert.Contains("destruction", failure, StringComparison.Ordinal);
+        Assert.Contains("'drop' grows through generated dependencies", failure, StringComparison.Ordinal);
         Assert.Equal(string.Empty, ir.ToString());
     }
 

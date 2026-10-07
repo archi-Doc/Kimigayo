@@ -46,21 +46,16 @@ internal sealed partial class GenericStoragePlan
         while (this.HasPendingSourceCalls)
         {
             var (call, parent) = this.sourceCallQueue[this.preparedSourceCalls++];
-            if (call.Target.Declaration is not Parsing.FunctionKoto function || !this.templates.TryGetValue(function, out var template))
-            {
-                return Fail("Compiler-requested source call requires a universally verified body.", out failure);
-            }
-
             var previous = this.ExpansionParent;
             this.ExpansionParent = parent;
             try
             {
-                if (!this.PrepareEntry(compilation, module, layouts, call, template, out var entry, out failure))
+                if (!this.PrepareSourceEntry(compilation, module, layouts, call, out var abi, out failure))
                 {
                     return false;
                 }
 
-                module.SourceCalls.Add(call, entry!.Selected ?? entry.Abi);
+                module.SourceCalls.Add(call, abi!);
             }
             finally
             {
@@ -68,6 +63,24 @@ internal sealed partial class GenericStoragePlan
             }
         }
 
+        return true;
+    }
+
+    // Descriptor-selected implementations enter the same bounded dependency graph as direct calls and destructors.
+    internal bool PrepareSourceEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, out FunctionAbi? abi, out string? failure, bool implementationBody = true)
+    {
+        abi = null;
+        if (call.Target.Declaration is not Parsing.FunctionKoto function || !this.templates.TryGetValue(function, out var template))
+        {
+            return Fail("Compiler-requested source call requires a universally verified body.", out failure);
+        }
+
+        if (!this.PrepareEntry(compilation, module, layouts, call, template, out var entry, out failure, implementationBody: implementationBody))
+        {
+            return false;
+        }
+
+        abi = entry!.Selected ?? entry.Abi;
         return true;
     }
 }

@@ -6,31 +6,41 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Physical layouts for verified, nongeneric shared slots. Semantic slot correspondence remains in Binding;
-// the emitter rejects generic virtual declarations before entering this plan.
+// Physical layouts for verified shared slots. Declaration shape fixes indices; closed Type bindings select
+// ordinary entries. Semantic slot correspondence remains in Binding, including direct base selection.
 internal sealed class VirtualGenerationPlan
 {
     private readonly List<FunctionKoto> declarations = new();
     private readonly Dictionary<BindingSymbol, List<FunctionKoto>> declarationsByType = new(ReferenceEqualityComparer.Instance);
     private readonly List<List<FunctionKoto>> declarationPool = new();
-    private readonly Dictionary<BindingSymbol, Layout> layouts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, Layout> layouts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BindingSymbol, int> shapes = new(ReferenceEqualityComparer.Instance);
     private readonly List<Layout> layoutPool = new();
-    private readonly Dictionary<FunctionKoto, (int Slot, int Receiver)> slots = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<FunctionKoto, FunctionAbi> addresses = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<FunctionKoto, int> slots = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<FunctionAbi, FunctionAbi> addresses = new(ReferenceEqualityComparer.Instance);
     private readonly List<(FunctionAbi Body, FunctionAbi Entry)> entries = new();
     private readonly List<EmissionOperand> operands = new();
     private Binding? binding;
     private EmissionModule? module;
     private Dictionary<FunctionKoto, FunctionAbi>? functions;
+    private Compilation? compilation;
+    private GenericStoragePlan? generics;
+    private AggregateLayoutPool? aggregateLayouts;
 
-    internal bool Begin(Binding binding, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions)
+    internal string? Failure { get; private set; }
+
+    internal bool Begin(Compilation compilation, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions, GenericStoragePlan generics, AggregateLayoutPool aggregateLayouts)
     {
         this.Clear();
-        this.binding = binding;
+        this.compilation = compilation;
+        this.binding = compilation.Binding;
+        this.generics = generics;
+        this.aggregateLayouts = aggregateLayouts;
         this.module = module;
         this.functions = functions;
-        foreach (var function in functions.Keys)
+        for (var i = 0; i < compilation.Ownership.Bodies.Count; i++)
         {
+            var function = compilation.Ownership.Bodies[i].Function;
             if (function.IsVirtual || function.IsOverride)
             {
                 this.declarations.Add(function);
@@ -68,7 +78,7 @@ internal sealed class VirtualGenerationPlan
             }
 
             var receiver = function.Parameters[function.BoundSymbol!.ReceiverIndex].Type.BoundType!;
-            if (this.GetTable(receiver.Components[0]) is null)
+            if (this.Shape(receiver.Components[0]) < 0)
             {
                 return false;
             }
@@ -84,15 +94,26 @@ internal sealed class VirtualGenerationPlan
             members.Clear();
         }
 
+        foreach (var layout in this.layoutPool)
+        {
+            layout.Choices.Clear();
+            layout.Prepared = false;
+        }
+
         this.declarations.Clear();
         this.declarationsByType.Clear();
         this.layouts.Clear();
+        this.shapes.Clear();
         this.slots.Clear();
         this.addresses.Clear();
         this.operands.Clear();
         this.binding = null;
         this.module = null;
         this.functions = null;
+        this.compilation = null;
+        this.generics = null;
+        this.aggregateLayouts = null;
+        this.Failure = null;
     }
 
     internal void Complete()
@@ -102,76 +123,77 @@ internal sealed class VirtualGenerationPlan
         this.entries.RemoveRange(this.addresses.Count, this.entries.Count - this.addresses.Count);
     }
 
-    internal bool TrySlot(FunctionKoto original, out int slot, out int receiver)
+    internal bool TrySlot(FunctionKoto original, FunctionAbi? abi, out int slot, out int receiver)
     {
-        var found = this.slots.TryGetValue(original, out var selected);
-        (slot, receiver) = found ? selected : (-1, -1);
-        return found;
+        receiver = -1;
+        if (!this.slots.TryGetValue(original, out slot) || abi is null)
+        {
+            return false;
+        }
+
+        // Substitution can erase a Unit input or introduce a hidden aggregate result before self.
+        for (var i = 0; i < abi.Parameters.Length; i++)
+        {
+            if (abi.Parameters[i].LogicalIndex == original.BoundSymbol!.ReceiverIndex && abi.Parameters[i].Kind == AbiParameterKind.Value && abi.Parameters[i].Type == "ptr")
+            {
+                receiver = i;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    internal FunctionAbi? Entry(FunctionKoto function, BoundType? declaring, bool implementationBody = true)
+    {
+        if (!GenericStoragePlan.IsGeneric(function))
+        {
+            return this.functions!.GetValueOrDefault(function);
+        }
+
+        if (declaring is null || this.binding!.ImplementationContext(function, declaring) is not { } context)
+        {
+            this.Failure = "A selected virtual implementation requires a closed declaring Type.";
+            return null;
+        }
+
+        if (!this.generics!.PrepareSourceEntry(this.compilation!, this.module!, this.aggregateLayouts!, context, out var abi, out var failure, implementationBody))
+        {
+            this.Failure = failure;
+            return null;
+        }
+
+        return abi;
     }
 
     internal FunctionAbi[]? GetTable(BoundType type)
     {
-        if (this.declarations.Count == 0 || type.Symbol is not { Declaration: StructKoto } symbol)
+        if (this.declarations.Count == 0 || type.Symbol is not { Declaration: StructKoto })
         {
             return [];
         }
 
-        if (this.layouts.TryGetValue(symbol, out var known))
-        {
-            return known.Table;
-        }
-
-        var inherited = type.StoredBase is { } parent ? this.GetTable(parent) : [];
-        if (inherited is null)
+        var layout = this.GetLayout(type);
+        if (layout is null)
         {
             return null;
         }
 
-        var ordinal = this.layouts.Count;
-        if (ordinal == this.layoutPool.Count)
+        if (layout.Prepared)
         {
-            this.layoutPool.Add(new());
+            return layout.Table;
         }
 
-        var layout = this.layoutPool[ordinal];
         layout.Entries.Clear();
-        layout.Entries.AddRange(inherited);
-        var members = this.declarationsByType.GetValueOrDefault(symbol);
-        for (var d = 0; members is not null && d < members.Count; d++)
+        foreach (var choice in layout.Choices)
         {
-            var function = members[d];
-            var abi = this.functions![function];
-            if (function.IsVirtual)
+            if (this.Entry(choice.Function, choice.Declaring) is not { } abi ||
+                this.Entry(choice.Slot.Original, choice.Slot.DeclaringType, implementationBody: false) is not { } contract || !SameAbi(contract, abi))
             {
-                var receiver = -1;
-                for (var i = 0; i < abi.Parameters.Length; i++)
-                {
-                    if (abi.Parameters[i].LogicalIndex == function.BoundSymbol!.ReceiverIndex && abi.Parameters[i].Kind == AbiParameterKind.Value && abi.Parameters[i].Type == "ptr")
-                    {
-                        receiver = i;
-                        break;
-                    }
-                }
-
-                if (receiver < 0)
-                {
-                    return null;
-                }
-
-                this.slots.Add(function, (layout.Entries.Count, receiver));
-                layout.Entries.Add(abi);
+                return null;
             }
-            else
-            {
-                if (!this.binding!.TryGetVirtualOverride(function, out var implementation) ||
-                    !this.slots.TryGetValue(implementation.Slot.Original, out var slot) || slot.Slot >= layout.Entries.Count ||
-                    !SameAbi(layout.Entries[slot.Slot], abi))
-                {
-                    return null;
-                }
 
-                layout.Entries[slot.Slot] = abi;
-            }
+            layout.Entries.Add(abi);
         }
 
         if (!layout.Table.AsSpan().SequenceEqual(CollectionsMarshal.AsSpan(layout.Entries)))
@@ -179,19 +201,25 @@ internal sealed class VirtualGenerationPlan
             layout.Table = layout.Entries.ToArray();
         }
 
-        this.layouts.Add(symbol, layout);
+        layout.Prepared = true;
         return layout.Table;
     }
 
     // Only erasure needs an address. Known Item calls use the same indexed instruction as member calls.
-    internal FunctionAbi? Address(FunctionKoto original)
+    internal FunctionAbi? Address(FunctionKoto original, FunctionAbi? body = null)
     {
-        if (this.addresses.TryGetValue(original, out var known))
+        body ??= this.functions!.GetValueOrDefault(original);
+        if (body is null)
+        {
+            return null;
+        }
+
+        if (this.addresses.TryGetValue(body, out var known))
         {
             return known;
         }
 
-        if (!this.TrySlot(original, out var slot, out var receiver) || this.functions!.GetValueOrDefault(original) is not { } body)
+        if (!this.TrySlot(original, body, out var slot, out var receiver))
         {
             return null;
         }
@@ -215,7 +243,7 @@ internal sealed class VirtualGenerationPlan
             }
         }
 
-        this.addresses.Add(original, entry);
+        this.addresses.Add(body, entry);
         this.operands.Clear();
         foreach (var parameter in body.Parameters)
         {
@@ -265,10 +293,105 @@ internal sealed class VirtualGenerationPlan
         return true;
     }
 
+    // Bind all replacements before requesting bodies. An overridden base body is not a dependency
+    // merely because its signature contributes to the inherited table prefix.
+    private Layout? GetLayout(BoundType type)
+    {
+        if (this.layouts.TryGetValue(type, out var known))
+        {
+            return known;
+        }
+
+        var parent = type.StoredBase;
+        var inherited = parent is null ? null : this.GetLayout(parent);
+        if (parent is not null && inherited is null)
+        {
+            return null;
+        }
+
+        var ordinal = this.layouts.Count;
+        if (ordinal == this.layoutPool.Count)
+        {
+            this.layoutPool.Add(new());
+        }
+
+        var layout = this.layoutPool[ordinal];
+        layout.Choices.Clear();
+        if (inherited is not null)
+        {
+            layout.Choices.AddRange(inherited.Choices);
+        }
+
+        var members = this.declarationsByType.GetValueOrDefault(type.Symbol!);
+        for (var d = 0; members is not null && d < members.Count; d++)
+        {
+            var function = members[d];
+            if (function.IsVirtual)
+            {
+                if (!this.slots.TryGetValue(function, out var slot) || slot != layout.Choices.Count)
+                {
+                    return null;
+                }
+
+                layout.Choices.Add(new(function, type, new(function, type)));
+            }
+            else
+            {
+                if (!this.binding!.TryGetVirtualOverride(function, out var implementation) ||
+                    !this.slots.TryGetValue(implementation.Slot.Original, out var slot) || slot >= layout.Choices.Count)
+                {
+                    return null;
+                }
+
+                layout.Choices[slot] = layout.Choices[slot] with { Function = function, Declaring = type };
+            }
+        }
+
+        this.layouts.Add(type, layout);
+        return layout;
+    }
+
+    private int Shape(BoundType type)
+    {
+        if (type.Symbol is not { Declaration: StructKoto } symbol)
+        {
+            return -1;
+        }
+
+        if (this.shapes.TryGetValue(symbol, out var count))
+        {
+            return count;
+        }
+
+        count = type.StoredBase is { } parent ? this.Shape(parent) : 0;
+        if (count < 0)
+        {
+            return -1;
+        }
+
+        var members = this.declarationsByType.GetValueOrDefault(symbol);
+        for (var i = 0; members is not null && i < members.Count; i++)
+        {
+            if (members[i].IsVirtual)
+            {
+                this.slots.Add(members[i], count++);
+            }
+        }
+
+        this.shapes.Add(symbol, count);
+        return count;
+    }
+
     private sealed class Layout
     {
+        internal List<Choice> Choices { get; } = new();
+
+        internal bool Prepared { get; set; }
+
         internal List<FunctionAbi> Entries { get; } = new();
 
         internal FunctionAbi[] Table { get; set; } = [];
     }
+
+    private readonly record struct Choice(FunctionKoto Function, BoundType Declaring, Binding.VirtualSlot Slot);
 }

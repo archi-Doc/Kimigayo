@@ -33,7 +33,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         Assert.True(evidence.Entry!.IsOverride);
         Assert.Equal("Leaf", evidence.Source.Symbol!.Name);
         Assert.Equal("Base", evidence.Target.Symbol!.Name);
-        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
     }
 
     [Fact]

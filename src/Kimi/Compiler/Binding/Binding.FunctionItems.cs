@@ -8,6 +8,10 @@ public sealed partial class Binding
 {
     private readonly Dictionary<BoundType, BoundCall> functionItemContexts = new(ReferenceEqualityComparer.Instance);
 
+    // Generation-only context of an already selected declaration. An override never becomes a public Item.
+    internal BoundCall? ImplementationContext(FunctionKoto function, BoundType declaring)
+        => this.FunctionItemContext(this.FunctionItemType(function.BoundSymbol!, [], declaring));
+
     // A declaration and its bound generic arguments are the complete identity of its zero-sized Item. Its signature is a
     // call contract, not stored environment data; in particular, per-call input Origins do not make the Item borrow anything.
     internal BoundType? FunctionItemSignature(BoundType type)

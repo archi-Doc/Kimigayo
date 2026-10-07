@@ -68,11 +68,6 @@ internal sealed partial class BodyLowering
     // A generic Item enters the instance of its bound arguments, or the explicit specialization selected for them.
     private FunctionAbi? ClosureEntry(BoundType type, FunctionKoto definition, bool address = false)
     {
-        if (definition.IsVirtual)
-        {
-            return address ? this.Virtuals?.Address(definition) : this.functions?.GetValueOrDefault(definition);
-        }
-
         if (type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.CompilerFunction is not (null or CompilerFunctionKind.None))
         {
             return this.CompilerEntries?.Get(type);
@@ -80,11 +75,13 @@ internal sealed partial class BodyLowering
 
         if (type.Kind == BoundTypeKind.FunctionItem && (type.Components.Count != 0 || type.LengthArguments.Length != 0))
         {
-            return definition.CodeContext.Compilation.Binding.FunctionItemContext(type) is { } item && this.GenericCalls?.GetValueOrDefault(item) is { } instance
+            var entry = definition.CodeContext.Compilation.Binding.FunctionItemContext(type) is { } item && this.GenericCalls?.GetValueOrDefault(item) is { } instance
                 ? instance.Selected ?? instance.Abi : null;
+            return definition.IsVirtual && address ? this.Virtuals?.Address(definition, entry) : entry;
         }
 
-        return type.ClosureContext is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi : this.functions?.GetValueOrDefault(definition);
+        var body = type.ClosureContext is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi : this.functions?.GetValueOrDefault(definition);
+        return definition.IsVirtual && address ? this.Virtuals?.Address(definition, body) : body;
     }
 
     // Retain physical signatures only; repeated compilation must not allocate
@@ -473,7 +470,7 @@ internal sealed partial class BodyLowering
             var virtualSlot = -1;
             var virtualReceiver = -1;
             if (receiverType is { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } original } &&
-                (this.Virtuals is null || !this.Virtuals.TrySlot(original, out virtualSlot, out virtualReceiver)))
+                (this.Virtuals is null || !this.Virtuals.TrySlot(original, concreteEntry, out virtualSlot, out virtualReceiver)))
             {
                 return Fail("A virtual Item call has no physical slot and receiver mapping.", out failure);
             }

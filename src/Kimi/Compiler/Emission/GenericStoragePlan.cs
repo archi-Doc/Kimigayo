@@ -32,6 +32,7 @@ internal sealed partial class GenericStoragePlan
     private readonly Dictionary<(FunctionAbi Write, CompilerFunctionKind Kind), FunctionAbi> formattingConversions = new();
     private readonly Dictionary<FunctionKoto, int> chainCounts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionKoto, int> entryCounts = new(ReferenceEqualityComparer.Instance);
+    private readonly List<CallEntry> implementations = new();
     private Dictionary<FunctionKoto, Template> templates = new(ReferenceEqualityComparer.Instance);
     private Dictionary<FunctionKoto, Template> previousTemplates = new(ReferenceEqualityComparer.Instance);
     private List<CallEntry> entries = new();
@@ -50,7 +51,7 @@ internal sealed partial class GenericStoragePlan
 
     internal Dictionary<BoundCall, CallEntry> Calls => this.calls; // The concrete type enumerates without allocation.
 
-    internal IReadOnlyList<CallEntry> Entries => this.entries;
+    internal IReadOnlyList<CallEntry> Entries => this.implementations;
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
 
@@ -76,6 +77,7 @@ internal sealed partial class GenericStoragePlan
 
         this.templates.Clear();
         this.entries.Clear();
+        this.implementations.Clear();
         this.calls.Clear();
         this.formattingCalls.Clear();
         this.formattingWrites.Clear();
@@ -333,12 +335,12 @@ internal sealed partial class GenericStoragePlan
         return this.entryNameCache[index];
     }
 
-    private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth = 0)
+    private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth = 0, bool implementationBody = false)
     {
         failure = null;
         if (this.calls.TryGetValue(call, out entry))
         {
-            return true; // An in-progress entry already has its complete physical signature.
+            return !implementationBody || this.PrepareImplementation(compilation, module, layouts, entry, depth, out failure);
         }
 
         var function = template.Body.Function;
@@ -349,7 +351,7 @@ internal sealed partial class GenericStoragePlan
             {
                 entry = null;
                 this.ResourceLimitExceeded = true;
-                return Fail($"Generic instantiation of '{function.Name}' grows through destruction beyond {GrowingKeyLimit} nested substitutions.", out failure);
+                return Fail($"Generic instantiation of '{function.Name}' grows through generated dependencies beyond {GrowingKeyLimit} nested substitutions.", out failure);
             }
         }
 
@@ -364,7 +366,7 @@ internal sealed partial class GenericStoragePlan
         this.chainCounts[function] = chain + 1;
         try
         {
-            return this.PrepareEntryCore(compilation, module, layouts, call, template, out entry, out failure, depth);
+            return this.PrepareEntryCore(compilation, module, layouts, call, template, out entry, out failure, depth, implementationBody);
         }
         finally
         {
@@ -372,7 +374,7 @@ internal sealed partial class GenericStoragePlan
         }
     }
 
-    private bool PrepareEntryCore(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth)
+    private bool PrepareEntryCore(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth, bool implementationBody)
     {
         entry = null;
         failure = null;
@@ -421,7 +423,7 @@ internal sealed partial class GenericStoragePlan
             {
                 entry = existing;
                 this.calls.Add(call, entry);
-                return true;
+                return !implementationBody || this.PrepareImplementation(compilation, module, layouts, entry, depth, out failure);
             }
         }
 
@@ -451,20 +453,36 @@ internal sealed partial class GenericStoragePlan
             };
         this.entries.Add(entry);
         this.calls.Add(call, entry);
+        entry.Context = call;
+        entry.ImplementationPrepared = false;
         entry.Parent = this.ExpansionParent;
-        if (selected is not null)
+        if (selected is not null || (function.IsVirtual && !implementationBody))
         {
-            // SPEC 21.3.4: the selected explicit specialization is the implementation; callers call its
-            // ordinary ABI directly, so the generic body is not instantiated for this call.
+            // A selected specialization supplies its own body. A virtual contract supplies only its ABI;
+            // descriptors and direct base selection request the actual bodies independently.
             return true;
         }
 
+        return this.PrepareImplementation(compilation, module, layouts, entry, depth, out failure);
+    }
+
+    private bool PrepareImplementation(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallEntry entry, int depth, out string? failure)
+    {
+        failure = null;
+        if (entry.ImplementationPrepared || entry.Selected is not null)
+        {
+            return true;
+        }
+
+        entry.ImplementationPrepared = true;
+        entry.Parent = this.ExpansionParent;
+        this.implementations.Add(entry);
         module.PendingEntries.Add(entry);
         var parent = this.ExpansionParent;
         this.ExpansionParent = entry;
         try
         {
-            return this.PrepareEntryDependencies(compilation, module, layouts, call, template, entry, depth, out failure);
+            return this.PrepareEntryDependencies(compilation, module, layouts, entry.Context!, entry.Template, entry, depth, out failure);
         }
         finally
         {
@@ -564,6 +582,10 @@ internal sealed partial class GenericStoragePlan
     /// </summary>
     internal sealed record CallEntry(Template Template, FunctionAbi Abi, FunctionAbi? Selected, BoundType[] Parameters, BoundType Result, BoundType? DeclaringType, BoundType?[] Arguments, BoundLength?[] Lengths, CallEntry?[] Direct)
     {
+        internal bool ImplementationPrepared { get; set; }
+
+        internal BoundCall? Context { get; set; }
+
         internal BoundCall[]? ConcreteCalls { get; set; }
 
         internal CallEntry? Parent { get; set; }

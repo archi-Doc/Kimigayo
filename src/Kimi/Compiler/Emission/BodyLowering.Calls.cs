@@ -206,9 +206,9 @@ internal sealed partial class BodyLowering
 
             if (dispatch.IsDirect)
             {
-                callee = dispatch.Implementation is { } implementation ? this.functions!.GetValueOrDefault(implementation) : null;
+                callee = dispatch.Implementation is { } implementation ? this.Virtuals.Entry(implementation, dispatch.ImplementingType) : null;
             }
-            else if (!this.Virtuals.TrySlot(target, out virtualSlot, out virtualReceiver))
+            else if (!this.Virtuals.TrySlot(target, callee, out virtualSlot, out virtualReceiver))
             {
                 return Fail("A virtual call has no physical slot and receiver mapping.", out failure);
             }

@@ -75,7 +75,7 @@ public sealed partial class LlvmEmitter
         }
         else if (this.unsupportedVirtual is { } function)
         {
-            function.Report(DiagnosticRequirement.Emission, DiagnosticCode.UnsupportedEmission_Kd, span: function.DispatchModifierSpan, evidence: ["generic or conditional virtual slot-table and dispatch generation"], note: failure);
+            function.Report(DiagnosticRequirement.Emission, DiagnosticCode.UnsupportedEmission_Kd, span: function.DispatchModifierSpan, evidence: ["conditional virtual slot-table and dispatch generation"], note: failure);
         }
         else
         {
@@ -185,7 +185,7 @@ public sealed partial class LlvmEmitter
 
             this.lowering.StaticGetters = this.staticGetters;
 
-            if (!this.virtuals.Begin(c.Binding, module, this.functions))
+            if (!this.virtuals.Begin(c, module, this.functions, this.generics, this.lowering.AggregateLayouts))
             {
                 failure = "Virtual table entries do not match the verified slot correspondence and ABI.";
                 return false;
@@ -284,7 +284,12 @@ public sealed partial class LlvmEmitter
         }
         finally
         {
-            this.resourceLimit |= this.defaults.ResourceLimitExceeded;
+            this.resourceLimit |= this.defaults.ResourceLimitExceeded || this.generics.ResourceLimitExceeded;
+            if (!module.IsComplete && this.virtuals.Failure is { } virtualFailure)
+            {
+                failure = virtualFailure;
+            }
+
             // Never retain a previous parse through the active declaration-to-ABI map.
             if (!module.IsComplete && this.lowering.AggregateLayouts.ResourceLimitFailure is { } limit)
             {
@@ -421,8 +426,13 @@ public sealed partial class LlvmEmitter
     private bool LowerInstances(Compilation c, EmissionModule module, out string? failure)
     {
         failure = null;
-        foreach (var (call, entry) in this.generics.Calls)
+        // A factory Item or a direct base call can discover descriptor dependencies while lowering.
+        // The next worklist pass prepares their object calls before lowering the appended entries.
+        var count = this.generics.Entries.Count;
+        for (var index = 0; index < count; index++)
         {
+            var entry = this.generics.Entries[index];
+            var call = entry.Context!;
             // A selected explicit specialization (SPEC 21.3.4) is never pending; a reused entry is lowered once.
             if (!module.PendingEntries.Contains(entry))
             {
@@ -573,10 +583,10 @@ public sealed partial class LlvmEmitter
             }
 
             var function = body.Function;
-            if ((function.IsVirtual || function.IsOverride) && (GenericStoragePlan.IsGeneric(function) || function.BoundSymbol!.ConditionalDeclaration is not null))
+            if ((function.IsVirtual || function.IsOverride) && (function.BoundSymbol!.ConditionalDeclaration is not null || function.TypeConstraints.Count != 0))
             {
                 this.unsupportedVirtual = function;
-                return "Generic or conditional virtual slot-table and dispatch generation are not yet implemented; no static-call fallback is emitted.";
+                return "Conditional virtual slot-table and dispatch generation is not yet implemented; no static-call fallback is emitted.";
             }
 
             if (GenericStoragePlan.IsGeneric(function))
