@@ -1,5 +1,7 @@
 # 22. Kimi, program execution, and foreign functions
 
+Normal object creation uses the [common adaptation/factory contract](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing). The three factory APIs remain available with ordinary call inference and function-value uses; adaptation input inference is independent.
+
 [Specification index](../SPEC.md)
 
 This chapter defines the required declarations of the Kimi Kotonoha, process startup and shutdown, the foreign-call boundary, minimal standard output, the initial Windows runtime and test execution. Kimi names the foundation library; Core remains a Type component.

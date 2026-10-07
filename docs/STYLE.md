@@ -18,6 +18,8 @@ Apply conventions to changed declarations, without unrelated formatting or behav
 may omit context, bodies and documentation, or use explicit syntax for teaching; they need not be complete
 programs. Hypothetical APIs do not imply support; see [STATUS.md](STATUS.md).
 
+[Kimi] Prefer `value@obj`, `value@rc` or `value@arc` for ordinary object creation, with `@move` for a Non-Copy Place. Keep `makeObj` / `makeRc` / `makeArc` when ordinary call inference or a factory Function Item is useful; these public APIs remain supported.
+
 ## 1. Naming
 
 ### 1.1. Names and files

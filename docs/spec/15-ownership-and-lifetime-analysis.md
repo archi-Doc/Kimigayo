@@ -1,5 +1,7 @@
 # 15. Ownership and lifetime analysis
 
+Virtual calls compose the [public receiver, effect and earlier-result guarantees](virtual-dispatch.md#5-receiver-safety-and-completeness) with this analysis. Object base views retain whole-payload Loans and Owned erasure evidence; direct-base calls retain their distinct implementation identity.
+
 [Specification index](../SPEC.md)
 
 ## 15.1. Initialization and consume analysis

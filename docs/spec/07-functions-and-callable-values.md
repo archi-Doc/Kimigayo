@@ -133,6 +133,8 @@ A normal transfer that abandons argument evaluation skips the callee and destroy
 
 ## 7.3. Explicit receivers
 
+Virtual functions use explicit object-borrow receivers and inherited public contracts under [§6.2.4](virtual-dispatch.md#1-declarations-and-contracts). Their Function Items remain unbound and dispatch on each input receiver.
+
 A function declared directly in a struct or enum, or a Contract function requirement, is an **instance function** exactly when one parameter's **internal Name** is `self`; otherwise it is a **Type function**. At most one `self` is allowed. It may stand at any written position after the task slot, if any ([§24.2.1](24-suspension-and-asynchronous-tasks.md#2421-form)), but cannot be renamed or have a default. Its normalized Type must be `Self`, `ref/Self`, `uniq/Self` or a permitted object-Semantics `Self` form; unrelated targets, extra reference layers, raw pointers and unconstrained generic receiver Semantics are rejected. Origin annotations follow the normal parameter rules. In groups, rootgroups and local functions without an active contextual `self`, a parameter named `self` has no instance-member meaning.
 
 A recognized receiver neither starts nor ends an ordinary-parameter section. It may appear on either side of the boundary, but `(! self)` and `(self !)` are invalid because no ordinary parameter follows the boundary. A parameter named `self` without receiver meaning follows the ordinary boundary rules.

@@ -208,7 +208,7 @@ ConditionalImplementationItem := AttributedFunctionDefinition
 ConstructorDeclaration := Access? "init" ParameterList<Parameter>
                           BaseInitializer? ExecutableBody
 BaseInitializer      := ":" "base" "(" TaskSlot? TrailingList<Argument>? ")"
-FunctionHeader       := Access? "unsafe"? "func" Name
+FunctionHeader       := Access? ("unsafe" | "virtual" | "override")? "func" Name
                         GenericParameters?
                         ParameterList<Parameter> ("->" FunctionResult)?
 FunctionDefinition   := FunctionHeader FunctionBody
@@ -338,7 +338,9 @@ DecimalTupleIndex    := ? decimal integer literal used as a Tuple member, §12.4
 ConstantIndexExpression := IntegerLiteral | "(" ConstantIndexExpression ")"
 // Static fixed-array path recognition only, not a restriction on ordinary indexing (§15.1.3).
 Argument             := (Name ":")? Expression
-Primary              := "::"? Name | Literal | "(" Expression ")" | TupleExpression
+BaseInvocation       := "base" "." Name AdjacentTypeArguments?
+                        "(" TaskSlot? TrailingList<Argument>? ")"
+Primary              := BaseInvocation | "::"? Name | Literal | "(" Expression ")" | TupleExpression
                       | BoundContainerExpression
                       | ArrayExpression | DictionaryExpression | FunctionExpression
                       | LabelPrefix? LabelableConstruct
@@ -493,14 +495,14 @@ These entries record where the syntax summary of this revision ends. They are ne
 | Form or production | Owning syntax and boundary |
 | --- | --- |
 | Extension declarations | Not introduced; no production or active extension candidate stage exists in this revision. See [Container boundary](../06-declarations-and-containers.md#61-declaration-containers). |
-| Virtual/abstract/override declarations and ordinary base-member invocation | Not introduced; [extension design](../06-declarations-and-containers.md#624-virtual-members-and-overrides). Unavailable modifiers are diagnosed under §2.5.1. Base clauses and base-constructor initializers are defined in F.3. |
+| Virtual and override functions; base calls | [§6.2.4](../06-declarations-and-containers.md#624-virtual-members-and-overrides) restricts headers and contracts. `base.Name(arguments)` supplies lexical `self` and calls the selected base implementation directly. `abstract`, virtual accessors and bound base function values remain unavailable. Constructor base initializers are separate (F.3). |
 | Runtime-contract designations, View associated-Type bindings, exact and Contract tests, and checked casts | The [runtime extension](../08-generics-constraints-and-contracts.md#85-runtime-contracts) and the [object operations](../13-operators-and-assignment.md#1362-general-view-tests-and-checked-casts) keep the design without final source spellings. Static associated-Type specifications and projections are defined in F.3; ordinary struct `is` and explicit upcasts are defined. |
 | Callable extensions | Borrowed, Exclusive or Consuming erased Types, public lending results, non-escaping declarations, capture aliases, initializers and parts, generic receiver Semantics and `{environment}` are not introduced. |
 | Additional Patterns | The [initial forms](../14-control-flow.md#1481-patterns) are defined; Struct, Type, OR, Range, Rest and other [extensions](D-deferred-features.md#d1-enum-and-pattern-extensions) remain deferred. |
 | Attributes | Syntax, placement and Mod marker behavior follow [§6.5](../06-declarations-and-containers.md#65-attributes); Layout follows [§21.1.2](../../impl/21-layout-runtime-and-code-generation.md#2112-layout-attribute-and-fragments), LibraryImport [§22.3](../22-core-execution-and-foreign-functions.md#223-foreign-function-imports), and the argument-free Test Attribute [§6.5.1](../06-declarations-and-containers.md#651-test-definitions). Concrete marker registration and other general semantics remain design boundaries. |
 | Composition Root operations | `$abort(...)` and `$tryWrite(...)` are expressions. `$expect(...)` and `$require(...)` are standalone TestVerification items, never expression operands; [§17.5](../17-failure-handling.md#175-test-verification-operations) defines their test-only restrictions, message boundary and evaluation. Entry/Provider syntax remains unsettled under [§13.8](../13-operators-and-assignment.md#138-extension-boundaries-and-reserved-syntax). |
 | Additional Type arguments | [Generic application](../12-expressions.md#1242-invocation-and-generic-application) defines no general constant Type arguments. |
-| Object ownership operations | The Kimi operations for [creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) and the [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) use ordinary call syntax; those sections define their names, Types and acquisition contracts. `Type.init` constructs an owner value, and the complete forms such as `@obj/T` and `@rc/T` add no allocation or count increment. |
+| Object ownership operations | The Kimi operations for [creation, strong-owner duplication and cyclic construction](../13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) and the [Weak operations](../13-operators-and-assignment.md#1359-weak-reference-operations) use ordinary call syntax; those sections define their names, Types and acquisition contracts. `Type.init` constructs an owner value, and `@obj` / `@rc` / `@arc`, complete targets and aliases share the defined creation/identity/upcast table. Only creation allocates; no adaptation clones a strong owner. |
 | Complete payload and whole-value updates | Sealed and ObjectPayload use ordinary requirement syntax; the opt-out `Self is not ObjectPayload` is an ordinary `ConstraintClause` whose placement §8.4.7.2 restricts. `@follow` selects a proven complete payload (§13.5.5.1), and `@ref`/`@uniq` borrow the written slot. `Kimi.Intrinsics.replace`, `exchange` and `swap` use ordinary generic calls and named arguments (§15.7). |
 | Places and iteration | `place ref/T` and `place uniq/T` results, Contract Type parameters, Origin-parameterized associated Types with formation Types, single-slot `during` bindings, `@copy`, the postfix `@follow` and `for var` slots are defined in F.2–F.5. Pattern-local acquisition selectors and Contract-owned Origin parameters are not introduced ([Appendix D](D-deferred-features.md)). |
 | Function parameters | [§7.2](../07-functions-and-callable-values.md#72-parameters-and-defaults) defines the `!` boundary, external and internal names and independent defaults, and [§24.2](../24-suspension-and-asynchronous-tasks.md#242-task-slots) the leading task slot and the task argument `task;`; F.3 and F.4 summarize their syntax. |

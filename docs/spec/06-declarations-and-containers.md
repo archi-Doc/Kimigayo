@@ -188,9 +188,9 @@ public struct Leaf : Base
 public struct Invalid : Leaf // Error: Leaf is sealed.
 ```
 
-Inheritance preserves the members' declared accessibility and grants no private access. Ordinary function and accessor calls use the implementation selected statically from the receiver's Effective Type, including through concrete Core object views; the Runtime Object Type does not replace that implementation. [Inherited lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) determines the declaration layer, and [receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) supplies eligible instance receivers. Function-value calls keep their own rules.
+Inheritance preserves the members' declared accessibility and grants no private access. Nonvirtual function and accessor calls use the implementation selected statically from the receiver's Effective Type, including through concrete Core object views; the Runtime Object Type does not replace that implementation. [Inherited lookup](09-names-signatures-and-access.md#95-qualified-and-inherited-lookup) determines the declaration layer, and [receiver projection](09-names-signatures-and-access.md#951-base-subobject-receiver-projection) supplies eligible instance receivers. Function-value calls keep their own rules.
 
-**Inherited Names.** A derived struct cannot declare a Value-role member with the same Name as a member of any ancestor that is accessible from the derived declaration. This covers functions, whatever their Signature and whether instance or Type functions, as well as Fields and stored and computed Properties. Neither conditional premises nor overload applicability exempt a declared Name. For a Property, its own access is checked, not an individual accessor's, and protected access is checked with the derived receiver.
+**Inherited Names.** Except for a valid [override](#624-virtual-members-and-overrides), which adds no member or lookup layer, a derived struct cannot declare a Value-role member with the same Name as a member of any ancestor that is accessible from the derived declaration. This covers functions, whatever their Signature and whether instance or Type functions, as well as Fields and stored and computed Properties. Neither conditional premises nor overload applicability exempt a declared Name. For a Property, its own access is checked, not an individual accessor's, and protected access is checked with the derived receiver.
 
 The check runs on the completed declaration set, after environment selection, Mod output and fragment merging, with a valid base graph; a collision is diagnosed at the derived declaration. Same-layer overloads and other namespaces keep their rules. In particular, the receiver-shape rule of [§7.3](07-functions-and-callable-values.md#73-explicit-receivers) compares only the declarations of one layer, because a base and a derived declaration of one accessible Name never coexist. Inaccessible ancestor Names, including private members and internal or private-protected members of another Kotonoha, may be reused. An explicit specialization implements its original function and is not another member; it gains no right to specialize a base member from a derived Container.
 
@@ -198,7 +198,7 @@ The accessible member Names of an open struct, in the Value and Type namespaces,
 
 **Base subobject.** The direct base is one inline owned subobject that logically precedes the structure's directly declared fields. A base subobject keeps its own field identities and construction-completion facts. The compiler still selects physical offsets under the [layout rules](../impl/21-layout-runtime-and-code-generation.md#211-structure-layout-and-abi); logical ordering requires neither flattening nor a fixed ABI. Construction runs the base first (§6.2.3), and destruction runs the derived layer first ([field cleanup](16-scope-exit-and-destruction.md#1632-field-cleanup)). A base subobject cannot be independently Moved, replaced or reconstructed through a base view of a derived value. Whole-value operations keep the exact owning Type and the responsibility for all layers; they cannot slice a derived value. Access to an inherited field still obeys normal permissions and checks the Partial Move restrictions of every containing base and derived layer.
 
-There is no explicit ordinary base-member invocation and no further ordinary conversion between derived and base values. [Object calls](12-expressions.md#1243-object-member-calls) and [explicit object upcasts](13-operators-and-assignment.md#1357-object-upcasts) keep their defined operations. None of these rules imply a CLR-like representation, boxing, garbage collection or value slicing.
+Explicit [base implementation calls](virtual-dispatch.md#4-direct-base-calls) use lexical `self`; no further ordinary conversion between derived and base values is introduced. [Object calls](12-expressions.md#1243-object-member-calls) and [explicit object upcasts](13-operators-and-assignment.md#1357-object-upcasts) keep their defined operations. None of these rules imply a CLR-like representation, boxing, garbage collection or value slicing.
 
 ### 6.2.3. Constructors
 
@@ -273,27 +273,7 @@ After merging, one public zero-parameter constructor is synthesized if and only 
 
 ### 6.2.4. Virtual members and overrides
 
-**Extension design; not active.** This section owns the proposed virtual/override semantics and their interaction with runtime Contracts. Current declarations use the static selection and inherited-Name rule of §6.2.2, and unavailable modifiers are diagnosed under §2.5.1.
-
-An overridable declaration and each override require explicit designation. The original declaration identifies the slot; equal Names or Signatures never create one implicitly. Only a valid explicit override would be exempt from the inherited-Name prohibition. Existing ordinary members do not become virtual.
-
-An override preserves the Shared/Exclusive receiver kind and, after normalization and receiver-Self correspondence, the parameter and result Types. No covariant result is added. Labels, name-omission permissions and defaults follow the statically selected declaration. An override cannot strengthen public premises or input-Origin requirements, or weaken result lifetime guarantees; compatibility follows the existing proof rules.
-
-The target and each overridden accessor must be accessible. Their declared access is preserved, except that a protected-internal member overridden in another Kotonoha is declared protected there. Private members, and internal or private-protected members outside their Kotonoha, are ineligible. This grants no permission to expose inaccessible API Types.
-
-Initial virtual calls are safe: each virtual implementation and override, including its implementation family, independently requires [ObjectCallCompatible Proven](12-expressions.md#1244-object-receiver-compatibility), and a failure is a declaration error even without object call sites. This is an explicit guarantee, unlike an ordinary member's inferred public status. A base body's proof cannot validate an override.
-
-Static lookup selects the declaration, overload, access, labels and public contract. Runtime dispatch selects only that slot's implementation for the Dynamic Type; it never repeats lookup or adds derived-only overloads.
-
-```text
-Animal.reset: explicit Exclusive virtual slot
-    ├─ Dog.reset mutates permitted state -> valid override
-    └─ Cat.reset replaces all of self    -> invalid override declaration
-```
-
-With [runtime Contracts](08-generics-constraints-and-contracts.md#85-runtime-contracts), a retained requirement mapping follows the corresponding valid override. Every mapped requirement is rechecked at that override's declaration, and an incompatible override is rejected rather than silently losing conformance or Supports. Runtime Contract Views remain a separate extension owned by §8.5.
-
-Before this design is introduced, declaration spellings, eligible members, receivers and generics, accessor designation, abstract construction restrictions, explicit base-implementation calls, and slot and metadata information for separate compilation must be settled together. The design adds no active syntax or fixed ABI.
+The normative [virtual dispatch detail](virtual-dispatch.md) defines `virtual func`, `override func`, slot identity and inherited contracts, `base.f(...)`, receiver completeness, effects, Contract witnesses and semantic records. Static selection fixes the public slot; the Dynamic Type selects only its implementation. Ordinary members remain nonvirtual.
 
 ## 6.3. Enums
 

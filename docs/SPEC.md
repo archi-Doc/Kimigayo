@@ -8,7 +8,7 @@ This is the index of the Kimigayo language specification; the chapter files unde
 
 | Part | Status |
 | --- | --- |
-| Chapters 1–19, 22 and 24, the [Documentation Markdown profile](spec/documentation-markdown.md) and the [UTF-8 formatting profile](spec/utf8-formatting.md) | Normative language rules. |
+| Chapters 1–19, 22 and 24, the [Documentation Markdown profile](spec/documentation-markdown.md), the [UTF-8 formatting profile](spec/utf8-formatting.md) and the [virtual dispatch detail](spec/virtual-dispatch.md) | Normative language rules. |
 | Chapter 23 | Normative contracts of the compiler services (check foundation, Language Server Protocol, Compiler Server Protocol). They govern tools and never change language validity. |
 | Appendix C | Pointer to the separate implementation status; not part of the language. |
 | Appendix D | Index of deferred designs and boundaries; the owning sections remain authoritative. |

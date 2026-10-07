@@ -27,6 +27,8 @@ future CSP adapter ─────► check foundation (§23.3)
 
 ## 23.2. Principle and terms
 
+The [virtual semantic records](virtual-dispatch.md#7-semantic-records-and-diagnostics) and the selected [object adaptation](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing) are shared by diagnostics, Hover and CSP inspection. Object adaptations report the existing cause-specific Type/ObjectPayload, acquisition, ownership-mode and Loan failures at the written operation, retaining input, result and dependency facts. A Move repair requires verified Take and post-acquisition conditions; failure never reselects another operation.
+
 **Principle: an undetermined fact is never treated as absent, and a determined failure is reported, not held.** A fact is *undetermined* when the current state cannot decide it: an input it rests on has an event after the base (§23.4.6), it rests on a discarded result, or the project that would decide it fails to load. For example:
 
 - Undetermined membership does not form an implicit project.

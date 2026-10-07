@@ -1,5 +1,7 @@
 # 16. Scope exit and destruction
 
+Virtual dispatch on the object being destroyed is forbidden, including calls through helpers or optimized direct entries ([virtual safety](virtual-dispatch.md#5-receiver-safety-and-completeness)). This does not change the existing dynamic destruction of the complete payload.
+
 [Specification index](../SPEC.md)
 
 [Scope Exit](#162-scope-exit-destruction) secures results and performs cleanup, including the code that Deferred Blocks register for it.

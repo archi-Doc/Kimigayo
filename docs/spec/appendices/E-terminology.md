@@ -1,5 +1,9 @@
 # Appendix E. Terminology index
 
+- **Virtual slot / SlotId:** the original public function contract and its bound declaration identity ([definition](../virtual-dispatch.md#2-slot-identity-and-selection)).
+- **Override implementation:** the derived body implementing one inherited slot; it adds no public overload.
+- **Direct base call:** lexical `base.f(...)`, selecting the implementation held by the direct base ([definition](../virtual-dispatch.md#4-direct-base-calls)).
+
 [Specification index](../../SPEC.md)
 
 This index is a reading aid, sorted alphabetically. The linked sections contain the authoritative definitions and restrictions.

@@ -6,7 +6,7 @@ This is the index of the Kimigayo implementation specification. It defines how t
 
 | Part | Status |
 | --- | --- |
-| Chapters 20–21 and the test execution profile | Normative contracts of the initial implementation profile: compilation configuration, commands and native builds; layout, runtime metadata and code generation; test execution. |
+| Chapters 20–21, [object creation and virtual dispatch generation](impl/virtual-dispatch.md), and the test execution profile | Normative contracts of the initial implementation profile: compilation configuration, commands and native builds; layout, runtime metadata and code generation; test execution. |
 | Appendix A | Normative compiler requirements. |
 | Appendix B | Non-normative reference models (optional algorithms). |
 

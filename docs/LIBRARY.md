@@ -450,6 +450,8 @@ Targets must contain complete values; these operations do not repair uninitializ
 
 [Specification: object ownership](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing). All functions belong to `Intrinsics`.
 
+The three normal factories share the post-acquisition creation contract with `@obj` / `@rc` / `@arc` ([SPEC §13.5.8](spec/13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing)); their ordinary inference and Function Item APIs remain unchanged.
+
 | Function | Constraint | Guarantee |
 | --- | --- | --- |
 | `makeObj<T>(value: T) -> obj/T` | `T is ObjectPayload` | Creates a uniquely owned object. |

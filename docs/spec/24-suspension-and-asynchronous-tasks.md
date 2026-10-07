@@ -1,5 +1,7 @@
 # 24. Suspension and asynchronous tasks
 
+Virtual and override task headers preserve the original task slot and public contract ([virtual dispatch](virtual-dispatch.md#1-declarations-and-contracts)). A slot effect bound never removes the static Loan checks required for task execution.
+
 [Specification index](../SPEC.md)
 
 This chapter defines the two language rules of asynchronous tasks: [task slots](#242-task-slots) state which functions may suspend, and [task calls](#243-task-calls) state where suspension happens and what other tasks may run meanwhile. Tasks share one thread. The task boundary, the `Kimi.Async` operations, cancellation and the definition of `Async.run` belong to [§22.1.3](22-core-execution-and-foreign-functions.md#2213-asynchronous-tasks); everything else follows from these two rules and the existing ownership, effect and cleanup rules. Threads remain deferred (Appendix D.2).

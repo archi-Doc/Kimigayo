@@ -4,6 +4,8 @@ A few lines per session. Evidence lives in commits and `artifacts/verify/` (earl
 
 ## Sessions
 
+- 2026-10-07 virtual/object creation intake: integrated the complete accepted proposal into SPEC/IMPL, preserving original slot contracts, common Owned erasure, independent OCC proofs and factory compatibility. The unchanged proposal is frozen in Changes; implementation remains in progress under PLAN G81. V0 baseline Unit `20261007-062713-281-unit-virtual-v0-baseline`: warning-free Release, 93 tests, 126 native O0/O2 executions and stable inputs. The preceding run's two nonexistent fixture patterns failed selection; its passing build/tests were not used as completion evidence.
+
 - 2026-10-06 fixed-array/view audit: result expressions with an element hole retain written fixed dimensions, scoped local/Pattern evidence and precise inference failures. Programs 7 and 27 now exercise the accepted revision together: generic/nested inference, borrowed Scalar `noinit` writes, child/Moved UniqSlice handles and Slice.toArray storage/element dependencies. Unit `20261006-141000-599-unit-fixed-array-view-audit` passes 457 tests, 330 native O0/O2 executions and four original-program executions with verified toolchain. Session `20261006-141205-434-session-fixed-array-view-audit` passes all 18,065 tests and warning-free whole-solution Release; both retain 1,586 stable source/configuration and 12 NuGet inputs. CLI/LSP output and zero-allocation inference reuse reviewed; feedback failures and audit notes remain in `artifacts/verify/fixed-array-view-audit`. No SPEC/draft revision or NativeAOT execution.
 
 | Date | Summary |

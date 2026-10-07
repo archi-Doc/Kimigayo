@@ -205,6 +205,8 @@ An extension that introduces runtime implementation selection defines its own ad
 
 ### 21.2.2. Value metadata and object descriptors
 
+[Object creation and virtual dispatch generation](virtual-dispatch.md) defines shared creation plans, descriptor slot tables, entry ABI, reachability and invalidation. Its slot layout preserves the existing handle/header/payload layout.
+
 The following immutable, module-local records belong to windows-x64-v1. They define storage and entry contracts, not a stable external calling convention, and all physical signatures use the FunctionAbi of §21.4.2. Instance counts, allocation state, initialization state and Loans do not belong in shared metadata.
 
 **Type keys.** Value metadata uses the ArgKey of the full normalized Type, recursively erasing only Origins and keeping all Semantics. Object payload metadata uses `CoreId(D)` of the complete Dynamic Type `D`, which equals `ArgKey(owner/D)` and is independent of the handle mode and static View Target. Distinct nonzero `u64` tokens are assigned deterministically within the final generation unit, and hash collisions are checked against the original keys. Artifacts keep those keys and dependencies, and integration may retokenize all references. Tokens have no public numeric, persistence or dynamic-linking contract. Several records for one key are allowed; shared code or layout never merges Type identities, and equal tokens prove no static Type, Origin, Loan or code-sharing judgment.

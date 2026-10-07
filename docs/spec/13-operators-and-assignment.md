@@ -194,7 +194,7 @@ For `f32`/`f64`, the intrinsic `Equatable.equals` mapping uses the NaN-reflexive
 
 Explicit operation selection is distinct from subtyping and acquisition legality under [Type relations and expression operations](03-types-and-values.md#38-type-relations-and-expression-operations). Origin restriction fits the selected operation's result; it never substitutes another operation.
 
-`@` is a built-in explicit value operation. It cannot be overloaded, searches no conversion chains, and applies only to its direct operand. The operation itself calls no user code, although ordinary operand evaluation, including calls and getters, still may. It never implicitly boxes, acquires resources, duplicates ownership or increments reference counts.
+`@` is a built-in explicit value operation. It cannot be overloaded, searches no conversion chains, and applies only to its direct operand. The operation itself calls no user code, although ordinary operand evaluation, including calls and getters, still may. Only the explicit object-creation row (§13.5.8) allocates resources. No row implicitly boxes, duplicates ownership or increments an existing reference count.
 
 ```text
 Explicit @ Operation
@@ -301,6 +301,7 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 | Wrapping Conversion | `@wrap<U>` only; an integer or wrapping integer operand, a value or its value read, and such a target (§13.5.4.3) |
 | Bit Conversion | `@bits<U>` only; a floating-point Type and a same-width integer or wrapping integer Type, the operand a value or its value read (§13.5.4.4) |
 | Borrow / Reborrow | The explicit Borrow tables of §13.5.5 |
+| Object Creation | `owner/T` to `obj/T`, `rc/T` or `arc/T`, with `T is ObjectPayload`; the complete payload Type is unchanged (§13.5.8) |
 | Object Upcast | The finite [object upcast table](#1357-object-upcasts), including its specified borrow forms |
 | Raw Pointer Conversion | `@raw/U` under the [pointer conversion rules](05-raw-pointers-and-unsafe-memory.md#54-addresses-and-pointer-conversions); no Unsafe context required |
 | Address | Bare `@raw` on a Place (§5.4); no Unsafe context required |
@@ -310,7 +311,7 @@ Deferred generic effects follow [generic access effects](08-generics-constraints
 
 **Copy.** `E@copy` Copies the value of `E` and requires its Type to be proven Copy (§3.5); it never transfers or borrows. A Place keeps its value and state, and a Temporary Value is used as is. A Non-Copy or Copy-unproven operand is an error that suggests `@move` or a borrow; a generic `T` needs `T is Copy` at definition checking. `r@copy` Copies a reference value `r`, not its referent, and `r@follow@copy` Copies a Copy referent. Where an owned value must be spelled, as for a ByValue Subject (§15.1.6), `E@copy` is the Copy counterpart of `E@move`. At an overloaded call, `E@copy` states the Copy and names no candidate; a by-value parameter and a borrowing parameter of overlapping Types never share one position ([§7.3.1](07-functions-and-callable-values.md#731-parameter-acquisition-shape)). `@copy/T`, `@copy?` and `@copy{...}` are invalid.
 
-`@move` is the only transfer spelling and `@copy` the only Copy spelling. The bare owning shorthands `@owner`, `@obj`, `@rc` and `@arc` are not operations, because an owning Semantics names no Core; the diagnostic suggests `@copy`, `@move` or a complete target. The complete forms, such as `@owner/T` and `@obj/T`, and a generic `@s` bound to an owning Semantics are ordinary same-Type acquisitions when the target's outermost written Semantics, after applying the Option suffix rule of §3.2.3 with grouping transparent, matches the operand's outer Semantics: they Copy a Copy value, transfer a temporary and reject a Non-Copy Place. When the target selects an owning [upcast row](#1357-object-upcasts), such as `@obj/Base`, that upcast is performed on the operand acquired the same way. Alias expansion supplies no written Semantics. `n@owner/i32` and `n@(owner/i32)` Copy; `x@uniq/i32?` and `x@owner/T?` are Type targets for the whole Option. Any other owning target is an error: these spellings neither perform [ownership creation or strong-owner duplication](#1358-object-ownership-creation-and-sharing) nor convert between ownership representations.
+`@move` is the only transfer spelling and `@copy` the only explicit Copy spelling. Bare `@owner` is invalid; use `@copy`, `@move` or a complete target. Complete owning targets and generic targets use the resolved operation table: same-Type acquisition, object creation (§13.5.8), or object upcast (§13.5.7), otherwise error. Short `@obj`, `@rc` and `@arc` obtain their payload target from the input and use that same table. Aliases and grouping do not create another operation. Ordinary acquisition Copies a Copy Place, transfers a temporary and requires `@move` for a Non-Copy Place. `n@owner/i32` Copies; `x@uniq/i32?` and `x@owner/T?` target the whole Option under §3.2.3. No owning target duplicates a strong owner or changes an existing ownership representation.
 
 **Identity Acquisition** copies a Copy Type; a Non-Copy Place is an error that names `@move`, and a Temporary Value transfers its ownership. Borrow targets take precedence. Same-Type raw pointer acquisition is an ordinary Copy and needs no Unsafe context for the operation itself.
 
@@ -629,6 +630,34 @@ A checked cast (§13.6.2) is needed when the source view cannot guarantee the ta
 
 ### 13.5.8. Object ownership creation and sharing
 
+**Operation selection.** Resolve the input and target, then apply this table for `s` in `obj`, `rc`, `arc`. Short `@s`, complete `@s/T`, aliases and generic `@s` / `@s/T` / `@Type` share it.
+
+| Input → target | Operation |
+| --- | --- |
+| `owner/T → s/T` | Prove `T is ObjectPayload`, acquire the value and create an object |
+| `s/T → s/T` | Ordinary same-Type acquisition; no new allocation, clone or count increment |
+| `s/Derived → s/Base` | Existing explicit upcast; preserve Dynamic Type, Identity and ownership mode |
+| Other | Use another explicitly defined adaptation row, or reject |
+
+For a short target, use an owner's complete Type or an existing object's View Target. Creation preserves Type arguments, lengths, internal Origins and Loans; it never combines creation with an upcast (`Derived.init()@obj/Base`), implicitly follows a borrow/raw pointer, or reboxes an object. It adds no `obj → rc/arc`, `rc ↔ arc`, shared-to-exclusive or borrow-to-owner operation. Strong duplication remains `clone`.
+
+**Independent input inference.** Before selecting an adaptation whose target outer Semantics is `obj`, `rc` or `arc`, fix the input Type independently of that target and the outer expected result. A generic target admitting any such case fixes and shares one input Type across all cases, without reselecting literals or overloads. Check Type formation, acquisition, dependencies, cleanup and any ObjectPayload obligation in every admitted case. Other adaptations keep their existing inference rules. Thus `1@obj` is `obj/i32`, `1@obj/i64` is invalid and `1@i64@obj` explicitly converts then creates. Do not rewrite internal Origins before creation; subsequent result fitting may shorten them subject to View Target invariance.
+
+If the input itself is Never, the expression is non-completing: perform no creation/acquisition/count initialization and do not form `obj/Never` or require ObjectPayload/Copy of a nonexistent result. Syntax, explicit target formation and Unsafe checks remain; ordinary unreachable code gains no exemption.
+
+```kimi
+let single = 7@obj
+let shared = 7@rc
+let atomicShared = 7@arc
+let same = single@move@obj // Same object; no allocation.
+let text = "sample"
+let boxedText = text@move@obj
+// let wrong: obj/i64 = 1@obj // Input remains i32.
+// let duplicate = shared@rc // Non-Copy Place needs @move; this is not clone.
+```
+
+Use these adaptations for ordinary creation. The following factories remain public, with unchanged ordinary inference, argument acquisition and Function Item / Callable / common Function uses; they are not deprecated. Adaptations and factories share the creation contract **after** inference and acquisition, not input inference. Same-named user declarations cannot change adaptation meaning.
+
 These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary inference and the argument labels `value` and `build`. Both labels precede any name-required boundary and permit name omission; every argument value is required. The Weak operations in §13.5.9 likewise permit omission of their `value` label. `T` satisfies [ObjectPayload](08-generics-constraints-and-contracts.md#8472-objectpayload): every creation API declares `T is ObjectPayload`, and the cyclic factories additionally `T is Owned`. ObjectPayload is an intrinsic requirement, not a user Contract, and does not extend the current object and runtime-Contract boundary. The operations on an existing strong handle take one pair `<s/T>` with the Semantics requirement `s is rc or arc`; `S` denotes the complete `s/T`, with the eligibility of §3.2.2. Same-named user functions gain no intrinsic behavior.
 
 | API | Input -> result | Contract |
@@ -642,7 +671,7 @@ These public functions belong to `Kimi.Intrinsics` (§22.1.1) and use ordinary i
 
 Any valid complete owner Core other than Never that does not opt out of ObjectPayload may be the concrete payload, including open struct Cores; only following it to an ordinary value Place additionally requires Sealed (§13.5.5.1). Generic signatures must prove the target's validity from their declared constraints (§8.10).
 
-**Normal creation** acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `drop`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned constraint applies to concrete payload creation, and normal external dependencies are preserved; view erasure separately requires the existing Owned proof.
+**Normal creation**, through either spelling, acquires the complete input once by bare acquisition or transfer (`makeObj(value@move)` for a Non-Copy Place), allocates object storage and Moves `T` into the payload, without transferring ownership of the original storage and without repeating constructors, accessors or `drop`. The initial exact-`T` view is published only after metadata and payload initialization. No blanket Owned, Sealed or Transferable constraint applies to concrete creation; external dependencies are preserved and View erasure separately requires Owned. Creating `arc` alone grants no cross-thread transfer or concurrent payload-access permission. New `rc`/`arc` strong counts are one. Allocation and allocation Abort themselves are not environment effects (§8.4.10.2); operand evaluation and destruction effects compose normally. Abort promises neither Move rollback nor cleanup.
 
 **Strong clone** shared-borrows its input for the operation, leaves it Initialized, and returns an independent responsibility without allocation, payload copying, user-code calls or view changes. The handle slot is borrowed explicitly, as in `clone(handle@ref)` or the equivalent `clone(handle@ref/rc/T)` (§13.5.5.2); no implicit handle-layer adaptation exists (§10.2). It preserves the full View Type, Dynamic Type and payload dependencies, without a lasting Loan on the input handle slot. Moving or borrowing an object never changes counts, and `rc`/`arc` provide shared payload access even at count one. These operations introduce no general deep clone, `obj` duplication, `rc`/`arc` conversion or ownership creation from a borrow.
 
