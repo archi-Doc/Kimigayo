@@ -1,6 +1,6 @@
 # Language milestones
 
-Forty-two independent programs are planned from the current [SPEC](../../docs/SPEC.md).
+Forty-three independent programs are planned from the current [SPEC](../../docs/SPEC.md).
 Every program has a source file; programs 34–39 were authored on 2026-09-27 and Program 40 on 2026-10-03.
 They are staged compiler implementation targets. Execution evidence and support
 boundaries are recorded in [STATUS.md](../../docs/STATUS.md); expected output alone is
@@ -146,6 +146,7 @@ authoring correction re-spelled the pending program 36:
 | 40 | YES | PASS | PASS (Release, O0/O2) | PASS | DONE | Completed 2026-10-04 with unchanged source; sibling fields, calls and stored exclusive references keep their split identities. Session `20261003-154434-122-session-p40-u1-u2-session` passes all 34 completed harnesses ([Milestone 40](#milestone-40-disjoint-exclusive-element-access)). |
 | 41 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-09-30 per SPEC §4.6 (positions and ranges, P41); Session `20260929-171813-572-session-p41-completion`. The unchanged target, nine variants (wide positions, direct and saved ranges, expected boundary Types, closed iteration below the maximum, Array positions, and four Aborts) and seven rejections pass 77 Release harness checks (`test-milestone41.ps1`, `artifacts/verify/20260929-171515-671-unit-p41-program`); see [Milestone 41](#milestone-41-positions-and-ranges). |
 | 42 | YES | PASS | PASS (Release) | PASS (Release) | DONE | Authored and completed 2026-10-01 per SPEC §3.1.1.1, §13.3 and §13.5.4 (wrapping integers, integer results and conversions, P42). The unchanged target passes the original-source harness at O0 and O2 (`test-milestone42.ps1`); the separate checks are the P42 unit tests; see [Milestone 42](#milestone-42-wrapping-integers-integer-results-and-conversions). |
+| 43 | YES | PASS | PASS (Release) | PASS (Release) | IN_PROGRESS | Arithmetic Contracts: Non-Copy operators, numeric-left literals, generic witnesses and Function values, borrowed element replacement and explicit Result propagation; original-source harness `test-milestone43.ps1`. |
 
 [Restructuring audit](../../docs/dev/PLAN_HISTORY.md#programs38-restructure) records source/DLL
 identities and exact commands: Release compiler/test-project build PASS with zero

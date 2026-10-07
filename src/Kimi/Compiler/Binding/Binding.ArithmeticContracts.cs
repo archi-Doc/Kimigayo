@@ -13,7 +13,7 @@ public sealed partial class Binding
     // Outer owner is independent of Owned: an ordinary user struct may retain external borrows.
     private static bool UserArithmeticProvider(BoundType type)
         => type.Semantics == SemanticsKind.Owner && type.Kind is BoundTypeKind.Nominal or BoundTypeKind.Constructed &&
-            type.Symbol is { Declaration: StructKoto or EnumKoto, LibraryDeclaration: null };
+            type.Symbol is { Declaration: StructKoto or EnumKoto, LibraryDeclaration: not (KimiDeclarationId.Wrapping or KimiDeclarationId.Loan) };
 
     private bool BuiltinNumeric(BoundType type, BindingScope scope)
         => type.IsNumeric || this.IsGenericInteger(type, scope) || this.IsGenericWrapping(type, scope);

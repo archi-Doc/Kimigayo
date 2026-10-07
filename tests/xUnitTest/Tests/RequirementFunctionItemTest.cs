@@ -40,6 +40,41 @@ public class RequirementFunctionItemTest
         => ScalarEmissionTest.EmitFixture("RequirementItemArithmetic", Source, string.Empty);
 
     [Fact]
+    public void NumericLeftAndUnaryItemsPreserveTheirArgumentOrderAndArity()
+    {
+        const string Program = """
+            struct Offset
+                Self is LeftSubtractable<i32> and Negatable
+                associate LeftSubtractable<i32>.Output is i32
+                associate Negatable.Output is i32
+                public let value: i32 = 2
+                public func subtractedFrom(left: ref/i32, self: ref/Self) -> i32 => left - self.value
+                public func negated(self: ref/Self) -> i32 => -self.value
+            func apply<F, T>(operation: ref/F, left: ref/i32, right: ref/T) -> i32
+                F is Callable<(ref/i32, ref/T) -> i32>
+                return operation(left, right)
+            func negate<F, T>(operation: ref/F, value: ref/T) -> i32
+                F is Callable<(ref/T) -> i32>
+                return operation(value)
+            func use<T>(value: ref/T)
+                T is LeftSubtractable<i32> and Negatable and Owned
+                T.(LeftSubtractable<i32>).Output is i32
+                T.(Negatable).Output is i32
+                let subtract = T.subtractedFrom
+                let negative = T.negated
+                let erased: (ref/i32, ref/T) -> i32 = subtract
+                let erasedNegative: (ref/T) -> i32 = negative
+                require subtract(44, value) == 42 and erased(44, value) == 42 else => $abort("order")
+                require apply(subtract, 44, value) == 42 else => $abort("callable")
+                require negative(value) == -2 and erasedNegative(value) == -2 else => $abort("unary")
+                require negate(negative, value) == -2 else => $abort("unary callable")
+            let value = Offset.init()
+            use(value)
+            """;
+        ScalarEmissionTest.EmitFixture("RequirementItemLeftUnary", Program, string.Empty);
+    }
+
+    [Fact]
     public void NonArithmeticRequirementsUseTheSameItemRoute()
     {
         const string Program = "contract Readable\n    func read(self: ref/Self) -> i32\nstruct Value\n    Self is Readable\n    public func read(self: ref/Self) -> i32 => 42\nfunc read<T>(value: ref/T) -> i32\n    T is Readable\n    let operation = T.read\n    return operation(value)\nlet value = Value.init()\nrequire read(value) == 42 else => $abort(\"read\")";

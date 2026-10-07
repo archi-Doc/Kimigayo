@@ -73,6 +73,13 @@ public sealed partial class Binding
         // A fixed left provider can give the other operand a bounded expected Type after selection.
         var right = rightLiteral ? null : this.BindIndependentArgument(binary.Right, scope);
         var rightCore = right is null ? null : this.ArithmeticTerminal(binary.Right, right);
+        if ((!leftLiteral && left is null && !IsWaitingNestedCall(binary.Left) && !IsWaitingCallable(binary.Left)) ||
+            (!rightLiteral && right is null && !IsWaitingNestedCall(binary.Right) && !IsWaitingCallable(binary.Right)))
+        {
+            result = Complete(binary, null); // A failed input is not evidence of a missing arithmetic conformance.
+            return true;
+        }
+
         var reverse = ((leftLiteral && NumericLiteralDefault(binary.Left) is not null) || (leftCore is not null && this.ArithmeticNumericDomain(leftCore, scope))) &&
             rightCore is not null && (UserArithmeticProvider(rightCore) || this.HasArithmeticPremise(rightCore, ArithmeticContract(operation, true), scope));
         if (!ordinary && !reverse)

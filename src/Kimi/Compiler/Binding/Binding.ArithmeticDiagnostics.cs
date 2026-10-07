@@ -90,6 +90,8 @@ public sealed partial class Binding
             related[i] = ("conformance", failure.Plan.Sources[i], DiagnosticTypeName(failure.Plan.Candidates[i].Type!));
         }
 
-        use.Report(requirement, DiagnosticCode.ArithmeticSelection_Kd, ArithmeticOperatorText(ArithmeticContracts.Operator(failure.Id)), this.Library.GetSymbol(failure.Id)!.Name, evidence: [DiagnosticTypeName(failure.Self), failure.Counterpart is { } counterpart ? DiagnosticTypeName(counterpart) : "not independently typed", failure.Condition], related: related);
+        var counterpartText = failure.Counterpart is { } counterpart ? DiagnosticTypeName(counterpart)
+            : use is UnaryKoto ? "none (unary operation)" : "not independently typed";
+        use.Report(requirement, DiagnosticCode.ArithmeticSelection_Kd, ArithmeticOperatorText(ArithmeticContracts.Operator(failure.Id)), this.Library.GetSymbol(failure.Id)!.Name, evidence: [DiagnosticTypeName(failure.Self), counterpartText, failure.Condition], related: related);
     }
 }

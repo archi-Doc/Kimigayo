@@ -202,7 +202,7 @@
     Message="Operator {0} cannot select a unique {1} requirement"
     Arguments="operator:Text,contract:Text"
     Evidence="provider:Type,counterpart:Text,condition:Text"
-    Label="{4}"
+    Label="{4}; provider: {2}; counterpart: {3}"
 
   + Name="ArithmeticDirection_Kd"
     Category="Language"

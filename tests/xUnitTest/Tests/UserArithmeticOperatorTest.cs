@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -101,7 +102,7 @@ public class UserArithmeticOperatorTest
         Assert.Equal(nameof(DiagnosticCode.ArithmeticSelection_Kd), error.Code);
         Assert.Equal("2.0 * value", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
         Assert.Equal(new[] { "operator", "contract", "provider", "counterpart", "condition" }, error.Reason!.Select(static x => x.Name));
-        Assert.Equal("Multiple proven conformances fit the counterpart structure", error.Label);
+        Assert.Equal("Multiple proven conformances fit the counterpart structure; provider: Value; counterpart: not independently typed", error.Label);
         Assert.Equal(2, error.Related!.Length);
         Assert.All(error.Related!, static x => Assert.Equal("conformance", x.Role));
         var console = new DiagnosticContractTest.DiagnosticConsole();
@@ -145,7 +146,8 @@ public class UserArithmeticOperatorTest
         const string Program = "struct View {source}\n    let value: ref/i32 during source\nfunc select<L>(left: ref/L, right: ref/(View during a), marker: ref/i32 during b) -> i32\n    L is Addable<View during a> and Addable<View during b>\n    return left + right\n()";
         var result = DiagnosticCorpus.Check(Program);
         var error = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ArithmeticSelection_Kd));
-        Assert.Equal("Multiple proven conformances fit the counterpart structure", error.Label);
+        Assert.Equal("Multiple proven conformances fit the counterpart structure", error.Reason![4].Value);
+        Assert.Contains("provider: L; counterpart: View", error.Label, StringComparison.Ordinal);
         Assert.Equal(2, error.Related!.Length);
     }
 
@@ -155,8 +157,86 @@ public class UserArithmeticOperatorTest
         const string Program = "struct Box<T>\n    Self is Addable<i32>\n    Self is Addable<i64> when T is Copy\n    associate Addable<i32>.Output is i32\n    associate Addable<i64>.Output is i64\n    public func added(self: ref/Self, right: ref/i32) -> i32 => right\n    public func added(self: ref/Self, right: ref/i64) -> i64 => right\nfunc use<T>(value: ref/Box<T>) -> i32 => value + 1\n()";
         var result = DiagnosticCorpus.Check(Program);
         var error = Assert.Single(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ArithmeticSelection_Kd));
-        Assert.Equal("A structurally fitting conditional conformance remains unproven", error.Label);
+        Assert.Equal("A structurally fitting conditional conformance remains unproven; provider: Box<T>; counterpart: not independently typed", error.Label);
         Assert.Equal(2, error.Related!.Length);
+    }
+
+    [Theory]
+    [InlineData("0..1")]
+    [InlineData("Option<i32>.Some(1)")]
+    public void OrdinaryLibraryTypesUseTheOrdinaryProviderRule(string value)
+    {
+        var result = DiagnosticCorpus.Check("let value = " + value + "\nlet result = value + ()");
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ArithmeticSelection_Kd), error.Code);
+        Assert.Contains("Addable", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("value + missing")]
+    [InlineData("missing * value")]
+    public void AnInvalidOperandDoesNotInventAConformanceFailure(string expression)
+    {
+        var source = Declarations + "\nlet value = Value.init()\nlet result = " + expression;
+        var result = DiagnosticCorpus.Check(source);
+        var error = Assert.Single(result.Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnresolvedBinding_Kd), error.Code);
+        Assert.Equal("missing", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        Assert.DoesNotContain(result.Diagnostics, static x => x.Code == nameof(DiagnosticCode.ArithmeticSelection_Kd));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void GenericOperatorEffectsUseOnlyPublishedBounds(bool bounded)
+    {
+        var source = "contract ConfinedAdd<T>: Addable<T>\n    effect (Addable<T>).added confined\ncontract Operation<T>\n    func run(self: ref/Self, left: ref/T, right: ref/T) -> i32\n        effect confined\nstruct Forward<T>\n    T is " + (bounded ? "ConfinedAdd<T>" : "Addable<T>") + "\n    T.(Addable<T>).Output is i32\n    Self is Operation<T>\n    public func run(self: ref/Self, left: ref/T, right: ref/T) -> i32 => left + right\npublic func main() => ()";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Equal(bounded, c.Binding.Result.IsComplete);
+        if (!bounded)
+        {
+            Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, Assert.Single(c.Binding.Issues).Code);
+        }
+    }
+
+    [Fact]
+    public void AnEditedProviderCannotReuseItsPreviousOperatorSelection()
+    {
+        var c = MinimalEmissionTest.Analyze(Declarations + "\nlet value = Value.init()\nlet result = value + 2");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var original = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
+        var donor = MinimalEmissionTest.Analyze("struct Value\n    public let value: i32 = 40\nlet value = Value.init()");
+        var changed = Assert.Single(donor.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
+        Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    [Fact]
+    public void AnImplementationCannotReturnItsFreshInspectionLoan()
+    {
+        const string Source = "struct View {a}\n    Self is Addable<()>\n    associate Output is ref/i32 during a\n    let value: i32 = 42\n    public func added(self: ref/Self, right: ref/()) -> ref/i32 during a => self.value@ref\n()";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.False(c.Binding.Result.IsComplete);
+        var error = Assert.Single(c.Binding.Issues);
+        Assert.Equal(DiagnosticCode.UnprovenOriginRelation_Kd, error.Code);
+        Assert.Equal("self.value@ref", error.Node.ToString());
+        Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Unsupported or OwnershipFailure.Internal);
+    }
+
+    [Fact]
+    public void UserAbortKeepsItsImplementationLocationAndSkipsWriteback()
+    {
+        const string Source = "struct Value\n    Self is Addable<i32>\n    associate Output is Self\n    public func added(self: ref/Self, right: ref/i32) -> Self => $abort(\"operation\")\n    drop => Console.writeLine(\"unexpected cleanup\")\nvar value = Value.init()\nvalue += 1\nConsole.writeLine(\"unexpected continuation\")";
+        ScalarEmissionTest.EmitFixture("UserArithmeticAbort", Source, string.Empty, 1, "Hello.kimi:4:66: abort KIMI_E_ABORT: operation\n");
+    }
+
+    [Fact]
+    public void ResultOutputPropagatesOnlyThroughExplicitTry()
+    {
+        const string Source = "struct Value\n    Self is Dividable<i32>\n    associate Output is Result<i32, i32>\n    public func divided(self: ref/Self, right: ref/i32) -> Result<i32, i32>\n        require right != 0 else => return .Err(7)\n        return .Ok(84 / right)\nfunc divide(right: i32) -> Result<i32, i32>\n    let value = Value.init()\n    let result = try (value / right)\n    return .Ok(result)\nmatch divide(2)\n    .Ok(let value) => require value == 42 else => $abort(\"value\")\n    .Err(_) => $abort(\"unexpected failure\")\nmatch divide(0)\n    .Ok(_) => $abort(\"unexpected success\")\n    .Err(let value) => require value == 7 else => $abort(\"error\")";
+        ScalarEmissionTest.EmitFixture("UserArithmeticResult", Source, string.Empty);
     }
 
     [Trait("Purpose", "Allocation")]
