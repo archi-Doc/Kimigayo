@@ -6,6 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly List<VariableKoto> objectErasureAliases = new();
     private Dictionary<Koto, (BoundType Source, BoundType Target)>? objectErasureFailures;
 
     internal readonly record struct ObjectErasureEvidence(BoundType Source, BoundType Target, FunctionKoto? Entry);
@@ -53,13 +54,37 @@ public sealed partial class Binding
     }
 
     // SPEC 6.2.4: an override's self arrived through the original slot's erased View.
-    // Its immutable receiver binding and explicit captures preserve that evidence; another
+    // Its immutable receiver binding, local aliases and immutable captures preserve that evidence; another
     // parameter of the same Type does not. Original virtual entries have no such premise.
     private bool InheritsObjectErasure(Koto operand, BoundType source, out FunctionKoto? entry)
     {
+        var mark = this.objectErasureAliases.Count;
+        try
+        {
+            if (!this.FindObjectErasure(operand, source, out entry))
+            {
+                return false;
+            }
+
+            // Each proven immutable alias is a reusable fact for this binding pass, not an Owned Type premise.
+            for (var i = mark; i < this.objectErasureAliases.Count; i++)
+            {
+                (this.objectErasures ??= new(ReferenceEqualityComparer.Instance))[this.objectErasureAliases[i]] = new(source, source, entry);
+            }
+
+            return true;
+        }
+        finally
+        {
+            this.objectErasureAliases.RemoveRange(mark, this.objectErasureAliases.Count - mark);
+        }
+    }
+
+    private bool FindObjectErasure(Koto operand, BoundType source, out FunctionKoto? entry)
+    {
         entry = null;
         operand = KotoHelper.UnwrapParentheses(operand);
-        while (ObjectTypes.IsBorrow(operand.BoundType))
+        for (var depth = 0; ObjectTypes.IsBorrow(operand.BoundType) && depth <= this.nodes.Count; depth++)
         {
             if (this.TryGetObjectErasure(operand, out var inherited) && ReferenceEquals(source, inherited.Target))
             {
@@ -67,13 +92,27 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (operand is not ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer or ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } conversion ||
-                !ObjectTypes.IsBorrow(conversion.Left.BoundType))
+            if (operand is IdentifierNameKoto { BoundSymbol: { } value } && this.ImmutableObjectAlias(value) is { InitializerKoto: { } initializer } alias &&
+                ObjectTypes.IsBorrow(initializer.BoundType))
+            {
+                if (this.TryGetObjectErasure(alias, out var cached) && ReferenceEquals(source, cached.Target))
+                {
+                    entry = cached.Entry;
+                    return true;
+                }
+
+                this.objectErasureAliases.Add(alias);
+                operand = KotoHelper.UnwrapParentheses(initializer);
+            }
+            else if (operand is ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer or ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } conversion &&
+                ObjectTypes.IsBorrow(conversion.Left.BoundType))
+            {
+                operand = KotoHelper.UnwrapParentheses(conversion.Left);
+            }
+            else
             {
                 break;
             }
-
-            operand = KotoHelper.UnwrapParentheses(conversion.Left);
         }
 
         if (operand is not IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter or BindingSymbolKind.Capture } receiver } ||
@@ -97,6 +136,41 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    private VariableKoto? ImmutableObjectAlias(BindingSymbol value)
+    {
+        for (var depth = 0; depth <= this.nodes.Count && !value.MutableCapture; depth++)
+        {
+            if (value is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Let, InitializerKoto: not null } alias })
+            {
+                return alias;
+            }
+
+            if (value is not { Kind: BindingSymbolKind.Capture, Declaration: FunctionKoto { ClosureStorage: { } closure } })
+            {
+                break;
+            }
+
+            BindingSymbol? source = null;
+            for (var i = 0; i < closure.Captures.Count; i++)
+            {
+                if (ReferenceEquals(closure.Captures[i].Environment, value))
+                {
+                    source = closure.Captures[i].Source;
+                    break;
+                }
+            }
+
+            if (source is null)
+            {
+                break;
+            }
+
+            value = source;
+        }
+
+        return null;
     }
 
     private BoundType? BindObjectUpcast(ConversionKoto conversion, BindingScope scope, BoundType actual, BoundType target)

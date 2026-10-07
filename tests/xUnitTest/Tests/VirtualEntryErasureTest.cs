@@ -20,6 +20,10 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
     [InlineData("        return Base<T>.ordinary(self@objref/Base<T>)")]
     [InlineData("        let f = func[self]() -> i32 => base.ordinary()\n        return f()")]
     [InlineData("        let f = func[self@move]() -> i32 => self.ordinary()\n        return f()")]
+    [InlineData("        let alias = self\n        return alias.ordinary()")]
+    [InlineData("        let first = self@copy\n        let second = first@move\n        return second.ordinary()")]
+    [InlineData("        let alias = self\n        let f = func[alias]() -> i32 => alias.ordinary()\n        return f()")]
+    [InlineData("        let f = func[self]() -> i32\n            let alias = self\n            let g = func[alias]() -> i32 => alias.ordinary()\n            return g()\n        return f()")]
     public void OverrideReceiverInheritsErasureWithoutAnOwnedTypePremise(string body)
     {
         var c = MinimalEmissionTest.Analyze(Source(body));
@@ -62,13 +66,75 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         Assert.Contains("Owned", failure.Explanation, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("let alias = other\n        return alias.ordinary()")]
+    [InlineData("let alias = other\n        let f = func[alias]() -> i32 => alias.ordinary()\n        return f()")]
+    [InlineData("var alias = self\n        alias = other\n        return alias.ordinary()")]
+    [InlineData("var alias = self\n        alias = other\n        let f = func[alias]() -> i32 => alias.ordinary()\n        return f()")]
+    public void AliasesOfOtherOrReplaceableValuesAcquireNoReceiverProof(string body)
+    {
+        var c = MinimalEmissionTest.Analyze(Source("        " + body));
+        c.Binding.ReportDiagnostics();
+        var failure = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnprovenConstraint_Kd", failure.Code);
+        Assert.Equal("alias.ordinary()", failure.Text);
+        Assert.Contains("Owned", failure.Explanation, StringComparison.Ordinal);
+    }
+
     [Fact]
-    public void OwnedFailureForAnotherObjectKeepsIndependentCliAndLspEvidence()
+    public void AliasesOfCheckedBaseViewsRetainTheirErasureEvidence()
+    {
+        var source = Source("        let first = self@objref/Middle<T>\n        let second = first\n        return second.ordinary()")
+            .Replace("struct Leaf<T> : Base<T>", "open struct Middle<U> : Base<U>\nstruct Leaf<T> : Middle<T>", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        Assert.True(c.Binding.TryGetObjectErasure(call, out var evidence));
+        Assert.Equal("Middle", evidence.Source.Symbol!.Name);
+        Assert.True(evidence.Entry!.IsOverride);
+    }
+
+    [Fact]
+    public void EditingAnAliasInitializerRevokesCachedEvidence()
+    {
+        const string Body = "        let alias = self\n        return alias.ordinary()";
+        var c = MinimalEmissionTest.Analyze(Source(Body));
+        var alias = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>(), x => x.NameKoto.IdentifierName == "alias");
+        var original = alias.InitializerKoto!;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        Assert.True(c.Binding.TryGetObjectErasure(call, out _));
+        var donor = MinimalEmissionTest.Analyze(Source(Body.Replace("= self", "= other", StringComparison.Ordinal)));
+        var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<VariableKoto>(), x => x.NameKoto.IdentifierName == "alias").InitializerKoto!;
+        Assert.True(KotoHelper.Replace(alias, original, changed));
+        Assert.False(c.Binding.TryGetObjectErasure(call, out _));
+        c.Bind();
+        Assert.False(c.Binding.TryGetObjectErasure(call, out _));
+        c.Binding.ReportDiagnostics();
+        Assert.Equal("alias.ordinary()", Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenConstraint_Kd").Text);
+    }
+
+    [Fact]
+    public void CapturedAliasesExecuteThroughTheSameObjectWithoutExtraAllocation()
+    {
+        var source = Source("        let first = self@copy\n        let alias = first@move\n        let f = func[alias]() -> i32 => alias.ordinary()\n        return f()")
+            .Replace("open struct Base<T>\n", "open struct Base<T>\n    public init() => ()\n", StringComparison.Ordinal)
+            .Replace("struct Leaf<T> : Base<T>\n", "struct Leaf<T> : Base<T>\n    public init() => ()\n", StringComparison.Ordinal);
+        source += "\nlet a = Leaf<i32>.init()@obj\nrequire a.read(a@objref) == 1 else => $abort(\"alias receiver\")";
+        NativeAllocationAudit.WriteFixture("VirtualEntryErasureAlias", source, 1, 1, 16, string.Empty);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OwnedFailureForAnotherObjectKeepsIndependentCliAndLspEvidence(bool alias)
     {
         var path = Path.GetFullPath("virtual-entry-erasure.kimi");
-        var c = MinimalEmissionTest.Analyze(Source("        _ = self.ordinary()\n        _ = missing\n        return other.ordinary()"), path);
+        var body = "        _ = self.ordinary()\n        _ = missing\n" +
+            (alias ? "        let alias = other\n        return alias.ordinary()" : "        return other.ordinary()");
+        var c = MinimalEmissionTest.Analyze(Source(body), path);
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "UnresolvedBinding_Kd" && x.Text == "missing");
+        Assert.Equal(alias ? "alias.ordinary()" : "other.ordinary()", Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenConstraint_Kd").Text);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics, x => x.Code == "UnprovenConstraint_Kd");
@@ -107,13 +173,15 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
         Assert.Equal(before, after);
     }
 
-    [Fact]
-    public void AnOriginalVirtualHasNoImplicitOwnedReceiverGuarantee()
+    [Theory]
+    [InlineData("base.ordinary()")]
+    [InlineData("alias.ordinary()")]
+    public void AnOriginalVirtualHasNoImplicitOwnedReceiverGuarantee(string call)
     {
-        var source = "open struct Root\n    public func ordinary(self: objref/Self) -> i32 => 1\nopen struct Base<T> : Root\n    public virtual func read(self: objref/Self) -> i32 => base.ordinary()\n()";
+        var source = "open struct Root\n    public func ordinary(self: objref/Self) -> i32 => 1\nopen struct Base<T> : Root\n    public virtual func read(self: objref/Self) -> i32\n        let alias = self\n        return " + call + "\n()";
         var c = MinimalEmissionTest.Analyze(source);
         c.Binding.ReportDiagnostics();
-        Assert.Equal("base.ordinary()", Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenConstraint_Kd").Text);
+        Assert.Equal(call, Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenConstraint_Kd").Text);
     }
 
     [Fact]
@@ -133,6 +201,17 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Source("        let f = func[self]() -> i32 => base.ordinary()\n        return f() + self.ordinary()"));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmAliasChainsReuseProofAndScratchStorage()
+    {
+        var body = "        let a0 = self\n" + string.Join('\n', Enumerable.Range(1, 32).Select(i => $"        let a{i} = a{i - 1}")) +
+            "\n        _ = a32.ordinary()\n        let f = func[a32]() -> i32 => a32.ordinary()\n        return f()";
+        var c = MinimalEmissionTest.Analyze(Source(body));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind(), iterations: 64, warmupIterations: 32));
     }
 
