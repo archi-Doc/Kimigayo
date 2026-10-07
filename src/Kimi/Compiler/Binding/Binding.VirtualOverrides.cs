@@ -16,7 +16,116 @@ public sealed partial class Binding
     private readonly Dictionary<FunctionKoto, VirtualOverride> virtualOverrides = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BindingSymbol Type, VirtualSlot Slot), FunctionKoto> overridesBySlot = new();
     private readonly Dictionary<(BindingSymbol Type, FunctionKoto Original), FunctionKoto> overrideEntries = new();
+    private readonly HashSet<BoundConstraint> virtualHeaderCommon = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<BoundConstraint> virtualHeaderCandidate = new(ReferenceEqualityComparer.Instance);
+    private readonly ScratchBuffers<BoundConstraint> virtualHeaderScratch = new();
     private Dictionary<FunctionKoto, OverrideFailure>? overrideFailures;
+
+    // Header names must be independent of slot selection. Only premises common to the accessible
+    // virtual group can supply an unqualified associated name; a qualified name needs no guess.
+    private void PrepareVirtualHeaderPremises(FunctionKoto function, BindingScope scope)
+    {
+        if (!function.IsOverride || function.BoundSymbol?.Scope.Owner is not StructKoto { Bases.Count: 1, BoundSymbol: { } symbol } structure ||
+            this.BindType(structure.Bases[0], this.scopes[structure]) is null)
+        {
+            return;
+        }
+
+        var self = this.SelfType(symbol);
+        if (this.StoredBase(self) is not { } baseType)
+        {
+            return;
+        }
+
+        var selection = this.LookupTypeMember(baseType, function.Name, scope, self);
+        if (selection.Pending || selection.DeclaringType?.Symbol?.Declaration is not { } owner)
+        {
+            return;
+        }
+
+        // Lookup and base binding are complete before these buffers are used. Collecting the
+        // finite declared facts performs substitution only: no header/body recursion.
+        var first = true;
+        var common = this.virtualHeaderCommon;
+        var current = this.virtualHeaderCandidate;
+        try
+        {
+            for (var candidate = selection.Member; candidate is not null; candidate = candidate.Next)
+            {
+                if (candidate.Declaration is not FunctionKoto { IsVirtual: true } original || !this.Accessible(candidate, scope, receiverType: self))
+                {
+                    continue;
+                }
+
+                current.Clear();
+                Collect(this.scopes[original]);
+                if (candidate.ConditionalDeclaration is { } block)
+                {
+                    Collect(this.scopes[block]);
+                }
+
+                if (first)
+                {
+                    foreach (var fact in current)
+                    {
+                        common.Add(fact);
+                    }
+
+                    first = false;
+                }
+                else
+                {
+                    common.IntersectWith(current);
+                }
+            }
+
+            var count = common.Count;
+            var facts = this.virtualHeaderScratch.Rent(count);
+            common.CopyTo(facts);
+            common.Clear();
+            current.Clear();
+            try
+            {
+                for (var i = 0; i < count; i++)
+                {
+                    // Judge against the derived declaration, before assuming any slot premise.
+                    if (this.ProveConstraint(facts[i], function.BoundSymbol.Scope) is ConstraintProof.Proven or ConstraintProof.Unknown)
+                    {
+                        this.AddConstraintFact(scope.Constraints ??= new(), facts[i]);
+                    }
+                }
+
+                this.ExpandScopeContractPremises(scope);
+            }
+            finally
+            {
+                this.virtualHeaderScratch.Return(facts, clearArray: true);
+            }
+        }
+        finally
+        {
+            common.Clear();
+            current.Clear();
+        }
+
+        void Collect(BindingScope source)
+        {
+            if (source.Constraints is not { Invalid: false } environment)
+            {
+                return;
+            }
+
+            foreach (var fact in environment.DirectFacts)
+            {
+                var bound = this.SubstituteConstraint(fact, owner, (BoundType[])selection.DeclaringType.Components);
+                // Closed propositions are obligations, not assumptions (SPEC 8.4.8.2).
+                if (!bound.HasUnresolved && bound.Kind != ConstraintKind.Error && DependentConstraint(bound))
+                {
+                    current.Add(bound);
+                }
+            }
+        }
+    }
 
     private readonly record struct OverrideFailure(string Reason, FunctionKoto? First, FunctionKoto? Second = null, Koto? At = null, object? Required = null, object? Actual = null, SourceSpan? Span = null);
 
@@ -104,6 +213,21 @@ public sealed partial class Binding
                 continue;
             }
 
+            Koto? failedInput = this.FailedSignaturePart(function);
+            for (var p = 0; failedInput is null && p < function.Parameters.Count; p++)
+            {
+                if (function.Parameters[p].Type is { BindingState: not BindingState.Resolved } input)
+                {
+                    failedInput = input;
+                }
+            }
+
+            if (failedInput is not null)
+            {
+                this.CompleteDependent(function, failedInput);
+                continue;
+            }
+
             var selection = baseType is null ? default : this.LookupTypeMember(baseType, function.Name, this.scopes[function], self, this.MemberPath(null, structure.Bases[0], baseType));
             FunctionKoto? first = null;
             FunctionKoto? second = null;
@@ -168,6 +292,7 @@ public sealed partial class Binding
                 continue;
             }
 
+            this.PrepareVirtualOverridePremises(function, slot);
             this.CheckVirtualOverrideSignature(function, slot);
             if (function.BindingFailure == BindingFailure.None && !this.CompleteImplementationOrigins(function, slot.Original, [], [], out var incompatible, slot.DeclaringType, self))
             {
@@ -179,11 +304,6 @@ public sealed partial class Binding
                 {
                     this.FailOverride(function, BindingFailure.OverrideContractMismatch, "Origin binder names must belong to the original slot; omitted annotations inherit that contract", slot.Original);
                 }
-            }
-
-            if (function.BindingFailure == BindingFailure.None)
-            {
-                this.PrepareVirtualOverridePremises(function, slot);
             }
         }
     }
@@ -298,7 +418,8 @@ public sealed partial class Binding
                     return false;
                 }
             }
-            else if (this.MemberType(required, declaring) is not { } bound || !SignatureEquals(bound, actual, original, implementation))
+            else if (this.MemberType(required, declaring) is not { } bound ||
+                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation))
             {
                 return false;
             }
@@ -320,7 +441,8 @@ public sealed partial class Binding
         }
 
         if (original.BoundSymbol!.Type is { } required && implementation.BoundSymbol!.Type is { } actual && this.MemberType(required, slot.DeclaringType) is { } bound &&
-            (ResultModeOf(original.ReturnType) != ResultModeOf(implementation.ReturnType) || !SignatureEquals(bound, actual, original, implementation)))
+            (ResultModeOf(original.ReturnType) != ResultModeOf(implementation.ReturnType) ||
+                !SignatureEquals(this.ContractType(bound, this.scopes[implementation]), this.ContractType(actual, this.scopes[implementation]), original, implementation)))
         {
             this.FailOverride(implementation, BindingFailure.OverrideContractMismatch, "the result Type and value/Place mode must match the original slot; result covariance is not allowed", original, at: implementation.ReturnType, required: bound, actual: actual);
         }

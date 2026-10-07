@@ -173,6 +173,11 @@ public sealed partial class Binding
     // Components hold Type slots followed by a generic member's declaring Type; LengthArguments retain declaration-slot
     // positions. Substitution uses the same aligned argument lists as an ordinary call; per-call Origins stay in place.
     private BoundType? ItemType(BoundType type, BoundType item, FunctionKoto function)
+        // Substitution can close an associated projection. Signature consumers and entry ABI
+        // preparation must see the same normalized Type as an ordinary selected call.
+        => this.SubstitutedItemType(type, item, function) is { } bound ? this.ContractType(bound, this.ConstraintScope(function)) : null;
+
+    private BoundType? SubstitutedItemType(BoundType type, BoundType item, FunctionKoto function)
     {
         if (item.Components.Count == 0 && item.LengthArguments.Length == 0)
         {

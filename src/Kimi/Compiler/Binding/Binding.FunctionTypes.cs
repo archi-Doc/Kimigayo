@@ -1139,8 +1139,11 @@ public sealed partial class Binding
             this.ProvesResultPremises(function, result, use);
 
         BoundType? Bound(BoundType type)
-            => item is not null ? this.ItemType(type, item, function)
-            : this.MemberType(type, container) is not { } member ? null : arguments is null ? member : this.SubstituteType(member, function, arguments.AsSpan(0, generic), lengths.AsSpan(0, lengths is null ? 0 : generic));
+        {
+            var bound = item is not null ? this.ItemType(type, item, function)
+                : this.MemberType(type, container) is not { } member ? null : arguments is null ? member : this.SubstituteType(member, function, arguments.AsSpan(0, generic), lengths.AsSpan(0, lengths is null ? 0 : generic));
+            return bound is null ? null : this.ContractType(bound, this.ConstraintScope(use));
+        }
 
         BoundType Substitute(BoundType type)
             => this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));

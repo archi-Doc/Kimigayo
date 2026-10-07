@@ -1198,6 +1198,7 @@ public sealed partial class Binding
         if (symbol.Declaration is FunctionKoto function)
         {
             var scope = this.scopes[function];
+            this.PrepareVirtualHeaderPremises(function, scope);
             var originDeclaration = this.BeginOriginDeclaration(function, scope);
             for (var i = 0; i < function.Parameters.Count; i++)
             {

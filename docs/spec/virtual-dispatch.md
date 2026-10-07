@@ -57,8 +57,12 @@ A **SlotId** consists of the original declaration identity and the normalized bi
 Resolve an override as follows:
 
 1. Starting at the direct base, commit to the first accessible same-named function group under ordinary inherited lookup; do not gather all ancestors.
-2. Match that group's virtual slots by task presence, receiver correspondence, input count/order and normalized input Types.
+2. Bind the override input Types in its lexical environment, augmented by the declared premises common to every accessible virtual in that group after base substitution. Compare task presence, receiver correspondence, input count/order and normalized input Types in that environment.
 3. Require exactly one target, then check result, labels, Origins and public guarantees.
+
+The common header premises are the intersection of the substituted declared facts (including conjuncts); ordinary Contract expansion then applies. A refuted substituted premise supplies no evidence. This bounded step neither tests applicability nor assumes a candidate-specific condition. Qualify an associated name when the header environment does not identify it uniquely, for example `U.Catalog.Element` instead of `U.Element`. Once a target is selected, inherit its full premises before completing the result and Origin contract. An unresolved input Type prevents target judgment; it does not establish that no target exists.
+
+For example, a sole `Base<T>` slot constrained by `T is Catalog` permits `U.Element` in an override in `Derived<U> : Base<U>`. If two slots obtain an `Element` from different Contracts, the override names the intended Contract explicitly. Closed associated specifications and derived-Type identities are normalized for input/result comparison; spelling the resulting concrete Type does not create a different slot.
 
 No target, multiple targets and contract mismatch are distinct declaration errors. Results, labels, defaults, conditions, effects, declaration order and overload ranking never disambiguate a target. Failure does not retry a farther ancestor or another body. Distinct `Base<T>.f(ref/T)` and `Base<T>.f(ref/i32)` slots remain distinct after binding `T` to `i32`; an override matching both is ambiguous.
 

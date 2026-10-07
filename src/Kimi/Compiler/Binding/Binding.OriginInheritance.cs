@@ -289,7 +289,8 @@ public sealed partial class Binding
         }
 
         BoundType? BindContractType(BoundType type)
-            => this.SubstituteType(type, definition, arguments, lengths) is { } substituted ? this.MemberType(substituted, declaringType) : null;
+            => this.SubstituteType(type, definition, arguments, lengths) is { } substituted && this.MemberType(substituted, declaringType) is { } member
+                ? this.ContractType(member, this.scopes[function]) : null;
 
         BoundOrigin BindContractOrigin(BoundOrigin origin)
         {
