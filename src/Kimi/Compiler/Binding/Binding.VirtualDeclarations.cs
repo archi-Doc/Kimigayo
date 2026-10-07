@@ -81,6 +81,7 @@ public sealed partial class Binding
         this.virtualDeclarationFailures?.Clear();
         this.virtualOverrides.Clear();
         this.overridesBySlot.Clear();
+        this.overrideEntries.Clear();
         this.overrideFailures?.Clear();
         this.baseCallFailures?.Clear();
     }

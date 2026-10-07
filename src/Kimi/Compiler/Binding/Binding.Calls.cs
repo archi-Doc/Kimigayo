@@ -76,6 +76,9 @@ public sealed class BoundCall
     // (SPEC 8.4.9). Null for calls of other functions.
     internal BindingSymbol? RequirementContract { get; set; }
 
+    // Semantic selection only; neither a body certificate nor a physical slot index.
+    internal BoundVirtualCall? VirtualDispatch { get; private set; }
+
     internal void SetReceiverProjection(BoundArgumentOperation operation, BoundMemberPath path)
     {
         this.BasePath = path;
@@ -161,6 +164,9 @@ public sealed class BoundCall
         }
 
         lengthArguments.CopyTo(this.lengthArguments);
+        this.VirtualDispatch = target.Declaration is FunctionKoto { IsVirtual: true } original
+            ? original.CodeContext.Compilation.Binding.SelectVirtualCall(this, original, this.VirtualDispatch)
+            : null;
     }
 }
 

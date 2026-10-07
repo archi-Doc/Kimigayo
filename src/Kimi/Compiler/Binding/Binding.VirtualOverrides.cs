@@ -15,6 +15,7 @@ public sealed partial class Binding
 
     private readonly Dictionary<FunctionKoto, VirtualOverride> virtualOverrides = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(BindingSymbol Type, VirtualSlot Slot), FunctionKoto> overridesBySlot = new();
+    private readonly Dictionary<(BindingSymbol Type, FunctionKoto Original), FunctionKoto> overrideEntries = new();
     private Dictionary<FunctionKoto, OverrideFailure>? overrideFailures;
 
     private readonly record struct OverrideFailure(string Reason, FunctionKoto? First, FunctionKoto? Second = null, Koto? At = null, object? Required = null, object? Actual = null, SourceSpan? Span = null);
@@ -24,6 +25,43 @@ public sealed partial class Binding
     {
         result = default;
         return (this.IsRunning || this.Result != default) && this.virtualOverrides.TryGetValue(function, out result);
+    }
+
+    // Called by the common BoundCall setter, including instantiated calls and Function Item contexts.
+    // Target and its defaults always remain the original public contract.
+    internal BoundVirtualCall SelectVirtualCall(BoundCall call, FunctionKoto original, BoundVirtualCall? record)
+    {
+        var declaring = call.DeclaringType ?? this.SelfType(original.BoundSymbol!.Scope.Owner.BoundSymbol!);
+        record ??= new();
+        record.Slot = new(original, declaring);
+        record.IsDirect = call.Receiver is BaseReferenceKoto;
+        record.BaseLookupType = null;
+        record.Implementation = null;
+        record.ImplementingType = null;
+        if (record.IsDirect && ObjectTypes.ViewTarget(call.ReceiverOperation.SourceType) is { } receiver)
+        {
+            record.BaseLookupType = this.StoredBase(receiver);
+            for (var current = record.BaseLookupType; current is not null; current = this.StoredBase(current))
+            {
+                if (current.Symbol is { } symbol && this.overrideEntries.TryGetValue((symbol, original), out var implementation) &&
+                    this.virtualOverrides.TryGetValue(implementation, out var entry) && ReferenceEquals(this.MemberType(entry.Slot.DeclaringType, current), declaring))
+                {
+                    // An invalid implementation remains selected; later proof checks must not fall back.
+                    record.Implementation = implementation;
+                    record.ImplementingType = current;
+                    break;
+                }
+
+                if (ReferenceEquals(current, declaring))
+                {
+                    record.Implementation = original;
+                    record.ImplementingType = declaring;
+                    break;
+                }
+            }
+        }
+
+        return record;
     }
 
     private void PrepareVirtualOverrides()
@@ -100,6 +138,7 @@ public sealed partial class Binding
             }
 
             this.overridesBySlot.Add(key, function);
+            this.overrideEntries.TryAdd((typeSymbol, slot.Original), function);
             if (IncompleteSignature(slot.Original) is { } prerequisite)
             {
                 this.CompleteDependent(function, prerequisite);
