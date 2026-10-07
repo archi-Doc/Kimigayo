@@ -135,8 +135,9 @@ public sealed partial class Binding
 
             EffectBoundKoto? confined = null;
             EffectBoundKoto? preserves = null;
-            foreach (var effect in function.EffectBounds)
+            for (var i = 0; i < function.EffectBounds.Count; i++)
             {
+                var effect = function.EffectBounds[i];
                 ref var earlier = ref (effect.Bound == EffectBoundKind.Confined ? ref confined : ref preserves);
                 if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, this.scopes[function], earlier))
                 {

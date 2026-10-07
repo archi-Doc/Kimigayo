@@ -95,6 +95,7 @@ public sealed partial class Binding
             EffectViolation.ErasedCallable => "a common Function Type whose erasure keeps no bounds",
             EffectViolation.UnknownDestruction => "destruction with unknown effects",
             EffectViolation.UnboundedRequirement => "a requirement call without the required guarantee",
+            EffectViolation.UnboundedVirtual => "a virtual call without the required public effect guarantee",
             _ => "a call with unknown effects",
         };
         var related = violation.Node is { } effect

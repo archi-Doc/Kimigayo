@@ -56,6 +56,9 @@ public sealed partial class Binding
         /// <summary>A requirement call that no available bound covers, treated as a conflict.</summary>
         UnboundedRequirement,
 
+        /// <summary>A dynamic virtual call whose public slot does not guarantee the required bound.</summary>
+        UnboundedVirtual,
+
         /// <summary>An access whose Loans cannot be classified, treated as a conflict.</summary>
         UnclassifiedAccess,
 
@@ -310,6 +313,7 @@ public sealed partial class Binding
             EffectViolation.IntegerPointer => "a pointer made from an integer",
             EffectViolation.ResultLoan => "an access to a Loan the result may keep",
             EffectViolation.UnboundedRequirement => "a requirement call with unknown effects",
+            EffectViolation.UnboundedVirtual => "a virtual call without the required public effect guarantee",
             EffectViolation.UnclassifiedAccess => "an access with unknown Loans",
             EffectViolation.UnknownDestruction => "a destruction with unknown effects",
             _ => "a call with unknown effects",

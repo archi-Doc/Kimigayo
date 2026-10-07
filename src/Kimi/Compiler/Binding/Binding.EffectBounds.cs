@@ -398,13 +398,13 @@ public sealed partial class Binding
             return true;
         }
 
-        // The receiver parameter of a call, whether bound as its receiver or as its first argument.
+        // The receiver parameter of a bound or unbound call, in its declared slot.
         private static BoundType? Receiver(BoundCall call)
         {
             var receiver = call.ReceiverOperation.ParameterType;
             for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
             {
-                if (call.ArgumentOperations[i].ParameterIndex == 0)
+                if (call.ArgumentOperations[i].ParameterIndex == call.Target.ReceiverIndex)
                 {
                     receiver = call.ArgumentOperations[i].ParameterType;
                 }
@@ -984,6 +984,42 @@ public sealed partial class Binding
                 return;
             }
 
+            if (function.IsVirtual)
+            {
+                if (call?.VirtualDispatch is { IsDirect: true } direct)
+                {
+                    if (direct.Implementation is not { BoundSymbol: { } implementation } body || direct.ImplementingType is null)
+                    {
+                        this.Violate(EffectViolation.UnclassifiedCall, null);
+                        return;
+                    }
+
+                    var context = call;
+                    if (!ReferenceEquals(body, function))
+                    {
+                        context = this.NextCall();
+                        context.Set(implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: direct.ImplementingType, origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments);
+                    }
+
+                    this.Body(body, context);
+                }
+                else if (call is not null)
+                {
+                    this.Requirement(symbol, call);
+                }
+                else
+                {
+                    // A Contract witness must satisfy its bounds from the slot contract, not an accidental body effect.
+                    var bounds = binding.AvailableEffectBounds(function, null, this.scope!);
+                    if ((this.confined && !bounds.Confined) || (this.preserves && !bounds.Preserves))
+                    {
+                        this.Violate(EffectViolation.UnboundedVirtual, function);
+                    }
+                }
+
+                return;
+            }
+
             if (function.Body is null && function.ExpressionBody is null && !(function.IsConstructor && function.IsGenerated))
             {
                 // SPEC 22.3.1, 8.4.10.2: a foreign function accesses only what its arguments permit, which the arguments
@@ -1073,13 +1109,15 @@ public sealed partial class Binding
                     this.producers.Add((requirement, this.stepUse ?? symbol.Declaration, own));
                 }
 
-                if (preserves && this.delegable && own is not null)
+                // Virtual exclusions additionally need actual-object and bound-slot identity. Until those
+                // relations are proven, retain their producers but never borrow another call's exclusion.
+                if (preserves && !requirement.IsVirtual && this.delegable && own is not null)
                 {
                     this.candidates.Add((requirement, this.stepUse!, own, confined));
                     return;
                 }
 
-                if (preserves)
+                if (preserves && !requirement.IsVirtual)
                 {
                     this.Delegation = this.delegable ? DelegationFailure.CallSite : DelegationFailure.Untraced;
                 }
@@ -1087,16 +1125,17 @@ public sealed partial class Binding
 
             if (!confined)
             {
-                this.Violate(EffectViolation.UnboundedRequirement, null);
+                this.Violate(requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, null);
                 return;
             }
 
             if (this.preserves)
             {
-                this.Reachable(Receiver(call) is { } receiver ? this.Type(receiver) : null, LoanRequirement.Uniq, symbol.Declaration);
+                var receiver = Receiver(call) is { } input ? this.Type(input) : null;
+                this.Reachable(receiver, Mode(receiver), symbol.Declaration);
                 for (var i = 0; this.valid && i < call.ArgumentOperations.Length; i++)
                 {
-                    if (call.ArgumentOperations[i] is { ParameterIndex: > 0, ParameterType: { } parameter } && (ReferenceTypes.IsBorrow(parameter) || ObjectTypes.IsBorrow(parameter)))
+                    if (call.ArgumentOperations[i] is { ParameterType: { } parameter } argument && argument.ParameterIndex != symbol.ReceiverIndex && (ReferenceTypes.IsBorrow(parameter) || ObjectTypes.IsBorrow(parameter)))
                     {
                         this.Reachable(this.Type(parameter), Mode(parameter), symbol.Declaration);
                     }
