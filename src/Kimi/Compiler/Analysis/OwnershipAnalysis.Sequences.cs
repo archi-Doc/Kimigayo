@@ -128,12 +128,12 @@ public sealed partial class OwnershipAnalysis
         return converted;
     }
 
-    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1)
+    private int SequenceValue(Koto source, BoundType type, SequenceOperation kind, int receiver, int projection = -1, int index = -1, int end = -1, int address = -1)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, true);
         var op = this.Emit(OwnershipOperationKind.Produce, source, result);
         this.SetValue(op, OwnershipValueKind.Sequence, ReferenceTypes.IsArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDynamicArray(this.body.Places[receiver].Type) || ReferenceTypes.IsDictionary(this.body.Places[receiver].Type) || FormattingTypes.IsSliceBorrow(this.body.Places[receiver].Type) || ReferenceTypes.IsSlice(this.body.Places[receiver].Type) ? [this.Value(receiver)] : [], constant: this.body.Sequences.Count);
-        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end));
+        this.body.Sequences.Add(new(op, kind, receiver, projection, index, end, address));
         return this.RegisterTemporary(result);
     }
 

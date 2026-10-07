@@ -51,6 +51,11 @@ internal sealed partial class BodyLowering
             return Fail("Sequence receiver does not match its evaluated source.", out failure);
         }
 
+        if (plan.Address < -1 || (plan.Address >= 0 && plan.Kind != SequenceOperation.Borrow))
+        {
+            return Fail("Only an element borrow can reuse a located address.", out failure);
+        }
+
         if (plan.Kind == SequenceOperation.Length && plan.Index != -1)
         {
             return Fail("Length metadata carries no element index.", out failure);
@@ -127,7 +132,7 @@ internal sealed partial class BodyLowering
             // SPEC 4.6.9: an exclusive element borrow addresses the elements through a uniq array reference.
             var exclusiveElements = borrowedArray && receiverPlace.Type.Semantics == SemanticsKind.Uniq &&
                 operation.Source is IndexKoto && reference?.Semantics == SemanticsKind.Uniq;
-            var fixedElements = receiver.Kind == BoundTypeKind.FixedArray && exclusiveElements;
+            var fixedElements = receiver.Kind == BoundTypeKind.FixedArray && borrowedArray;
             if ((receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array) && !fixedElements) || !ReferenceTypes.IsStorage(reference) ||
                 reference!.Semantics != (exclusiveElements ? SemanticsKind.Uniq : SemanticsKind.Ref) || receiver.Components.Count != 1 ||
                 !ReferenceEquals(reference.Components[0], receiver.Components[0]) || !sameOrigin ||
@@ -137,6 +142,26 @@ internal sealed partial class BodyLowering
                 !this.TryGetLocation(operation.Source, directory, constants, out var borrowLocation))
             {
                 return Fail("Sequence element borrow requires a checked index and matching backing Origin.", out failure);
+            }
+
+            if (plan.Address >= 0)
+            {
+                // The physical address survives inspection; the new exclusive access is checked against the original
+                // receiver, not acquired from a shared capability. No index or bounds check is evaluated again.
+                if (!exclusiveElements || (uint)plan.Address >= (uint)id ||
+                    body.Values[plan.Address] is not { Kind: OwnershipValueKind.Sequence, Constant: var previous } ||
+                    (uint)previous >= (uint)body.Sequences.Count || body.Sequences[(int)previous] is not { Kind: SequenceOperation.Borrow, Address: -1 } located ||
+                    located.Operation != plan.Address || located.Receiver != plan.Receiver || located.Projection != plan.Projection || located.Index != plan.Index || located.End != plan.End ||
+                    !ReferenceEquals(body.Operations[plan.Address].Source, operation.Source) ||
+                    ValueType(body, plan.Address) is not { Semantics: SemanticsKind.Ref, Components: [var stored] } prior ||
+                    !ReferenceEquals(stored, reference.Components[0]) || !ReferenceEquals(prior.Origin, reference.Origin) ||
+                    (body.IsReachable(id) && !this.Dominates(plan.Address, id)))
+                {
+                    return Fail("Replacement requires the same dominating located element and exclusive receiver authority.", out failure);
+                }
+
+                this.physicalValues[id] = this.physicalValues[plan.Address];
+                return true;
             }
 
             if (fixedElements && (receiver.Length == 0 || this.aggregateLayouts.Get(receiver)?.Value.Layout.Size == 0))

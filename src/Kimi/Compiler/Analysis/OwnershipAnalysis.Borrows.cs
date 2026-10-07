@@ -211,7 +211,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is IndexKoto slice && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef &&
-            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType)))
+            (slice.Left.BoundType?.Kind is BoundTypeKind.Slice or BoundTypeKind.Array || ReferenceTypes.IsDynamicArray(slice.Left.BoundType) || ReferenceTypes.IsArray(slice.Left.BoundType)))
         {
             // A shared Reborrow of a stored exclusive reference or an objref view of a stored handle loads the stored
             // pointer (SPEC 10.2, 4.6.9); any other shared borrow takes the element slot's address.
@@ -299,10 +299,7 @@ public sealed partial class OwnershipAnalysis
                 return -1;
             }
 
-            var projected = this.Place(field, type, OwnershipPlaceKind.Temporary, false);
-            var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
-            this.SetValue(address, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
-            return this.RegisterTemporary(projected);
+            return this.BorrowFieldAddress(field, receiver, type, reservation);
         }
 
         if (unwrapped is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ReferenceEquals(type.Components[0], path.BoundType) &&
@@ -345,6 +342,14 @@ public sealed partial class OwnershipAnalysis
         var materialized = ScalarTypes.Supports(actual.Type) && actual.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result;
         this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsBorrow(actual.Type) || materialized ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
+    }
+
+    private int BorrowFieldAddress(MemberAccessKoto field, int receiver, BoundType type, int reservation = -1)
+    {
+        var projected = this.Place(field, type, OwnershipPlaceKind.Temporary, false);
+        var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
+        this.SetValue(address, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
+        return this.RegisterTemporary(projected);
     }
 
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.

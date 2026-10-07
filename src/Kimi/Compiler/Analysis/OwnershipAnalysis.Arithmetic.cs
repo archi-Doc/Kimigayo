@@ -37,10 +37,26 @@ public sealed partial class OwnershipAnalysis
         var right = this.PrepareCallArgument(call, source.Right, plan.ArgumentOperations[1]);
         var address = -1;
         var projection = -1;
+        var receiver = -1;
+        var index = -1;
         Koto storage = target;
         if (destination < 0 && !inline)
         {
-            if (!raw && target is BinaryKoto element && ElementAccess.IsSyntax(element) && !ElementAccess.ReachesThroughBorrow(element) && ElementAccess.WritableRoot(element) is not null)
+            if (target is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, true) is { } indexer)
+            {
+                storage = indexer;
+                address = this.PlaceCallReference(indexer);
+            }
+            else if (target is MemberAccessKoto field && ElementAccess.BorrowedPathRoot(field) is { } root)
+            {
+                receiver = this.Receiver(root, true);
+            }
+            else if (target is IndexKoto array && ElementAccess.IsExclusiveArrayElement(array))
+            {
+                receiver = this.Receiver(array.Left, true);
+                index = receiver < 0 ? -1 : this.Value(this.SelectionKey(array, receiver));
+            }
+            else if (!raw && target is BinaryKoto element && ElementAccess.IsSyntax(element) && !ElementAccess.ReachesThroughBorrow(element) && ElementAccess.WritableRoot(element) is not null)
             {
                 projection = this.LocateElement(element);
             }
@@ -66,6 +82,8 @@ public sealed partial class OwnershipAnalysis
 
         var left = destination >= 0 || inline ? this.PrepareCallArgument(call, source.Left, plan.ArgumentOperations[0])
             : projection >= 0 ? this.BorrowElementAddress((BinaryKoto)target, projection, leftType)
+            : receiver >= 0 ? target is MemberAccessKoto sharedField ? this.BorrowFieldAddress(sharedField, receiver, leftType)
+                : index < 0 ? -1 : this.SequenceValue(target, leftType, SequenceOperation.Borrow, receiver, index: index)
             : address < 0 ? -1 : raw ? this.BorrowRawAddress(target, address, leftType) : this.BorrowThrough(target, address, leftType, -1);
         // Preparation is RHS-first; the retained requirement still receives operands in their original positions.
         var updated = this.Call(call, preparedArguments: [left, right]);
@@ -90,6 +108,12 @@ public sealed partial class OwnershipAnalysis
             else if (projection >= 0)
             {
                 address = this.BorrowElementAddress((BinaryKoto)target, projection, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin));
+            }
+            else if (receiver >= 0)
+            {
+                var exclusive = this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin);
+                address = target is MemberAccessKoto field ? this.BorrowFieldAddress(field, receiver, exclusive)
+                    : this.SequenceValue(target, exclusive, SequenceOperation.Borrow, receiver, index: index, address: this.Value(left));
             }
 
             this.StorePointer(storage, raw ? address : this.Value(address), updated);
