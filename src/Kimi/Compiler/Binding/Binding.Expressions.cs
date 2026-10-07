@@ -209,20 +209,36 @@ public sealed partial class Binding
         => node is RangeKoto range && (range.Start ?? range.End) is not null &&
             (range.Start is null || IsLiteralOnlyPosition(range.Start)) && (range.End is null || IsLiteralOnlyPosition(range.End));
 
-    // SPEC 12.3.1: a built-in unary +/-, arithmetic, bitwise or shift operation whose operands are all integer literals or
-    // literal-only operations; it is fitted to a Type as one literal.
-    private static bool IsLiteralOnlyOperation(Koto node) => node switch
-    {
-        PrefixMinusKoto or PrefixPlusKoto => IsIntegerLiteralOnly(((UnaryKoto)node).Operand),
-        BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } binary =>
-            IsIntegerLiteralOnly(binary.Left) && IsIntegerLiteralOnly(binary.Right),
-        _ => false,
-    };
+    // SPEC 12.3.1: one classification serves waiting arguments, defaults and integer-only positions. Numeric classes
+    // never mix; position/range syntax is classified separately. No values are evaluated or Types committed here.
+    private static bool IsLiteralOnlyOperation(Koto node)
+        => node is UnaryKoto or BinaryKoto && NumericLiteralDefault(node) is not null;
 
     private static bool IsIntegerLiteralOnly(Koto node)
+        => ReferenceEquals(NumericLiteralDefault(node), BoundType.I32);
+
+    private static BoundType? NumericLiteralDefault(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        return node is NumberLiteralKoto { IsInteger: true } || IsLiteralOnlyOperation(node);
+        if (node is NumberLiteralKoto literal)
+        {
+            return literal.IsInteger ? BoundType.I32 : BoundType.F64;
+        }
+
+        if (node is PrefixMinusKoto or PrefixPlusKoto)
+        {
+            return NumericLiteralDefault(((UnaryKoto)node).Operand);
+        }
+
+        if (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } binary &&
+            NumericLiteralDefault(binary.Left) is { } kind &&
+            (ReferenceEquals(kind, BoundType.I32) || binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash) &&
+            ReferenceEquals(kind, NumericLiteralDefault(binary.Right)))
+        {
+            return kind;
+        }
+
+        return null;
     }
 
     private static BoundType DefaultLiteralType(NumberLiteralKoto literal, BoundType? expected)
@@ -298,9 +314,7 @@ public sealed partial class Binding
     private BoundType? LiteralDefault(Koto node)
     {
         node = KotoHelper.UnwrapParentheses(node);
-        var number = node as NumberLiteralKoto ?? (node is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)node).Operand as NumberLiteralKoto : null);
-        return number is not null ? DefaultLiteralType(number, null) : IsLiteralOnlyOperation(node) ? BoundType.I32
-            : IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node) ? this.LiteralPositionDefault(node) : null;
+        return NumericLiteralDefault(node) ?? (IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node) ? this.LiteralPositionDefault(node) : null);
     }
 
     private bool FitsInputLiteral(Koto node, BoundType type, BindingScope scope)
@@ -323,12 +337,13 @@ public sealed partial class Binding
             // SPEC 12.3.1: every literal fits the Type its operator propagates and every operator is defined for that Type;
             // a shift count is typed independently of the candidate. A wrapping integer Type has unary - for every argument.
             var integer = this.IsArithmeticInteger(type, scope);
+            var numeric = integer || type.IsFloatingPoint;
             return node switch
             {
-                PrefixMinusKoto negated => integer && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
-                PrefixPlusKoto plus => integer && this.FitsInputLiteral(plus.Operand, type, scope),
+                PrefixMinusKoto negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
+                PrefixPlusKoto plus => numeric && this.FitsInputLiteral(plus.Operand, type, scope),
                 BinaryKoto { Akind: KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } shifted => integer && this.FitsInputLiteral(shifted.Left, type, scope),
-                BinaryKoto binary => integer && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
+                BinaryKoto binary => numeric && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
                 _ => false,
             };
         }
