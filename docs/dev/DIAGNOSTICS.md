@@ -29,6 +29,8 @@ Each rule replaces a family of special cases. A change that needs an exception t
 10. **Decisions look backwards.** A decision queries only the partitions that precede it: library validation reads the library's syntax partition, emission and acceptance read every front-end partition.
 11. **Introduce at first use; rewrite each call site once.** A concept arrives in the stage that first uses it, and a reporting call site is rewritten once, with its generator, key, prerequisite and location together.
 
+Constructor inference follows SPEC §10.8.1 and §23.3.6.5. Keep Type lookup, missing slot evidence, structural/Semantics conflicts, declaration-shape failures, call-correlation failures and fixed-binding selection changes as distinct facts. Save original input evidence and candidate identities before inference/fitting; formatting never reruns selection. An explicit-argument suggestion is Advice unless the common repair model establishes its snapshot, complete bindings and selection conditions. Do not promise that spelling the provisional binding resolves ambiguity or that an anonymous concrete Type can be written.
+
 ## 3. Definitions
 
 | Source | Holds |

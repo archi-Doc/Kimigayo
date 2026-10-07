@@ -364,6 +364,10 @@ After lookup commits, Type candidates are filtered by the number and kinds of ex
 
 For example, `Box<i32>` selects `Box<T>` from a stage containing `Box<T>` and `Box<T, U>`, while a nearer stage containing only `Box<T, U>` blocks an outer `Box<T>`. Different same-arity Types imported at one stage remain ambiguous. Legitimately unresolved argument kinds defer selection with its stage fixed; malformed arguments and unknown Names are errors. Omitted Type arguments use only the inference their construct permits.
 
+For the final construction target in `A.init(...)` with its own Type-argument list omitted, first commit the ordinary lookup stage, role and access. Deduplicate equal references by declaration and normalized outer bindings. If zero-own-arity references exist, select among them; otherwise exactly one generic reference must remain. Several distinct references at the selected priority are ambiguous. Constructor inputs and the expected Type do not disambiguate this lookup. A later failure never retries another declaration or stage. Adding a same-name nongeneric Type can therefore retarget an omitted form.
+
+`Outer<i32>.Inner.init(value)` may infer only `Inner`'s own slots. `Outer.Inner.init(value)` cannot infer an unbound `Outer<T>`. Explicit Type arguments keep the ordinary arity rules above.
+
 ### 9.6.1. Bound container paths
 
 Types, Contracts, refinement parents, Constraints, associated-Type selectors and aliases use the same Container-reference rules, in three steps:

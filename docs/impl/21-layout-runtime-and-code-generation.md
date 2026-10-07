@@ -409,6 +409,16 @@ func forward<T>(value: ref/T) -> i32 => classify<T>(value)
 // forward<i32> calls the explicit implementation even with specialization budget 0.
 ~~~
 
+#### 21.3.1.1. Call selection and inference plans
+
+Ordinary calls and constructions share one argument mapping per candidate, including determined partial mappings and omitted defaults, one declaration-owned slot table, and structured fit/failure facts. Keep the acquisition-shape contract and its correlations separately from candidate applicability. Cache dependencies include declarations, source/configuration, normalized outer bindings, slot evidence and whether a judgment used inference or a fixed Type. Do not lower, instantiate code or finalize layout for rejected candidates.
+
+Best Candidate reads immutable candidate facts. With `better(a, b)` meaning strict superiority under SPEC §10.4, keep a tentative candidate while scanning (replace it only when the next candidate is better), then verify that it is better than every other candidate. Return it only if that verification succeeds; otherwise report ambiguity. Asymmetry suffices, without transitivity. For K eligible candidates, selection performs at most `2(K - 1)` pair comparisons; this bound does not cover inference or diagnostic explanation work.
+
+The constructor fixed-binding reference check (SPEC §10.8.1) may reuse mapping failures and facts unaffected by the fixed bindings. Inference conflicts are not such facts: a declaration rejected by inference may become applicable by fixed-Type adaptation. Track slot and judgment-mode dependencies to revisit affected facts only. Reuse worklists, scratch buffers and interned Types; a fixed-width mask must not impose a language slot limit. Optimized and reference paths must agree on acceptance, selection and diagnostic evidence, including waiting contexts. Explicit/single-candidate fast paths preserve that result.
+
+Explicit and inferred construction share the same complete-Type and generation keys, ABI, acquisition and cleanup plans. Inference adds no runtime lookup, boxing, Function erasure or adapter, and retains concrete Function Item and Closure Types. Measurements separate cold/warm time, allocations, retained capacity and mapping/comparison/reprocessing counts; zero-allocation regressions and fixed workload conditions remain independent of timing thresholds.
+
 ### 21.3.2. Identity and generation keys
 
 Semantic identity, implementation selection and generated representation are kept distinct:

@@ -226,7 +226,26 @@ let entry = Entry.init("item", 1)
 
 Syntactically, a qualified Type-shaped path followed by `.init(` is always a construction expression. Because `init` is not an ordinary member Name, no ordinary-call parse competes with it. The qualifier may begin with `::` and contain Type arguments. A Name-shaped qualifier such as `value` is accepted syntactically and then resolved by Type lookup; if it identifies only a value, Binding reports an error, with no retry as a value-member call.
 
-`Type.init(arguments)` constructs a fresh owner of exactly `Type`. The structure and all generic arguments are resolved first; then one of its own accessible constructors is selected by ordinary argument mapping and overload comparison. Expected results cannot change that Type or the lookup path. Every generic argument must be supplied unless the qualifier is already fully bound, such as `Self` in a generic structure.
+`Type.init(arguments)` constructs a fresh owner of exactly the resolved construction Type. Resolve the structure declaration and its outer environment first ([§9.6](09-names-signatures-and-access.md#96-type-name-selection)); then select one of its own accessible constructors by the common argument mapping, inference and overload rules. The structure's own Type-argument list may be omitted under [constructor inference](10-overload-resolution-and-inference.md#1081-constructor-type-inference). Existing bindings, including `Self`, an alias or an inherited Container environment, remain fixed. A base constructor's Type is fixed by the declared base. Neither arguments nor an expected result select a different Type declaration or infer an unbound outer Container.
+
+```kimi
+struct Box<T>
+    public let value: T
+    public init(value: T) => self.value = value@move
+
+let number: i32 = 42
+let box = Box.init(number)               // Box<i32>.
+let view = Box.init(number@ref)          // Keeps the dependency on number.
+let nested = Box.init(box@move)          // Box<Box<i32>>.
+let wide: Box<i64> = Box.init(42)         // Fits the untyped literal to i64.
+// let wrong: Box<i64> = Box.init(number) // Error: the input already binds T to i32.
+
+struct Empty<T>
+let empty: Empty<i32> = Empty.init()      // The owner expectation supplies T.
+// let unknown = Empty.init()            // Error: no evidence for T.
+```
+
+A successful inferred construction has the same selected declaration, complete result Type, argument evaluation order, acquisition, construction and destruction as the construction with those Type arguments fixed explicitly, including Types with no direct source spelling. The fixed-binding reference check in §10.8.1 enforces this guarantee; inference adds no runtime operation.
 
 Bare Type-parameter construction, inherited or extension constructors, field-wise or zero-fill fallbacks and ordinary function-call fallback are unavailable. Unknown or inaccessible constructors are errors. `Type.init` is not a function value, and `value.init(...)` cannot reinitialize existing storage. Construction returns an owner value; creating `obj`, `rc` or `arc` requires a separate [Kimi ownership operation](13-operators-and-assignment.md#1358-object-ownership-creation-and-sharing).
 

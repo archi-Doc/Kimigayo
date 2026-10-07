@@ -18,110 +18,80 @@ public sealed partial class Binding
     }
 
     private static int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+        => StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride));
+
+    private readonly ref struct CandidateOrder : IStrictCandidateOrder
     {
-        // SPEC 10.4: the receiver acquisition is common to the group (one receiver shape per Name, SPEC 7.3),
-        // so Best Candidate compares the explicit arguments only; the receiver occupies the last slot.
-        var compared = stride - 1;
-        for (var a = 0; a < candidates.Length; a++)
+        private readonly ReadOnlySpan<EvaluatedCandidate> candidates;
+        private readonly BoundArgumentOperation[] operations;
+        private readonly int stride;
+
+        internal CandidateOrder(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
         {
-            if (candidates[a].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
+            this.candidates = candidates;
+            this.operations = operations;
+            this.stride = stride;
+        }
+
+        public bool IsEligible(int candidate) => this.candidates[candidate].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+
+        public bool Better(int left, int right) => BetterCandidate(this.candidates[left], this.candidates[right], this.operations.AsSpan(left * this.stride, this.stride - 1), this.operations.AsSpan(right * this.stride, this.stride - 1));
+    }
+
+    // SPEC 10.4: this pure comparison reads explicit source arguments only; receiver acquisition is common to the group.
+    private static bool BetterCandidate(in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
+    {
+        var better = false;
+        var worse = false;
+        for (var i = 0; i < left.Length; i++)
+        {
+            var x = left[i];
+            var y = right[i];
+            if (x.Adaptation != y.Adaptation && (x.Adaptation == ArgumentAdaptation.Erasure || y.Adaptation == ArgumentAdaptation.Erasure))
+            {
+                return false; // An incomparable argument cannot be rescued by another argument or tie-breaker.
+            }
+
+            better |= x.Adaptation < y.Adaptation;
+            worse |= x.Adaptation > y.Adaptation;
+        }
+
+        if (worse || better)
+        {
+            return better && !worse;
+        }
+
+        for (var i = 0; i < left.Length; i++)
+        {
+            if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
+                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
+                (IsWaitingCallable(source) || IsWaitingNestedCall(source)))
+            {
+                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
+            }
+
+            var x = left[i].ParameterType;
+            var y = right[i].ParameterType;
+            if (ReferenceEquals(x, y) && (x is not null || left[i].Source is null))
             {
                 continue;
             }
 
-            var fa = candidates[a].Symbol?.Declaration as FunctionKoto;
-            var dominates = true;
-            for (var b = 0; b < candidates.Length; b++)
-            {
-                if (a == b || candidates[b].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
-                {
-                    continue;
-                }
-
-                var fb = candidates[b].Symbol?.Declaration as FunctionKoto;
-                var better = false;
-                var worse = false;
-                for (var i = 0; i < compared; i++)
-                {
-                    var x = operations[(a * stride) + i];
-                    var y = operations[(b * stride) + i];
-                    if (x.Adaptation != y.Adaptation && (x.Adaptation == ArgumentAdaptation.Erasure || y.Adaptation == ArgumentAdaptation.Erasure))
-                    {
-                        // Incomparability at one argument cannot be rescued by another argument or a later tie-breaker.
-                        worse = true;
-                        break;
-                    }
-
-                    better |= x.Adaptation < y.Adaptation;
-                    worse |= x.Adaptation > y.Adaptation;
-                }
-
-                if (worse)
-                {
-                    dominates = false;
-                    break;
-                }
-
-                if (better)
-                {
-                    continue;
-                }
-
-                for (var i = 0; i < compared; i++)
-                {
-                    if (candidates[a].State == CandidateApplicability.Waiting && candidates[b].State == CandidateApplicability.Waiting &&
-                        operations[(a * stride) + i].Adaptation != ArgumentAdaptation.Erasure &&
-                        operations[(a * stride) + i].Source is { } source && (IsWaitingCallable(source) || IsWaitingNestedCall(source)))
-                    {
-                        // ComparableCallableSlots proved matching acquisition. A waiting argument is completed only for the
-                        // selected candidate, so its Callable constraint signature never ranks.
-                        continue;
-                    }
-
-                    // SPEC 10.8: a parameter Type that holds an unsolved slot (an open position, without a Type) is neither identical
-                    // to nor a subtype of another Type.
-                    var x = operations[(a * stride) + i].ParameterType;
-                    var y = operations[(b * stride) + i].ParameterType;
-                    if (ReferenceEquals(x, y) && (x is not null || operations[(a * stride) + i].Source is null))
-                    {
-                        continue;
-                    }
-
-                    // Only existing operation-free Type relations participate here, by their structural part: Origin bindings never
-                    // rank candidates (SPEC 10.4 step 2, 15.6.1), also inside Function Types.
-                    var xy = x is not null && y is not null && FitsStructuralPart(x, y);
-                    var yx = x is not null && y is not null && FitsStructuralPart(y, x);
-                    better |= xy && !yx;
-                    worse |= !xy;
-                }
-
-                if (worse)
-                {
-                    dominates = false;
-                    break;
-                }
-
-                if (better)
-                {
-                    continue;
-                }
-
-                var aGeneric = fa is { GenericArguments.Count: > 0 };
-                var bGeneric = fb is { GenericArguments.Count: > 0 };
-                if (!(aGeneric != bGeneric ? !aGeneric : candidates[a].DefaultsUsed < candidates[b].DefaultsUsed))
-                {
-                    dominates = false;
-                    break;
-                }
-            }
-
-            if (dominates)
-            {
-                return a;
-            }
+            // Open slots are neither identical nor subtypes; Origin bindings never rank even inside Function Types.
+            var xy = x is not null && y is not null && FitsStructuralPart(x, y);
+            var yx = x is not null && y is not null && FitsStructuralPart(y, x);
+            better |= xy && !yx;
+            worse |= !xy;
         }
 
-        return -1;
+        if (worse || better)
+        {
+            return better && !worse;
+        }
+
+        var aGeneric = a.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
+        var bGeneric = b.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
+        return aGeneric != bGeneric ? !aGeneric : a.DefaultsUsed < b.DefaultsUsed;
     }
 
     // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an

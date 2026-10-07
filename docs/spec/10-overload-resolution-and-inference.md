@@ -2,13 +2,13 @@
 
 [Specification index](../SPEC.md)
 
-Container qualifiers are resolved and bound under §9.6.1 before call inference. This chapter infers only a function's own arguments; an omitted outer Container environment is never inferred from call arguments or an expected result. Candidate identity includes the retained environment, and a failed later constraint does not reopen qualifier lookup.
+Container qualifiers are resolved under §9.6.1 before call inference. This chapter infers a function's own arguments or the selected construction target's own arguments (§10.8.1), keeping their declaration identities distinct. An omitted outer Container environment is never inferred from call arguments or an expected result. Candidate identity includes the retained environment, and a failed later constraint does not reopen qualifier lookup.
 
 Argument adaptation, expected-result compatibility and acquisition legality are separate judgments ([Type relations and expression operations](03-types-and-values.md#38-type-relations-and-expression-operations)). A successful subtype proof neither selects nor authorizes a value operation.
 
 ## 10.1. Candidate applicability
 
-Each declaration in the committed function group is checked as follows, within the shared-expectation and body-checking boundaries of §10.5. A nested call or anonymous body is never checked separately for each candidate.
+First verify the acquisition-shape contract of the entire committed group (§7.3.1), before candidate filtering. Each declaration is then checked as follows, within the shared-expectation and body-checking boundaries of §10.5. A nested call or anonymous body is never checked separately for each candidate.
 
 1. Validate the explicit Type-argument count and kinds.
 2. Match positional and named arguments and record omitted defaults.
@@ -404,6 +404,42 @@ An unbound `s` is inferred directly from the source's outer Semantics. No implic
 Structural, Semantics and Origin constraints are solved to a fixed point, and every required slot must be resolved uniquely and consistently. A structural slot that no evidence binds once steps 3 and 4 of §10.1 and the literal defaults of §10.2 are complete, such as a slot that only a waiting argument could fix, is not a mismatch: its candidate stays applicable on its other checks, the parts of its matches and fits that do not contain the slot are still checked, and the Constraints and premises whose judgment needs the slot are not judged. §10.4 compares such a candidate unchanged, and a parameter Type that contains the slot is neither identical to nor a subtype of another Type (§3.8). A parameter of Type `F`, `ref/F` or `uniq/F` whose `F` a waiting argument binds is not such a slot: candidates whose parameters at that position have the same form compare as equal there in step 2 of §10.4, because the waiting argument is completed only for the selected candidate (§10.5). If a candidate with an unsolved slot is selected, the slot is reported as §10.6 states, and the checks that need it are derived (§23.3.6.4). An occurs-check rejects infinite substitutions such as `X = ref/X`; nominal recursive Types instead require a valid layout. Cycles supply no result. Unresolved work is kept only for an identified dependency that can resolve by its deadline.
 
 Argument or candidate traversal order, arbitrary conversion chains, common-base search and Constraint strength never choose a solution. Constraint substitution uses the same binding table as Type expressions: `s is reference` checks the Semantics projection, and the pair's `T is C` checks its target projection and that requirement's role; an ordinary `T` keeps its complete Semantics. Then fixed-target argument adaptation, substituted Constraints and expected-result compatibility are checked; flow-dependent acquisition, Loans and cleanup follow selection.
+
+### 10.8.1. Constructor Type inference
+
+Construction uses the common inference rules, with the selected structure's own slots in place of function-own slots. The declaration and outer environment are fixed under §9.6 before inference. Explicit arguments and existing bindings stay fixed; independent argument Types and written callable headers contribute first, then an independent expected result fills only unbound parts, and literal fitting/defaults follow at their ordinary points. Information shortage is not a mismatch: check independent parts and retain the candidate under §10.8 until selection. Defaults, Field initializers and constructor bodies supply no inference evidence.
+
+An expected result supplies constructor slots only by direct structural matching with an owner Type of the same structure declaration and outer environment. Do not invert borrowing, object creation, upcasting, a conversion or an associated projection. Once a Type is fixed, its ordinary result adaptation remains available. Enum Case construction keeps its separate expected-Type-first rule (§6.3.2), and `try` keeps its inference boundary (§10.5).
+
+```kimi
+func wrap<T>(value: T) -> Box<T>
+    return Box.init(value@move)
+
+// Given Holder<T>.init(value: T.Element), an i32 input cannot determine T.
+// With init(value: T.Element, witness: Tag<T>), Tag<K> can bind T = K;
+// the ordinary forward resolution then checks K.Element.
+// At an expected ref/Empty<i32>, Empty.init() cannot infer T by undoing a borrow;
+// Empty<i32>.init() can use the normal temporary-borrow rules.
+```
+
+**Fixed-binding reference check.** An inferred construction is accepted only if explicitly fixing its inferred complete construction Type would select the same constructor. This check defines acceptance independently of optimization or proof strength:
+
+1. Keep the inferred declaration and construction Type as tentative, and retain the original group, including declarations rejected by inference conflicts.
+2. Fix the construction Type's arguments and apply ordinary applicability and Best Candidate to that group, using the original argument mapping and independent input facts. Literals start from their original untyped facts, not a candidate's fitted Types. Perform no new name lookup, Type inference, Type enumeration or candidate-specific body analysis.
+3. Accept only when the same declaration is uniquely best, using the common fixed-binding fit and acquisition plan. A different winner, no winner or ambiguity requires explicit Type arguments; do not switch candidates. Requiring another expected context for a waiting argument also requires explicit arguments without attempting that analysis.
+
+Keep waiting arguments incomplete up to the boundaries of §10.5 and §10.8. Preserve any expectation or call signature already supplied. A single completion in that context may fix a concrete Closure slot; verify that completed binding without reinferring the body from the resulting Type. Do not reuse its context-dependent result as independent evidence for another candidate or context. A single candidate is subject to the same rule; waiting alone is not a reason to reject it. Actual acquisition, Origin/Loan and cleanup checks run once after selection, with no fallback.
+
+```text
+C<T> constructors:
+  init(x: ref/i32, y: ref/T)
+  init(x: ref/T,   y: ref/T)
+Input Types: x is ref/ref/i32; y is ref/i32.
+```
+
+Inference can provisionally choose the first constructor at `T = i32`, while the second has conflicting inference evidence. With `C<i32>` fixed, both parameter lists become equal under ordinary fitting and are ambiguous. The inferred form therefore requires explicit arguments; it must not silently succeed. Explicit arguments do not promise to resolve the remaining ambiguity.
+
+This extra equivalence guarantee applies to constructors. Explicit function Type arguments retain their existing effect on the candidate set. No partial lists, placeholders, default Type arguments, structure length parameters, constructor-own generic parameters or new anonymous-Type spelling are introduced.
 
 ## 10.9. Inference and operation design boundaries
 
