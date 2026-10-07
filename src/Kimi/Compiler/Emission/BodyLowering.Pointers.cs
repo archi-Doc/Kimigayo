@@ -54,7 +54,7 @@ internal sealed partial class BodyLowering
             !ReferenceEquals(SignatureType(this, element.Left.BoundType), containerType.Components[0]) ||
             !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(SignatureType(this, part), type.Components[0]) ||
             this.aggregateLayouts.Get(containerType.Components[0]) is not { } layout ||
-            (index < 0 ? ElementAccess.PathSelector(element, out _, out _) != position || position < 0 || position >= layout.Count
+            (index < 0 ? ElementAccess.PathSelector(element, out _, out _) != position || position < 0 || position >= layout.StorageCount
                 : value.Constant != -1 || !layout.IsArray || element is not Parsing.IndexKoto || !ReferenceEquals(ValueType(body, index), BoundType.ISize)) ||
             (body.IsReachable(id) && (!this.Dominates(address, id) || (index >= 0 && !this.Dominates(index, id)))))
         {
@@ -72,7 +72,7 @@ internal sealed partial class BodyLowering
         function.AddScalar(
             EmissionOpcode.ElementAddress,
             id,
-            [this.PhysicalOperand(body, address), index < 0 ? new(EmissionOperandKind.Integer, layout.Offset((int)position)) : this.PhysicalOperand(body, index),
+            [this.PhysicalOperand(body, address), index < 0 ? new(EmissionOperandKind.Integer, layout.StorageOffset((int)position)) : this.PhysicalOperand(body, index),
                 new(EmissionOperandKind.Integer, layout.Count), new(EmissionOperandKind.Integer, stride)],
             place: body.Operations.Count + id,
             location: location,

@@ -9,6 +9,26 @@ namespace XunitTest;
 public class InheritedStorageTest
 {
     [Fact]
+    public void InheritedStandardStorageKeepsItsDeclaringLayer()
+    {
+        const string Source = """
+            open struct Base
+                public var count: i32
+                protected init() => self.count = 3
+            struct Leaf: Base
+                public let extra: i32 = 7
+                public init(): base() => ()
+            var item = Leaf.init()
+            require item.count == 3 and item.extra == 7 else => $abort("read")
+            item.count = 5
+            require item.count + item.extra == 12 else => $abort("write")
+            let moved = item@move
+            require moved.count == 5 else => $abort("move")
+            """;
+        ScalarEmissionTest.EmitFixture("InheritedStorageProjection", Source, string.Empty);
+    }
+
+    [Fact]
     public void BaseArgumentsCannotAccessTheConstructionReceiver()
     {
         const string Source = """

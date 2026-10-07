@@ -36,6 +36,48 @@ internal static class StructStorage
         return count;
     }
 
+    // Selection identities include inherited fields, base first. Construction and destruction keep their separate layers.
+    internal static int StorageCount(BoundType type)
+        => Count(type) + (type.StoredBase is { } parent ? StorageCount(parent) : 0);
+
+    internal static bool FindField(BoundType type, BindingSymbol? symbol, out BoundType? fieldType, out int position)
+    {
+        for (var layer = type; layer is not null; layer = layer.StoredBase)
+        {
+            for (var i = 0; i < Count(layer); i++)
+            {
+                if (ReferenceEquals(Field(layer, i).BoundSymbol, symbol))
+                {
+                    position = i + (layer.StoredBase is { } parent ? StorageCount(parent) : 0);
+                    fieldType = FieldType(layer, i);
+                    return fieldType is not null;
+                }
+            }
+        }
+
+        position = -1;
+        fieldType = null;
+        return false;
+    }
+
+    internal static bool HasDestructorOnPath(BoundType type, BindingSymbol? field)
+    {
+        for (var layer = type; layer is not null; layer = layer.StoredBase)
+        {
+            if (Destructor(layer) is not null)
+            {
+                return true;
+            }
+
+            if (ReferenceEquals(field?.Scope.Owner.BoundSymbol, layer.Symbol))
+            {
+                break;
+            }
+        }
+
+        return false;
+    }
+
     internal static PropertyKoto Field(BoundType type, int index)
     {
         var members = Declaration(type)!.Members;
@@ -66,5 +108,7 @@ internal static class StructStorage
         return null;
     }
 
-    internal static BoundType? ReceiverType(FunctionKoto function) => function.IsConstructor || function.IsDestructor ? function.BoundSymbol?.Scope.Owner.BoundSymbol?.Type : null;
+    internal static BoundType? ReceiverType(FunctionKoto function)
+        => (function.IsConstructor || function.IsDestructor) && function.BoundSymbol?.Scope.Owner.BoundSymbol is { } owner
+            ? function.CodeContext.Compilation.Binding.SelfType(owner) : null;
 }

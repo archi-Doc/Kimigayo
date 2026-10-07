@@ -312,16 +312,7 @@ internal static class ElementAccess
         if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left) || ObjectTypes.HandleMode(left) is not null)
         {
             owner = left!.Components[0];
-            for (var i = 0; i < StructStorage.Count(owner); i++)
-            {
-                if (ReferenceEquals(StructStorage.Field(owner, i).BoundSymbol, field.BoundSymbol))
-                {
-                    element = StructStorage.FieldType(owner, i);
-                    return i;
-                }
-            }
-
-            return -1;
+            return StructStorage.FindField(owner, field.BoundSymbol, out element, out var position) ? position : -1;
         }
 
         owner = left;
@@ -361,16 +352,7 @@ internal static class ElementAccess
 
         if (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true } && StructStorage.IsStruct(type))
         {
-            for (var i = 0; i < StructStorage.Count(type); i++)
-            {
-                var field = StructStorage.Field(type, i);
-                if (ReferenceEquals(field.BoundSymbol, source.BoundSymbol))
-                {
-                    position = i;
-                    element = StructStorage.FieldType(type, i);
-                    return element is not null;
-                }
-            }
+            return StructStorage.FindField(type, source.BoundSymbol, out element, out position);
         }
 
         if (source is IndexKoto && type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && type.Components.Count == 1)

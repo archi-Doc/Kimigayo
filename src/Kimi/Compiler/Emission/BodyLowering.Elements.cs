@@ -482,10 +482,11 @@ internal sealed partial class BodyLowering
         var dynamicArray = receiverType.Kind == BoundTypeKind.Array;
         var layout = this.aggregateLayouts.Get(receiverType)!;
         var field = layout.IsArray || dynamicArray ? 0 : plan.Element;
+        var storage = layout.StorageLayer(ref field);
         // The Array layout describes its handle; the indexed storage has T's own layout.
         var stored = dynamicArray ? receiverType.Components[0] : null;
-        var representation = dynamicArray ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : layout.Fields[field];
-        var elementLayout = dynamicArray ? this.aggregateLayouts.GetStored(stored!) : layout.Children[field];
+        var representation = dynamicArray ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : storage.Fields[field];
+        var elementLayout = dynamicArray ? this.aggregateLayouts.GetStored(stored!) : storage.Children[field];
         if (representation is null)
         {
             return Fail("Array element has no supported storage representation.", out failure);
@@ -570,7 +571,7 @@ internal sealed partial class BodyLowering
             function.AddScalar(
                 EmissionOpcode.ElementAddress,
                 id,
-                [receiver, layout.IsArray ? this.PhysicalOperand(body, plan.Index) : new(EmissionOperandKind.Integer, layout.Offset(field)),
+                [receiver, layout.IsArray ? this.PhysicalOperand(body, plan.Index) : new(EmissionOperandKind.Integer, storage.Offset(field)),
                     new(EmissionOperandKind.Integer, layout.Count), new(EmissionOperandKind.Integer, representation.Layout.Stride)],
                 place: body.Operations.Count + id,
                 location: location,

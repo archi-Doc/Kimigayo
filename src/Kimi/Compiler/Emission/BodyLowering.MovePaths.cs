@@ -141,7 +141,7 @@ internal sealed partial class BodyLowering
         var offset = 0;
         for (var node = body.GetMovePath(path); node.Parent >= 0; node = body.GetMovePath(node.Parent))
         {
-            offset = checked(offset + this.aggregateLayouts.Get(body.GetMovePath(node.Parent).Type)!.Offset(node.Selector));
+            offset = checked(offset + this.aggregateLayouts.Get(body.GetMovePath(node.Parent).Type)!.StorageOffset(node.Selector));
         }
 
         return offset;
@@ -157,37 +157,57 @@ internal sealed partial class BodyLowering
             return;
         }
 
-        var end = node.Count;
+        this.CollectLayerDestruction(body, path, offset, layout!);
+    }
+
+    private void CollectLayerDestruction(OwnershipBody body, int path, int offset, AggregateLayout layout)
+    {
+        var node = body.GetMovePath(path);
+        var first = layout.Base?.StorageCount ?? 0;
+        var end = layout.StorageCount;
         for (var child = node.Child; ; child = body.GetMovePath(child).Next)
         {
             var selector = child < 0 ? -1 : body.GetMovePath(child).Selector;
-            if (layout!.IsArray)
+            if (selector >= end)
             {
-                if (end > selector + 1)
+                continue;
+            }
+
+            var boundary = Math.Max(selector, first - 1);
+            if (layout.IsArray)
+            {
+                if (end > boundary + 1)
                 {
-                    this.AddPartDestruction(body, path, offset + layout.Offset(selector + 1), end - selector - 1, layout.Fields[0], layout.Children[0]);
+                    this.AddPartDestruction(body, path, offset + layout.Offset(boundary + 1), end - boundary - 1, layout.Fields[0], layout.Children[0]);
                 }
             }
             else
             {
-                for (var field = end - 1; field > selector; field--)
+                for (var field = end - first - 1; field > boundary - first; field--)
                 {
                     this.AddPartDestruction(body, path, offset + layout.Offset(field), 1, layout.Fields[field], layout.Children[field]);
                 }
             }
 
-            if (child < 0)
+            if (selector < first)
             {
                 break;
             }
 
-            this.CollectPartDestruction(body, child, offset + layout.Offset(selector));
+            this.CollectPartDestruction(body, child, offset + layout.Offset(selector - first));
             end = selector;
         }
 
-        if (layout?.Base is { } parent)
+        if (layout.Base is { } parent)
         {
-            this.AddPartDestruction(body, path, offset, 1, parent.Value, parent);
+            if (body.CurrentBaseComplete(path, first))
+            {
+                this.AddPartDestruction(body, path, offset, 1, parent.Value, parent);
+            }
+            else
+            {
+                this.CollectLayerDestruction(body, path, offset, parent);
+            }
         }
     }
 

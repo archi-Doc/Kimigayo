@@ -12,7 +12,7 @@ internal sealed partial class BodyLowering
 
     private static bool ValidateReceiverInitialization(OwnershipBody body, OwnershipOperation operation)
         => (operation.Kind == OwnershipOperationKind.CheckReceiverField ? body.Function.IsConstructor : body.Function.IsDestructor) && StructStorage.ReceiverType(body.Function) is { } type &&
-            operation.Place >= 0 && (operation.Place == body.ReceiverBase ? type.StoredBase is not null && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local :
+            operation.Place >= 0 && (operation.Place == body.ReceiverBase ? body.Function.CodeContext.Compilation.Binding.StoredBase(type) is not null && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local :
             body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
             ReferenceEquals(field.Parent, StructStorage.Declaration(type)) && (operation.Kind == OwnershipOperationKind.CheckReceiverField || ReferenceEquals(operation.Source, field)) &&
             field.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var place) && place == operation.Place);

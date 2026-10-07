@@ -364,13 +364,13 @@ internal sealed partial class BodyLowering
             element = SignatureType(this, element);
             var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
             var selected = SignatureType(this, level.BoundType);
-            if (layout is null || (uint)position >= (uint)layout.Count || element is null || selected is null ||
+            if (layout is null || (uint)position >= (uint)layout.StorageCount || element is null || selected is null ||
                 !level.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(element, selected, level))
             {
                 return false;
             }
 
-            offset = checked(offset + layout.Offset(position));
+            offset = checked(offset + layout.StorageOffset(position));
             var receiver = KotoHelper.UnwrapParentheses(level.Left);
             if (ReferenceEquals(receiver, KotoHelper.UnwrapParentheses(root)) ||
                 (ElementAccess.FollowedReference(receiver) is { } reference && ReferenceEquals(KotoHelper.UnwrapParentheses(reference), KotoHelper.UnwrapParentheses(root))))

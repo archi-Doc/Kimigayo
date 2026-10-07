@@ -1543,22 +1543,41 @@ public sealed partial class Binding
                 return;
             }
 
-            for (var part = 0; remainder && this.valid && part < node.Count; part++)
+            this.DestroyedLayer(body, path, node.Type, use, remainder);
+        }
+
+        private void DestroyedLayer(OwnershipBody body, int path, BoundType type, Koto use, bool remainder)
+        {
+            var node = body.GetMovePath(path);
+            var first = type.StoredBase is { } parentType ? StructStorage.StorageCount(parentType) : 0;
+            var count = type.Kind == BoundTypeKind.FixedArray ? (int)type.Length : type.Kind == BoundTypeKind.Tuple ? type.Components.Count : StructStorage.StorageCount(type);
+            for (var part = first; remainder && this.valid && part < count; part++)
             {
                 if (!HasPath(body, node, part))
                 {
-                    this.Destruction(PartType(node.Type, part) is { } stored ? this.Type(stored) : null, use);
+                    this.Destruction(PartType(type, part - first) is { } stored ? this.Type(stored) : null, use);
                 }
             }
 
             for (var child = node.Child; this.valid && child >= 0; child = body.GetMovePath(child).Next)
             {
-                this.DestroyedParts(body, child, use);
+                if (body.GetMovePath(child).Selector >= first && body.GetMovePath(child).Selector < count)
+                {
+                    this.DestroyedParts(body, child, use);
+                }
             }
 
-            if (remainder && node.Type.StoredBase is { } parent)
+            if (type.StoredBase is { } parent)
             {
-                this.Destruction(this.Type(parent), use);
+                var complete = body.CurrentBaseComplete(path, first);
+                if (complete && remainder)
+                {
+                    this.Destruction(this.Type(parent), use);
+                }
+                else if (!complete)
+                {
+                    this.DestroyedLayer(body, path, parent, use, remainder);
+                }
             }
 
             static bool HasPath(OwnershipBody body, MovePath node, int selector)

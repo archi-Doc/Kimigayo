@@ -13,6 +13,28 @@ namespace Kimi.Compiler;
 internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowering[] Fields, AggregateLayout?[] Children, int Count, bool IsArray, bool NeedsDestruction, int Destructor = -1, AggregateLayout[]? Cases = null, int PayloadOffset = 0, bool FunctionHandle = false, ObjectHandleMode? ObjectHandle = null, bool CLayout = false, AggregateLayout? Base = null, string? CollectionDrop = null, string? GenericDestructor = null, int? ObjectPayloadDrop = null)
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
+
+    internal int StorageCount => this.Count + (this.Base?.StorageCount ?? 0);
+
+    internal AggregateLayout StorageLayer(ref int index)
+    {
+        var layer = this;
+        while (layer.Base is { } parent)
+        {
+            var count = parent.StorageCount;
+            if (index >= count)
+            {
+                index -= count;
+                break;
+            }
+
+            layer = parent;
+        }
+
+        return layer;
+    }
+
+    internal int StorageOffset(int index) => this.StorageLayer(ref index).Offset(index);
 }
 
 /// <summary>Interns physical shapes independently of bound Type and Origin identities.</summary>

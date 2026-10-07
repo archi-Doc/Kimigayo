@@ -51,10 +51,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
-        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
-
-    private BoundType SelfType(BindingSymbol symbol)
+    internal BoundType SelfType(BindingSymbol symbol)
     {
         var schema = symbol.Schema!;
         var types = this.RentTypes(schema.GenericSlots.Count);
@@ -86,6 +83,9 @@ public sealed partial class Binding
             this.originScratch.Return(origins, clearArray: true);
         }
     }
+
+    private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
+        => this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
