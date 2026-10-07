@@ -1197,6 +1197,11 @@ public sealed partial class Binding
                 }
 
                 var input = target.Parent is BinaryKoto parentBinary ? parentBinary.Right : target.Parent;
+                if (update && target.Parent is { } updateExpression)
+                {
+                    input = this.PropertyUpdateInput(node, updateExpression);
+                }
+
                 if ((!operation.IsStandard && !this.BindPropertyCall(node, operation, scope, write ? input : null)) ||
                     (update && !property.Setter.IsStandard && (input is null || !this.BindPropertyCall(node, property.Setter, scope, input))) ||
                     (update && (node is not MemberAccessKoto updateMember || !this.BindPropertyUpdate(updateMember, scope))))
@@ -1448,6 +1453,12 @@ public sealed partial class Binding
         }
 
         var result = assignment ? BoundType.Unit : left;
+        if (assignment && kind != KotoKind.Equals && this.PropertySetterInput(KotoHelper.UnwrapParentheses(binary.Left)) is { } setterInput &&
+            !this.FitsTypeAt(left, setterInput, binary))
+        {
+            return this.FailMismatch(binary, binary.Left, left, setterInput);
+        }
+
         if (shift)
         {
             // SPEC 13.3: the shifted operand may be a wrapping integer Type; the count is an integer Type, never a wrapping one.

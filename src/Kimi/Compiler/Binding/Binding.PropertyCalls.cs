@@ -9,6 +9,7 @@ public sealed partial class Binding
     private readonly Dictionary<(Koto Source, PropertyAccessorKind Kind), InvocationKoto> propertyCalls = new();
     private readonly Dictionary<Koto, MemberAccessKoto> storageProjections = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, MemberAccessKoto> propertyUpdateStorage = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<Koto, EvaluatedKoto> propertyUpdateInputs = new(ReferenceEqualityComparer.Instance);
 
     internal static bool IsGetterResult(Koto node)
         => KotoHelper.UnwrapParentheses(node) is not MemberAccessKoto { IsDirectStorage: true } &&
@@ -46,6 +47,17 @@ public sealed partial class Binding
     internal MemberAccessKoto? StorageProjection(Koto node)
         => node.BoundSymbol?.Kind == BindingSymbolKind.Storage && this.storageProjections.GetValueOrDefault(node) is { BindingState: BindingState.Resolved } projection ? projection : null;
 
+    private EvaluatedKoto PropertyUpdateInput(Koto target, Koto update)
+    {
+        if (!this.propertyUpdateInputs.TryGetValue(target, out var input))
+        {
+            input = new(update);
+            this.propertyUpdateInputs.Add(target, input);
+        }
+
+        return input;
+    }
+
     private bool ValidPropertyWritePath(Koto node, BindingScope scope)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -73,8 +85,9 @@ public sealed partial class Binding
         var property = node.BoundSymbol!.Property!;
         var getterResult = this.propertyCalls.GetValueOrDefault((node, PropertyAccessorKind.Get))?.BoundType ?? property.Getter.Result;
         var setterInput = this.PropertySetterInput(node) ?? property.Setter.Input;
+        var arithmetic = this.propertyUpdateInputs.TryGetValue(node, out var computed) && computed.Source is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
         if (getterResult is not { } result || setterInput is not { } input ||
-            !this.FitsTypeAt(result, input, node))
+            (!arithmetic && !this.FitsTypeAt(result, input, node)))
         {
             this.Fail(node, BindingFailure.TypeMismatch);
             return false;
@@ -228,6 +241,11 @@ public sealed partial class Binding
             var count = 0;
             if (input is not null)
             {
+                if (input is EvaluatedKoto)
+                {
+                    Complete(input, inputType); // The update supplies its checked Output, never the original RHS.
+                }
+
                 var slot = receiver is null ? 0 : 1;
                 mapping[count] = slot;
                 operations[count++] = new(input, inputType, inputType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);

@@ -210,8 +210,10 @@ public sealed partial class OwnershipAnalysis
     // SPEC 5.2.2: a borrow of a raw Place converts its address. The referent is a fresh anchor that no Loan of another Place
     // covers, so accesses through the result, and Reborrows from it, are checked under the result alone.
     private int BorrowRawPlace(Koto source, Koto place, BoundType type)
+        => this.BorrowRawAddress(source, this.PointerAddress(place), type);
+
+    private int BorrowRawAddress(Koto source, int pointer, BoundType type)
     {
-        var pointer = this.PointerAddress(place);
         if (pointer < 0)
         {
             return -1;

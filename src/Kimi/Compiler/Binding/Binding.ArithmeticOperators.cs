@@ -128,7 +128,7 @@ public sealed partial class Binding
             }
             else
             {
-                var destination = ElementAccess.DestinationType(binary.Left, left);
+                var destination = this.PropertySetterInput(KotoHelper.UnwrapParentheses(binary.Left)) ?? ElementAccess.DestinationType(binary.Left, left);
                 result = destination is not null && this.FitsTypeAt(plan.Call.BoundType!, destination, binary)
                     ? Complete(binary, BoundType.Unit) : this.FailMismatch(binary, binary, plan.Call.BoundType!, destination!);
             }

@@ -1102,6 +1102,11 @@ public sealed class ControlFlowAnalysis
         };
         if (updatedTarget is not null && node.CodeContext.Compilation.Binding.PropertyCall(updatedTarget, PropertyAccessorKind.Set) is { } updateSetter)
         {
+            if (updateSetter.ArgumentNodes[0] is EvaluatedKoto computedInput)
+            {
+                this.Visit(computedInput);
+            }
+
             // The receiver and RHS were visited once in source order. The final call
             // consumes their prepared values and adds no second evaluation or transfer.
             this.nodes[updateSetter] = info;

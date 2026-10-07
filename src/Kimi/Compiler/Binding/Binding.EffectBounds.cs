@@ -577,8 +577,20 @@ public sealed partial class Binding
                 case BinaryKoto { ComparisonCall: { } comparison }:
                     this.Queue(comparison);
                     break;
-                case BinaryKoto { ArithmeticCall: { } arithmetic }:
+                case BinaryKoto { ArithmeticCall: { } arithmetic } arithmeticSource:
                     this.Queue(arithmetic);
+                    if (arithmetic.RightFirstArguments)
+                    {
+                        if (binding.PropertyCall(arithmeticSource.Left, PropertyAccessorKind.Set) is { } arithmeticSetter)
+                        {
+                            this.Queue(arithmeticSetter);
+                        }
+                        else
+                        {
+                            this.PlaceAccess(arithmeticSource.Left, LoanRequirement.Uniq, node);
+                        }
+                    }
+
                     break;
                 case UnaryKoto { ArithmeticCall: { } unary }:
                     this.Queue(unary);
