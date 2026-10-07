@@ -922,7 +922,7 @@ public sealed partial class Binding
             if (type.Kind is BoundTypeKind.FunctionItem or BoundTypeKind.Closure && type.Symbol is { } symbol)
             {
                 this.stepUse = use;
-                this.Function(symbol, binding.FunctionItemContext(type));
+                this.Function(symbol, binding.FunctionItemContext(type, requireClosed: false));
                 this.stepUse = null;
                 if (type.Kind == BoundTypeKind.Closure && call.ReceiverKind == SemanticsKind.Owner &&
                     type.Symbol.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner })
@@ -1046,6 +1046,8 @@ public sealed partial class Binding
 
         private void Function(BindingSymbol symbol, BoundCall? call)
         {
+            // A closed requirement Item has already retained its verified witness mapping.
+            symbol = call?.Target ?? symbol;
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
                 if (!this.Allows(symbol.CompilerFunction))

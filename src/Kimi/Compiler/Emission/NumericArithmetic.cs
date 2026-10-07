@@ -7,6 +7,33 @@ namespace Kimi.Compiler;
 // One numeric instruction/check policy for source operators and intrinsic Contract witnesses.
 internal static class NumericArithmetic
 {
+    internal static bool EmitBorrowed(EmissionFunction function, BoundType self, KotoKind operation, int result, int firstLoad, int continuation, int location, EmissionOperand leftAddress, EmissionOperand rightAddress)
+    {
+        if (ScalarTypes.Width(self) == 128 && operation is KotoKind.Slash or KotoKind.Percent)
+        {
+            return false;
+        }
+
+        var unary = operation == KotoKind.PrefixMinus;
+        var representation = WindowsLowering.GetValue(self)!;
+        function.AddScalar(EmissionOpcode.LoadPointer, firstLoad, [leftAddress], representation.ComputationType, representation: representation);
+        if (!unary)
+        {
+            function.AddScalar(EmissionOpcode.LoadPointer, firstLoad + 1, [rightAddress], representation.ComputationType, representation: representation);
+        }
+
+        var left = new EmissionOperand(EmissionOperandKind.Value, firstLoad);
+        var right = new EmissionOperand(EmissionOperandKind.Value, firstLoad + 1);
+        if (unary && !self.IsFloatingPoint)
+        {
+            right = left;
+            left = new(EmissionOperandKind.Integer, 0);
+        }
+
+        function.AddScalar(EmissionOpcode.Scalar, result, unary && self.IsFloatingPoint ? [left] : [left, right], representation.ComputationType, Instruction(operation, self), place: continuation, location: location, check: Check(operation, self), representation: representation);
+        return true;
+    }
+
     internal static ArithmeticCheckKind Check(KotoKind operation, BoundType type)
         => type.IsFloatingPoint ? ArithmeticCheckKind.None : operation switch
         {

@@ -227,7 +227,7 @@ public sealed partial class Binding
             else if (IsUnfittedLiteral(node))
             {
                 var borrow = parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
-                if (!this.FitsInputLiteral(node, borrow ? parameter.Components[0] : parameter, scope))
+                if (!this.FitsInputLiteral(node, LiteralInputType(parameter), scope))
                 {
                     return CandidateApplicability.Inapplicable;
                 }

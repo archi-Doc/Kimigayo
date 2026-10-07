@@ -267,9 +267,19 @@ internal sealed partial class GenericStoragePlan
 
             var declared = body.SubstituteDefaultType(produced, body.DefaultContextAt(i));
             var item = declared is null || call is null ? declared : binding.InstantiateStorageType(declared, call);
-            if (item is null || binding.FunctionItemContext(item) is not { } context || !this.templates.TryGetValue(target, out var template))
+            if (item is null || binding.FunctionItemContext(item) is not { } context || context.Target.Declaration is not FunctionKoto implementation)
             {
                 return Fail("Generic Function Item requires a closed substitution and a verified generic body.", out failure);
+            }
+
+            if (context.Target.CompilerFunction != CompilerFunctionKind.None || (!IsGeneric(implementation) && this.functions!.ContainsKey(implementation)))
+            {
+                continue;
+            }
+
+            if (!this.templates.TryGetValue(implementation, out var template))
+            {
+                return Fail("Function Item witness has no verified generic body.", out failure);
             }
 
             if (!this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))

@@ -287,8 +287,8 @@ public sealed partial class Binding
         static bool Omitted(BoundOrigin? written, BoundOrigin? binding) => ReferenceEquals(written, binding) || written?.Kind == OriginKind.Inference;
     }
 
-    // Members of Origin-bearing containers and requirements referenced through a constrained Type (SPEC 10.5,
-    // `T.compare`) remain limited. An instance member is referenced unbound through its Type (SPEC 7.3).
+    // Ordinary members of Origin-bearing containers remain limited; constrained requirements use RequirementItems.
+    // An instance member is referenced unbound through its Type (SPEC 7.3).
     private static bool UnsupportedReference(BindingSymbol candidate, FunctionKoto function, bool unbound, BoundType? declaringType)
     {
         if ((candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
@@ -506,6 +506,11 @@ public sealed partial class Binding
 
     private BoundType? BindFunctionReference(Koto use, BindingSymbol symbol, BoundType required, BindingScope scope, bool erase = true)
     {
+        if (this.ReferenceRequirements(use) is { } requirements)
+        {
+            return this.BindRequirementItem(use, requirements, scope, required, erase);
+        }
+
         if (this.BoundMethodReference(use, symbol))
         {
             return this.Fail(use, BindingFailure.BoundMethodValue);

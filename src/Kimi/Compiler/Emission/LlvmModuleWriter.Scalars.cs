@@ -226,7 +226,7 @@ internal static partial class LlvmModuleWriter
             Name(output, "  %overflow", id);
             WriteCheckedValue(output, type!, id);
             output.Write(", 1\n");
-            WriteArithmeticFailure(output, constants, instruction, "%overflow");
+            WriteArithmeticFailure(output, constants, instruction, "%overflow", function.Abi.CallerLocation);
             return;
         }
 
@@ -234,7 +234,7 @@ internal static partial class LlvmModuleWriter
         {
             // IMPL 21.5.3: a literal -1 keeps only the minimum check; the quotient below is the negation.
             WriteEquality(output, "%minimum", id, type!, operands[0], long.MinValue >> (64 - (instruction.Representation!.Layout.Size * 8)));
-            WriteArithmeticFailure(output, constants, instruction, "%minimum");
+            WriteArithmeticFailure(output, constants, instruction, "%minimum", function.Abi.CallerLocation);
         }
         else if (instruction.Check == ArithmeticCheckKind.Division)
         {
@@ -249,12 +249,12 @@ internal static partial class LlvmModuleWriter
             Name(output, " = or i1 %zero", id);
             Name(output, ", %overflow", id);
             output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction, "%invalid");
+            WriteArithmeticFailure(output, constants, instruction, "%invalid", function.Abi.CallerLocation);
         }
         else if (instruction.Check == ArithmeticCheckKind.DivisionZero)
         {
             WriteEquality(output, "%zero", id, type!, operands[1], 0);
-            WriteArithmeticFailure(output, constants, instruction, "%zero");
+            WriteArithmeticFailure(output, constants, instruction, "%zero", function.Abi.CallerLocation);
             if (SubstitutesRemainderDivisor(instruction, operands))
             {
                 // SPEC 13.3: a % -1 is 0 for every a, and srem must never see the minimum / -1 pair, so a divisor of -1
@@ -274,7 +274,7 @@ internal static partial class LlvmModuleWriter
         else if (instruction.Check == ArithmeticCheckKind.WrappingDivision)
         {
             WriteEquality(output, "%zero", id, type!, operands[1], 0);
-            WriteArithmeticFailure(output, constants, instruction, "%zero");
+            WriteArithmeticFailure(output, constants, instruction, "%zero", function.Abi.CallerLocation);
             WriteWrappingQuotient(output, instruction, operands, type!);
             return;
         }
@@ -288,7 +288,7 @@ internal static partial class LlvmModuleWriter
             output.Write(", ");
             WriteNumber(output, instruction.Representation!.Layout.Size * 8);
             output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction, "%invalid");
+            WriteArithmeticFailure(output, constants, instruction, "%invalid", function.Abi.CallerLocation);
             if (instruction.CountRepresentation.Layout.Size != instruction.Representation.Layout.Size)
             {
                 // Only successful, nonnegative counts are converted to the left operand's width.

@@ -75,8 +75,14 @@ internal sealed partial class BodyLowering
 
         if (type.Kind == BoundTypeKind.FunctionItem && (type.Components.Count != 0 || type.LengthArguments.Length != 0))
         {
-            var entry = definition.CodeContext.Compilation.Binding.FunctionItemContext(type) is { } item && this.GenericCalls?.GetValueOrDefault(item) is { } instance
-                ? instance.Selected ?? instance.Abi : null;
+            var item = definition.CodeContext.Compilation.Binding.FunctionItemContext(type);
+            if (item?.Target.CompilerFunction is not (null or CompilerFunctionKind.None))
+            {
+                return this.CompilerEntries?.Get(type);
+            }
+
+            var entry = item is not null && this.GenericCalls?.GetValueOrDefault(item) is { } instance
+                ? instance.Selected ?? instance.Abi : item?.Target.Declaration is FunctionKoto implementation ? this.functions?.GetValueOrDefault(implementation) : null;
             return definition.IsVirtual && address ? this.Virtuals?.Address(definition, entry) : entry;
         }
 

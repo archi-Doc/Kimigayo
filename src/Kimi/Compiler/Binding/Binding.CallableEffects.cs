@@ -293,11 +293,6 @@ public sealed partial class Binding
             return (EffectViolation.UnclassifiedCall, null);
         }
 
-        if (function.IsRequirement)
-        {
-            return (EffectViolation.UnboundedRequirement, function);
-        }
-
         var summary = this.callableEffectSummary ??= new(this);
         return summary.Check(bound == EffectBoundKind.Confined, bound == EffectBoundKind.PreservesResults, symbol, this.ConstraintScope(use), true, type, receiver)
             ? null : (summary.Violation, summary.ViolationNode);

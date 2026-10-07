@@ -382,7 +382,7 @@ public sealed partial class Binding
         var owner = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
         if (this.FunctionItemSignature(owner) is { } itemSignature)
         {
-            signature = itemSignature;
+            signature = this.ContractType(itemSignature, scope);
             receiver = SemanticsKind.Ref;
             return true;
         }
@@ -527,7 +527,7 @@ public sealed partial class Binding
                 var source = call.ArgumentNodes[i];
                 var parameter = parameters.Components[i];
                 var literal = IsUnfittedLiteral(source);
-                var actual = this.BindNode(source, scope, parameter);
+                var actual = this.BindNode(source, scope, literal ? LiteralInputType(parameter) : parameter);
                 if (actual is null || source.BindingState != BindingState.Resolved)
                 {
                     return Complete(call, null);

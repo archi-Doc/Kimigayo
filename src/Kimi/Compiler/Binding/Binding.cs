@@ -714,7 +714,9 @@ public sealed partial class Binding
                 {
                     // SPEC 10.5: without a fixed expected call signature, an overload set is not a value.
                     shapeNote = "A function reference without a fixed expected call signature is a value only when exactly one candidate remains and its Type parameters are bound";
-                    advice = "Annotate the expected Function Type, or write explicit Type arguments, so that one function is referenced";
+                    advice = candidate.Function.GenericArguments.Count == 0
+                        ? "Annotate the expected Function Type so that one function is referenced"
+                        : "Annotate the expected Function Type, or write explicit Type arguments, so that one function is referenced";
                     candidates[c] = ("candidate", candidate.Function, candidate.Actual is { } signature ? $"{label}: callable signature {DiagnosticText.Bound(DiagnosticTypeName(signature), 48).Text}" : label);
                     continue;
                 }

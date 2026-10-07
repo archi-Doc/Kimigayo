@@ -516,7 +516,7 @@ internal sealed partial class BodyLowering
                     return Fail("Cleanup is conditional, mismatched or unsupported.", out failure);
                 }
 
-                if (operation.Place >= 0 && (IsScalar(body.Places[operation.Place].Type) || ReferenceTypes.IsString(body.Places[operation.Place].Type)))
+                if (operation.Place >= 0 && (IsScalar(body.Places[operation.Place].Type) || ReferenceTypes.IsString(body.Places[operation.Place].Type) || ReferenceEquals(body.Places[operation.Place].Type, BoundType.Unit)))
                 {
                     break;
                 }
@@ -526,8 +526,7 @@ internal sealed partial class BodyLowering
                     return Fail("Conditional non-scalar destruction is not implemented.", out failure);
                 }
 
-                // Unit has no value and no destructor; its verified cleanup has no physical output.
-                if (step.Action == CleanupAction.Destroy && !(operation.Place >= 0 && ReferenceEquals(body.Places[operation.Place].Type, BoundType.Unit)))
+                if (step.Action == CleanupAction.Destroy)
                 {
                     return Fail("Destruction needs unsupported Type lowering.", out failure);
                 }

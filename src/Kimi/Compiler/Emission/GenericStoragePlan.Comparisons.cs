@@ -14,11 +14,11 @@ internal sealed partial class GenericStoragePlan
 
     internal IReadOnlyDictionary<BoundComparison, FunctionAbi> ComparisonHelpers => this.comparisonHelpers;
 
-    private bool PrepareComparison(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
+    internal bool PrepareComparison(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0, bool includeScalar = false)
     {
         failure = null;
         if (site.Target.CompilerFunction is not (CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare) ||
-            !ComparisonTypes.IsComposite(site.ConformingType) || this.comparisonCalls.ContainsKey(site))
+            (!includeScalar && !ComparisonTypes.IsComposite(site.ConformingType)) || this.comparisonCalls.ContainsKey(site))
         {
             return true;
         }

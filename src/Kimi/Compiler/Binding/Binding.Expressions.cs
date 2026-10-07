@@ -290,6 +290,10 @@ public sealed partial class Binding
 
     // SPEC 8.4.7.3: a symbolic Type proven PrimitiveInteger has the built-in integer operators; each instance uses the
     // operations of its concrete Type.
+    // A shared literal argument constructs an owner temporary before acquiring its borrow.
+    private static BoundType LiteralInputType(BoundType parameter)
+        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? parameter.Components[0] : parameter;
+
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
             this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, type, contract: this.Library.PrimitiveInteger)), scope) == ConstraintProof.Proven;

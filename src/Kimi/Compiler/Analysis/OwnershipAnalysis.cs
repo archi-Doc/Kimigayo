@@ -1035,7 +1035,8 @@ public sealed partial class OwnershipAnalysis
         if (node.ErasedFunctionType is { } erased)
         {
             if (node.BoundType?.Kind == BoundTypeKind.FunctionItem && node.BoundSymbol is { Declaration: FunctionKoto item } symbol &&
-                (((item.Body ?? item.ExpressionBody) is null && symbol.CompilerFunction == CompilerFunctionKind.None) || item.IsRequirement))
+                (item.IsRequirement ? this.compilation.Binding.FunctionItemContext(node.BoundType, requireClosed: false) is null :
+                    (item.Body ?? item.ExpressionBody) is null && symbol.CompilerFunction == CompilerFunctionKind.None))
             {
                 this.Unsupported(node); // A requirement without a selected executable entry cannot be erased.
                 return -1;

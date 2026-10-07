@@ -49,6 +49,7 @@ public sealed partial class Binding
             return false;
         }
 
+        signature = this.ContractType(signature, this.ConstraintScope(use));
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
             if (!CallableSignatureFits(signature, required, SignatureOwner(item)))

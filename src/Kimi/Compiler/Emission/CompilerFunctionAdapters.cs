@@ -62,13 +62,16 @@ internal sealed class CompilerFunctionAdapters
 
         var inputs = (BoundType[])signature.Components[0].Components;
         var result = signature.Components[1];
-        var kind = symbol.CompilerFunction;
         var context = this.binding.FunctionItemContext(item);
         if (context is null || !this.generics!.PrepareFormatting(this.compilation!, this.module, this.layouts, context, out _) ||
+            !this.generics.PrepareComparison(this.compilation!, this.module, this.layouts, context, out _, includeScalar: true) ||
             !this.objects!.AddCall(this.compilation!, this.module, this.layouts, context, out _))
         {
             return null;
         }
+
+        symbol = context.Target;
+        var kind = symbol.CompilerFunction;
 
         this.operands.Clear();
         var array = KimiLibraryCatalog.IsArrayOperation(kind);
@@ -79,11 +82,12 @@ internal sealed class CompilerFunctionAdapters
                 ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc,
                 ObjectCountingStep.Atomic => WindowsLowering.CloneArc,
                 _ => null,
-            } : this.objects.Calls.GetValueOrDefault(context).Physical?.Abi ??
+            } : this.generics.ComparisonCalls.GetValueOrDefault(context) ?? this.objects.Calls.GetValueOrDefault(context).Physical?.Abi ??
                 (kind is CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.WriterWrite ? this.generics.FormattingCalls.GetValueOrDefault(context) : null) ??
                 WindowsLowering.GetCompilerFunction(kind);
         var update = kind is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap;
-        if ((!update && runtime is null) || !FunctionAbi.Supports(result, this.layouts))
+        var arithmetic = kind == CompilerFunctionKind.BuiltinArithmetic;
+        if ((!update && !arithmetic && runtime is null) || !FunctionAbi.Supports(result, this.layouts))
         {
             return null;
         }
@@ -135,7 +139,7 @@ internal sealed class CompilerFunctionAdapters
             this.operands.Add(new(EmissionOperandKind.CallerLocation, 0));
             this.operands.Add(new(EmissionOperandKind.CallerLocationLength, 0));
         }
-        else if (!update && !array)
+        else if (!update && !array && !arithmetic)
         {
             foreach (var physical in runtime!.Parameters)
             {
@@ -165,7 +169,15 @@ internal sealed class CompilerFunctionAdapters
             }
         }
 
-        if (update)
+        if (arithmetic)
+        {
+            if (context.ConformingType is not { } self || ArithmeticContracts.Identity(symbol.Scope.Owner.BoundSymbol) is not { } identity ||
+                !ArithmeticContracts.Supports(self, identity) || !NumericArithmetic.EmitBorrowed(function, self, ArithmeticContracts.Operator(identity), 0, 1, 3, -1, new(EmissionOperandKind.Argument, 0), new(EmissionOperandKind.Argument, 1)))
+            {
+                return null;
+            }
+        }
+        else if (update)
         {
             if (!this.lowering!.LowerCompilerUpdate(function, kind, inputs))
             {

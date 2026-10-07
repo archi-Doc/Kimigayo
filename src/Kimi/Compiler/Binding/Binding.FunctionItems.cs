@@ -76,6 +76,17 @@ public sealed partial class Binding
         // Option or the fields of a struct over a borrow, is completed here, as an instantiated parameter's is. A Type whose storage
         // cannot be completed keeps no representation, and the entry reports that.
         this.PrepareInstantiatedStorage(boundResult, 0);
+        if (function.IsRequirement)
+        {
+            var requirement = this.RequirementItemContext(type, function, boundResult);
+            if (requirement is not null)
+            {
+                this.functionItemContexts.Add(type, requirement);
+            }
+
+            return requirement;
+        }
+
         var created = new BoundCall();
         var own = this.typeScratch.Rent(function.GenericArguments.Count);
         try
@@ -131,7 +142,7 @@ public sealed partial class Binding
 
     // The declaring Type of a member of a generic container follows the bound function arguments as the last Component.
     private static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
-        => item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
+        => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
 
     private static int ItemTypeArgumentCount(FunctionKoto function)
     {
@@ -179,6 +190,11 @@ public sealed partial class Binding
 
     private BoundType? SubstitutedItemType(BoundType type, BoundType item, FunctionKoto function)
     {
+        if (function.IsRequirement && item.Components is [var self, var reference])
+        {
+            return this.ContractType(this.SubstituteContractReference(type, this.BoundContractReference(reference)), this.ConstraintScope(function), self);
+        }
+
         if (item.Components.Count == 0 && item.LengthArguments.Length == 0)
         {
             return type;
@@ -249,6 +265,11 @@ public sealed partial class Binding
 
     private BoundType? BindFunctionItem(Koto use, BindingSymbol symbol, BindingScope scope)
     {
+        if (this.ReferenceRequirements(use) is { } requirements)
+        {
+            return this.BindRequirementItem(use, requirements, scope);
+        }
+
         if (this.BoundMethodReference(use, symbol))
         {
             return this.Fail(use, BindingFailure.BoundMethodValue);
@@ -434,8 +455,11 @@ public sealed partial class Binding
     }
 
     private BoundType CompleteFunctionItem(Koto use, BindingSymbol symbol, ReadOnlySpan<BoundType?> typeArguments = default, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengthArguments = default)
+        => this.CompleteFunctionItem(use, this.FunctionItemType(symbol, typeArguments, declaringType, lengthArguments));
+
+    private BoundType CompleteFunctionItem(Koto use, BoundType type)
     {
-        var type = this.FunctionItemType(symbol, typeArguments, declaringType, lengthArguments);
+        var symbol = type.Symbol!;
         while (use is ParenthesizedKoto parentheses)
         {
             use.BoundSymbol = symbol;

@@ -468,6 +468,26 @@ public sealed partial class Binding
         var result = ConstraintProof.Proven;
         for (var i = 0; i < work.Type.Components.Count; i++)
         {
+            if (work.Type.Kind == BoundTypeKind.FunctionItem && work.Type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && i == 1)
+            {
+                // The Contract reference is metadata; only its bound Type arguments are retained bindings.
+                var reference = work.Type.Components[i];
+                for (var a = 0; a < reference.Components.Count; a++)
+                {
+                    result = CombineProof(result, this.RequestCapability(reference.Components[a], work.Intrinsic, work.Scope), true);
+                }
+
+                if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned)
+                {
+                    for (var a = 0; a < reference.OriginArguments.Count; a++)
+                    {
+                        result = CombineProof(result, reference.OriginArguments[a] is { } origin && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
+                    }
+                }
+
+                continue;
+            }
+
             result = CombineProof(result, this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, work.Type.Components[i], contract: work.Intrinsic)), work.Scope), true);
         }
 
