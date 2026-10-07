@@ -700,7 +700,7 @@
 
   + Name="BareOwningShorthand_Kd"
     Category="Language"
-    Message="A bare owning Semantics shorthand (@owner, @obj, @rc or @arc) names no Type and is not an operation; write @copy to copy, @move to transfer, or a complete target such as @owner/T"
+    Message="Bare @owner names no Type and is not an operation; write @copy to copy, @move to transfer, or a complete target such as @owner/T"
 
   + Name="NonCopyOperand_Kd"
     Category="Language"

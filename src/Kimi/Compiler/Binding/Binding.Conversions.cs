@@ -199,8 +199,9 @@ public sealed partial class Binding
     private NumberLiteralKoto? floatingIntegerLiteral;
 
     internal static bool SupportsIdentityAcquisition(BoundType type)
-        => type.Semantics == SemanticsKind.Owner &&
-            (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Tuple or BoundTypeKind.FixedArray || Kimi.Compiler.EnumStorage.IsEnum(type));
+        => ObjectTypes.HandleMode(type) is not null ||
+            (type.Semantics == SemanticsKind.Owner &&
+            (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Tuple or BoundTypeKind.FixedArray || Kimi.Compiler.EnumStorage.IsEnum(type)));
 
     // SPEC 13.5.3: E@copy is bound as the Identity acquisition of a proven-Copy value.
     internal static bool IsCopyOperation(ConversionKoto conversion)
@@ -226,7 +227,7 @@ public sealed partial class Binding
 
     // SPEC 13.5: a bare Semantics name or operation directly after @ completes the operation. A grouped target is a Type,
     // so a grouped bare name such as (ref) is bound, and rejected, as a Type; grouping stays transparent for complete targets.
-    // A bare owning shorthand names no Core wherever it is written and keeps its own diagnostic (SPEC 13.5.3).
+    // Bare @owner remains invalid; object shorthands select their payload target from the input (SPEC 13.5.8).
     private static Koto ConversionTargetSyntax(ConversionKoto conversion)
     {
         var syntax = conversion.Right;
@@ -554,11 +555,25 @@ public sealed partial class Binding
         {
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.
-            var operandExpectation = IsUnfittedLiteral(conversion.Left) && expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && expected.Semantics == semantics ? expected.Components[0] : null;
+            var operandExpectation = semantics is not (SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) && IsUnfittedLiteral(conversion.Left) && expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && expected.Semantics == semantics ? expected.Components[0] : null;
             var operandType = this.BindNode(conversion.Left, scope, operandExpectation);
             if (operandType is null)
             {
                 return Complete(conversion, null);
+            }
+
+            if (semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+            {
+                if (ReferenceEquals(operandType, BoundType.Never))
+                {
+                    Complete(conversion.Right, operandType);
+                    conversion.ConversionBinding = ConversionBinding.Abrupt;
+                    return Complete(conversion, operandType);
+                }
+
+                var payload = IsObjectSemantics(operandType.Semantics) ? operandType.Components[0] : operandType;
+                var objectTarget = this.InternType(BoundTypeKind.Semantics, null, semantics, [payload]);
+                return this.BindObjectAdaptation(conversion, scope, operandType, objectTarget);
             }
 
             if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && IsObjectSemantics(operandType.Semantics))
@@ -599,9 +614,9 @@ public sealed partial class Binding
                 return Complete(conversion, adapted);
             }
 
-            // SPEC 13.5.3: a bare owning shorthand names no Core and is not an operation; @copy, @move or a complete
+            // SPEC 13.5.3: bare @owner names no Core and is not an operation; @copy, @move or a complete
             // target such as @owner/T states the acquisition.
-            if (semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
+            if (semantics == SemanticsKind.Owner)
             {
                 Complete(conversion.Right, operandType);
                 return this.Fail(conversion, BindingFailure.BareOwningShorthand);
@@ -662,6 +677,11 @@ public sealed partial class Binding
             return Complete(conversion, BoundType.Never);
         }
 
+        if (ObjectTypes.HandleMode(target) is not null)
+        {
+            return this.BindObjectAdaptation(conversion, scope, source, target);
+        }
+
         // SPEC 13.5.2: the operand of a numeric conversion, or of an Identity Acquisition to a read Type, is a read position, so
         // safe reference layers ending in a read Type supply its value; borrow, follow and object targets took the reference above.
         if (plain)
@@ -680,11 +700,6 @@ public sealed partial class Binding
             }
 
             return this.Fail(conversion, BindingFailure.TypeMismatch);
-        }
-
-        if (ObjectTypes.HandleMode(target) is not null && (ObjectTypes.HandleMode(source) is not null || ObjectTypes.IsBorrow(source)))
-        {
-            return this.BindObjectUpcast(conversion, scope, source, target);
         }
 
         if (!plain)

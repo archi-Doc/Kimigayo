@@ -111,6 +111,8 @@ internal static class ElementAccess
                 case ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity or ConversionBinding.Literal } conversion:
                     source = conversion.Left;
                     break;
+                case ConversionKoto { CreationCall: { } creation }:
+                    return creation;
                 case InvocationKoto { Parent: IndexKoto index } call when ReferenceEquals(IndexerCall(index, false), call) || ReferenceEquals(IndexerCall(index, true), call):
                     source = index; // Both acquisition modes denote the same published element Place.
                     break;

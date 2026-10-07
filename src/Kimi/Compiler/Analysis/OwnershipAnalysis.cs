@@ -1204,6 +1204,11 @@ public sealed partial class OwnershipAnalysis
             case IsKoto { IsRuntimeTest: true } test:
                 return this.RuntimeTypeTest(test);
             case ConversionKoto conversion:
+                if (conversion.CreationCall is { } creation)
+                {
+                    return this.Call(creation);
+                }
+
                 if (conversion.ConversionBinding == ConversionBinding.ObjectUpcast)
                 {
                     if (ObjectTypes.IsBorrow(conversion.BoundType))

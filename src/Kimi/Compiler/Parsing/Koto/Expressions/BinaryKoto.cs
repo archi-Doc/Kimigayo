@@ -233,6 +233,12 @@ public sealed class ConversionKoto : BinaryKoto
 
     internal ConversionBinding ConversionBinding { get; set; }
 
+    // The syntax owns its retained plan; edits can release it with the source tree.
+    internal InvocationKoto? CreationStorage { get; set; }
+
+    internal InvocationKoto? CreationCall => this.BindingState == BindingState.Resolved && this.ConversionBinding == ConversionBinding.ObjectCreation &&
+        (this.CodeContext.Compilation.Binding.IsRunning || this.CodeContext.Compilation.Binding.Result != default) ? this.CreationStorage : null;
+
     /// <summary>Gets or sets the result of a direct-literal conversion folded at compile time (SPEC 13.5.4.2), as the
     /// sign-extended N-bit payload of the target Type, or null when the conversion runs on a value.</summary>
     internal Int128? FoldedConstant { get; set; }

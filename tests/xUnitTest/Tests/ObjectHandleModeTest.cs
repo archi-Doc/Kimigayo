@@ -67,7 +67,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData("arc")]
     public void OwningUpcastsPreserveTheirMode(string mode)
     {
-        var c = CompilationTestHelper.Parse($"open struct Base\nstruct Leaf: Base\nfunc widen(value: {mode}/Leaf) -> {mode}/Base => value@{mode}/Base");
+        var c = CompilationTestHelper.Parse($"open struct Base\nstruct Leaf: Base\nfunc widen(value: {mode}/Leaf) -> {mode}/Base => value@move@{mode}/Base");
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
     }
 

@@ -698,6 +698,9 @@ public sealed class ControlFlowAnalysis
         Flow flow;
         switch (node)
         {
+            case ConversionKoto { CreationCall: { } creation }:
+                flow = this.Visit(creation) with { Type = this.types.GetExpressionType(node) };
+                break;
             case BinaryKoto { Akind: KotoKind.Equals } assignment when node.CodeContext.Compilation.Binding.PropertyCall(assignment.Left, PropertyAccessorKind.Set) is { } setter:
                 flow = this.Visit(setter) with { Type = this.types.GetExpressionType(node) };
                 break;

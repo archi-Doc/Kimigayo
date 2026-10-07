@@ -632,6 +632,8 @@ A checked cast (§13.6.2) is needed when the source view cannot guarantee the ta
 
 **Operation selection.** Resolve the input and target, then apply this table for `s` in `obj`, `rc`, `arc`. Short `@s`, complete `@s/T`, aliases and generic `@s` / `@s/T` / `@Type` share it.
 
+Alias expansion here uses the existing name-resolution rules, including Container aliases in a target path; it introduces no transparent source Type-alias declaration (Appendix D).
+
 | Input → target | Operation |
 | --- | --- |
 | `owner/T → s/T` | Prove `T is ObjectPayload`, acquire the value and create an object |

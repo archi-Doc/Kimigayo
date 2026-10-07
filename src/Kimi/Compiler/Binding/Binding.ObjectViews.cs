@@ -59,6 +59,11 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
+            if (IsBarePlace(conversion.Left) && this.ProveCopy(actual, conversion) != ConstraintProof.Proven)
+            {
+                return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
+            }
+
             result = target;
         }
         else

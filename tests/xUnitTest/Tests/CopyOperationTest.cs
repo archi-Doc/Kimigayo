@@ -9,8 +9,8 @@ using static XunitTest.ParseTestHelper;
 
 namespace XunitTest;
 
-/// <summary>SPEC 13.5.3: E@copy Copies a proven-Copy value and never transfers or borrows. The bare owning shorthands
-/// @owner, @obj, @rc and @arc are not operations; complete targets such as @owner/T keep their acquisitions.</summary>
+/// <summary>SPEC 13.5.3: E@copy Copies a proven-Copy value and never transfers or borrows. Bare @owner remains invalid;
+/// object adaptations and complete targets keep the ordinary acquisition rules.</summary>
 public class CopyOperationTest
 {
     private const string Point =
@@ -83,9 +83,9 @@ public class CopyOperationTest
     [InlineData("let n: i32 = 1\nlet m = n@owner", DiagnosticCode.BareOwningShorthand_Kd)]
     [InlineData("let text = \"a\"\nlet m = text@move@owner", DiagnosticCode.BareOwningShorthand_Kd)]
     [InlineData("let n: i32 = 1\nlet m = n@((owner))", DiagnosticCode.BareOwningShorthand_Kd)]
-    [InlineData("struct Node\n    public var v: i32 = 0\nlet h = Kimi.Intrinsics.makeObj(Node.init())\nlet g = h@obj", DiagnosticCode.BareOwningShorthand_Kd)]
-    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: rc/Node)\n    let g = h@rc", DiagnosticCode.BareOwningShorthand_Kd)]
-    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: arc/Node)\n    let g = h@arc", DiagnosticCode.BareOwningShorthand_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nlet h = Kimi.Intrinsics.makeObj(Node.init())\nlet g = h@obj", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: rc/Node)\n    let g = h@rc", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: arc/Node)\n    let g = h@arc", DiagnosticCode.TransferRequired_Kd)]
     public void InvalidCopiesAndBareOwningShorthandsAreDiagnosed(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);

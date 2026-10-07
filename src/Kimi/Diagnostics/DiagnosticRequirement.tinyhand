@@ -601,7 +601,7 @@
     Description="the implementation's Origin contract admits every call of the required one"
 
   + Name="Binding.BareOwningShorthand"
-    Description="the owning shorthand names a Type"
+    Description="an owner target names a complete Type"
 
   + Name="Binding.NonCopyOperand"
     Description="the @copy operand is proven Copy"

@@ -496,6 +496,9 @@ public sealed partial class Binding
             this.Queue(binding.StorageProjection(node));
             switch (node)
             {
+                case ConversionKoto { CreationCall: { } creation }:
+                    this.Queue(creation);
+                    break;
                 case IndexKoto:
                     this.Queue(binding.ResolvedKeyCall(node));
                     break;
