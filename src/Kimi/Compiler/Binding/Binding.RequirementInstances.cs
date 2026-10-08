@@ -10,6 +10,18 @@ public sealed partial class Binding
     private BoundCall? InstantiateRequirementCall(BoundCall call, BoundCall outer, BoundCall? destination = null)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
+        if (call.ConformingType is { } open && AbstractTypes.HasAbstractPart(open))
+        {
+            // SPEC 8.10: substituted into a generic caller, such as a default's replica, a requirement call on a still abstract Type
+            // stays that Type's requirement call, as in the caller's own body; only a closed Type selects its witness. The
+            // intermediate call is reused per inner call, so the result is copied into its own storage.
+            var forwarded = destination ?? new BoundCall();
+            forwarded.Set(call.Target, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
+            forwarded.TupleOperator = call.TupleOperator;
+            forwarded.RequirementContract = call.RequirementContract;
+            return forwarded;
+        }
+
         if (requirement.Accessor is not null)
         {
             return this.InstantiatePropertyRequirementCall(call, outer, destination);

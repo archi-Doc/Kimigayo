@@ -755,15 +755,13 @@ public sealed partial class OwnershipAnalysis
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);
         var invalidCopy = false;
         var acquisition = plannedAcquisition.GetValueOrDefault();
-        // A case or an instance resolves a committed CopyOrMove to the exact effect of its substituted Type (SPEC 8.10, 21.3.1).
-        if (plannedAcquisition is null || (acquisition == AcquisitionKind.CopyOrMove && this.Substituting))
+        // A case, an instance or a default's replica resolves a committed CopyOrMove to the exact effect of its substituted Type
+        // (SPEC 8.10, 21.3.1); a fixed acquisition or an explicit transfer is never reselected.
+        if (plannedAcquisition is null || acquisition == AcquisitionKind.CopyOrMove)
         {
-            // Primitive classification needs no Constraint environment (SPEC 3.5.1).
-            var proof = type.Kind == BoundTypeKind.Primitive && (!ReferenceEquals(type, BoundType.Never) || neverResult)
-                ? (type.Name == "string" ? ConstraintProof.Refuted : ConstraintProof.Proven)
-                : this.compilation.Binding.ProveCopy(type, source);
+            var proof = this.CopyProof(type, source, this.Active, neverResult);
             invalidCopy = proof == ConstraintProof.Error;
-            acquisition = proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove;
+            acquisition = this.ExactAcquisition(proof, type, source);
         }
 
         this.AddPlace(new(id, source, type, kind, mutable, acquisition)
@@ -778,6 +776,26 @@ public sealed partial class OwnershipAnalysis
         }
 
         return id;
+    }
+
+    // SPEC 3.5.1, 8.10 (PLAN G82): the Copy capability of a Type resolved in a context, proved in that context's environment: a
+    // default's replica at its root invocation, the root context at the operation's own source. Primitive classification needs
+    // no environment.
+    private ConstraintProof CopyProof(BoundType type, Koto source, InterpretationContext context, bool neverResult = false)
+        => type.Kind == BoundTypeKind.Primitive && (!ReferenceEquals(type, BoundType.Never) || neverResult)
+            ? (type.Name == "string" ? ConstraintProof.Refuted : ConstraintProof.Proven)
+            : this.compilation.Binding.ProveCopy(type, this.body.ProofAnchor(context) ?? source);
+
+    // SPEC 3.5, 8.10: the exact acquisition of an analyzed Type. An Unknown proof stays the finite conditional plan CopyOrMove only
+    // while the Type keeps a free generic part of the analyzed body; a closed Type with an Unknown proof is an internal failure.
+    private AcquisitionKind ExactAcquisition(ConstraintProof proof, BoundType type, Koto source)
+    {
+        if (proof == ConstraintProof.Unknown && !AbstractTypes.HasAbstractPart(type))
+        {
+            this.body.Invariant(false, source);
+        }
+
+        return proof == ConstraintProof.Proven ? AcquisitionKind.Copy : proof == ConstraintProof.Refuted ? AcquisitionKind.Move : AcquisitionKind.CopyOrMove;
     }
 
     // Every Place, including a region or an anchor that holds no value, has a row in the builder's per-Place tables.
@@ -1806,7 +1824,7 @@ public sealed partial class OwnershipAnalysis
             this.arguments.Add(prepared);
         }
 
-        this.PrepareDefaults(plan, mark);
+        this.PrepareDefaults(call, plan, mark);
         this.ActivateCallReservations(call, reservationMark);
         if (plan.Target.Declaration is FunctionKoto target && target.Parameters.Count != this.arguments.Count - mark)
         {

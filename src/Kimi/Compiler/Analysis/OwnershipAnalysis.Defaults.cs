@@ -16,7 +16,7 @@ public sealed partial class OwnershipAnalysis
     // The builder's active interpretation context: the innermost default being evaluated, or the root.
     private InterpretationContext Active => new(this.defaultContext);
 
-    private void PrepareDefaults(BoundCall plan, int mark)
+    private void PrepareDefaults(Koto call, BoundCall plan, int mark)
     {
         if (plan.DefaultArguments.IsEmpty || plan.Target.Declaration is not FunctionKoto target)
         {
@@ -91,7 +91,7 @@ public sealed partial class OwnershipAnalysis
                     var contexts = this.body.DefaultContexts ??= new();
                     var previousContext = this.defaultContext;
                     var context = contexts.Count;
-                    contexts.Add((this.body.Operations.Count, int.MaxValue, plan, previousContext));
+                    contexts.Add((this.body.Operations.Count, int.MaxValue, plan, previousContext, previousContext < 0 ? call : contexts[previousContext].Anchor));
                     this.defaultContext = context;
                     try
                     {
@@ -100,7 +100,7 @@ public sealed partial class OwnershipAnalysis
                     finally
                     {
                         var entry = contexts[context];
-                        contexts[context] = (entry.Start, this.body.Operations.Count, entry.Call, entry.Parent);
+                        contexts[context] = entry with { End = this.body.Operations.Count };
                         this.defaultContext = previousContext;
                     }
                 }

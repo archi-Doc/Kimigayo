@@ -216,7 +216,8 @@ public sealed partial class OwnershipBody
     // Preorder evaluation intervals preserve the declaration-to-call Type/Origin substitution at each replica of a default.
     // A nested default's call is recorded already resolved in its enclosing context, so it composes every enclosing substitution
     // and one application of it, then the body's case or instance, interprets the replica (Resolve).
-    internal List<(int Start, int End, BoundCall Call, int Parent)>? DefaultContexts { get; set; }
+    // Anchor is the root default invocation in this body, whose Constraint scope proves capabilities of the replica's Types.
+    internal List<(int Start, int End, BoundCall Call, int Parent, Koto Anchor)>? DefaultContexts { get; set; }
 
     internal Dictionary<(BindingSymbol Symbol, int Context), int>? DefaultSymbolPlaces { get; set; }
 
@@ -271,6 +272,10 @@ public sealed partial class OwnershipBody
     internal InterpretationContext ContextAt(int operation) => new(this.DefaultContextAt(operation));
 
     internal InterpretationContext ContextOf(int place) => new(this.Places[place].DefaultContext);
+
+    // SPEC 8.10: after full default substitution every free generic parameter belongs to this body, so a capability of a Type
+    // resolved inside a default is proved where the outermost omitting call was written; null in the root context.
+    internal Koto? ProofAnchor(InterpretationContext context) => context.IsRoot ? null : this.DefaultContexts![context.Index].Anchor;
 
     // SPEC 7.2.3, 8.10: declared information is interpreted once per stage, in a fixed order: the context's call, recorded when
     // its interval began and already composing every enclosing default's substitution, then the body's case or instance.

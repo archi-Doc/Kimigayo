@@ -231,11 +231,17 @@ public sealed partial class OwnershipAnalysis
 
     private void CheckAcquisition(int place, AcquisitionKind? acquisition)
     {
-        // A case or an instance resolves a committed CopyOrMove to its substitution's exact effect, and a transfer (@move)
-        // moves a Copy or Copy-unproven Place (SPEC 13.5.3).
-        if (place >= 0 && acquisition is { } expected && this.body.PlaceStorage[place].Acquisition is var actual && actual != expected &&
-            !(this.Substituting && expected == AcquisitionKind.CopyOrMove && actual is AcquisitionKind.Copy or AcquisitionKind.Move) &&
-            !(expected == AcquisitionKind.Move && actual is AcquisitionKind.Copy or AcquisitionKind.CopyOrMove))
+        if (place < 0 || acquisition is not { } committed)
+        {
+            return;
+        }
+
+        // A committed CopyOrMove is checked as the exact effect of the source Place's own Type under the environment its Place was
+        // built in (SPEC 8.10), and a transfer (@move) moves a Copy or Copy-unproven Place (SPEC 13.5.3).
+        var source = this.body.PlaceStorage[place];
+        var expected = committed == AcquisitionKind.CopyOrMove
+            ? this.ExactAcquisition(this.CopyProof(source.Type, source.Source, this.body.ContextOf(place)), source.Type, source.Source) : committed;
+        if (source.Acquisition != expected && !(expected == AcquisitionKind.Move && source.Acquisition is AcquisitionKind.Copy or AcquisitionKind.CopyOrMove))
         {
             throw new InvalidOperationException("Committed payload acquisition disagrees with its source Place.");
         }

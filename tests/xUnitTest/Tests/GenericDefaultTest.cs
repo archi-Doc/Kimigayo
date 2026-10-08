@@ -12,6 +12,8 @@ namespace XunitTest;
 public class GenericDefaultTest
 {
     private const string GenericCapture = "func f<T>(x: T, action: () -> T = func [x] () => x) -> T\n    T is Copy and Owned\n    return action()\n";
+    private const string Maker = "contract Maker\n    func make() -> Self\nstruct Box\n    Self is Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Box.init(5)\n    drop => Console.writeLine(\"drop\")\nstruct Pt\n    Self is Copy and Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Pt.init(7)\n";
+    private const string Evaluate = "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let pending: Option<T> = .Some(T.make())\n        match pending@move\n            .Some(let value) => exit to result 1\n            .None => exit to result 0\n    ) -> i32\n        T is Maker\n        return marker\n";
     private const string GenericCall = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = label work: do\n    let copied = copy(x)\n    exit to work copied\n) -> T\n    T is Copy\n    return y\nrequire f(7) == 7 and f(true) else => $abort(\"call\")";
 
     [Theory]
@@ -35,6 +37,28 @@ public class GenericDefaultTest
     [InlineData("BorrowLocal", "func inspect<T>(r: ref/T) -> T\n    T is Copy\n    return r@follow\nfunc f<T>(x: T, y: T = label work: do\n    var copied = x\n    let r = copied@ref\n    exit to work inspect(r)\n) -> T\n    T is Copy\n    return y\nrequire f(7) == 7 and f(true) else => $abort(\"borrow local\")")]
     public void DefaultsAreInstantiatedAfterUniversalChecking(string name, string source)
         => ScalarEmissionTest.EmitFixture("GenericDefault" + name, source, string.Empty);
+
+    // SPEC 7.2.3, 8.10: a default's replica takes the exact acquisition of its instantiated Types, proved where the outermost
+    // omitting call was written; each owner is destroyed exactly once.
+    [Theory]
+    [InlineData("Owner", Maker + Evaluate + "Console.writeLine(\"\\(Helpers.evaluate(Box.init(1)))\")", "drop\ndrop\n1\n")]
+    [InlineData("Copy", Maker + Evaluate + "Console.writeLine(\"\\(Helpers.evaluate(Pt.init(2)))\")", "1\n")]
+    [InlineData("Forwarded", Maker + Evaluate + "func forward<U>(value: U) -> i32\n    U is Maker\n    return Helpers.evaluate(value@move)\nfunc copied<U>(value: U) -> i32\n    U is Copy and Maker\n    return Helpers.evaluate(value)\nConsole.writeLine(\"\\(forward(Box.init(1)) + forward(Pt.init(2)) + copied(Pt.init(3)))\")", "drop\ndrop\n3\n")]
+    [InlineData("Nested", Maker + Evaluate + "func outer<V>(value: V, total: i32 = Helpers.evaluate(V.make())) -> i32\n    V is Maker\n    return total\nConsole.writeLine(\"\\(outer(Box.init(1)) + outer(Pt.init(2)))\")", "drop\ndrop\ndrop\n2\n")]
+    [InlineData("Empty", "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let pending: Option<T> = .None\n        match pending@move\n            .Some(let value) => exit to result 1\n            .None => exit to result 0\n    ) -> i32\n        return marker\nConsole.writeLine(\"\\(Helpers.evaluate(5) + Helpers.evaluate(\"s\"))\")", "0\n")]
+    [InlineData("Transfer", Maker + "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let made = T.make()\n        let pending: Option<T> = .Some(made@move)\n        match pending@move\n            .Some(_) => exit to result 1\n            .None => exit to result 0\n    ) -> i32\n        T is Maker\n        return marker\nConsole.writeLine(\"\\(Helpers.evaluate(Box.init(1)) + Helpers.evaluate(Pt.init(2)))\")", "drop\ndrop\n2\n")]
+    public void ReplicaPayloadsTakeTheInstantiatedAcquisition(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("GenericDefaultContext" + name, source, stdout);
+
+    [Fact]
+    public void ReplicaPlacesResolveCopyOrMoveExactly()
+    {
+        var c = MinimalEmissionTest.Analyze(Maker + Evaluate + "let a = Helpers.evaluate(Box.init(1))\nlet b = Helpers.evaluate(Pt.init(2))");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var places = c.Ownership.Bodies.SelectMany(static x => x.Places).Where(static x => x.DefaultContext >= 0 && x.Type.Name is "Box" or "Pt").ToArray();
+        Assert.Contains(places, static x => x.Type.Name == "Box");
+        Assert.All(places, static x => Assert.Equal(x.Type.Name == "Pt" ? AcquisitionKind.Copy : AcquisitionKind.Move, x.Acquisition));
+    }
 
     [Trait("Purpose", "Allocation")]
     [Fact]
