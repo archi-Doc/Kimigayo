@@ -177,6 +177,10 @@ The earlier `docs/dev/RANGES_REVIEW.md` reference records a historical checkpoin
 
 - 2026-10-08 associated-Type inference follow-up: SPEC §8.4.8.2 now explicitly separates path-wide associated binding completion from requirement-specific compatibility premises, removing the older blanket wording. This clarifies the intake of proposal §§3.1/3.4 without changing frozen proposal text.
 
+## 2026-10-09 — Origin proof universe
+
+- `Proposals/2026-10-08 G74 Origin Proof Solver Implementation Plan.md`: 一部取り込み. §6 S1 is integrated in SPEC §15.3.6: entailment is independent of premise order and repetition, and every consequence is derivable from the Origin expressions of the query and the premises with their subexpressions. Its condition holds: U2–U3 express every catalog rule (I1–I5 and R1–R5, pair-layer admission included) as plain edges of one environment, the SPEC-rule oracle agrees with the closure, and the whole Functional suite agreed with the previous search (PLAN_HISTORY G74), so no acceptance changes. Only §6 S1 is frozen; the proposal stays in Proposals until U6 records every item.
+
 ## 2026-10-09 — Element Place borrowing
 
 - `Obsolete/2026-10-08 G59 Element Place Borrowing Implementation Plan.md`: 完了 (closed 2026-10-09). An implementation plan with no specification change: its §4.1 finds the observed behavior inconsistent with existing rules, and none was integrated. §§1–5 (problem, contracts and design D1–D7) are implemented by U0–U7 (PLAN_HISTORY G59 entries): element routes for parts of Array, Slice and runtime fixed-array elements, owned or through references, path-based capability, and an unconditional emission check against snapshot borrows. §§6–8 are executed; §9's criteria are evidenced by the units' Unit runs and the final G59 Session (PLAN_HISTORY). §10's F1/F2 are outside the plan by its own scope and remain tracked in PLAN G59. No item was rejected or transferred to another proposal. The whole file is frozen and moved unchanged from Proposals to Obsolete; closure does not imply support beyond STATUS.
