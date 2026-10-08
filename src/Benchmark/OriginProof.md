@@ -51,3 +51,9 @@ every Origin, Type, declaration and syntax reference when the request ends, and 
 held (`OriginPremiseLifecycleTest`). Sharing environments or closures across requests was measured and not adopted: building and
 closing all environments of a warm check takes 0.2-0.4 ms of a 36-45 ms check at sizes 1 and 16 (2026-10-09), so reuse could
 save at most about one percent while adding invalidation dependencies on premises, substitutions and the excluded result owner.
+
+## Results against the targets (G74 closure, 2026-10-09)
+
+The final run (`artifacts/benchmarks/g74-final`, c6506786) meets every U0 target: no case is censored through size 16, no
+closure exceeds its work bound, each family's warm check at size 16 is 0.80-1.40 times its size-1 check, and the normal-case
+`valid` check matched the pre-closure build within run-to-run variation in the interleaved A/B of `artifacts/benchmarks/g74-u3`.
