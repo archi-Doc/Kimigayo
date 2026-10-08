@@ -81,45 +81,21 @@ Use `AllocationMeasurement.Measure` for repeated warm compiler-allocation checks
 
 Formerly serial classes isolate their allocation tests in a nested `AllocationTests` class with disabled parallelization; their functional cases can run concurrently. Shared private static helpers and constants stay in the outer class. Do not remove isolation from measurements merely to increase concurrency, or share mutable compilation instances between tests. Existing allocation tests that already ran concurrently retain their execution policy.
 
-The guard-history and live-part-loan measurement inputs are linked from `tests/Workloads/VerificationWorkloads.cs` into both tests and Benchmark. Their timing loops run explicitly:
+Measurement commands and fixed conditions belong to their dedicated documents below. Run them after a successful whole-solution Release build, use fresh evidence files under `artifacts/benchmarks/` and retain exact input/configuration identity. Shared regression workloads must still pass; allocation guarantees stay in xUnit, timing remains opt-in. Compare repeated matched runs before claiming a speedup. Documentation regressions keep allocation comparisons, not timing-only output.
 
-```powershell
-# After a successful whole-solution Release build; choose a fresh evidence file per run.
-New-Item -ItemType Directory -Force artifacts/benchmarks | Out-Null
-dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --verification > artifacts/benchmarks/verification-measurements.json
-```
-
-This command reports input sizes, retained record counts, iteration counts and timings, and fails if an input stops binding or verifying. Allocation guarantees are checked by xUnit, separately from timing. Documentation measurements remain available through the existing Benchmark entries; normal documentation regressions retain their allocation comparisons without timing-only output or unasserted measurement passes. See the measurement-specific documents in `src/Benchmark` for their commands. Compare repeated runs on the same configuration before claiming a speedup.
-
-`src/backend/windows-x64/benchmark-p42.ps1 [-Runs 5]` times the P42 hash and generator workloads (`src/Benchmark/Kimi/HashWrapping.kimi` on wrapping Types, `HashChecked.kimi` widened and masked on checked Types) at O0 and O2 through the milestone harness (`milestone-harness.ps1 -Source -WorkRoot -Runs`: the same build and checked first run, then timing-only repetitions) and writes `summary.json`/`summary.md` under `artifacts/benchmarks/p42-hash-prng/<stamp>/`; see [WrappingArithmetic.md](../../src/Benchmark/WrappingArithmetic.md).
-
-`Benchmark --pair-cases` measures the Semantics-case runs of generic definitions (SPEC §8.10): first analysis allocation, warm analysis bytes and warm analysis and rebinding timings of the case workload shared with `GenericCaseAllocationTest` through `tests/Workloads/VerificationWorkloads.cs`, beside the stored-reference workload as a reference; see [PairCases.md](../../src/Benchmark/PairCases.md).
-
-`Benchmark --borrow-storage` measures shared inspection-only and stored-reference workloads: first analysis allocation, retained dependency-table cells, physical table bytes and warm timings; see [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md). Storage bounds and conflicting later call arguments remain regressions in `BorrowDependencyStorageTest`.
-
-`Benchmark --object-plans` measures direct and stored owning-object view analysis/emission with the same inputs as
-`StoredObjectViewTest`; fixed conditions and the command are in [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md).
-Allocation assertions remain in the normal Unit/Session suite; timing samples remain opt-in.
-
-`Benchmark --adaptation-plans` measures Binding, ownership and emission for 1, 8 and 32 generic Functions using
-owner/obj/rc/arc adaptation. The single-Function input is shared with `GenericAdaptationTest` through
-`AdaptationWorkloads`; fixed conditions and the command are in [Adaptations.md](../../src/Benchmark/Adaptations.md).
-
-`Benchmark --view-plans` measures Binding, ownership and emission for the exclusive-view and Slice-copy inputs
-shared with `UniqSliceTest` and `SliceToArrayTest`; fixed conditions and native measurement commands are in
-[Views.md](../../src/Benchmark/Views.md).
-
-Constructor inference measurements use the shared `ConstructorInferenceWorkloads` inputs. Run
-`Benchmark --constructor-inference` for cold/warm explicit and inferred calls, the full reference check,
-failure cases, retained capacity and work counters. Conditions and commands are in
-[ConstructorInference.md](../../src/Benchmark/ConstructorInference.md); allocation and differential
-assertions remain in `ConstructorInferenceReuseTest`.
-
-`Benchmark --inheritance-plans` measures the unchanged P25 and the deep/wide inputs
-shared with `InheritedPlanReuseTest`; fixed conditions and limits are in
-[Inheritance.md](../../src/Benchmark/Inheritance.md).
-`--inheritance-lifecycle` adds fresh/edited snapshot costs and bounded retained
-ownership storage under complete pipeline reuse, with process caches shared.
+| Measurement entry | Inputs / conditions |
+| --- | --- |
+| `Benchmark --verification` | Guard-history/live-part-loan inputs shared from `tests/Workloads/VerificationWorkloads.cs`; reports sizes, retained records, counts and timing, failing if Binding/verification fails. Save stdout to a fresh JSON file. |
+| `benchmark-p42.ps1 [-Runs 5]` | [WrappingArithmetic.md](../../src/Benchmark/WrappingArithmetic.md); harness checks the first O0/O2 run before timing-only repetitions. |
+| `Benchmark --pair-cases` | [PairCases.md](../../src/Benchmark/PairCases.md) |
+| `Benchmark --borrow-storage` | [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md) |
+| `Benchmark --object-plans` | [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md) |
+| `Benchmark --adaptation-plans` | [Adaptations.md](../../src/Benchmark/Adaptations.md) |
+| `Benchmark --view-plans` | [Views.md](../../src/Benchmark/Views.md) |
+| `Benchmark --constructor-inference` | [ConstructorInference.md](../../src/Benchmark/ConstructorInference.md) |
+| `Benchmark --inheritance-plans`, `--inheritance-lifecycle` | [Inheritance.md](../../src/Benchmark/Inheritance.md); lifecycle adds fresh/edited snapshots and retained ownership storage. |
+| `Benchmark --arithmetic-plans`, `benchmark-arithmetic.ps1` | [Arithmetic.md](../../src/Benchmark/Arithmetic.md) |
+| `Benchmark --hover` | [HOVER.md](HOVER.md#responsiveness-measurements) |
 
 ## Native fixtures
 

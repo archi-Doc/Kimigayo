@@ -91,16 +91,9 @@ Callable effects, operation token/error/non-code cases, split sources, footer tr
 regressions. `LspHoverTest` adds real variable/operation responses in Markdown and plaintext. Runtime Contract Views remain
 deferred language forms; their rejection does not justify inventing established variable facts or weakening the Hover spec.
 
-The initial feedback suite exposed six defects in implementation/test inputs; repairs include complete `s/T` formatting and
-correct expectations for Markdown escaping and deferred Contract Views. Windows Smart App Control then rejected the xUnit
-assembly with 0x800711C7, and the user authorized skipping execution; those failures and the waiver remain in PLAN_HISTORY.
-The later Virtual remaining-plan Session `20261007-183827-283-session-virtual-remaining-session-repaired` passes all 19,318
-functional/allocation tests, including the repaired Hover regressions, with a warning-free whole-solution Release build and
-stable inputs. This supersedes the skipped automated-test boundary.
+Automated verification is complete: Session `20261007-183827-283-session-virtual-remaining-session-repaired` passed all 19,318 functional/allocation tests, including the repaired Hover regressions, with a warning-free whole-solution Release build and stable inputs. [PLAN_HISTORY](PLAN_HISTORY.md#hover-verification) retains the earlier Smart App Control failures, the user's execution waiver and the later superseding verification.
 
-The user owns manual VS Code inspection of font size, wrapping, headings and source readability; agents must not automate
-or repeat it. Its result awaits the user's report and is not an outstanding agent task. The earlier automated attempt stopped
-before display review; neither that attempt nor the older client evidence below certifies the new presentation.
+The user owns manual VS Code inspection of font size, wrapping, headings and source readability; agents must not automate or repeat it. Its result awaits the user's report and is not an outstanding agent task. No older client or automated test result certifies the new presentation.
 
 ## Responsiveness measurements
 
@@ -123,52 +116,16 @@ include the sender through its drain. Results do not measure editor text-entry l
 
 ### Results (2026-10-07)
 
-Release, .NET 10.0.12, Windows 10.0.26300, 32 logical processors, default runtime/JIT settings; no concurrent build/test.
-Raw samples: `artifacts/benchmarks/hover-20261007/independent-inputs.json`. Each configuration owns independent comment
-storage. Values below are the largest per-operation averages among seven samples, not maximum individual latency.
+Raw samples: `artifacts/benchmarks/hover-20261007/independent-inputs.json` (Release, .NET 10.0.12, Windows 10.0.26300, 32 reported logical processors). All predeclared thresholds passed. Largest initial sample average: 3.512 ms/request for a wide identity tree, with 8,457,698 B/op; repeated lookup and maximum-history mapping allocated zero. These are sample averages, not maximum individual latency. Initial wide-identity comparison storage remains a cost despite bounded caches.
 
-| Workload | Initial agreement/render, ms | Initial allocation, B/op | Repeated lookup allocation, B/op |
-| --- | ---: | ---: | ---: |
-| Short comment | 0.013 | 4,488 | 0 |
-| 600 Markdown paragraphs | 2.910 | 900,593 | 0 |
-| Maximum comment (65,536 input units) | 0.204 | 280,080 | 0 |
-| 60,000 effect characters | 0.084 | 380,339 | 0 |
-| Shared identity DAG, depth 40 | 0.006 | 14,216 | 0 |
-| 32,767-node identity tree per configuration | 3.512 | 8,457,698 | 0 |
-
-Every repeated sample is below 0.00025 ms/request; mapping all 256 historical edits stays below 0.0051 ms/request,
-also at zero lookup allocation. The maximum comment returns a completed-block truncation notice rather than partial text.
-The first process response before warm-up takes 21.821 ms. An edit behind one initial Hover takes at most 3.515 ms;
-behind 100 cached requests it takes at most 0.097 ms. All predeclared criteria pass. Initial allocation is intentionally
-reported separately: very wide identities still need a large temporary comparison set; bounded caches avoid repeating it.
-
-The small compiler workload's median allocation is 4,272,664 B/check without collection and 4,661,250 B/check with it
-(about 9.1% additional allocation). Timing ranges overlap (12.113–25.731 and 11.252–17.329 ms/check respectively);
-the fixed execution order and JIT variation do not establish a speedup. CLI checks continue to leave collection disabled.
+Collection added about 9.1% allocation on the small compiler workload; timing ranges overlapped and established no speedup. CLI checks leave collection disabled. The [archived full table](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/HOVER.md#results-2026-10-07) preserves each workload, host conditions and before-warm-up observations.
 
 ### Client evidence
 
-VS Code 1.140.0, the managed Release server, and isolated extension test profiles verify the returned token range,
-`kimi` Markdown fence, Copy field, untrusted Markdown and removal of command links. A mapped `guide #%.md#intro`
-destination keeps its fragment and opens the intended file through `vscode.open`; physical mouse-click behavior and
-heading scrolling are not asserted. The LSP integration suite passes 13 tests, command/selection suites 21/14, and extension
-unit tests 65 with two platform skips. The initial link assertion assumed an uppercase drive letter; the corrected assertion
-uses VS Code's own file-URI normalization. The passing LSP log is `artifacts/verify/hover-client-20261007/lsp.log`.
-Final whole-solution verification and commit association are recorded in PLAN_HISTORY and the Verify evidence.
+The original VS Code integration verified token ranges, kimi Markdown fences, Copy, untrusted Markdown, command-link removal and a mapped destination through vscode.open. Physical mouse-click behavior and heading scrolling were not asserted. [PLAN_HISTORY](PLAN_HISTORY.md#hover-verification) retains the exact suites, platform skips, corrected drive-letter assumption and log location. This evidence does not replace the user-owned display review of the later improvements.
 
 ### Measurements (2026-10-08)
 
-After the final warning-free, non-incremental whole-solution Release build, the unchanged fixed conditions above ran on
-.NET 10.0.12 / Windows 10.0.26300 with 8 reported logical processors, without concurrent build/test. Raw samples are in
-`artifacts/benchmarks/hover-improvements-20261008.json`; regression evidence is recorded separately above.
+Raw samples: `artifacts/benchmarks/hover-improvements-20261008.json`, following the final warning-free non-incremental whole-solution Release build, on .NET 10.0.12 / Windows 10.0.26300 with 8 reported logical processors and no concurrent build/test. The unchanged conditions above ran all nine workloads; parameter/local/operation initial allocations were 7,152/3,232/2,528 B/op, with zero current/history cached-lookup allocation.
 
-| Added workload | Initial agreement/render allocation, B/op | Repeated lookup allocation, B/op | Maximum-history lookup allocation, B/op |
-| --- | ---: | ---: | ---: |
-| Parameter | 7,152 | 0 | 0 |
-| Local | 3,232 | 0 | 0 |
-| Operation | 2,528 | 0 | 0 |
-
-All nine workloads meet the predeclared investigation thresholds in every recorded sample. The largest initial sample
-average is 6.81 ms/request (wide identity); the first process response takes 30.10 ms. Every current/history cached lookup
-sample allocates zero bytes. Fixed execution order, host conditions and JIT variation do not establish a speedup over the
-earlier run. Wide initial identities still allocate a large temporary comparison set, as already recorded above.
+Every sample met the investigation thresholds. The largest initial sample average was 6.81 ms/request (wide identity); the first process response took 30.10 ms. Host/JIT differences and fixed execution order establish no speedup over the earlier run. Wide initial identities still allocate a large temporary comparison set. [Archived results](https://github.com/archi-Doc/Kimigayo/blob/2834c7bf41d458a4fc1744fb9466ad03eccc2e5a/docs/dev/HOVER.md#measurements-2026-10-08).
