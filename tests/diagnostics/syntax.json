@@ -1,4 +1,8 @@
 [
+  { "Name": "bare-move-optional-suffix", "Source": "let value = 1\nlet result = value@move??\nlet wrong: i32 = true", "Intended": "a bare acquisition names no optional Type; one rejected suffix chain keeps its first question mark as the cause",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "SemanticsShorthandSuffix", "At": "??", "Length": 1 }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "bare-copy-suffix-independent-operand", "Source": "let result = absent@copy?\nlet wrong: i32 = true", "Intended": "the rejected optional suffix cannot hide an independently missing operand Name or the following Type mismatch",
+    "Records": [ { "Code": "UnresolvedBinding_Kd", "At": "absent" }, { "Code": "MisplacedSyntax_Kd", "Form": "SemanticsShorthandSuffix", "At": "?" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
   { "Name": "property-storage-unavailable-type", "Source": "struct S\n    var item: Missing\n        set(self: uniq/Self, value: i32) -> ()\n            storage = value\n            let inside: i32 = true\nlet outside: i32 = true", "Intended": "storage reads its unavailable Property header without re-entering the accessor body; independent body and following errors remain",
     "Records": [ { "Code": "UnresolvedBinding_Kd", "At": "Missing" }, { "Code": "TypeMismatch_Kd", "At": "true\nlet outside", "Length": 4 }, { "Code": "TypeMismatch_Kd", "At": "let outside: i32 = true", "Skip": 19, "Length": 4 } ] },
   { "Name": "property-accessor-unavailable-type", "Source": "struct S\n    var item: i32\n        set(self: uniq/Self, value: Missing) -> () => storage = value\nlet wrong: i32 = true", "Intended": "an unavailable accessor input is a prerequisite failure rather than a second failed Property conformance",

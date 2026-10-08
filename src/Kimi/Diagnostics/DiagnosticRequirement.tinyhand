@@ -284,9 +284,9 @@
     Advice="A Place is never optional; a Place that stores an Option is written place ref/(T?)."
 
   + Name="Syntax.SemanticsShorthandSuffix"
-    Description="a Semantics shorthand takes no '?'"
-    Phrase="'?' after a Semantics shorthand"
-    Advice="A bare Semantics shorthand such as 'ref' names no Type; write the optional Type in full: ref/T?."
+    Description="a bare operation target takes no '?'"
+    Phrase="'?' after a bare operation target"
+    Advice="Write the complete optional Type for a typed adaptation, such as @ref/T?. Bare @move and @copy take no Type suffix."
 
   + Name="Syntax.OperationAsSemanticsPrefix"
     Description="a Semantics prefix names a Semantics"

@@ -1772,15 +1772,6 @@ CloseParameters:
             left = ParseTypeOrigin(ref reader, left, reportLegacyBorrow: !disambiguateGenerics);
         }
 
-        if (disambiguateGenerics && reader.CurrentTokenKind == TokenKind.Question &&
-            left is TypeSemanticsKoto { Type: null } shorthand && CompilerHelper.TryParse(shorthand.Identifier, out _))
-        {
-            // The shorthand names no Type to make optional; the target rests on the Error.
-            var cause = reader.Unexpected(SyntaxForm.SemanticsShorthandSuffix);
-            var question = reader.Read();
-            return new ErrorKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, question.Span.End)) { Cause = cause };
-        }
-
         return optionalSuffix ? ParseOptionalSuffix(ref reader, left, parseBorrowOrigin: !disambiguateGenerics) : left;
 
         // After a '.', a member is a Name, whose Type arguments the loop reads, or a parenthesized Contract (SPEC 8.4.3); a fixed
@@ -3590,7 +3581,7 @@ CloseParameters:
                 {
                     // A bare built-in Semantics shorthand, @move or @copy completes the target (SPEC §13.5.1);
                     // a following '.', '(' or '[' continues the postfix chain: x@uniq.m(), f@move(), p@copy.x.
-                    typeKoto = new TypeSemanticsKoto(ref reader, reader.Read());
+                    typeKoto = ParseBareOperationTarget(ref reader);
                 }
                 else
                 {
@@ -3781,14 +3772,34 @@ CloseParameters:
             return false; // follow is consumed as a postfix operation before this point (SPEC 13.1).
         }
 
-        // A slash starts a full Semantics form, an Origin brace or an optional suffix keeps the diagnostics of
-        // the Type parser, and adjacent generic arguments are not a shorthand.
+        // A slash starts a full Semantics form, an Origin brace keeps the Type parser's diagnostics,
+        // and adjacent generic arguments are not a shorthand. '?' cannot make an operation into a Type.
         return reader.PeekKind(1) switch
         {
-            TokenKind.Slash or TokenKind.OpenBrace or TokenKind.Question => false,
+            TokenKind.Slash or TokenKind.OpenBrace => false,
             TokenKind.LessThan => reader.PeekToken(1).Span.Start != token.Span.End,
             _ => true,
         };
+    }
+
+    private static Koto ParseBareOperationTarget(ref TokenReader reader)
+    {
+        var operation = reader.Read();
+        if (reader.CurrentTokenKind != TokenKind.Question)
+        {
+            return new TypeSemanticsKoto(ref reader, operation);
+        }
+
+        // One rejected optional suffix chain belongs to this operation; it names no Type for Binding to resolve.
+        var cause = reader.Unexpected(SyntaxForm.SemanticsShorthandSuffix);
+        Token question;
+        do
+        {
+            question = reader.Read();
+        }
+        while (reader.CurrentTokenKind == TokenKind.Question);
+
+        return new ErrorKoto(ref reader, SourceSpan.FromBounds(operation.Span.Start, question.Span.End)) { Cause = cause };
     }
 
     private static Koto ParsePrefixExpression(ref TokenReader reader, int minBindingPower = 0)
