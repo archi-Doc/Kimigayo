@@ -80,8 +80,8 @@ internal ref struct Tokenizer
     private int sharedBodyIndentDepth;
     private int tokenAdded;
 
-    // Only malformed literals allocate this map. A delimiter opened before the rejected literal cannot be diagnosed
-    // independently until the literal's extent is known; delimiters opened by later source items remain independent.
+    // Only malformed input allocates this map. A failed lexical scan or wrong-kind closer explains the affected
+    // grouping's synthesized close; delimiters opened by later source items remain independent.
     private Dictionary<int, DiagnosticKey>? delimiterRecoveryCauses;
 
     /// <summary>
@@ -1638,6 +1638,8 @@ EndOfFile:
     private bool PopIndentSource(TokenKind expected)
     {
         var closesBody = false;
+        var matchingOuter = -2; // Search once, only when a written closer disagrees with the innermost grouping.
+        SourceSpan missingRange = default;
         while (this.indentCount > 0)
         {
             var entry = this.indentStack[this.indentCount - 1];
@@ -1678,7 +1680,8 @@ EndOfFile:
                 continue;
             }
 
-            if (GetClosingTokenKind(indentSource) == expected)
+            var closingKind = GetClosingTokenKind(indentSource);
+            if (closingKind == expected)
             {
                 if (entry.SharesBodyIndent)
                 {
@@ -1690,12 +1693,45 @@ EndOfFile:
                 return true;
             }
 
-            break;
+            if (matchingOuter == -2)
+            {
+                matchingOuter = -1;
+                for (var i = this.indentCount - 2; i >= 0; i--)
+                {
+                    var outer = this.indentStack[i].Source;
+                    if (outer is not (IndentSource.Block or IndentSource.LineContinuation) && GetClosingTokenKind(outer) == expected)
+                    {
+                        matchingOuter = i;
+                        missingRange = this.InsertionPoint(this.CurrentRange);
+                        break;
+                    }
+                }
+            }
+
+            if (matchingOuter >= 0)
+            {
+                // The token closes a known outer grouping. Supply only the intermediate closers before consuming it.
+                this.indentCount--;
+                this.nonBlockDepth--;
+                if (entry.SharesBodyIndent)
+                {
+                    this.sharedBodyIndentDepth--;
+                }
+
+                this.ReportMissingDelimiter(entry, missingRange, closingKind);
+                this.AddToken(new(closingKind, missingRange, true));
+                continue;
+            }
+
+            // Keep the grouping available for a later correct closer. If none arrives, its synthesized closer rests
+            // on this wrong-kind token, rather than reporting the same incomplete grouping again at line end.
+            var opened = this.diagnostics.Relate("opening delimiter", new SourceSpan(entry.Position, 1), this.sourceDocument, "opened here");
+            var cause = this.diagnostics.ReportSyntax(this.NewRange(1), DiagnosticCode.ExpectedSyntax_Kd, CloserForm(closingKind), expected.ToText(), this.sourceDocument, [opened]);
+            (this.delimiterRecoveryCauses ??= []).TryAdd(entry.Position, cause);
+            return false;
         }
 
-        // Error recovery policy: the mismatched closer is treated as spurious and the
-        // stack is left intact, so the still-open grouping can be matched (or reported)
-        // later. e.g. "(]" reports an unmatched ']' and keeps '(' open.
+        // With no open grouping, the token has no possible corresponding opener.
         this.diagnostics.ReportSyntax(this.NewRange(1), DiagnosticCode.MisplacedSyntax_Kd, SyntaxForm.UnmatchedCloser, null, this.sourceDocument);
         return false;
     }
