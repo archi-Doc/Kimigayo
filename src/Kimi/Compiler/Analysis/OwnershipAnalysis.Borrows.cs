@@ -8,6 +8,16 @@ public sealed partial class OwnershipAnalysis
 {
     internal bool SupportsOriginObligations() => this.UnprovenOriginObligation() is null;
 
+    // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
+    // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete nested dependencies,
+    // including drop uses, in VerifyBorrows.
+    private static bool InputWellFormedObligation(in BindingObligation obligation)
+        => obligation is { Kind: BindingObligationKind.OriginOutlives, Deadline: BindingDeadline.BodyOrigins, Equality: false, Shorter: { Kind: OriginKind.Input, Binder: FunctionKoto function } outer } &&
+            (uint)outer.Slot < (uint)function.Parameters.Count &&
+            function.Parameters[outer.Slot].Type.BoundType is { } input && (ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) &&
+            ReferenceEquals(input.Origin, outer) && ReferenceEquals(input.Components[0], obligation.Type) &&
+            (input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer));
+
     // SPEC 15.6.1: every Origin obligation that Binding left unproven and this analysis cannot check is its own record, reported
     // without adding constraints. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it;
     // any other unchecked obligation, such as an unsolved inference, stops the analysis.
@@ -110,22 +120,11 @@ public sealed partial class OwnershipAnalysis
             return false; // Definition conditions and each call's substituted lengths were checked by Binding.
         }
 
-        if (this.compilation.Binding.IsVerifiedOriginObligation(obligation) ||
-            (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null } &&
-            this.compilation.Binding.JudgeOriginObligation(obligation, out _) == OriginJudgment.Proven))
-        {
-            return false;
-        }
-
-        // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
-        // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete
-        // nested dependencies, including drop uses, in VerifyBorrows.
-        return obligation.Kind != BindingObligationKind.OriginOutlives || obligation.Deadline != BindingDeadline.BodyOrigins || obligation.Equality ||
-            obligation.Shorter is not { Kind: OriginKind.Input, Binder: FunctionKoto function } outer ||
-            (uint)outer.Slot >= (uint)function.Parameters.Count ||
-            function.Parameters[outer.Slot].Type.BoundType is not { } input || !(ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) ||
-            !ReferenceEquals(input.Origin, outer) || !ReferenceEquals(input.Components[0], obligation.Type) ||
-            !(input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer));
+        // The structural exclusion is checked before any proof: both orders give the same answer, and an excluded obligation
+        // needs none (PLAN G74 U0b).
+        return !InputWellFormedObligation(obligation) && !this.compilation.Binding.IsVerifiedOriginObligation(obligation) &&
+            !(obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null } &&
+                this.compilation.Binding.JudgeOriginObligation(obligation, out _) == OriginJudgment.Proven);
     }
 
     // SPEC 3.4: each branch below is one Place route (raw, stored reference, published Place, Reborrow, object payload, sequence
