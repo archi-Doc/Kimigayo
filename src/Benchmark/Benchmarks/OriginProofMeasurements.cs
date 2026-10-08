@@ -86,7 +86,7 @@ internal static class OriginProofMeasurements
         compilation.Binding.CheckStartup(OutputKind.Application);
         var binding = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
         var bindingRequests = metrics.Requests;
-        var bindingCalls = metrics.Calls;
+        var bindingClosures = metrics.Closures;
         start = Stopwatch.GetTimestamp();
         var verified = compilation.Ownership.Analyze().IsVerified;
         var ownership = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
@@ -96,11 +96,21 @@ internal static class OriginProofMeasurements
             bindingMilliseconds = binding,
             ownershipMilliseconds = ownership,
             bindingRequests,
-            bindingCalls,
+            bindingClosures,
             ownershipRequests = metrics.Requests - bindingRequests,
-            ownershipCalls = metrics.Calls - bindingCalls,
-            pathRejections = metrics.PathRejections,
-            maxDepth = metrics.MaxDepth,
+            ownershipClosures = metrics.Closures - bindingClosures,
+            entries = metrics.Entries,
+            nestedClosures = metrics.NestedClosures,
+            nodes = metrics.Nodes,
+            edges = metrics.Edges,
+            meetIncidences = metrics.MeetIncidences,
+            maxNodes = metrics.MaxNodes,
+            maxEdges = metrics.MaxEdges,
+            insertions = metrics.Insertions,
+            activations = metrics.Activations,
+            decrements = metrics.Decrements,
+            boundViolations = metrics.BoundViolations,
+            edgesByRule = Enum.GetValues<OriginPremiseRule>().Where(static x => x >= OriginPremiseRule.Declaration).ToDictionary(static x => x.ToString(), metrics.EdgesOf),
             distinctQueries = metrics.DistinctQueries,
         };
 

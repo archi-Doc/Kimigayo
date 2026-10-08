@@ -289,38 +289,4 @@ public sealed partial class Binding
             }
         }
     }
-
-    private bool ProvesAssociatedRequirementRelation(Koto node, BoundOrigin longer, BoundOrigin shorter, Koto use)
-    {
-        if (AssociatedHead(node) is not OriginApplicationKoto || node.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } associated ||
-            ReferenceEquals(associated.Declaration, node))
-        {
-            return false;
-        }
-
-        var arguments = this.AssociatedParameters(node);
-        if (this.InheritedAssociatedFormation(node) is { } formation &&
-            this.ProvesTypeOriginPremise(formation, longer, shorter, use))
-        {
-            return true;
-        }
-
-        if (!this.originDeclarations.TryGetValue(associated.Declaration, out var requirement) || requirement.State != 3)
-        {
-            return false;
-        }
-
-        foreach (var relation in requirement.Relations)
-        {
-            var a = this.SubstituteStoredOrigin(relation.Longer, associated.Declaration, arguments);
-            var b = this.SubstituteStoredOrigin(relation.Shorter, associated.Declaration, arguments);
-            if ((this.ProvesOriginOutlives(longer, a, use) && this.ProvesOriginOutlives(b, shorter, use)) ||
-                (relation.Equality && this.ProvesOriginOutlives(longer, b, use) && this.ProvesOriginOutlives(a, shorter, use)))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }

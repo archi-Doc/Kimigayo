@@ -124,66 +124,6 @@ public sealed partial class Binding
     private static bool CarriesResultPremises(FunctionKoto function)
         => !function.IsConstructor && !function.IsAnonymous && function.BoundSymbol?.Type is { CarriesOrigin: true };
 
-    // SPEC 15.6.1 well-formedness as a premise: every Origin stored below a borrow layer of the result outlives that layer's Origin.
-    // A nested Function Type ends the premise: its per-call Origins cannot leave their binder (SPEC 15.3.4), so the well-formedness
-    // inside it stays an obligation of the definition.
-    private bool ProvesWellFormedPremise(BoundType type, BoundOrigin longer, BoundOrigin shorter, Koto use)
-    {
-        if (!type.CarriesOrigin || type.Kind == BoundTypeKind.Function)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var inner = type.Components[i];
-            if ((IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer &&
-                this.ProvesOriginOutlives(outer, shorter, use) && this.ProvesStoredResultPremise(inner, longer, use))
-            {
-                return true;
-            }
-
-            if (this.ProvesWellFormedPremise(inner, longer, shorter, use))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // Whether `longer` outlives an Origin stored in `type` outside any nested Function Type.
-    private bool ProvesStoredResultPremise(BoundType type, BoundOrigin longer, Koto use)
-    {
-        if (type.Kind == BoundTypeKind.Function)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } origin && this.ProvesOriginOutlives(longer, origin, use))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (this.ProvesOriginOutlives(longer, type.OriginArguments[i], use))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.ProvesStoredResultPremise(type.Components[i], longer, use))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.6.4 steps 1-4: a call's fresh Origins satisfy its callee's result premises where a solution does, so a result over
     // body-local borrows is bounded by every Origin it holds. Otherwise the call is solved without them and the obligation at the
     // selected call reports the relation; a premise never decides applicability (SPEC 15.6.1). With `select`, candidate applicability,
@@ -389,7 +329,7 @@ public sealed partial class Binding
 
     // Visits each borrow layer of the callee's result pattern beside the same layer of `result`, the pattern itself or its
     // substitution at a use; false only when Prove fails. A member's container Origins are projected through `owner` for inference.
-    // The visit stops at a nested Function Type, as the premise does (ProvesWellFormedPremise).
+    // The visit stops at a nested Function Type, as the premise does (AddResultPremises).
     private bool VisitResultPremises(FunctionKoto function, BoundType pattern, BoundType result, Koto use, ResultPremiseAction action, OriginInference? inference, BoundType? owner)
     {
         if (!pattern.CarriesOrigin || pattern.Kind == BoundTypeKind.Function || pattern.Kind != result.Kind || pattern.Components.Count != result.Components.Count)

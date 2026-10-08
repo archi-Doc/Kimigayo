@@ -15,9 +15,22 @@ well-formedness premises), `anonymous` (an anonymous function input), `generic`,
 Each family runs at sizes 1, 2, 4, 6, 8, 12 and 16. Every case runs in its own process (`--origin-proof-case family size`) with
 a 30-second limit; a case over the limit, and the larger sizes of its family, are recorded as censored. The limit is a
 measurement control, never a language rule. A case reports its cold Binding and ownership times, the proof counters of
-`OriginProofMetrics` per phase (top-level requests, all proof entries, active-path rejections, deepest path, distinct
-normalized queries), the outcome codes and, while one check stays below a second, the median of five warm checks after four
-warm-ups. The report records compiler and benchmark module identities, configuration and platform.
+`OriginProofMetrics` (top-level requests and premise closures per phase, nested environments, nodes, edges and meet
+incidences with the largest environment, worklist insertions, edge activations and operand decrements, closures over their
+work bound, edges per catalog rule and distinct normalized queries), the outcome codes and, while one check stays below a
+second, the median of five warm checks after four warm-ups. The report records compiler and benchmark module identities,
+configuration and platform. The U0 baseline (`artifacts/benchmarks/g74-u0`) predates the closure and reports the previous
+search's counters instead: all proof entries, active-path rejections and the deepest path.
+
+## Work bound (U2-U3)
+
+One request resolves its endpoints at the use and, unless a structural instance of I1-I4 answers, builds one environment:
+the clauses of the established enclosing declarations (R1), the inputs (R2) and result (R3) of each enclosing signature,
+associated formation and requirements (R4), and the stored Origins of each borrowed complete local Place among its
+expressions (R5). Each Type is visited once per environment, so the graph has `V` nodes, `E` edges and `M` meet incidences
+bounded by the contracts and complete Types visible from the use's declaration chain plus the local Place chains reachable
+there, and one closure is `O(V + E + M)`. `OriginProofScalingTest` asserts the per-closure bound at sizes 8 and 32 and that
+the largest environment grows linearly with a family's size.
 
 ## Targets (fixed in U0, 2026-10-09)
 

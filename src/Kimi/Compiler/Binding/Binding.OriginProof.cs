@@ -6,8 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter)> originProofPath = new();
-
     // Bounds collected while call candidates are tried; only the selected candidate's are kept (CandidateBounds).
     private readonly List<(OriginDeclaration Declaration, BoundOrigin Variable, BoundOrigin Bound, Koto Use)> candidateBounds = new();
 
@@ -186,17 +184,23 @@ public sealed partial class Binding
         return origin;
     }
 
-    // SPEC 15.3.6 (PLAN G74 U1): a pure question: whether the premises visible at `use` entail `longer outlives shorter`. A request
-    // leaves inference, obligation and declaration state unchanged, which every top-level request checks (originStateVersion).
+    // SPEC 15.3.6 (PLAN G74): a pure question: whether the premises visible at `use` entail `longer outlives shorter`
+    // (EntailsOrigin). A request leaves inference, obligation and declaration state unchanged, which every request checks
+    // (originStateVersion).
     private bool ProvesOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
-        if (this.originProofPath.Count != 0)
+        var version = this.originStateVersion;
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        this.OriginProofMetrics?.Enter(longer, shorter, use, this.originPremiseDepth);
+        this.originPremiseIncomplete = false;
+        var proven = this.EntailsOrigin(longer, shorter, use);
+        if (OriginSearchComparison.Active is { } comparison && this.originPremiseDepth == 0 && this.originProofPath.Count == 0)
         {
-            return this.ProvesResolvedOrigins(this.OriginAtUse(longer, use), this.OriginAtUse(shorter, use), use);
+            comparison.RecordEnvironment(this.originPremiseIncomplete, proven);
+            this.CompareOriginSearch(comparison, longer, shorter, use, proven);
         }
 
-        var version = this.originStateVersion;
-        var proven = this.ProvesResolvedOrigins(this.OriginAtUse(longer, use), this.OriginAtUse(shorter, use), use);
         if (version != this.originStateVersion)
         {
             throw new InvalidOperationException($"The Origin proof of `{longer} outlives {shorter}` changed inference or obligation state (PLAN G74).");
@@ -275,218 +279,6 @@ public sealed partial class Binding
 
             this.candidateBounds.Clear();
         }
-    }
-
-    private bool ProvesResolvedOrigins(BoundOrigin longer, BoundOrigin shorter, Koto use)
-    {
-        this.OriginProofMetrics?.Enter(longer, shorter, use, this.originProofPath.Count);
-        if (OriginOutlives(longer, shorter))
-        {
-            return true;
-        }
-
-        if (!this.originProofPath.Add((longer, shorter)))
-        {
-            this.OriginProofMetrics?.Reject();
-            return false;
-        }
-
-        try
-        {
-            // Try explicit edges before transitive search. Otherwise unrelated earlier premises can enumerate
-            // cyclic proof paths before reaching a directly stated relation, even for simple scalar inputs.
-            for (var node = use; node is not null; node = node.Parent)
-            {
-                if ((node is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(node)) &&
-                    this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
-                {
-                    foreach (var relation in declaration.Relations)
-                    {
-                        if ((OriginOutlives(longer, relation.Longer) && OriginOutlives(relation.Shorter, shorter)) ||
-                            (relation.Equality && OriginOutlives(longer, relation.Shorter) && OriginOutlives(relation.Longer, shorter)))
-                        {
-                            return true;
-                        }
-                    }
-                }
-            }
-
-            // A borrow of a complete local Place is usable only while every stored
-            // dependency is valid. Ownership verifies that availability at each use.
-            // This is a premise of borrowing the Place, not a relation declared by
-            // the annotation currently being checked.
-            if (shorter is { Kind: OriginKind.Projection, Binder: VariableKoto variable } &&
-                this.symbols.TryGetValue(variable, out var local) && local.Type is { Semantics: SemanticsKind.Owner or SemanticsKind.Ref or SemanticsKind.Uniq } stored &&
-                !IsWithin(use, variable) && this.ProvesStoredOriginPremise(stored, longer, use))
-            {
-                return true;
-            }
-
-            if (longer.Kind == OriginKind.Intersection)
-            {
-                var all = true;
-                for (var i = 0; i < longer.Operands.Count; i++)
-                {
-                    all &= this.ProvesOriginOutlives(longer.Operands[i], shorter, use);
-                }
-
-                if (all)
-                {
-                    return true;
-                }
-            }
-
-            if (shorter.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < shorter.Operands.Count; i++)
-                {
-                    if (this.ProvesOriginOutlives(longer, shorter.Operands[i], use))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            for (var node = use; node is not null; node = node.Parent)
-            {
-                if (IsAssociatedRequirement(node) && AssociatedFormationType(node) is { } formation &&
-                    this.ProvesTypeOriginPremise(formation, longer, shorter, use))
-                {
-                    return true;
-                }
-
-                if (this.ProvesAssociatedRequirementRelation(node, longer, shorter, use))
-                {
-                    return true;
-                }
-
-                if (node is FunctionKoto or FunctionTypeKoto or PropertyAccessorKoto)
-                {
-                    // A Function Type quantifies well-formed inputs just as a declaration does. Their intrinsic
-                    // relations are assumptions only while checking that signature, never in the enclosing body.
-                    for (var i = 0; i < InputCount(node); i++)
-                    {
-                        if (this.BoundInputType(node, i) is { } input && this.ProvesTypeOriginPremise(input, longer, shorter, use))
-                        {
-                            return true;
-                        }
-                    }
-
-                    // SPEC 15.3.7: the result Type's intrinsic well-formedness is a premise of the definition (Binding.ResultPremises.cs).
-                    if (!ReferenceEquals(node, this.resultPremiseExcluded) && node is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol.Type: { } result } &&
-                        this.ProvesWellFormedPremise(result, longer, shorter, use))
-                    {
-                        return true;
-                    }
-                }
-
-                // Only declaration contracts are assumptions. A field or local relation
-                // being checked must never prove itself.
-                if ((node is not (FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto) && !IsAssociatedRequirement(node)) ||
-                    !this.originDeclarations.TryGetValue(node, out var declaration) || declaration.State != 3)
-                {
-                    continue;
-                }
-
-                foreach (var relation in declaration.Relations)
-                {
-                    if (this.ProvesOriginOutlives(longer, relation.Longer, use) && this.ProvesOriginOutlives(relation.Shorter, shorter, use))
-                    {
-                        return true;
-                    }
-
-                    if (relation.Equality && this.ProvesOriginOutlives(longer, relation.Shorter, use) && this.ProvesOriginOutlives(relation.Longer, shorter, use))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-        finally
-        {
-            this.originProofPath.Remove((longer, shorter));
-        }
-    }
-
-    private bool ProvesStoredOriginPremise(BoundType type, BoundOrigin longer, Koto use)
-    {
-        if (type.Origin is { } origin && this.ProvesOriginOutlives(longer, origin, use))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (this.ProvesOriginOutlives(longer, type.OriginArguments[i], use))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.ProvesStoredOriginPremise(type.Components[i], longer, use))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool ProvesTypeOriginPremise(BoundType type, BoundOrigin longer, BoundOrigin shorter, Koto use)
-    {
-        if (type.Symbol is { } symbol && this.originDeclarations.TryGetValue(symbol.Declaration, out var declaration) && declaration.State == 3)
-        {
-            foreach (var relation in declaration.Relations)
-            {
-                var a = this.SubstituteStoredOrigin(relation.Longer, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-                var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
-                if (this.ProvesOriginOutlives(longer, a, use) && this.ProvesOriginOutlives(b, shorter, use))
-                {
-                    return true;
-                }
-
-                if (relation.Equality && this.ProvesOriginOutlives(longer, b, use) && this.ProvesOriginOutlives(a, shorter, use))
-                {
-                    return true;
-                }
-            }
-        }
-
-        if (TryPairLayer(type, out var whole, out var target))
-        {
-            // SPEC 8.1.1, 15.6.1: in the admitted borrow cases a pair layer is a borrow of its target within its outer-Origin slot,
-            // whose well-formedness makes the target's Origins outlive that slot; in the value cases no Type denotes the slot.
-            if (target.CarriesOrigin && (this.AdmittedSemantics(whole, this.ConstraintScope(use)) & SemanticsMask.Borrow) != 0 && this.OuterOrigin(type) is { } slot &&
-                this.ProvesOriginOutlives(slot, shorter, use) && this.ProvesStoredOriginPremise(target, longer, use))
-            {
-                return true;
-            }
-
-            return this.ProvesTypeOriginPremise(target, longer, shorter, use);
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            var inner = type.Components[i];
-            if (inner.CarriesOrigin && (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer && this.ProvesOriginOutlives(outer, shorter, use))
-            {
-                if (this.ProvesStoredOriginPremise(inner, longer, use))
-                {
-                    return true;
-                }
-            }
-
-            if (this.ProvesTypeOriginPremise(inner, longer, shorter, use))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     private ConstraintProof CheckTypeOriginRelations(BoundType type, BindingScope scope)
