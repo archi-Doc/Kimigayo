@@ -17,8 +17,9 @@ a 30-second limit; a case over the limit, and the larger sizes of its family, ar
 measurement control, never a language rule. A case reports its cold Binding and ownership times, the proof counters of
 `OriginProofMetrics` (top-level requests and premise closures per phase, nested environments, nodes, edges and meet
 incidences with the largest environment, worklist insertions, edge activations and operand decrements, closures over their
-work bound, edges per catalog rule and distinct normalized queries), the outcome codes and, while one check stays below a
-second, the median of five warm checks after four warm-ups. The report records compiler and benchmark module identities,
+work bound, the time spent building and closing environments, edges per catalog rule and distinct normalized queries), the
+outcome codes and, while one check stays below a second, the median of five warm checks after four warm-ups and one more warm
+check with the counters on, which reports the share of that check spent in environments and closures. The report records compiler and benchmark module identities,
 configuration and platform. The U0 baseline (`artifacts/benchmarks/g74-u0`) predates the closure and reports the previous
 search's counters instead: all proof entries, active-path rejections and the deepest path.
 
@@ -42,3 +43,11 @@ the largest environment grows linearly with a family's size.
   regress beyond run-to-run variation, and warm allocation guarantees are unchanged.
 
 Timing has no pass/fail threshold in Verify; the targets are compared in repeated matched runs against the U0 baseline.
+
+## Environment lifetime (U5)
+
+An environment lives for one proof request: its storage is reused by the next request at the same nesting depth, released of
+every Origin, Type, declaration and syntax reference when the request ends, and its capacity is the largest environment it has
+held (`OriginPremiseLifecycleTest`). Sharing environments or closures across requests was measured and not adopted: building and
+closing all environments of a warm check takes 0.2-0.4 ms of a 36-45 ms check at sizes 1 and 16 (2026-10-09), so reuse could
+save at most about one percent while adding invalidation dependencies on premises, substitutions and the excluded result owner.

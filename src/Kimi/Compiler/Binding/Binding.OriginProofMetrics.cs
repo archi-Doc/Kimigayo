@@ -55,6 +55,9 @@ internal sealed class OriginProofMetrics
     /// <summary>Gets the operand decrements of all closures.</summary>
     internal long Decrements { get; private set; }
 
+    /// <summary>Gets the time spent building environments and closing them, in Stopwatch ticks.</summary>
+    internal long ClosureTicks { get; private set; }
+
     /// <summary>Gets the closures whose work exceeded their graph: insertions over nodes, activations over edges or decrements over
     /// meet incidences (proposal §3.7); always zero.</summary>
     internal long BoundViolations { get; private set; }
@@ -86,6 +89,7 @@ internal sealed class OriginProofMetrics
         this.Decrements = 0;
         this.BoundViolations = 0;
         this.Verdicts = 0;
+        this.ClosureTicks = 0;
         Array.Clear(this.edges);
         this.queries.Clear();
     }
@@ -103,9 +107,10 @@ internal sealed class OriginProofMetrics
 
     internal void Verdict() => this.Verdicts++;
 
-    internal void Closure(OriginPremiseClosure closure, bool nested)
+    internal void Closure(OriginPremiseClosure closure, bool nested, long ticks)
     {
         this.Closures++;
+        this.ClosureTicks += ticks;
         if (nested)
         {
             this.NestedClosures++;

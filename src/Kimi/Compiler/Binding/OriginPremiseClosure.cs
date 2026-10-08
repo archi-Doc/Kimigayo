@@ -77,6 +77,31 @@ internal sealed class OriginPremiseClosure
     /// <summary>Gets the operand incidences of the current graph's meets.</summary>
     internal int MeetIncidences => this.meetLinkCount;
 
+    /// <summary>Gets the retained node and edge capacity, the largest graph since this storage was created.</summary>
+    internal (int Nodes, int Edges) Capacity => (this.nodes.Length, this.edgeLonger.Length);
+
+    /// <summary>Gets a value indicating whether the storage still references an Origin expression.</summary>
+    internal bool RetainsOrigins
+    {
+        get
+        {
+            if (this.index.Count != 0)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < this.nodes.Length; i++)
+            {
+                if (this.nodes[i] is not null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     /// <summary>Gets the work of the last closure: node insertions, edge activations and operand decrements.</summary>
     internal (int Insertions, int Activations, int Decrements) LastWork { get; private set; }
 

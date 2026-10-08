@@ -110,12 +110,14 @@ internal static class OriginProofMeasurements
             activations = metrics.Activations,
             decrements = metrics.Decrements,
             boundViolations = metrics.BoundViolations,
+            closureMilliseconds = Stopwatch.GetElapsedTime(0, metrics.ClosureTicks).TotalMilliseconds,
             edgesByRule = Enum.GetValues<OriginPremiseRule>().Where(static x => x >= OriginPremiseRule.Declaration).ToDictionary(static x => x.ToString(), metrics.EdgesOf),
             distinctQueries = metrics.DistinctQueries,
         };
 
         // Warm repetitions only while one check stays below a second, under the fixed counts above.
         double[]? warm = null;
+        (double Check, double Closures)? warmClosures = null;
         if (binding + ownership < 1000)
         {
             compilation.Binding.OriginProofMetrics = null;
@@ -132,6 +134,14 @@ internal static class OriginProofMeasurements
                 Check();
                 warm[i] = Stopwatch.GetElapsedTime(start).TotalMilliseconds;
             }
+
+            // One more warm check with the counters on: the share of the check spent building environments and closing them.
+            metrics.Reset();
+            compilation.Binding.OriginProofMetrics = metrics;
+            start = Stopwatch.GetTimestamp();
+            Check();
+            warmClosures = (Stopwatch.GetElapsedTime(start).TotalMilliseconds, Stopwatch.GetElapsedTime(0, metrics.ClosureTicks).TotalMilliseconds);
+            compilation.Binding.OriginProofMetrics = null;
         }
 
         Console.WriteLine(JsonSerializer.Serialize(new
@@ -144,6 +154,8 @@ internal static class OriginProofMeasurements
             sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))),
             cold,
             warmMilliseconds = warm,
+            warmCheckWithCountersMilliseconds = warmClosures?.Check,
+            warmClosureMilliseconds = warmClosures?.Closures,
         }));
 
         void Check()

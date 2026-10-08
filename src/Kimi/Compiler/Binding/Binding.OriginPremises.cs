@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -17,6 +18,26 @@ public sealed partial class Binding
     // Comparison mode only (Binding.OriginSearch, until PLAN G74 U6): the last environment met an enclosing contract not yet
     // established.
     private bool originPremiseIncomplete;
+
+    // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
+    // whether any of them still references an Origin, a Type, a declaration or syntax.
+    internal (int Environments, int Nodes, int Edges, bool Retains) OriginPremiseStorage
+    {
+        get
+        {
+            var (nodes, edges, retains) = (0, 0, false);
+            foreach (var environment in this.originPremiseEnvironments)
+            {
+                var capacity = environment.Closure.Capacity;
+                nodes = Math.Max(nodes, capacity.Nodes);
+                edges = Math.Max(edges, capacity.Edges);
+                retains |= environment.Closure.RetainsOrigins || environment.Nodes.Count != 0 || environment.Types.Count != 0 || environment.Results.Count != 0 ||
+                    environment.Resolvers.Count != 0 || environment.Use is not null || environment.Scope is not null;
+            }
+
+            return (this.originPremiseEnvironments.Count, nodes, edges, retains);
+        }
+    }
 
     // SPEC 15.3.6 (PLAN G74): whether the premises visible at `use` entail `longer outlives shorter`, both resolved at the use.
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
@@ -40,6 +61,7 @@ public sealed partial class Binding
         }
 
         var environment = this.originPremiseEnvironments[this.originPremiseDepth++];
+        var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
         try
         {
             var closure = environment.Closure;
@@ -49,7 +71,7 @@ public sealed partial class Binding
             var candidate = closure.Node(longer, out _);
             this.ExtractOriginPremises(environment);
             var entailed = closure.Entails(candidate, target);
-            this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1);
+            this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
             this.originPremiseIncomplete = environment.Incomplete;
             return entailed;
         }
