@@ -13,7 +13,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 
 ## 2. Working rules
 
-Follow [AGENTS.md](../../AGENTS.md) and [VERIFICATION.md](VERIFICATION.md) for reproducer/implementation/test units, incremental feedback, non-incremental Unit/Session builds, diagnostic review and measurements. Commit each verified unit, associate its exact inputs with `verify-commit.ps1`, then push. Do not edit sources during builds or verification; never weaken expectations or add warm-up to obtain a pass.
+Follow [AGENTS.md](../../AGENTS.md) and [VERIFICATION.md](VERIFICATION.md) for verification by change type, reproducer/implementation/test units, incremental feedback, non-incremental Unit/Session builds, diagnostic review and measurements. A final Session covering all required checks may also satisfy the last Unit. Commit each completed unit; for Unit/Session evidence, associate its exact inputs with `verify-commit.ps1`, then push. Documentation-only changes use diff/reference review. Do not edit sources during builds or verification; never weaken expectations or add warm-up to obtain a pass.
 
 PLAN holds current work; STATUS changes only with verified support boundaries; PLAN_HISTORY keeps a few lines per session. Detailed success/failure evidence belongs in commits and `artifacts/verify/`, measurements in `artifacts/benchmarks/`. Keep explicit blockers and their next steps. Toolchain identity is checked at setup/update or explicitly, not implied by ordinary Verify; CLI tests use `run --no-build` except when testing automatic builds.
 

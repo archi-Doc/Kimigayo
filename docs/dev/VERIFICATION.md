@@ -2,7 +2,7 @@
 
 ## Continuous integration
 
-`.github/workflows/test.yml` runs on pull requests, pushes to `main` and `dev`, and manual dispatch. Ubuntu checks the
+`.github/workflows/test.yml` runs only on pushes to `main`, including merge updates, as recorded in [SETTLED.md](../SETTLED.md#running-full-ci-before-integration-into-main). Ubuntu checks the
 managed solution with warnings as errors. Windows uses the ordinary Session verifier for all functional/allocation
 regressions and every regenerated native fixture at O0/O2, then runs the native-worker PowerShell regressions, CLI
 integration, and extension unit/integration tests with the managed compiler. Neither job runs NativeAOT.
@@ -11,6 +11,23 @@ The Windows job downloads the adopted LLVM archive only on a toolchain-cache mis
 the existing backend setup script. Explicit toolchain verification checks cached installations too. Update the archive
 version and digest together with an adopted profile change. Logs, source manifests and result records are uploaded even
 when a later step fails. A configured lane is not evidence of a successful hosted run; inspect that run's results.
+
+## Verification scope
+
+Select checks by the files and behavior changed. Mixed changes combine the applicable rows; documentation accompanying
+an executable change does not make that change documentation-only.
+
+| Change | Completion checks |
+| --- | --- |
+| Documentation only | Review diffs and affected references. Do not run builds, tests, native fixtures or milestone harnesses. |
+| Compiler, Kimi library or compiler tests | Related Unit verification and one final Session; select relevant native fixtures and milestones explicitly. |
+| Benchmark or Playground code | Session verification, including the whole-solution build, before completion; execute the affected scenario or relevant fixed-condition measurements. |
+| Verification scripts, CI or other tooling | Related script regressions and affected build/execution paths. Native-runner changes require `NativeFixtureRunnerTest.ps1`. Changes affecting the managed build or test pipeline also require Session. A local check does not certify a hosted CI run. |
+| VS Code extension, including its build/distribution scripts | Follow [the extension instructions](../../src/kimi-ext/AGENTS.md). |
+
+Keep the selected checks and their results in the commit and `artifacts/verify/`; do not run unrelated suites merely
+because a non-documentation file changed. Performance changes retain the measurement requirements below. NativeAOT
+still requires explicit instruction.
 
 ## Feedback and completion
 
@@ -31,6 +48,16 @@ At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi de
 ./scripts/verify.ps1 -Mode Session
 ```
 
+For the last unit, a successful Session can replace a separate Unit run if it verifies the same source/configuration
+and covers every required Unit check. Session runs all managed regressions, but native fixtures and milestones still
+need explicit `-Fixtures` and `-Milestone` arguments. Include any required diagnostic snapshot or other additional checks
+as well; external checks remain required. An unselected check is not covered merely because the mode is Session.
+
+Prepare implementation, tests and affected documentation first, run the combined final verification, then commit,
+associate the evidence as described below and push. Record that the Session also satisfied the final Unit. Do not repeat
+either mode solely to obtain a second mode label. Missing checks must pass against the same inputs; changes to covered
+inputs invalidate their evidence and require reverification. PLAN/history bookkeeping retains the manifest exception below.
+
 Verify accepts both `ClassName` / `ClassName.Method` and their fully qualified forms; short names use the repository's `XunitTest` namespace. A wildcard `*` may occur at the beginning or end. Invalid pattern syntax is rejected before building. Verify expands outer selections to include nested `AllocationTests`, so focused selections retain their allocation coverage.
 
 After the build, Unit verification discovers methods from that exact assembly, checks **every** requested class and method, and records the effective selection in `selected-methods.json` before running tests. A misspelled selector cannot be hidden by another selector that matches. Class selections are ORed, method selections are ORed, and those two groups intersect; the runner also applies the purpose filter. Discovery never checks an older assembly against newly edited test sources. Both zero-method and zero-executed-test selections fail.
@@ -41,7 +68,7 @@ After the build, Unit verification discovers methods from that exact assembly, c
 
 Verify writes `inputs-before.json` and `inputs-after.json`. The manifest covers tracked and nonignored untracked files, including new source files, configuration, scripts and specification documents. It excludes `draft/` (not authoritative compiler input), `docs/dev/PLAN.md` and `PLAN_HISTORY.md` (post-verification bookkeeping); ignored build outputs are excluded. Restored `obj/project.assets.json` and NuGet-generated project props/targets are hashed separately. Changed, added or deleted inputs between the two observations fail the run, even if its tests passed. Keep the no-source-edits rule: endpoint comparison does not detect a transient edit that is reverted between observations.
 
-Each source entry records SHA-256 of the actual bytes and the Git-normalized blob identity. After committing a verified unit, associate its evidence with the commit before pushing:
+Each source entry records SHA-256 of the actual bytes and the Git-normalized blob identity. After committing a unit verified by Unit or Session Verify, associate its evidence with the commit before pushing:
 
 ```powershell
 ./scripts/verify-commit.ps1 -Evidence artifacts/verify/<run> [-Commit HEAD]
