@@ -14,6 +14,8 @@ public class GenericDefaultTest
     private const string GenericCapture = "func f<T>(x: T, action: () -> T = func [x] () => x) -> T\n    T is Copy and Owned\n    return action()\n";
     private const string Maker = "contract Maker\n    func make() -> Self\nstruct Box\n    Self is Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Box.init(5)\n    drop => Console.writeLine(\"drop\")\nstruct Pt\n    Self is Copy and Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Pt.init(7)\n";
     private const string Evaluate = "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let pending: Option<T> = .Some(T.make())\n        match pending@move\n            .Some(let value) => exit to result 1\n            .None => exit to result 0\n    ) -> i32\n        T is Maker\n        return marker\n";
+    private const string Quiet = "struct Quiet\n    Self is Maker\n    public var text: string\n    public init(text: string) => self.text = text@move\n    public func make() -> Self => Quiet.init(\"q\")\n";
+    private const string Pair = "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let pair: (Option<T>, string) = (.Some(T.make()), \"s\")\n";
     private const string GenericCall = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = label work: do\n    let copied = copy(x)\n    exit to work copied\n) -> T\n    T is Copy\n    return y\nrequire f(7) == 7 and f(true) else => $abort(\"call\")";
 
     [Theory]
@@ -47,8 +49,46 @@ public class GenericDefaultTest
     [InlineData("Nested", Maker + Evaluate + "func outer<V>(value: V, total: i32 = Helpers.evaluate(V.make())) -> i32\n    V is Maker\n    return total\nConsole.writeLine(\"\\(outer(Box.init(1)) + outer(Pt.init(2)))\")", "drop\ndrop\ndrop\n2\n")]
     [InlineData("Empty", "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let pending: Option<T> = .None\n        match pending@move\n            .Some(let value) => exit to result 1\n            .None => exit to result 0\n    ) -> i32\n        return marker\nConsole.writeLine(\"\\(Helpers.evaluate(5) + Helpers.evaluate(\"s\"))\")", "0\n")]
     [InlineData("Transfer", Maker + "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let made = T.make()\n        let pending: Option<T> = .Some(made@move)\n        match pending@move\n            .Some(_) => exit to result 1\n            .None => exit to result 0\n    ) -> i32\n        T is Maker\n        return marker\nConsole.writeLine(\"\\(Helpers.evaluate(Box.init(1)) + Helpers.evaluate(Pt.init(2)))\")", "drop\ndrop\n2\n")]
+    [InlineData("PartialMove", Maker + Pair + "        let first = pair.0@move\n        Console.writeLine(pair.1)\n        exit to result 1\n    ) -> i32\n        T is Maker\n        return marker\nConsole.writeLine(\"\\(Helpers.evaluate(Box.init(1)) + Helpers.evaluate(Pt.init(2)))\")", "s\ndrop\ndrop\ns\n2\n")]
     public void ReplicaPayloadsTakeTheInstantiatedAcquisition(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("GenericDefaultContext" + name, source, stdout);
+
+    // SPEC 15.6.2: a replica's projection keeps its Loans; moving the whole while a part is borrowed is still a conflict.
+    [Fact]
+    public void AReplicaPartLoanStillConflicts()
+    {
+        var c = MinimalEmissionTest.Analyze(Maker + Pair + "        let r = pair.1@ref\n        let whole = pair@move\n        Console.writeLine(r)\n        exit to result 1\n    ) -> i32\n        T is Maker\n        return marker\nlet n = Helpers.evaluate(Box.init(1))");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 8.4.10, 8.10, 14.8: a residual Subject part of a replica contributes the exact destruction effect of its instantiated
+    // Type: none for a Copy part or an effect-free owner, the destructor's effect otherwise.
+    [Theory]
+    [InlineData("Option<T> = .Some(T.make())", "            .Some(_) => exit to result 1\n            .None => exit to result 0\n", "Pt", true)]
+    [InlineData("Option<T> = .Some(T.make())", "            .Some(_) => exit to result 1\n            .None => exit to result 0\n", "Quiet", true)]
+    [InlineData("Option<T> = .Some(T.make())", "            .Some(_) => exit to result 1\n            .None => exit to result 0\n", "Box", false)]
+    [InlineData("Option<T> = .Some(T.make())", "            .Some(let value) => exit to result 1\n            .None => exit to result 0\n", "Box", false)]
+    [InlineData("Option<T> = .None", "            .Some(_) if true => exit to result 1\n            _ => exit to result 0\n", "Pt", true)]
+    [InlineData("Option<(T, i32)> = .Some((T.make(), 2))", "            .Some((_, let k)) => exit to result k\n            .None => exit to result 0\n", "Pt", true)]
+    [InlineData("Option<(T, i32)> = .Some((T.make(), 2))", "            .Some((_, let k)) => exit to result k\n            .None => exit to result 0\n", "Box", false)]
+    public void ReplicaResidualsContributeExactEffects(string pending, string arms, string type, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze(Maker + Quiet + "contract Runner\n    func run(self: ref/Self) -> i32\n        effect confined\n" +
+            "group Helpers\n    public func evaluate<T>(sample: ref/T, marker: i32 = label result: do\n        let pending: " + pending + "\n        match pending@move\n" + arms + "    ) -> i32\n        T is Maker\n        return marker\n" +
+            "struct Worker\n    Self is Runner\n    public var held: " + type + "\n    public init(held: " + type + ") => self.held = held@move\n    public func run(self: ref/Self) -> i32 => Helpers.evaluate(self.held@ref)\n" +
+            "let w = Worker.init(" + type + ".make())\nlet r = w.run()");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        if (valid)
+        {
+            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        }
+        else
+        {
+            MinimalEmissionTest.AssertEffectBoundRejected(c);
+        }
+    }
 
     [Fact]
     public void ReplicaPlacesResolveCopyOrMoveExactly()

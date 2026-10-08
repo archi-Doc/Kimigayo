@@ -145,6 +145,8 @@ public sealed partial class Binding
         private bool valid;
         private bool destructions;
         private OwnershipBody? cleanupSource;
+        private OwnershipBody? subjectBody;
+        private InterpretationContext subjectContext;
         private OwnershipBody? cleanupTarget;
         private ulong cleanupCases;
 
@@ -1578,6 +1580,8 @@ public sealed partial class Binding
                         else if (action != CleanupAction.Skip && (body.GetStorageState(id, operation.Place) & PlaceState.MayOwn) != 0)
                         {
                             var place = body.Places[operation.Place];
+                            this.subjectBody = body;
+                            this.subjectContext = body.ContextOf(operation.Place); // The Subject's own context, recorded at its construction.
                             if (operation.Kind != OwnershipOperationKind.Cleanup || place.Kind != OwnershipPlaceKind.Subject || this.Type(place.Type) is not { } subject ||
                                 !this.SubjectDestroyed(place.Source, operation.Source, subject))
                             {
@@ -1690,7 +1694,7 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    this.Destruction(this.Type(part.MatchedType), use);
+                    this.Destruction(this.DeclaredType(part.MatchedType), use);
                 }
             }
         }
@@ -2035,6 +2039,10 @@ public sealed partial class Binding
             this.ViolationNode = at ?? this.stepUse ?? this.last;
             this.ViolationSite = this.site ?? this.ViolationNode;
         }
+
+        // SPEC 8.10 (PLAN G82): a declared Pattern Type is interpreted in its Subject's context, then composed with any outer call
+        // context like an analyzed Type.
+        private BoundType? DeclaredType(BoundType type) => this.subjectBody!.SubstituteDefaults(type, this.subjectContext) is { } declared ? this.Type(declared) : null;
 
         private BoundType? Type(BoundType type)
             => this.cleanupSource is { } body ? body.Resolve(type, InterpretationContext.Root)

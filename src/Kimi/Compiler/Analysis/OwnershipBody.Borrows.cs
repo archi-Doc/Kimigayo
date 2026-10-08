@@ -1849,7 +1849,7 @@ public sealed partial class OwnershipBody
             if (operation.Kind == OwnershipOperationKind.WriteElement)
             {
                 var projection = this.Projections[operation.Projection];
-                var storage = this.Resolve(this.Operations[projection.Operation].Source.BoundType, this.ContextAt(id))!;
+                var storage = this.Resolve(this.Operations[projection.Operation].Source.BoundType, this.ContextAt(projection.Operation))!;
                 // Replacing a part adds its contents to the owner; the other parts keep their current dependencies.
                 this.retentions.Add(new(projection.Root, id, operation.Input, storage, id, false));
                 continue;
