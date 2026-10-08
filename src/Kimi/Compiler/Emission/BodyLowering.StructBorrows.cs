@@ -32,6 +32,28 @@ internal sealed partial class BodyLowering
         return call is null ? default : CallReceiverOperation(call);
     }
 
+    // The reference-typed base of a borrowed Field/Tuple path, or an Array element whose own borrow, of the element's complete stored
+    // Type in the part's mode, is the single receiver (PLAN G59).
+    private static Koto? ProjectedRoot(OwnershipBody body, int id, BinaryKoto projected, BoundType type, int inputs, out bool element)
+    {
+        element = false;
+        if (projected is MemberAccessKoto member && ElementAccess.BorrowedPathRoot(member) is { } root)
+        {
+            return root;
+        }
+
+        if (inputs != 1 || ElementAccess.ElementPathBase(projected) is not { } elementBase ||
+            type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
+            !ReferenceEquals(type.Components[0], body.Resolve(elementBase.BoundType, body.ContextAt(id))) ||
+            !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[Input(body, id, 0)].Source), elementBase))
+        {
+            return null;
+        }
+
+        element = true;
+        return elementBase;
+    }
+
     // A Scalar or Unit temporary, join result, by-value parameter or Subject receives its own slot only when it is borrowed
     // (SPEC 3.6.2, 10.2, 14.8.3); Unit needs only the address.
     // A temporary or join result is stored at its borrow from its one prepared value; a parameter is stored once at its
@@ -169,14 +191,15 @@ internal sealed partial class BodyLowering
                 return Fail("Object borrow requires its initialized owner or parent borrow.", out failure);
             }
 
-            // A field projection borrows its slot, including through an object view; it is not a complete payload borrow.
-            if (operation.Source is MemberAccessKoto projected && !ReceiverField(body, operation.Place) &&
+            // A field projection borrows its slot, including through an object view; it is not a complete payload borrow. Below an
+            // Array element, the receiver is that element's own borrow (PLAN G59).
+            if (operation.Source is BinaryKoto projected && !ReceiverField(body, operation.Place) &&
                 body.Resolve(projected.BoundType, body.ContextAt(id)) is var projectedType &&
                 (!ReferenceTypes.IsStorage(projectedType) || ReferenceEquals(projectedType, output.Components[0])) &&
-                ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
+                ProjectedRoot(body, id, projected, type, value.Count, out var throughElement) is { } projectedRoot)
             {
                 if (!this.TryBorrowedPathOffset(body, id, projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
-                    !ElementAccess.ReceiverMatches(type, body.Resolve(ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq), body.ContextAt(id)), projectedRoot) ||
+                    !(throughElement || ElementAccess.ReceiverMatches(type, body.Resolve(ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq), body.ContextAt(id)), projectedRoot)) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
                     !ReferenceEquals(projectedType, output.Components[0]) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq)) ||

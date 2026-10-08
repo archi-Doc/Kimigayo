@@ -264,6 +264,30 @@ internal static class ElementAccess
             (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
                 ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
 
+    // SPEC 3.4.1, 4.6.9 (PLAN G59): the Array element below which a stored Field, Tuple or literal fixed-array path selects a
+    // Place, such as `xs[i]` in `xs[i].inner.name`. The element is borrowed through its own route and the static path through
+    // that borrow. Null for the element itself, a getter boundary or a path with no such element.
+    internal static IndexKoto? ElementPathBase(BinaryKoto selection)
+    {
+        for (var depth = 0; depth < 64; depth++)
+        {
+            if (!IsSyntax(selection) || Binding.IsGetterResult(selection) || StaticSelector(selection) < 0 ||
+                KotoHelper.UnwrapParentheses(selection.Left) is not BinaryKoto parent || !IsSyntax(parent) || Binding.IsGetterResult(parent))
+            {
+                return null;
+            }
+
+            if (parent is IndexKoto element && !IsSlicing(element) && element.Left.BoundType?.Kind == BoundTypeKind.Array)
+            {
+                return element;
+            }
+
+            selection = parent;
+        }
+
+        return null;
+    }
+
     internal static Koto? BorrowedPathRoot(MemberAccessKoto field)
     {
         for (var depth = 0; depth < 64; depth++)

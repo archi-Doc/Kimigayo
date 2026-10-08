@@ -251,6 +251,11 @@ public sealed partial class Binding
     internal BoundType ExclusiveArrayHandle(Koto array)
         => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [array.BoundType!], origin: this.PlaceOrigin(array));
 
+    // SPEC 3.4.1 (PLAN G59): the borrow, in a use's mode, of an Array element whose stored part the use borrows in place, with the
+    // element Place's own Origin.
+    internal BoundType ElementPlaceReference(SemanticsKind semantics, Koto element)
+        => this.InternType(BoundTypeKind.Semantics, null, semantics, [element.BoundType!], origin: this.PlaceOrigin(element));
+
     /// <summary>
     /// SPEC 10.2: safe reference layers ending in <paramref name="referent"/> yield one shared reference to it. A <c>ref</c>
     /// layer is Copied with its own Origin, so it restarts the dependency; each <c>uniq</c> layer below it is shared-Reborrowed

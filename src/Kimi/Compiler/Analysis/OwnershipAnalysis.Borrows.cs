@@ -322,6 +322,15 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(borrowed);
         }
 
+        if (unwrapped is BinaryKoto part && ElementAccess.ElementPathBase(part) is { } elementBase && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq &&
+            ReferenceEquals(type.Components[0], part.BoundType))
+        {
+            // SPEC 3.4.1, 4.6.9 (PLAN G59): a stored part below an Array element is borrowed in place. The element is borrowed in the
+            // use's mode through its own route, keeping the Array's Loan, and the part through that borrow, as `(xs[i]@m).part@m` is.
+            var receiver = this.BorrowStruct(elementBase, this.compilation.Binding.ElementPlaceReference(type.Semantics, elementBase));
+            return receiver < 0 ? -1 : this.BorrowFieldAddress(part, receiver, type, reservation);
+        }
+
         // The Value route: a value expression, including a getter's result or a range selection's Slice, is evaluated once and its
         // temporary borrowed (SPEC 10.2, 4.6.6). A stored Field, Tuple or element selection that reaches here has no Place route;
         // reading it would borrow a copy (PLAN G59).
@@ -451,7 +460,7 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
-    private int BorrowFieldAddress(MemberAccessKoto field, int receiver, BoundType type, int reservation = -1)
+    private int BorrowFieldAddress(BinaryKoto field, int receiver, BoundType type, int reservation = -1)
     {
         var projected = this.Place(field, type, OwnershipPlaceKind.Temporary, false);
         var address = this.Emit(OwnershipOperationKind.Borrow, field, receiver, projected, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);

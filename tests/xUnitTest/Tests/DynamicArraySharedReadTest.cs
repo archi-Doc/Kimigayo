@@ -38,13 +38,14 @@ public class DynamicArraySharedReadTest
     public void ChainedReadsThroughViewsBorrowTheNonCopyElement(string name, string read)
         => ScalarEmissionTest.EmitFixture("DynamicArraySharedRead" + name, Task + "var values: Array<Task> = [Task.init(42)]\nrequire " + read + " == 42 else => $abort(\"value\")", "drop\n");
 
-    // SPEC 10.2: a Copy part below an element is lent at a fixed ref/U expectation; it is the counted shared snapshot route.
+    // SPEC 10.2: a Copy part below an element is lent at a fixed ref/U expectation as a new shared borrow of the element's part,
+    // through the element's own borrow, never as a borrow of a copy.
     [Fact]
     public void ACopyPartIsLentAtASharedExpectation()
     {
         const string Source = Task + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar values: Array<Task> = [Task.init(42)]\nshow(values[0].id)";
         ScalarEmissionTest.EmitFixture("DynamicArraySharedReadCopyPart", Source, "42\ndrop\n");
-        Assert.Equal(1, MinimalEmissionTest.Analyze(Source).Ownership.Bodies.Sum(static x => x.SnapshotBorrows));
+        Assert.Equal(0, MinimalEmissionTest.Analyze(Source).Ownership.Bodies.Sum(static x => x.SnapshotBorrows));
     }
 
     [Theory]
