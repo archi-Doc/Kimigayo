@@ -244,11 +244,10 @@ public class ConditionalConformanceBindingTest
     }
 
     [Fact]
-    public void AssociatedRequirementsCannotBeInferredFromMembers()
+    public void AssociatedRequirementsUseDeclaredResultsUnderPathPremises()
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\n    func read() -> E\nstruct S<T>\n    Self is C when T is Copy\n    public func read() -> i32 => 1");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
+        Assert.True(c.Bind().IsComplete, Describe(c));
     }
 
     [Fact]

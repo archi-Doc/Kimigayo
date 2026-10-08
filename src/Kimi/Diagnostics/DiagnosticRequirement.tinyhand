@@ -517,6 +517,9 @@
   + Name="Binding.IncompatibleImplementation"
     Description="the implementation satisfies the Contract"
 
+  + Name="Binding.AssociatedInference"
+    Description="declaration evidence uniquely determines the omitted associated Type"
+
   + Name="Binding.InvalidAssociatedType"
     Description="the associated Type binding is valid"
 

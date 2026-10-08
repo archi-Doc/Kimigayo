@@ -62,7 +62,7 @@ public sealed partial class Binding
 
     private BindingSymbol BoundContractReference(BoundType reference)
     {
-        if (ReferenceEquals(reference.Symbol!.Type, reference))
+        if (ReferenceEquals(reference.Symbol!.Type, reference) || ReferenceEquals(this.SelfType(reference.Symbol), reference))
         {
             return reference.Symbol;
         }

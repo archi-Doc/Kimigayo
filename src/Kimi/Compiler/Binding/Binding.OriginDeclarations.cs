@@ -80,6 +80,35 @@ public sealed partial class Binding
         return declaration;
     }
 
+    private bool PartialOriginContractReady(FunctionKoto function)
+    {
+        if (!this.originDeclarations.TryGetValue(function, out var declaration))
+        {
+            return true;
+        }
+
+        var clauses = OriginClauses.Get(function);
+        for (var i = 0; i < clauses.Count; i++)
+        {
+            var clause = clauses[i];
+            if (Pending(clause.Left) || Pending(clause.Right))
+            {
+                return false;
+            }
+        }
+
+        return true;
+
+        bool Pending(Koto syntax) => syntax switch
+        {
+            IdentifierNameKoto name => declaration.Sets.TryGetValue(name.IdentifierName, out var set) && set.BoundType is null,
+            ParenthesizedKoto parentheses => Pending(parentheses.Operand),
+            MemberAccessKoto member => Pending(member.Left),
+            BinaryKoto binary => Pending(binary.Left) || Pending(binary.Right),
+            _ => false,
+        };
+    }
+
     private void PrepareOriginDeclarations()
     {
         foreach (var declaration in this.originDeclarations.Values)

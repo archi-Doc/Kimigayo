@@ -148,6 +148,7 @@ internal enum BindingFailure : byte
     MissingImplementation,
     IncompatibleImplementation,
     InvalidAssociatedType,
+    AssociatedInference,
     InvalidPattern,
     NonExhaustiveMatch,
     InvalidTestDefinition,

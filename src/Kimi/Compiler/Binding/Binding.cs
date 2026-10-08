@@ -471,6 +471,7 @@ public sealed partial class Binding
         this.BindConstraints();
         this.RegisterInheritedConformances(complete: true);
         this.BindTypeOriginContracts();
+        this.PrepareAssociatedInference();
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i].BoundSymbol is { Kind: BindingSymbolKind.Function or BindingSymbolKind.Property } symbol && ReferenceEquals(symbol.Declaration, this.nodes[i]))
@@ -546,18 +547,9 @@ public sealed partial class Binding
         this.ValidateProperties(mode);
         this.ValidateConformances(mode, true);
         this.ValidateConstraintUses(mode);
-        // Late witness failures can invalidate declarations that normalized their projections.
-        // Revisit dependent certificates only while declaration states change monotonically.
-        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(sourcesOnly: true))
-        {
-            this.ClearCapabilityResults();
-            this.ValidateBaseDeclarations(mode);
-            this.ValidateProperties(mode);
-            this.ValidateConformances(mode, true);
-        }
-
         this.ClearCapabilityResults();
         this.ValidateEffectBounds();
+        this.InvalidateProjectionCertificates(mode);
         this.ValidateIterationWitnesses();
         this.ValidateExpressionProjectionInputs(mode);
         this.CompleteEnumAcquisitions();
@@ -871,6 +863,10 @@ public sealed partial class Binding
         {
             this.ReportEffectBound(effect, requirement);
         }
+        else if (issue.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && this.ReportAssociatedInference(issue.Node, requirement))
+        {
+            // Declaration evidence is retained by the common binder, independent of the adapter.
+        }
         else if (issue.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or DiagnosticCode.InvalidAssociatedType_Kd && this.contractAgreementFailures?.TryGetValue(issue.Node, out var agreement) == true)
         {
             var first = DiagnosticTypeName(agreement.Left.Type!);
@@ -1143,6 +1139,7 @@ public sealed partial class Binding
                     BindingFailure.MissingImplementation => DiagnosticCode.MissingContractImplementation_Kd,
                     BindingFailure.IncompatibleImplementation => DiagnosticCode.IncompatibleContractImplementation_Kd,
                     BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,
+                    BindingFailure.AssociatedInference => DiagnosticCode.AssociatedTypeInferenceFailed_Kd,
                     BindingFailure.InvalidPattern => DiagnosticCode.InvalidPattern_Kd,
                     BindingFailure.NonExhaustiveMatch => DiagnosticCode.NonExhaustiveMatch_Kd,
                     BindingFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
@@ -1273,7 +1270,29 @@ public sealed partial class Binding
 
             // Named signatures never infer a result from their body or callers (SPEC 10.5).
             symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
-            this.CompleteOriginDeclaration(originDeclaration);
+            var pendingInputs = false;
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                // BindType retains a partial value on the parameter symbol without publishing it on
+                // syntax. A failed Type (null) is already an error, not an inference dependency.
+                pendingInputs |= this.symbols[function.Parameters[i]].Type is { } parameterType && this.PendingAssociatedType(parameterType);
+            }
+
+            var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
+            if (this.associatedInferenceReady && pendingHeader)
+            {
+                // Result portions that do not depend on missing Type values use the ordinary Origin
+                // completion. Unrelated result holes do not hide a determined input/elision contract.
+                if (!pendingInputs && this.PartialOriginContractReady(function))
+                {
+                    this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
+                }
+
+                symbol.Resolving = false;
+                return;
+            }
+
+            this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;

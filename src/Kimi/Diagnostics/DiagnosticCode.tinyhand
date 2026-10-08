@@ -262,9 +262,15 @@
     Evidence="reason:Text"
     Label="{0}"
 
+  + Name="AssociatedTypeInferenceFailed_Kd"
+    Category="Language"
+    Message="An omitted associated Type cannot be determined from declaration results"
+    Evidence="associated:Text,reason:Text"
+    Label="{0}: {1}"
+
   + Name="InvalidAssociatedType_Kd"
     Category="Language"
-    Message="The associated Type has an ambiguous, missing, contradictory, or invalid Core-Type binding"
+    Message="The associated Type has an ambiguous, missing, contradictory, or invalid complete-Type binding"
     Evidence="left:Type,right:Type,associated:Text,first:Type,second:Type"
     Label="at {0} = {1}, {2}'s Types {3} and {4} are not proven equal"
 

@@ -51,6 +51,7 @@ public sealed partial class Binding
                 Accessor(property.Setter);
             }
 
+            this.AppendAssociatedInference(declaration, parts, null);
             return new("declaration", parts.ToArray());
 
             void Accessor(BoundAccessor accessor)
@@ -62,6 +63,14 @@ public sealed partial class Binding
         }
 
         private string? DeclarationDetails(Koto declaration)
+        {
+            var details = this.OrdinaryDeclarationDetails(declaration);
+            var inferred = new StringBuilder(details);
+            this.AppendAssociatedInference(declaration, null, inferred);
+            return inferred.Length == 0 ? null : inferred.ToString();
+        }
+
+        private string? OrdinaryDeclarationDetails(Koto declaration)
         {
             if (declaration is FunctionKoto virtualFunction && (virtualFunction.IsVirtual || virtualFunction.IsOverride))
             {
@@ -138,6 +147,52 @@ public sealed partial class Binding
             }
 
             return null;
+        }
+
+        private void AppendAssociatedInference(Koto declaration, List<HoverKey>? identities, StringBuilder? text)
+        {
+            var owner = declaration;
+            while (owner is not null && owner is not (StructKoto or EnumKoto))
+            {
+                owner = owner.Parent;
+            }
+
+            if (owner?.BoundSymbol is not { } symbol || !binding.conformancesByType.TryGetValue(symbol, out var conformances))
+            {
+                return;
+            }
+
+            var seen = new HashSet<(BoundRequirement Identity, FunctionKoto Source)>();
+            foreach (var conformance in conformances)
+            {
+                foreach (var path in conformance.PathStorage)
+                {
+                    if (!path.IsVerified)
+                    {
+                        continue;
+                    }
+
+                    foreach (var evidence in path.InferenceStorage)
+                    {
+                        if ((!ReferenceEquals(owner, declaration) && !ReferenceEquals(evidence.Source, declaration)) || !seen.Add((evidence.Identity, evidence.Source)))
+                        {
+                            continue;
+                        }
+
+                        identities?.Add(new("inferred-associated", [this.SymbolIdentity(evidence.Identity.Symbol), this.SymbolIdentity(evidence.Identity.Contract), this.TypeIdentity(evidence.Type), this.BinderIdentity(evidence.Source)]));
+                        if (text is not null)
+                        {
+                            if (text.Length != 0)
+                            {
+                                text.AppendLine();
+                            }
+
+                            text.Append("Inferred associate ").Append(this.TypeName(evidence.Identity.Contract.Type!)).Append('.').Append(evidence.Identity.Symbol.Name)
+                                .Append(" is ").Append(this.TypeName(evidence.Type)).Append("; source: ").Append(evidence.Source.Name).Append(" declared result");
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -42,6 +42,7 @@ public enum DiagnosticCode
     UnsatisfiedEffectBound_Kd,
     IncompatibleContractImplementation_Kd,
     InvalidAssociatedType_Kd,
+    AssociatedTypeInferenceFailed_Kd,
 
     ConditionMustBeBool_Kd,
     InvalidCompileTimeCondition_Kd,

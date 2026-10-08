@@ -36,7 +36,7 @@ public sealed partial class Binding
 
                         // Substitute explicit identities, then compare determined concrete atoms.
                         // No case splitting, contrapositive, or general satisfiability solver.
-                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity && p.RequiredType is { } pt && q.RequiredType is { } qt && !DependentType(pt) && !DependentType(qt) && !ReferenceEquals(pt, qt))
+                        if (p.Kind == ConstraintKind.TypeIdentity && q.Kind == ConstraintKind.TypeIdentity && p.RequiredType is { } pt && q.RequiredType is { } qt && !DependentType(pt) && !DependentType(qt) && !this.SameCompleteType(pt, qt))
                         {
                             return true;
                         }

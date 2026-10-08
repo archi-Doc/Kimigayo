@@ -157,6 +157,7 @@ public sealed partial class Binding
             bound.Contract!.State = 0;
         }
 
+        this.ResetAssociatedInference();
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.activeConformancePaths.Clear();
@@ -181,6 +182,13 @@ public sealed partial class Binding
         {
             binding.Candidates.Clear();
             binding.Result = null;
+            binding.Inferred = null;
+            binding.InferenceSource = null;
+            binding.InferenceConflict = false;
+            binding.Problem = InferenceProblem.None;
+            binding.ProblemSource = null;
+            binding.ProblemDetail = null;
+            binding.EvidenceSources.Clear();
             binding.State = 0;
             binding.FormationScope?.Reset();
         }
@@ -205,6 +213,7 @@ public sealed partial class Binding
             conformance.PropertyWitnessStorage.Clear();
             conformance.PropertyWitnessMap.Clear();
             conformance.AssociatedStorage.Clear();
+            conformance.InferenceStorage.Clear();
             conformance.Scope.Reset();
         }
     }
@@ -814,6 +823,7 @@ public sealed partial class Binding
 
         if (final)
         {
+            this.InvalidateAssociatedEvidence();
             foreach (var identity in this.conformances.Values)
             {
                 if (identity.PathStorage.Count != 0)
@@ -862,7 +872,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !ReferenceEquals(ta, previous))
+                    if (this.associatedIdentityChecks.TryGetValue(a.Subject, out var previous) && !this.SameCompleteType(ta, previous))
                     {
                         environment.Invalid = true;
                         this.Fail(scope.Owner, BindingFailure.InvalidAssociatedType);

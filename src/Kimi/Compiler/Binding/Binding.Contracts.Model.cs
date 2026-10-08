@@ -11,6 +11,13 @@ namespace Kimi.Compiler;
 /// <param name="Contract">The exact declaring Contract, including its bindings.</param>
 public readonly record struct BoundRequirement(BindingSymbol Symbol, BindingSymbol Contract);
 
+/// <summary>Declaration evidence for a completed associated binding; usable only with its path's verified certificate.</summary>
+/// <param name="Identity">The associated identity in the destination path.</param>
+/// <param name="Type">The completed Type, including Semantics and Origins.</param>
+/// <param name="SourcePath">The path whose frozen premises supplied the evidence.</param>
+/// <param name="Source">The implementation declaration supplying the value result.</param>
+public readonly record struct BoundAssociatedTypeEvidence(BoundRequirement Identity, BoundType Type, BoundConformancePath SourcePath, FunctionKoto Source);
+
 /// <summary>The effective requirements of a Contract, deduplicated by bound requirement identity.</summary>
 public sealed class BoundContract
 {
@@ -161,8 +168,11 @@ public sealed class BoundConformancePath
     /// <summary>Gets requirement-to-member mappings, usable only while IsVerified is true.</summary>
     public IReadOnlyList<BoundWitness> Witnesses => this.WitnessStorage;
 
-    /// <summary>Gets explicit, normalized associated-Type bindings.</summary>
+    /// <summary>Gets completed, normalized associated-Type bindings; provenance does not change Type identity.</summary>
     public IReadOnlyDictionary<BoundRequirement, BoundType> AssociatedTypes => this.AssociatedStorage;
+
+    /// <summary>Gets inferred-binding provenance; this does not certify an unverified conformance.</summary>
+    public IReadOnlyList<BoundAssociatedTypeEvidence> InferenceEvidence => this.InferenceStorage;
 
     /// <summary>Gets the separately verified get/set mappings, valid only while IsVerified is true.</summary>
     public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.PropertyWitnessStorage;
@@ -194,6 +204,8 @@ public sealed class BoundConformancePath
     internal Dictionary<(BoundRequirement Requirement, PropertyAccessorKind Kind), BoundPropertyWitness> PropertyWitnessMap { get; } = new();
 
     internal Dictionary<BoundRequirement, BoundType> AssociatedStorage { get; } = new();
+
+    internal List<BoundAssociatedTypeEvidence> InferenceStorage { get; } = new();
 
     internal Koto Use { get; set; } = null!;
 

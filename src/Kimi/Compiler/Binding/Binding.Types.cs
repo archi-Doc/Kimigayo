@@ -525,6 +525,11 @@ public sealed partial class Binding
                 return null;
             }
 
+            if (this.associatedInferenceReady && this.PendingAssociatedType(type))
+            {
+                return type; // A partial header may inspect structure; syntax is not a completed Type yet.
+            }
+
             var annotated = syntax as TypeSemanticsKoto;
             type = this.CompleteOrigins(type, annotated, syntax, scope, context);
             Complete(syntax, type);

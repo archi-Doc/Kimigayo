@@ -96,9 +96,9 @@ public class ContractBindingTest
     [InlineData("associate Element is i32", "i32", true)]
     [InlineData("associate C.Element is i32", "i32", true)]
     [InlineData("associate C.Element is string", "i32", false)]
-    [InlineData("", "i32", false)]
+    [InlineData("", "i32", true)]
     [InlineData("associate C.Element is ref/i32 during static", "i32", false)]
-    public void AssociatedIdentityIsExplicitAndPrecedesMatching(string specification, string result, bool valid)
+    public void AssociatedIdentityUsesExplicitOrBoundedDeclarationEvidence(string specification, string result, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate Element\n    func read() -> Element\nstruct S\n    Self is C\n    {specification}\n    public func read() -> {result} => 1");
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -275,9 +275,9 @@ public class ContractBindingTest
 
     [Theory]
     [InlineData("i32", true)]
-    [InlineData("T", false)]
-    [InlineData("ref/i32 during static", false)]
-    public void GenericAssociatedBindingsMustProveTheirCoreRole(string binding, bool valid)
+    [InlineData("T", true)]
+    [InlineData("ref/i32 during static", true)]
+    public void GenericAssociatedBindingsRetainCompleteTypes(string binding, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate E\nstruct S<T>\n    Self is C\n    associate C.E is {binding}");
         Assert.Equal(valid, c.Bind().IsComplete);

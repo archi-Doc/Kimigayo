@@ -35,7 +35,7 @@ public sealed partial class Binding
     {
         var head = AssociatedHead(clause);
         head = head is OriginApplicationKoto applied ? UnwrapAssociatedHead(applied.Type) : head;
-        if (head is not MemberAccessKoto { Left.BoundSymbol: { Type.Kind: BoundTypeKind.Constructed } reference })
+        if (head is not MemberAccessKoto { Left.BoundSymbol: { } reference } || !IsBoundContractReference(reference))
         {
             return true;
         }
@@ -440,7 +440,7 @@ public sealed partial class Binding
             for (var j = 0; j < shape.AssociatedTypes.Count; j++)
             {
                 var associated = shape.AssociatedTypes[j];
-                if (this.ResolveAssociated(path, associated) is { } result)
+                if (this.ResolveAssociated(path, associated) is { } result && !this.PendingAssociatedType(result))
                 {
                     path.AssociatedStorage[associated] = result;
                 }
@@ -493,7 +493,7 @@ public sealed partial class Binding
                     }
 
                     if (this.ResolveAssociated(source, original) is not { } inherited || this.StoredType(inherited, path.InheritedBase!) is not { } current ||
-                        (inheritedResult is not null && !ReferenceEquals(inheritedResult, current)))
+                        (inheritedResult is not null && !this.SameCompleteType(inheritedResult, current)))
                     {
                         return null;
                     }
@@ -513,6 +513,17 @@ public sealed partial class Binding
             return null;
         }
 
+        if (binding.Candidates.Count == 0)
+        {
+            if (this.associatedInferenceReady && this.associatedInference.TryGetValue(path.Type, out var batch))
+            {
+                this.InferAssociatedTypes(batch);
+                return batch.State == 2 && !ReferenceEquals(batch, this.collectingAssociated) && !binding.InferenceConflict ? binding.Inferred : null;
+            }
+
+            return null; // Pending declaration evidence is not a cached negative result.
+        }
+
         if (binding.State != 0)
         {
             return binding.State == 2 ? binding.Result : null;
@@ -523,11 +534,10 @@ public sealed partial class Binding
         var self = this.SelfType(path.Type);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
-        var complete = this.IsCompleteAssociated(associated.Symbol);
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
-            valid &= (complete || this.IsAssociatedCore(type, scope)) && (result is null || ReferenceEquals(result, type));
+            valid &= result is null || this.SameCompleteType(result, type);
             result = type;
         }
 
@@ -573,7 +583,7 @@ public sealed partial class Binding
 
             if (condition == ConstraintProof.Proven)
             {
-                if (available is not null && !ReferenceEquals(available, binding))
+                if (available is not null && !this.SameCompleteType(available, binding))
                 {
                     return null;
                 }
@@ -581,7 +591,7 @@ public sealed partial class Binding
                 available = binding;
             }
 
-            conflicting |= pending is not null && !ReferenceEquals(pending, binding);
+            conflicting |= pending is not null && !this.SameCompleteType(pending, binding);
             pending = binding;
         }
 
@@ -590,57 +600,26 @@ public sealed partial class Binding
         return available ?? (conflicting ? null : pending);
     }
 
-    private bool IsAssociatedCore(BoundType type, BindingScope scope)
+    /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
+    private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
     {
-        if (type.Semantics != SemanticsKind.Owner || type.Origin is not null)
+        if (this.collectingAssociated is not { } batch)
         {
-            return false;
+            return this.ContractTypeCore(type, scope, self, normalize);
         }
 
-        if (type.Kind == BoundTypeKind.Parameter)
+        var key = (type, scope, self, normalize, this.activeRequirementContract);
+        if (batch.Normalized.TryGetValue(key, out var known))
         {
-            if (this.HasSemanticsRole(type, SemanticsMask.Owner, scope))
-            {
-                return true;
-            }
-
-            for (var current = scope; current is not null; current = current.Parent)
-            {
-                if (current.Constraints is not { Invalid: false } environment)
-                {
-                    continue;
-                }
-
-                foreach (var fact in environment.Facts)
-                {
-                    if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, type, out var stated) && this.AvailableConstraintFact(environment, fact) && stated is { Kind: not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) } required)
-                    {
-                        return this.IsAssociatedCore(required, scope);
-                    }
-                }
-            }
-
-            return false;
+            return known;
         }
 
-        if (type.Kind == BoundTypeKind.AssociatedProjection && type.Components[0].Symbol?.Declaration is StructKoto or EnumKoto)
-        {
-            return false;
-        }
-
-        return type.Kind != BoundTypeKind.TargetProjection || this.HasValueRole(type, scope, false);
+        var result = this.ContractTypeCore(type, scope, self, normalize);
+        batch.Normalized[key] = result;
+        return result;
     }
 
-    // SPEC 8.4.3, 4.6.9, 22.1.2: family definitions with implemented formation checks, Iterator.Item, Indexable.Element and arithmetic Output
-    // denote complete Types. Other associated definitions still have the Core limitation recorded in STATUS.
-    private bool IsCompleteAssociated(BindingSymbol associated)
-        => this.AssociatedParameters(associated.Declaration).Length != 0 ||
-        (associated.Name == "Item" && ReferenceEquals(associated.Scope.Owner, this.Library.Iterator.Declaration)) ||
-        (associated.Name == "Element" && ReferenceEquals(associated.Scope.Owner, this.Library.Indexable?.Declaration)) ||
-        (associated.Name == "Output" && ArithmeticContracts.Identity(associated.Scope.Owner.BoundSymbol) is not null);
-
-    /// <summary>Substitutes Contract Self and normalizes explicit associated identities without member inference.</summary>
-    private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
+    private BoundType ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize)
     {
         type = this.ApplyContractEnvironment(type, scope);
         if (this.activeRequirementContract is { } bound)
@@ -785,6 +764,20 @@ public sealed partial class Binding
         internal List<BoundType> Candidates { get; } = new();
 
         internal BoundType? Result { get; set; }
+
+        internal BoundType? Inferred { get; set; }
+
+        internal FunctionKoto? InferenceSource { get; set; }
+
+        internal bool InferenceConflict { get; set; }
+
+        internal InferenceProblem Problem { get; set; }
+
+        internal FunctionKoto? ProblemSource { get; set; }
+
+        internal Koto? ProblemDetail { get; set; }
+
+        internal List<AssociatedEvidence> EvidenceSources { get; } = new();
 
         internal byte State { get; set; }
     }

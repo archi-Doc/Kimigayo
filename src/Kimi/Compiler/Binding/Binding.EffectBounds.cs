@@ -33,6 +33,12 @@ public sealed partial class Binding
                 rejected.Add(path.Use);
             }
         }
+
+        this.InvalidateAssociatedEvidence();
+        if (rejected.Count != 0)
+        {
+            this.InvalidateProjectionCertificates(BindingMode.Final);
+        }
     }
 
     // SPEC 8.4.10.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
@@ -50,6 +56,8 @@ public sealed partial class Binding
                 this.Fail(path.Use, BindingFailure.IncompatibleImplementation);
             }
         }
+
+        this.InvalidateAssociatedEvidence();
     }
 
     // The path, marked invalid, when one of its bounded implementations exceeds a bound; null otherwise. One traversal of a

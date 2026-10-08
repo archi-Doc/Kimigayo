@@ -162,6 +162,21 @@ public sealed partial class Binding
         return proof;
     }
 
+    // Late witness/Effect failures invalidate declarations even when normalization already erased
+    // their projections. Reuse the ordinary validation until declaration states stop changing.
+    private void InvalidateProjectionCertificates(BindingMode mode)
+    {
+        while (this.ValidateClosedTypeConstraints(mode) | this.ValidateDeclarationProjectionInputs(mode) | this.ValidateConstraintEnvironments(sourcesOnly: true))
+        {
+            this.ClearCapabilityResults();
+            this.ValidateBaseDeclarations(mode);
+            this.ValidateProperties(mode);
+            this.ValidateConformances(mode, true);
+        }
+
+        this.ClearCapabilityResults();
+    }
+
     private bool ValidateDeclarationProjectionInputs(BindingMode mode)
     {
         var changed = false;

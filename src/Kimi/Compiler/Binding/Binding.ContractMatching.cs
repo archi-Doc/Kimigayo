@@ -140,6 +140,11 @@ public sealed partial class Binding
 
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
+        if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && batch.State != 2)
+        {
+            return ConstraintProof.Unknown; // Type-value scheduling never certifies a collecting definition.
+        }
+
         if (conformance.InheritedFrom is not null)
         {
             return this.VerifyInheritedConformance(conformance);
@@ -208,6 +213,19 @@ public sealed partial class Binding
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
                 {
+                    var identity = shape.AssociatedTypes[i];
+                    if (this.InferenceHole(conformance, identity))
+                    {
+                        var binding = this.associatedBindings[(conformance.RootPath, identity)];
+                        if (binding.Problem is InferenceProblem.Missing or InferenceProblem.Ambiguous)
+                        {
+                            return Invalid(binding.Problem == InferenceProblem.Missing ? BindingFailure.MissingImplementation : BindingFailure.Ambiguous);
+                        }
+
+                        this.inferenceFailures.TryAdd(conformance.Use, (identity, binding));
+                        return Invalid(BindingFailure.AssociatedInference);
+                    }
+
                     return Invalid(BindingFailure.InvalidAssociatedType);
                 }
 
@@ -339,49 +357,25 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                BindingSymbol? selected = null;
-                var matches = 0;
-                var pending = false;
-                var selection = this.LookupTypeMember(self, requirement.Name, scope, self);
-                if (selection.Ambiguous)
+                var match = this.IdentifyRequirement(conformance, identity, self);
+                if (match.State == RequirementMatchState.Ambiguous)
                 {
                     return Invalid(BindingFailure.Ambiguous);
                 }
 
-                pending |= selection.Pending;
-                for (var candidate = selection.Member; candidate is not null; candidate = candidate.Next)
-                {
-                    if (candidate.Declaration is not FunctionKoto implementation || !this.Accessible(candidate, scope, receiverType: self))
-                    {
-                        continue;
-                    }
-
-                    this.BindHeader(candidate);
-                    var match = this.MatchesRequirement(function, implementation, self, scope, selection);
-                    pending |= match is null;
-                    if (match == true)
-                    {
-                        matches++;
-                        selected = candidate;
-                    }
-                }
-
-                if (matches > 1)
-                {
-                    return Invalid(BindingFailure.Ambiguous);
-                }
-
-                if (pending)
+                if (match.State == RequirementMatchState.Pending)
                 {
                     proof = CombineProof(proof, ConstraintProof.Unknown, true);
                     continue;
                 }
 
-                if (selected is null)
+                if (match.State == RequirementMatchState.Missing)
                 {
                     return Invalid(BindingFailure.MissingImplementation);
                 }
 
+                var selected = match.Member!;
+                var selection = match.Selection;
                 var compatibility = this.CompatibleRequirement(conformance, function, (FunctionKoto)selected.Declaration, self, scope, selection);
                 if (compatibility is ConstraintProof.Error or ConstraintProof.Refuted)
                 {
@@ -412,11 +406,12 @@ public sealed partial class Binding
 
     private bool? MatchesRequirement(FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
     {
-        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count)
+        if (implementation.IsSpecialization || !SameGenericShape(requirement, implementation) || requirement.Parameters.Count != implementation.Parameters.Count || ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
         {
             return false;
         }
 
+        var pending = false;
         for (var i = 0; i < requirement.Parameters.Count; i++)
         {
             var a = requirement.Parameters[i];
@@ -428,7 +423,8 @@ public sealed partial class Binding
 
             if (a.Type.BoundType is not { } required || b.Type.BoundType is not { } actual)
             {
-                return null;
+                pending = true;
+                continue;
             }
 
             required = this.ContractType(required, scope, self);
@@ -444,16 +440,24 @@ public sealed partial class Binding
             actual = this.MemberType(actual, selection.DeclaringType)!;
             if (actual is null)
             {
-                return null;
+                pending = true;
+                continue;
             }
 
-            if (!SignatureEquals(required, this.ContractType(actual, scope), requirement, implementation))
+            actual = this.ContractType(actual, scope);
+            if (this.PendingAssociatedType(required) || this.PendingAssociatedType(actual))
+            {
+                pending = true;
+                continue;
+            }
+
+            if (!SignatureEquals(required, actual, requirement, implementation))
             {
                 return false;
             }
         }
 
-        return true;
+        return pending ? null : true;
     }
 
     private ConstraintProof CompatibleRequirement(BoundConformancePath conformance, FunctionKoto requirement, FunctionKoto implementation, BoundType self, BindingScope scope, MemberSelection selection)
@@ -469,11 +473,8 @@ public sealed partial class Binding
             return formation;
         }
 
-        // SPEC 7.1.1, 8.4.5: result modes are matched; an exclusive Place may satisfy a shared Place requirement, never the
-        // reverse, and a Place result never matches a value result.
-        if (requirement.ReturnType is PlaceResultKoto requiredPlace
-            ? implementation.ReturnType is not PlaceResultKoto providedPlace || (requiredPlace.IsExclusive && !providedPlace.IsExclusive)
-            : implementation.ReturnType is PlaceResultKoto)
+        // SPEC 7.1.1, 8.4.5: the retained identification preserves the result category and mode.
+        if (ResultModeOf(requirement.ReturnType) != ResultModeOf(implementation.ReturnType))
         {
             return ConstraintProof.Error;
         }
