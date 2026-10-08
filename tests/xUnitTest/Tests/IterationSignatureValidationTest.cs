@@ -68,7 +68,7 @@ public class IterationSignatureValidationTest
                 formation.BoundType = Copy(formation.BoundType!, components: [BoundType.ISize]);
                 break;
             case "requirement-identity":
-                symbol.Contract!.RequirementStorage[0] = c.Library.GetSymbol(KimiDeclarationId.WriteLine)!;
+                symbol.Contract!.RequirementStorage[0] = symbol.Contract.RequirementStorage[0] with { Symbol = c.Library.GetSymbol(KimiDeclarationId.WriteLine)! };
                 break;
             case "family-identity":
                 symbol.Contract!.AssociatedStorage[0] = foreignFamily;
@@ -146,7 +146,7 @@ public class IterationSignatureValidationTest
                 clause.BoundConstraint = foreignConstraint;
                 break;
             case "requirement-identity":
-                symbol.Contract!.RequirementStorage[0] = c.Library.GetSymbol(KimiDeclarationId.WriteLine)!;
+                symbol.Contract!.RequirementStorage[0] = symbol.Contract.RequirementStorage[0] with { Symbol = c.Library.GetSymbol(KimiDeclarationId.WriteLine)! };
                 break;
             case "family-identity":
                 symbol.Contract!.AssociatedStorage[0] = foreignFamily;

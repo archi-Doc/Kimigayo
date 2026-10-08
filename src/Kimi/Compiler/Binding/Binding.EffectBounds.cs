@@ -56,7 +56,13 @@ public sealed partial class Binding
     // witness's summary serves both bounds.
     private BoundConformancePath? EffectBoundViolation(BoundConformancePath path, bool destructions)
     {
-        if (!path.IsVerified || path.Contract.Declaration.BoundSymbol?.Contract is not { HasEffectBounds: true } shape)
+        if (!path.IsVerified || path.Contract.Contract is not { } shape)
+        {
+            return null;
+        }
+
+        this.EnsureEffectBounds(shape);
+        if (!shape.HasEffectBounds)
         {
             return null;
         }
@@ -69,8 +75,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            var confined = this.DeclaredEffectBound(shape, requirement, EffectBoundKind.Confined) is not null;
-            var preserves = this.DeclaredEffectBound(shape, requirement, EffectBoundKind.PreservesResults) is not null;
+            var confined = this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.Confined) is not null;
+            var preserves = this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.PreservesResults) is not null;
             if ((!confined && !preserves) ||
                 (destructions && witness.Implementation.Declaration is FunctionKoto implementation && this.compilation.Ownership.TemplateBody(implementation, false) is null))
             {
@@ -81,7 +87,7 @@ public sealed partial class Binding
             if (!summary.Check(confined, preserves, witness.Implementation, path.Scope, destructions))
             {
                 (this.effectViolations ??= new(ReferenceEqualityComparer.Instance))[path.Use] =
-                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, summary.DelegationNode, requirement, shape, confined, preserves);
+                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, summary.DelegationNode, requirement, shape, confined, preserves, witness.Identity);
                 path.Invalid = true;
                 path.IsVerified = false;
                 path.Identity.Invalid = true;
@@ -111,8 +117,8 @@ public sealed partial class Binding
         // SPEC 8.4.10.5: the abstract parts of the result, the requirement calls producing values of them, the own-body calls
         // tentatively compared with no earlier result, and the replacements of values on self paths in the own body.
         private readonly List<BoundType> itemParts = new();
-        private readonly List<(object Requirement, Koto Call, Koto? Receiver)> producers = new();
-        private readonly List<(object Requirement, Koto Call, Koto Receiver, bool Confined)> candidates = new();
+        private readonly List<(object Requirement, BindingSymbol? Contract, Koto Call, Koto? Receiver)> producers = new();
+        private readonly List<(object Requirement, BindingSymbol? Contract, Koto Call, Koto Receiver, bool Confined)> candidates = new();
         private readonly List<(Koto Path, Koto Node)> replacements = new();
         private BodyScan? scan;
         private bool delegable;
@@ -969,14 +975,14 @@ public sealed partial class Binding
                 this.stepUse = null;
                 if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
                 {
-                    this.producers.Add((type, use, own));
+                    this.producers.Add((type, null, use, own));
                 }
 
                 // The bound excludes earlier results of this value only. Apply the same producer/path proof used
                 // for requirement delegation, so two callbacks of one Type cannot borrow each other's guarantee.
                 if (available.Preserves && this.delegable && own is not null && (!this.confined || available.Confined))
                 {
-                    this.candidates.Add((type, use, own, available.Confined));
+                    this.candidates.Add((type, null, use, own, available.Confined));
                     return;
                 }
             }
@@ -1196,10 +1202,12 @@ public sealed partial class Binding
             // The premises are those of the call's own scope and, in the implementation's own body, the conditions of the
             // conformance (SPEC 8.4.8.2), such as I is Iterator for Self is Iterator when I is Iterator.
             var conforming = call.ConformingType is { } type ? this.Type(type) : null;
-            var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!);
+            var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
+                ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
+            var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
             if (this.stepUse is { } use && (!confined || !preserves))
             {
-                var (local, held) = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use));
+                var (local, held) = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract);
                 confined |= local;
                 preserves |= held;
             }
@@ -1210,14 +1218,14 @@ public sealed partial class Binding
                 var own = this.OwnFieldPathReceiver();
                 if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
                 {
-                    this.producers.Add((requirement, this.stepUse ?? symbol.Declaration, own));
+                    this.producers.Add((requirement, reference, this.stepUse ?? symbol.Declaration, own));
                 }
 
                 // Virtual exclusions additionally need actual-object and bound-slot identity. Until those
                 // relations are proven, retain their producers but never borrow another call's exclusion.
                 if (preserves && !requirement.IsVirtual && this.delegable && own is not null)
                 {
-                    this.candidates.Add((requirement, this.stepUse!, own, confined));
+                    this.candidates.Add((requirement, reference, this.stepUse!, own, confined));
                     return;
                 }
 
@@ -1269,7 +1277,7 @@ public sealed partial class Binding
             for (var c = 0; this.valid && c < this.candidates.Count; c++)
             {
                 var candidate = this.candidates[c];
-                var failure = this.DelegationFailureOf(candidate.Requirement, candidate.Receiver, out var blocking);
+                var failure = this.DelegationFailureOf(candidate.Requirement, candidate.Contract, candidate.Receiver, out var blocking);
                 if (failure != DelegationFailure.None)
                 {
                     // The call's effects are then those of SPEC 8.4.10.4, which reach every Loan of the abstract value.
@@ -1282,7 +1290,7 @@ public sealed partial class Binding
             }
         }
 
-        private DelegationFailure DelegationFailureOf(object requirement, Koto receiver, out Koto? blocking)
+        private DelegationFailure DelegationFailureOf(object requirement, BindingSymbol? contract, Koto receiver, out Koto? blocking)
         {
             for (var i = 0; i < this.replacements.Count; i++)
             {
@@ -1316,7 +1324,7 @@ public sealed partial class Binding
             for (var i = 0; i < this.producers.Count; i++)
             {
                 var producer = this.producers[i];
-                var failure = !ReferenceEquals(producer.Requirement, requirement) ? DelegationFailure.OtherRequirement
+                var failure = !ReferenceEquals(producer.Requirement, requirement) || !ReferenceEquals(producer.Contract, contract) ? DelegationFailure.OtherRequirement
                     : producer.Receiver is not { } path || this.SelfPathDepth(path) != this.SelfPathDepth(receiver) || !this.IsPathPrefix(path, receiver) ? DelegationFailure.OtherValue
                     : DelegationFailure.None;
                 if (failure != DelegationFailure.None)

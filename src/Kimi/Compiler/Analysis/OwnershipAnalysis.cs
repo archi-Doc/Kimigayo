@@ -1919,7 +1919,7 @@ public sealed partial class OwnershipAnalysis
         var results = this.body.RequirementResults ??= new();
         for (var i = mark; i < effects.Count; i++)
         {
-            results.Add(new(invoke, result, effects[i].Region, effects[i].Mode, requirement, effects[i].Input, receiver));
+            results.Add(new(invoke, result, effects[i].Region, effects[i].Mode, requirement, effects[i].Input, receiver, plan.RequirementContract));
         }
     }
 
@@ -1968,7 +1968,7 @@ public sealed partial class OwnershipAnalysis
             this.effectRegions.Add(region, place);
         }
 
-        this.body.RequirementEffects!.Add(new(invoke, place, mode, requirement, input, receiver, preserves));
+        this.body.RequirementEffects!.Add(new(invoke, place, mode, requirement, input, receiver, preserves, call.BoundCall?.RequirementContract));
     }
 
     // Type arguments reach library bodies and standard Property bridges through their verified witnesses.

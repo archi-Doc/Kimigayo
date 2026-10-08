@@ -42,9 +42,9 @@ public sealed partial class Binding
 
         if (proof is ConstraintProof.Proven or ConstraintProof.Unknown)
         {
-            var witness = new BoundWitness(requirement.Symbol, implementation.Symbol);
+            var witness = new BoundWitness(new(requirement.Symbol, conformance.Contract), implementation.Symbol);
             conformance.WitnessStorage.Add(witness);
-            conformance.WitnessMap.Add(requirement.Symbol, witness);
+            conformance.WitnessMap.Add(witness.Identity, witness);
         }
 
         return proof;
@@ -128,9 +128,9 @@ public sealed partial class Binding
         if (proof == ConstraintProof.Proven)
         {
             var objectProof = kind == PropertyWitnessKind.AccessorCall && selection.Path is not null ? ProjectedReceiverProof(implementation.Property.Symbol, implementation) : ConstraintProof.Proven;
-            var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof) { Origins = originBindings };
+            var witness = new BoundPropertyWitness(requirement, implementation, kind, receiver, input, result, selection.DeclaringType!, inputOrigins, selection.Path, objectProof) { Origins = originBindings, Contract = conformance.Contract };
             conformance.PropertyWitnessStorage.Add(witness);
-            conformance.PropertyWitnessMap.Add((requirement.Property.Symbol, requirement.Kind), witness);
+            conformance.PropertyWitnessMap.Add((witness.Identity, requirement.Kind), witness);
             proof = CombineProof(proof, objectProof, true);
         }
 

@@ -643,10 +643,10 @@ internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? 
 // SPEC 8.4.10.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
 // (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on
 // the same receiver.
-internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves);
+internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves, BindingSymbol? Contract = null);
 
 // SPEC 8.4.10.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
-internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver);
+internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, BindingSymbol? Contract = null);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 

@@ -45,7 +45,7 @@ public class AssociatedForwardingTest
             {
                 Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(call.TypeArguments[0]!, requirement.Target.Scope.Owner.BoundSymbol!, main.Function, out var path));
                 Assert.True(path!.IsVerified);
-                var implementation = path.GetImplementation(requirement.Target);
+                var implementation = path.GetImplementation(new(requirement.Target, requirement.RequirementContract!));
                 Assert.NotNull(implementation);
                 Assert.Equal("Wrapper", implementation.Scope.Owner.BoundSymbol!.Name);
                 Assert.NotNull(implementation.ConditionalDeclaration);

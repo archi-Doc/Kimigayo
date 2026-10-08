@@ -144,7 +144,7 @@ public sealed partial class KimiLibrary
             function = requirement;
             self = symbol;
             result = requirement.BoundSymbol?.Type;
-            if (symbol.Contract is not { Requirements: [var bound] } || !ReferenceEquals(bound, requirement.BoundSymbol))
+            if (symbol.Contract is not { Requirements: [var bound] } || bound != new BoundRequirement(requirement.BoundSymbol!, symbol))
             {
                 return false;
             }

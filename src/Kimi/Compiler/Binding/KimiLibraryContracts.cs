@@ -27,12 +27,12 @@ public sealed partial class KimiLibrary
 
         if (!ordering)
         {
-            return symbol.Contract is { Requirements: [var only] } && ReferenceEquals(only, requirement);
+            return symbol.Contract is { Requirements: [var only] } && only == new BoundRequirement(requirement, symbol);
         }
 
         var equatable = this.GetSymbol(KimiDeclarationId.Equatable);
         return equatable is not null && ReferenceEquals(declaration.Bases[0].BoundSymbol, equatable) && symbol.Contract?.Ancestors.Contains(equatable) == true && equatable.Declaration is ContractKoto { Members: [FunctionKoto { BoundSymbol: { } equals }] } &&
-            symbol.Contract is { Requirements: [var inherited, var own] } && ReferenceEquals(inherited, equals) && ReferenceEquals(own, requirement);
+            symbol.Contract is { Requirements: [var inherited, var own] } && inherited == new BoundRequirement(equals, equatable) && own == new BoundRequirement(requirement, symbol);
     }
 
     // SPEC 4.6.9, 22.1: index/indexUniq borrow Self<Key> with the Contract's mode and the key shared, and
@@ -44,7 +44,7 @@ public sealed partial class KimiLibrary
         if (symbol.Declaration is not ContractKoto { GenericParameterNodes: [var parameter], Members: [.., FunctionKoto function] } declaration ||
             parameter.BoundType is not { Kind: BoundTypeKind.Parameter } key || function.BoundSymbol is not { Type: { } result } requirement ||
             (exclusive ? this.GetSymbol(KimiDeclarationId.Indexable) : symbol)?.Declaration is not ContractKoto { Members: [SyntaxFormKoto { BoundSymbol: { Kind: BindingSymbolKind.AssociatedType } element }, ..] } ||
-            symbol.Contract is not { } contract || contract.Requirements.Count != (exclusive ? 2 : 1) || !ReferenceEquals(contract.Requirements[^1], requirement) ||
+            symbol.Contract is not { } contract || contract.Requirements.Count != (exclusive ? 2 : 1) || contract.Requirements[^1] != new BoundRequirement(requirement, symbol) ||
             contract.AssociatedTypes is not [var associated] || !ReferenceEquals(associated, element) ||
             function.Parameters[0].Type.BoundType is not { } receiver || !OwnInputBorrow(receiver, semantics, function, 0, out var self) ||
             function.Parameters[1].Type.BoundType is not { } borrowedKey || !OwnInputBorrow(borrowedKey, SemanticsKind.Ref, function, 1, out var keyReferent))

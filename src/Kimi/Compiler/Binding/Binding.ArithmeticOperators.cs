@@ -141,7 +141,7 @@ public sealed partial class Binding
         }
 
         var requirement = selected.Contract!.MembersByName[ArithmeticContracts.Method(id)][0];
-        plan.Call = this.BindSelectedRequirement(binary, plan.Call, [binary.Left, binary.Right], self, selected, requirement, scope);
+        plan.Call = this.BindSelectedRequirement(binary, plan.Call, [binary.Left, binary.Right], self, requirement.Contract, requirement.Symbol, scope);
         plan.Active = plan.Call.BoundCall is not null;
         if (compound && plan.Active)
         {
@@ -197,7 +197,7 @@ public sealed partial class Binding
         }
 
         var requirement = selected.Contract!.MembersByName["negated"][0];
-        plan.Call = this.BindSelectedRequirement(unary, plan.Call, [unary.Operand], self, selected, requirement, scope);
+        plan.Call = this.BindSelectedRequirement(unary, plan.Call, [unary.Operand], self, requirement.Contract, requirement.Symbol, scope);
         plan.Active = plan.Call.BoundCall is not null;
         result = Complete(unary, plan.Active ? plan.Call.BoundType : null);
         return true;

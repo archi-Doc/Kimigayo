@@ -1166,7 +1166,7 @@ public sealed partial class Binding
             if (selected.IsRequirement)
             {
                 // Retain the bound Contract selected by member lookup or by an operator.
-                call.CallStorage.RequirementContract = requirementGroup is not null && this.activeRequirementContract is { Contract: { } requirementShape } ? RequirementReference(requirementShape, winner) :
+                call.CallStorage.RequirementContract = requirementGroup is not null && this.activeRequirementContract is { } requirementContract ? requirementContract :
                     callee is RequirementCalleeKoto requirementCallee ? requirementCallee.Contract : null;
             }
 

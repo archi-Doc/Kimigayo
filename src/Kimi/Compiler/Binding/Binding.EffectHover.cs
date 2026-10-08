@@ -42,7 +42,7 @@ public sealed partial class Binding
                 {
                     evidence = [];
                     text = new();
-                    var available = binding.AvailableEffectBounds(requirement, call.ConformingType, binding.ConstraintScope(syntax), evidence);
+                    var available = binding.AvailableEffectBounds(requirement, call.ConformingType, binding.ConstraintScope(syntax), evidence, call.RequirementContract);
                     if ((available.Confined && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.Confined)) ||
                         (available.Preserves && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.PreservesResults)))
                     {

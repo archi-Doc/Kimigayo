@@ -35,7 +35,7 @@ public sealed partial class Binding
                     return this.Fail(use, BindingFailure.Unsupported);
                 }
 
-                var contract = RequirementReference(group.Contracts[i].Contract!, member);
+                var contract = group.Contracts[i];
                 var item = this.InternType(BoundTypeKind.FunctionItem, member, SemanticsKind.Owner, [group.Self, contract.Type!]);
                 var signature = this.FunctionItemSignature(item);
                 signatures[i] = signature is null ? null : this.ContractType(signature, scope);

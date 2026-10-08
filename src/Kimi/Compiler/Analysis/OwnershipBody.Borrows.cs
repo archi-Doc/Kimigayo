@@ -1306,7 +1306,7 @@ public sealed partial class OwnershipBody
             var result = results[this.requirementHolders[h].Result];
             if (result.Region != effect.Region || result.Call == effect.Call || (result.Mode != LoanRequirement.Uniq && effect.Mode != LoanRequirement.Uniq) ||
                 !this.RelatedValues(result.Input, effect.Input, count, false) ||
-                (effect.Preserves && ReferenceEquals(result.Requirement, effect.Requirement) &&
+                (effect.Preserves && ReferenceEquals(result.Requirement, effect.Requirement) && ReferenceEquals(result.Contract, effect.Contract) &&
                     (effect.Requirement is BoundType ? this.SameUnreplacedCallable(result.Receiver, effect.Receiver) : this.RelatedValues(result.Receiver, effect.Receiver, count, true))))
             {
                 continue;

@@ -6,7 +6,12 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402 // Contract metadata shares its identity vocabulary.
 
-/// <summary>The effective requirements of a Contract, deduplicated by declaration identity.</summary>
+/// <summary>A requirement declaration together with its normalized declaring Contract reference.</summary>
+/// <param name="Symbol">The original declaration identity.</param>
+/// <param name="Contract">The exact declaring Contract, including its bindings.</param>
+public readonly record struct BoundRequirement(BindingSymbol Symbol, BindingSymbol Contract);
+
+/// <summary>The effective requirements of a Contract, deduplicated by bound requirement identity.</summary>
 public sealed class BoundContract
 {
     internal BoundContract(BindingSymbol symbol) => this.Symbol = symbol;
@@ -18,7 +23,7 @@ public sealed class BoundContract
     public IReadOnlyList<BindingSymbol> Ancestors => this.AncestorStorage;
 
     /// <summary>Gets the effective function and Property requirement identities.</summary>
-    public IReadOnlyList<BindingSymbol> Requirements => this.RequirementStorage;
+    public IReadOnlyList<BoundRequirement> Requirements => this.RequirementStorage;
 
     /// <summary>Gets the effective associated-Type declaration identities.</summary>
     public IReadOnlyList<BindingSymbol> AssociatedTypes => this.AssociatedStorage;
@@ -28,7 +33,7 @@ public sealed class BoundContract
 
     internal List<BindingSymbol> AncestorStorage { get; } = new();
 
-    internal List<BindingSymbol> RequirementStorage { get; } = new();
+    internal List<BoundRequirement> RequirementStorage { get; } = new();
 
     internal List<BindingSymbol> AssociatedStorage { get; } = new();
 
@@ -45,7 +50,9 @@ public sealed class BoundContract
 
     internal HashSet<BindingSymbol> Seen { get; } = new(ReferenceEqualityComparer.Instance);
 
-    internal Dictionary<string, List<BindingSymbol>> MembersByName { get; } = new(StringComparer.Ordinal);
+    internal HashSet<BoundRequirement> SeenRequirements { get; } = new();
+
+    internal Dictionary<string, List<BoundRequirement>> MembersByName { get; } = new(StringComparer.Ordinal);
 
     internal byte State { get; set; }
 
@@ -53,13 +60,21 @@ public sealed class BoundContract
 }
 
 /// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.4.10.1).</summary>
-/// <param name="Requirement">The requirement; its declaration is the Requirement Identity.</param>
+/// <param name="Identity">The requirement's declaration and bound declaring Contract.</param>
 /// <param name="Bound">The bound.</param>
 /// <param name="Declaration">The effect item.</param>
-public readonly record struct BoundEffectBound(BindingSymbol Requirement, EffectBoundKind Bound, EffectBoundKoto Declaration);
+public readonly record struct BoundEffectBound(BoundRequirement Identity, EffectBoundKind Bound, EffectBoundKoto Declaration)
+{
+    /// <summary>Gets the original requirement declaration.</summary>
+    public BindingSymbol Requirement => this.Identity.Symbol;
+}
 
 /// <summary>A definition-verified implementation of one stable requirement.</summary>
-public readonly record struct BoundWitness(BindingSymbol Requirement, BindingSymbol Implementation, BoundFunctionWitness? Function = null);
+public readonly record struct BoundWitness(BoundRequirement Identity, BindingSymbol Implementation, BoundFunctionWitness? Function = null)
+{
+    /// <summary>Gets the original requirement declaration.</summary>
+    public BindingSymbol Requirement => this.Identity.Symbol;
+}
 
 /// <summary>A stable declaration identity. Availability belongs to its evidence paths.</summary>
 public sealed class BoundConformance
@@ -112,9 +127,9 @@ public sealed class BoundConformance
         }
     }
 
-    public BindingSymbol? GetImplementation(BindingSymbol requirement) => this.UnconditionalPath?.GetImplementation(requirement);
+    public BindingSymbol? GetImplementation(BoundRequirement requirement) => this.UnconditionalPath?.GetImplementation(requirement);
 
-    public BoundPropertyWitness? GetPropertyWitness(BindingSymbol requirement, PropertyAccessorKind kind) => this.UnconditionalPath?.GetPropertyWitness(requirement, kind);
+    public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind) => this.UnconditionalPath?.GetPropertyWitness(requirement, kind);
 }
 
 /// <summary>Reusable definition-side conformance metadata. Only verified mappings supply evidence.</summary>
@@ -166,11 +181,11 @@ public sealed class BoundConformancePath
 
     internal List<BoundWitness> WitnessStorage { get; } = new();
 
-    internal Dictionary<BindingSymbol, BoundWitness> WitnessMap { get; } = new(ReferenceEqualityComparer.Instance);
+    internal Dictionary<BoundRequirement, BoundWitness> WitnessMap { get; } = new();
 
     internal List<BoundPropertyWitness> PropertyWitnessStorage { get; } = new();
 
-    internal Dictionary<(BindingSymbol Requirement, PropertyAccessorKind Kind), BoundPropertyWitness> PropertyWitnessMap { get; } = new();
+    internal Dictionary<(BoundRequirement Requirement, PropertyAccessorKind Kind), BoundPropertyWitness> PropertyWitnessMap { get; } = new();
 
     internal Dictionary<BindingSymbol, BoundType> AssociatedStorage { get; } = new(ReferenceEqualityComparer.Instance);
 
@@ -185,13 +200,13 @@ public sealed class BoundConformancePath
     /// <summary>Gets a verified implementation by requirement identity, without source member lookup.</summary>
     /// <param name="requirement">The original requirement declaration identity.</param>
     /// <returns>The selected member, or null while the mapping is unverified or has no such requirement.</returns>
-    public BindingSymbol? GetImplementation(BindingSymbol requirement)
+    public BindingSymbol? GetImplementation(BoundRequirement requirement)
         => this.IsVerified && this.WitnessMap.TryGetValue(requirement, out var witness) ? witness.Implementation : null;
 
     /// <summary>Gets a verified operation by requirement identity, without member lookup.</summary>
     /// <param name="requirement">The Property requirement identity.</param>
     /// <param name="kind">The requested operation.</param>
     /// <returns>The operation mapping, or null if unavailable.</returns>
-    public BoundPropertyWitness? GetPropertyWitness(BindingSymbol requirement, PropertyAccessorKind kind)
+    public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind)
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
 }

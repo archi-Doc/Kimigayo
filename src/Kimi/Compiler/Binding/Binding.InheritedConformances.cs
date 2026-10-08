@@ -163,6 +163,18 @@ public sealed partial class Binding
 
             foreach (var witness in source.WitnessStorage)
             {
+                var identity = new BoundRequirement(witness.Requirement, this.SubstituteRequirementContract(witness.Identity.Contract, path.InheritedBase!));
+                if (!ReferenceEquals(identity.Contract, path.Contract))
+                {
+                    var ancestor = this.conformancePaths[(path.Type, identity.Contract, path.Declaration, path.RootContract)];
+                    if (!CopyRequirementWitness(ancestor, path, identity))
+                    {
+                        proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                    }
+
+                    continue;
+                }
+
                 var selection = this.InheritedWitnessSelection(self, witness.Implementation);
                 if (selection.Pending)
                 {
@@ -192,9 +204,9 @@ public sealed partial class Binding
                 var compatible = this.CompatibleRequirement(path, requirement, implementation, self, scope, selection);
                 // Incompatibility of the retained mapping rules out this path, not the derived declaration.
                 proof = CombineProof(proof, compatible == ConstraintProof.Error ? ConstraintProof.Refuted : compatible, true);
-                var inherited = new BoundWitness(witness.Requirement, witness.Implementation, this.FunctionWitness(path, witness.Requirement));
+                var inherited = new BoundWitness(identity, witness.Implementation, this.FunctionWitness(path, identity));
                 path.WitnessStorage.Add(inherited);
-                path.WitnessMap.Add(inherited.Requirement, inherited);
+                path.WitnessMap.Add(identity, inherited);
             }
 
             path.IsVerified = proof == ConstraintProof.Proven;

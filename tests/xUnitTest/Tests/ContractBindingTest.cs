@@ -41,7 +41,7 @@ public class ContractBindingTest
         var type = Container(c, "S").BoundType!;
         var mapping = Assert.IsType<BoundConformance>(c.Binding.GetConformance(type, contract));
         var witness = Assert.Single(mapping.Witnesses);
-        Assert.Same(Assert.Single(contract.Contract!.Requirements), witness.Requirement);
+        Assert.Equal(Assert.Single(contract.Contract!.Requirements), witness.Identity);
         Assert.Equal("read", witness.Implementation.Name);
         Assert.NotSame(witness.Requirement, witness.Implementation);
     }
@@ -78,7 +78,7 @@ public class ContractBindingTest
         var d = Container(c, "D").BoundSymbol!.Contract!;
         Assert.Single(d.Requirements);
         Assert.Equal(3, d.Ancestors.Count);
-        Assert.Same(Container(c, "A").BoundSymbol!.Contract!.Requirements[0], d.Requirements[0]);
+        Assert.Equal(Container(c, "A").BoundSymbol!.Contract!.Requirements[0], d.Requirements[0]);
     }
 
     [Theory]
@@ -168,7 +168,7 @@ public class ContractBindingTest
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.NotNull(call.BoundCall);
         Assert.Equal(BoundTypeKind.Parameter, call.BoundCall.ConformingType!.Kind);
-        Assert.Same(Container(c, "C").BoundSymbol!.Contract!.Requirements[0], call.BoundCall.Target);
+        Assert.Equal(Container(c, "C").BoundSymbol!.Contract!.Requirements[0], new(call.BoundCall.Target, call.BoundCall.RequirementContract!));
         Assert.Same(call.BoundCall.ConformingType, call.BoundType);
         Assert.Null(call.BoundCall.Receiver);
     }
@@ -439,7 +439,7 @@ public class ContractBindingTest
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         Assert.Same(shape, Container(c, "C").BoundSymbol!.Contract);
         var mapping = c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!)!;
-        Assert.Same(mapping.Witnesses[0].Implementation, mapping.GetImplementation(mapping.Witnesses[0].Requirement));
+        Assert.Same(mapping.Witnesses[0].Implementation, mapping.GetImplementation(mapping.Witnesses[0].Identity));
     }
 
     [Fact]

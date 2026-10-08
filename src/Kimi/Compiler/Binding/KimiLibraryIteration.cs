@@ -34,7 +34,7 @@ public sealed partial class KimiLibrary
             clause.BoundConstraint is not { Contract: { } required } || !ReferenceEquals(required, this.LendingIterator) ||
             entry.BoundSymbol is not { Type: { } result } requirement || entry.Parameters.Count != 1 || !ReferenceEquals(entry.ReturnType?.BoundType, result) ||
             symbol.Contract is not { AssociatedTypes: [var boundFamily], Requirements: [var boundEntry] } ||
-            !ReferenceEquals(boundFamily, family) || !ReferenceEquals(boundEntry, requirement))
+            !ReferenceEquals(boundFamily, family) || boundEntry != new BoundRequirement(requirement, symbol))
         {
             return false;
         }
@@ -83,7 +83,7 @@ public sealed partial class KimiLibrary
             next.BoundSymbol is not { Schema.Origins: [var stepParameter], Type: { } result } requirement ||
             next.Parameters.Count != 1 || !ReferenceEquals(next.ReturnType?.BoundType, result) ||
             symbol.Contract is not { AssociatedTypes: [var boundFamily], Requirements: [var boundNext] } ||
-            !ReferenceEquals(boundFamily, familySymbol) || !ReferenceEquals(boundNext, requirement))
+            !ReferenceEquals(boundFamily, familySymbol) || boundNext != new BoundRequirement(requirement, symbol))
         {
             return false;
         }

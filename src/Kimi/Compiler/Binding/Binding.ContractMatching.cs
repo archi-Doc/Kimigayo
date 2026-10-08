@@ -6,22 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Conformance, BindingSymbol Requirement), BindingScope> witnessScopes = new();
-
-    // SPEC 8.4.2: an inherited requirement's path is registered under the ancestor as the refining Contract names it,
-    // which is a bound reference when the parent takes Type arguments (Indexable<isize> under UniqIndexable<isize>).
-    private static BindingSymbol RequirementAncestor(BoundContract shape, BindingSymbol owner)
-    {
-        for (var i = 0; i < shape.Ancestors.Count; i++)
-        {
-            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner.Declaration))
-            {
-                return shape.Ancestors[i];
-            }
-        }
-
-        return owner;
-    }
+    private readonly Dictionary<(BoundConformancePath Conformance, BoundRequirement Requirement), BindingScope> witnessScopes = new();
 
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
@@ -324,26 +309,12 @@ public sealed partial class Binding
 
             for (var i = 0; i < shape.Requirements.Count; i++)
             {
-                var requirement = shape.Requirements[i];
-                if (!ReferenceEquals(requirement.Scope.Owner, conformance.Contract.Declaration))
+                var identity = shape.Requirements[i];
+                var requirement = identity.Symbol;
+                if (!ReferenceEquals(identity.Contract, conformance.Contract))
                 {
-                    var ancestor = this.conformancePaths[(conformance.Type, RequirementAncestor(shape, requirement.Scope.Owner.BoundSymbol!), conformance.Declaration, conformance.RootContract)];
-                    if (ancestor.GetImplementation(requirement) is { } inherited)
-                    {
-                        var inheritedWitness = ancestor.WitnessMap[requirement];
-                        conformance.WitnessStorage.Add(inheritedWitness);
-                        conformance.WitnessMap.Add(requirement, inheritedWitness);
-                        for (var w = 0; w < ancestor.PropertyWitnessStorage.Count; w++)
-                        {
-                            var operation = ancestor.PropertyWitnessStorage[w];
-                            if (ReferenceEquals(operation.Requirement.Property.Symbol, requirement))
-                            {
-                                conformance.PropertyWitnessStorage.Add(operation);
-                                conformance.PropertyWitnessMap.Add((requirement, operation.Requirement.Kind), operation);
-                            }
-                        }
-                    }
-                    else
+                    var ancestor = this.conformancePaths[(conformance.Type, identity.Contract, conformance.Declaration, conformance.RootContract)];
+                    if (!CopyRequirementWitness(ancestor, conformance, identity))
                     {
                         proof = CombineProof(proof, ConstraintProof.Unknown, true);
                     }
@@ -418,9 +389,9 @@ public sealed partial class Binding
                 }
 
                 proof = CombineProof(proof, compatibility, true);
-                var witness = new BoundWitness(requirement, selected, this.FunctionWitness(conformance, requirement));
+                var witness = new BoundWitness(identity, selected, this.FunctionWitness(conformance, identity));
                 conformance.WitnessStorage.Add(witness);
-                conformance.WitnessMap.Add(requirement, witness);
+                conformance.WitnessMap.Add(identity, witness);
             }
 
             conformance.IsVerified = proof == ConstraintProof.Proven;
@@ -507,7 +478,8 @@ public sealed partial class Binding
             return ConstraintProof.Error;
         }
 
-        var key = (conformance, requirement.BoundSymbol!);
+        var identity = new BoundRequirement(requirement.BoundSymbol!, conformance.Contract);
+        var key = (conformance, identity);
         if (!this.witnessScopes.TryGetValue(key, out var premises))
         {
             this.witnessScopes.Add(key, premises = new(requirement));
@@ -579,7 +551,7 @@ public sealed partial class Binding
             }
 
             proof = CombineProof(proof, this.CompareCallableContracts(new(requirement), new(implementation), premises, self, selection.DeclaringType, arguments, origins, inputs, selection.Path), true);
-            var witness = this.FunctionWitness(conformance, requirement.BoundSymbol!);
+            var witness = this.FunctionWitness(conformance, identity);
             witness.DeclaringType = selection.DeclaringType!;
             witness.BasePath = selection.Path;
             witness.RequirementReceiver = requirement.BoundSymbol!.ReceiverIndex is var receiverIndex && receiverIndex >= 0 ? this.ContractType(requirement.Parameters[receiverIndex].Type.BoundType!, premises, self) : null;

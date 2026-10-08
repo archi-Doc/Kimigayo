@@ -53,7 +53,7 @@ public sealed partial class Binding
             return this.Fail(binary, BindingFailure.InvalidConstraint);
         }
 
-        var call = this.BindSelectedRequirement(binary, binary.ComparisonStorage, [binary.Left, binary.Right], self, contract, members[0], scope, tupleOperator);
+        var call = this.BindSelectedRequirement(binary, binary.ComparisonStorage, [binary.Left, binary.Right], self, members[0].Contract, members[0].Symbol, scope, tupleOperator);
         binary.ComparisonStorage = call;
         binary.ComparisonActive = call?.BoundCall is not null;
         return Complete(binary, binary.ComparisonActive ? BoundType.Boolean : null);

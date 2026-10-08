@@ -418,15 +418,15 @@ public sealed partial class Binding
 
     // SPEC 8.4.2: a Contract's requirements with those inherited by refinement; an inherited one precedes the Contract's own,
     // so a conflict between them is reported at the refining declaration.
-    private void ValidateContractParameterShapes(ContractKoto contract, List<BindingSymbol> members)
+    private void ValidateContractParameterShapes(ContractKoto contract, List<BoundRequirement> members)
     {
         var scratch = this.parameterShapeScratch;
         scratch.Clear();
         for (var i = 0; i < members.Count; i++)
         {
-            if (members[i].Declaration is FunctionKoto { IsSpecialization: false })
+            if (members[i].Symbol.Declaration is FunctionKoto { IsSpecialization: false })
             {
-                scratch.Add(members[i]);
+                scratch.Add(members[i].Symbol);
             }
         }
 

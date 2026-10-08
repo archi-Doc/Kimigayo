@@ -107,7 +107,7 @@ public sealed partial class Binding
         var requirement = ((FunctionKoto)call.Target.Declaration).Accessor!;
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } || !path.PropertyWitnessMap.TryGetValue((requirement.Property.Symbol, requirement.Kind), out var witness) ||
+            path is not { IsVerified: true } || !path.PropertyWitnessMap.TryGetValue((new(requirement.Property.Symbol, contract), requirement.Kind), out var witness) ||
             witness.ObjectCompatibility != ConstraintProof.Proven || this.PropertyWitnessFunction(path, witness) is not { } function ||
             this.StoredType(witness.ImplementationType, self) is not { } declaring)
         {

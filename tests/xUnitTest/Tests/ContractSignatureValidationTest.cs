@@ -46,10 +46,10 @@ public class ContractSignatureValidationTest
                 function.BoundSymbol!.Type = id == KimiDeclarationId.Equatable ? BoundType.Primitives["i32"] : BoundType.Boolean;
                 break;
             case "requirement-identity":
-                requirements[^1] = c.Library.GetSymbol(KimiDeclarationId.WriteLine)!;
+                requirements[^1] = requirements[^1] with { Symbol = c.Library.GetSymbol(KimiDeclarationId.WriteLine)! };
                 break;
             case "inherited-identity":
-                requirements[0] = c.Library.GetSymbol(KimiDeclarationId.WriteLine)!;
+                requirements[0] = requirements[0] with { Symbol = c.Library.GetSymbol(KimiDeclarationId.WriteLine)! };
                 break;
             case "base-identity":
                 declaration.Bases[0].BoundSymbol = c.Library.GetSymbol(KimiDeclarationId.Iterable);
@@ -114,7 +114,7 @@ public class ContractSignatureValidationTest
                 function.BoundSymbol.Type = Copy(result, components: [Copy(result.Components[0], symbol: foreignFamily)]);
                 break;
             case "requirement-identity":
-                symbol.Contract!.RequirementStorage[^1] = c.Library.GetSymbol(KimiDeclarationId.WriteLine)!;
+                symbol.Contract!.RequirementStorage[^1] = symbol.Contract.RequirementStorage[^1] with { Symbol = c.Library.GetSymbol(KimiDeclarationId.WriteLine)! };
                 break;
             case "element-identity":
                 symbol.Contract!.AssociatedStorage[0] = foreignFamily;

@@ -62,6 +62,11 @@ public sealed partial class Binding
 
     private BindingSymbol BoundContractReference(BoundType reference)
     {
+        if (ReferenceEquals(reference.Symbol!.Type, reference))
+        {
+            return reference.Symbol;
+        }
+
         if (this.boundContracts.TryGetValue(reference, out var cached) && cached.Contract!.State == 2)
         {
             return cached;
@@ -76,7 +81,11 @@ public sealed partial class Binding
         shape.State = 2;
         shape.RequirementStorage.Clear();
         shape.ClauseStorage.Clear();
+        shape.EffectBoundStorage.Clear();
+        shape.EffectState = 0;
+        shape.HasEffectBounds = false;
         shape.Seen.Clear();
+        shape.SeenRequirements.Clear();
         foreach (var members in shape.MembersByName.Values)
         {
             members.Clear();
@@ -87,15 +96,20 @@ public sealed partial class Binding
         if (declaration.Contract is { } original)
         {
             // Indexed loops: a warm rebind rebuilds every bound reference without allocating.
-            shape.RequirementStorage.AddRange(original.RequirementStorage);
             shape.ClauseStorage.AddRange(original.ClauseStorage);
             for (var i = 0; i < original.RequirementStorage.Count; i++)
             {
-                var requirement = original.RequirementStorage[i];
-                shape.Seen.Add(requirement);
-                if (!shape.MembersByName.TryGetValue(requirement.Name, out var members))
+                var source = original.RequirementStorage[i];
+                var requirement = new BoundRequirement(source.Symbol, ReferenceEquals(source.Contract, declaration) ? bound : this.SubstituteRequirementContract(source.Contract, reference));
+                if (!shape.SeenRequirements.Add(requirement))
                 {
-                    shape.MembersByName.Add(requirement.Name, members = new());
+                    continue;
+                }
+
+                shape.RequirementStorage.Add(requirement);
+                if (!shape.MembersByName.TryGetValue(requirement.Symbol.Name, out var members))
+                {
+                    shape.MembersByName.Add(requirement.Symbol.Name, members = new());
                 }
 
                 members.Add(requirement);
@@ -115,9 +129,7 @@ public sealed partial class Binding
             for (var i = 0; i < original.AncestorStorage.Count; i++)
             {
                 var ancestor = original.AncestorStorage[i];
-                var boundAncestor = ancestor.Type is { Components.Count: > 0 } ancestorReference && !ReferenceEquals(ancestorReference.Symbol, ancestor) &&
-                    this.StoredType(ancestorReference, reference) is { } substituted && !ReferenceEquals(substituted, ancestorReference)
-                    ? this.BoundContractReference(substituted) : ancestor;
+                var boundAncestor = this.SubstituteRequirementContract(ancestor, reference);
                 if (shape.Seen.Add(boundAncestor))
                 {
                     shape.AncestorStorage.Add(boundAncestor);
@@ -135,6 +147,10 @@ public sealed partial class Binding
         return bound;
     }
 
+    private BindingSymbol SubstituteRequirementContract(BindingSymbol contract, BoundType reference)
+        => IsBoundContractReference(contract) && this.StoredType(contract.Type!, reference) is { } substituted && !ReferenceEquals(substituted, contract.Type)
+            ? this.BoundContractReference(substituted) : contract;
+
     private BoundType ApplyContractEnvironment(BoundType type, BindingScope scope)
     {
         for (var current = scope; current is not null; current = current.Parent)
@@ -148,8 +164,8 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 8.4.2: a bound reference substitutes its own Type parameters and, through its bound ancestors, each
-    // inherited requirement's parameters.
+    // The caller supplies the requirement's exact declaring reference. Substituting every ancestor would give an
+    // arbitrary binding to a parameter shared by P<i32> and P<i64> in the same refinement.
     private BoundType SubstituteContractReference(BoundType type, BindingSymbol contract)
     {
         if (contract.Type is not { } reference || ReferenceEquals(reference.Symbol, contract))
@@ -157,20 +173,7 @@ public sealed partial class Binding
             return type;
         }
 
-        var result = this.StoredType(type, reference) ?? type;
-        if (contract.Contract is { } shape)
-        {
-            for (var i = 0; i < shape.Ancestors.Count; i++)
-            {
-                var ancestor = shape.Ancestors[i];
-                if (ancestor.Type is { } ancestorReference && !ReferenceEquals(ancestorReference.Symbol, ancestor))
-                {
-                    result = this.StoredType(result, ancestorReference) ?? result;
-                }
-            }
-        }
-
-        return result;
+        return this.StoredType(type, reference) ?? type;
     }
 
     private bool ContractBindingsMayCollide(BindingSymbol a, BindingSymbol b, BindingScope scope)

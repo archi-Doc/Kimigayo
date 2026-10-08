@@ -1,4 +1,6 @@
 [
+  { "Name": "bound-requirement-effect-ambiguity", "Source": "contract P<T>\n    func value(self: ref/Self, x: T) -> T\ncontract Q: P<i32>, P<i64>\n    effect P.value confined\nlet present = 1\n", "Intended": "a selector without Type arguments cannot choose between distinct bound ancestors; qualified selectors are checked separately by RequirementIdentityTest",
+    "Records": [ { "Code": "InvalidEffectBound_Kd", "At": "effect P.value confined" } ] },
   { "Name": "interpolation-inner-char-unterminated", "Source": "let text = \"\\(\n    'x)\nlet wrong: i32 = true\n", "Intended": "a char that fails on a later interpolation line owns the lexical failure and recovery; the next statement keeps its independent mismatch",
     "Records": [ { "Code": "MissingCharLiteralEnd_Kd", "At": "'", "Length": 1 }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
   { "Name": "interpolation-own-closer-missing", "Source": "let text = \"\\(1", "Intended": "a missing interpolation closer is located at the insertion point and relates its own opening; outer string recovery depends on it",

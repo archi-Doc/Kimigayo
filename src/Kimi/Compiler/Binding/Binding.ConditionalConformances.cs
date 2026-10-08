@@ -138,7 +138,7 @@ public sealed partial class Binding
                 for (var w = 0; w < a.WitnessStorage.Count; w++)
                 {
                     var witness = a.WitnessStorage[w];
-                    same &= b.WitnessMap.TryGetValue(witness.Requirement, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope);
+                    same &= b.WitnessMap.TryGetValue(witness.Identity, out var otherWitness) && ReferenceEquals(witness.Implementation, otherWitness.Implementation) && this.SameFunctionWitness(witness.Function, otherWitness.Function, scope);
                 }
 
                 foreach (var binding in a.AssociatedStorage)
@@ -149,7 +149,7 @@ public sealed partial class Binding
                 for (var w = 0; w < a.PropertyWitnessStorage.Count; w++)
                 {
                     var x = a.PropertyWitnessStorage[w];
-                    if (!b.PropertyWitnessMap.TryGetValue((x.Requirement.Property.Symbol, x.Requirement.Kind), out var y))
+                    if (!b.PropertyWitnessMap.TryGetValue((x.Identity, x.Requirement.Kind), out var y))
                     {
                         same = false;
                         continue;

@@ -233,7 +233,7 @@ public class InheritedReceiverBindingTest
         var path = Path(c, "D", "C");
         var witness = Assert.Single(path.Witnesses);
         Assert.True(path.IsVerified);
-        Assert.NotNull(path.GetImplementation(witness.Requirement));
+        Assert.NotNull(path.GetImplementation(witness.Identity));
         Assert.Equal("D", witness.Function!.RequirementReceiver!.Components[0].Name);
         Assert.Equal("Base", witness.Function.ImplementationReceiver!.Components[0].Name);
         Assert.Equal(ConstraintProof.Proven, witness.Function.ObjectCompatibility);
@@ -357,7 +357,7 @@ public class InheritedReceiverBindingTest
         Assert.Equal(PropertyWitnessKind.AccessorCall, witness.Kind);
         Assert.Equal(ConstraintProof.Proven, witness.ObjectCompatibility);
         Assert.NotNull(witness.BasePath);
-        Assert.NotNull(path.GetPropertyWitness(witness.Requirement.Property.Symbol, PropertyAccessorKind.Get));
+        Assert.NotNull(path.GetPropertyWitness(witness.Identity, PropertyAccessorKind.Get));
     }
 
     [Fact]

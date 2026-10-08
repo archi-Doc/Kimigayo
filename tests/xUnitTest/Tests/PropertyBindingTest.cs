@@ -167,7 +167,7 @@ public class PropertyBindingTest
         if (valid)
         {
             var mapping = Conformance(c, "S", "C");
-            Assert.Equal(PropertyWitnessKind.StorageCopy, mapping.GetPropertyWitness(Property(c, "C", "item").Symbol, PropertyAccessorKind.Get)!.Value.Kind);
+            Assert.Equal(PropertyWitnessKind.StorageCopy, mapping.GetPropertyWitness(new(Property(c, "C", "item").Symbol, mapping.Contract), PropertyAccessorKind.Get)!.Value.Kind);
         }
     }
 
@@ -391,7 +391,7 @@ public class PropertyBindingTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct S\n    public var item: bool");
         Assert.False(c.Bind().IsComplete);
         Assert.False(mapping.IsVerified);
-        Assert.Null(mapping.GetPropertyWitness(required, PropertyAccessorKind.Get));
+        Assert.Null(mapping.GetPropertyWitness(new(required, mapping.Contract), PropertyAccessorKind.Get));
     }
 
     [Trait("Purpose", "Allocation")]

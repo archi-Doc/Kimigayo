@@ -45,13 +45,38 @@ public sealed class BoundFunctionWitness
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Path, BindingSymbol Requirement), BoundFunctionWitness> functionWitnesses = new();
+    private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Requirement), BoundFunctionWitness> functionWitnesses = new();
+
+    private static bool CopyRequirementWitness(BoundConformancePath source, BoundConformancePath target, BoundRequirement identity)
+    {
+        if (!source.IsVerified || !source.WitnessMap.TryGetValue(identity, out var witness))
+        {
+            return false;
+        }
+
+        target.WitnessStorage.Add(witness);
+        target.WitnessMap.Add(identity, witness);
+        if (identity.Symbol.Property is not null)
+        {
+            for (var i = 0; i < source.PropertyWitnessStorage.Count; i++)
+            {
+                var operation = source.PropertyWitnessStorage[i];
+                if (operation.Identity == identity)
+                {
+                    target.PropertyWitnessStorage.Add(operation);
+                    target.PropertyWitnessMap.Add((identity, operation.Requirement.Kind), operation);
+                }
+            }
+        }
+
+        return true;
+    }
 
     private BoundType? ProjectRequirementReceiver(BoundType required, BoundType self, BoundType? declaringType)
         => declaringType is not null && required is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && SameType(required.Components[0], self)
             ? this.InternType(BoundTypeKind.Semantics, null, required.Semantics, [declaringType], origin: required.Origin) : null;
 
-    private BoundFunctionWitness FunctionWitness(BoundConformancePath path, BindingSymbol requirement)
+    private BoundFunctionWitness FunctionWitness(BoundConformancePath path, BoundRequirement requirement)
     {
         var key = (path, requirement);
         if (!this.functionWitnesses.TryGetValue(key, out var witness))

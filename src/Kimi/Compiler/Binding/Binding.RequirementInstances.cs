@@ -36,7 +36,7 @@ public sealed partial class Binding
 
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
             this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(call.Target, out var witness) ||
+            path is not { IsVerified: true } || !path.WitnessMap.TryGetValue(new(call.Target, contract), out var witness) ||
             witness.Function is not { ObjectCompatibility: ConstraintProof.Proven } function ||
             this.StoredType(function.DeclaringType, self) is not { } declaring)
         {

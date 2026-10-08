@@ -229,6 +229,7 @@ public sealed partial class Binding
             shape.EffectBoundStorage.Clear();
             shape.EffectState = 0;
             shape.Seen.Clear();
+            shape.SeenRequirements.Clear();
             foreach (var members in shape.MembersByName.Values)
             {
                 members.Clear();
@@ -384,7 +385,7 @@ public sealed partial class Binding
 
             for (var j = 0; j < inherited.Requirements.Count; j++)
             {
-                Add(inherited.Requirements[j], shape.RequirementStorage);
+                AddRequirement(inherited.Requirements[j]);
             }
 
             for (var j = 0; j < inherited.AssociatedTypes.Count; j++)
@@ -398,7 +399,7 @@ public sealed partial class Binding
             var member = contract.Members[i];
             if (member is FunctionKoto { IsRequirement: true } or PropertyKoto { IsContractRequirement: true })
             {
-                Add(member.BoundSymbol!, shape.RequirementStorage);
+                AddRequirement(new(member.BoundSymbol!, shape.Symbol));
             }
             else if (member is SyntaxFormKoto { Akind: KotoKind.AssociatedType } && member.BoundSymbol is { } associated)
             {
@@ -430,9 +431,9 @@ public sealed partial class Binding
         for (var i = 0; i < shape.Requirements.Count; i++)
         {
             var member = shape.Requirements[i];
-            if (!shape.MembersByName.TryGetValue(member.Name, out var list))
+            if (!shape.MembersByName.TryGetValue(member.Symbol.Name, out var list))
             {
-                shape.MembersByName.Add(member.Name, list = new());
+                shape.MembersByName.Add(member.Symbol.Name, list = new());
             }
 
             list.Add(member);
@@ -444,6 +445,14 @@ public sealed partial class Binding
         }
 
         return valid;
+
+        void AddRequirement(BoundRequirement requirement)
+        {
+            if (shape.SeenRequirements.Add(requirement))
+            {
+                shape.RequirementStorage.Add(requirement);
+            }
+        }
 
         void Add(BindingSymbol symbol, List<BindingSymbol> destination)
         {
@@ -866,12 +875,12 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < members.Count; i++)
                 {
-                    if (members[i].Declaration is not FunctionKoto a)
+                    if (members[i].Symbol.Declaration is not FunctionKoto a)
                     {
                         continue;
                     }
 
-                    var declaringContract = members[i].Scope.Owner.BoundSymbol!;
+                    var declaringContract = members[i].Contract;
                     if (a.BoundSymbol!.Type is { } result && !TypeAccessCovers(result, declaringContract, declaringContract))
                     {
                         this.Fail(a, BindingFailure.Access);
@@ -895,7 +904,7 @@ public sealed partial class Binding
 
                     for (var j = 0; j < i; j++)
                     {
-                        if (members[j].Declaration is not FunctionKoto b || a.GenericArguments.Count != b.GenericArguments.Count || a.Parameters.Count != b.Parameters.Count)
+                        if (members[j].Symbol.Declaration is not FunctionKoto b || a.GenericArguments.Count != b.GenericArguments.Count || a.Parameters.Count != b.Parameters.Count)
                         {
                             continue;
                         }
@@ -910,7 +919,7 @@ public sealed partial class Binding
                                 break;
                             }
 
-                            sameSignature &= SignatureEquals(this.ContractType(ta, scope), this.ContractType(tb, scope), a, b);
+                            sameSignature &= SignatureEquals(this.ContractType(this.SubstituteContractReference(ta, members[i].Contract), scope), this.ContractType(this.SubstituteContractReference(tb, members[j].Contract), scope), a, b);
                             differentLabels |= a.Parameters[p].ExternalName != b.Parameters[p].ExternalName;
                         }
 

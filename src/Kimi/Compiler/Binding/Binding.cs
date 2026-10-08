@@ -1340,7 +1340,7 @@ public sealed partial class Binding
                 SemanticsKind? expected = null;
                 for (var i = 0; i < members.Count; i++)
                 {
-                    if (ReceiverShape(members[i]) is not { } current)
+                    if (ReceiverShape(members[i].Symbol) is not { } current)
                     {
                         continue;
                     }
@@ -1352,9 +1352,9 @@ public sealed partial class Binding
                     else if (expected != current)
                     {
                         this.Fail(contract, BindingFailure.ReceiverShapeMismatch);
-                        if (ReferenceEquals(members[i].Declaration.Parent, contract))
+                        if (ReferenceEquals(members[i].Symbol.Declaration.Parent, contract))
                         {
-                            this.Fail(members[i].Declaration, BindingFailure.ReceiverShapeMismatch);
+                            this.Fail(members[i].Symbol.Declaration, BindingFailure.ReceiverShapeMismatch);
                         }
                     }
                 }

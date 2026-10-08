@@ -96,6 +96,10 @@ public readonly record struct BoundPropertyWitness(
     BoundMemberPath? BasePath,
     ConstraintProof ObjectCompatibility = ConstraintProof.Proven)
 {
+    public BindingSymbol Contract { get; init; } = null!;
+
+    public BoundRequirement Identity => new(this.Requirement.Property.Symbol, this.Contract);
+
     internal IReadOnlyList<BoundOrigin?> Origins { get; init; } = [];
 }
 

@@ -17,7 +17,7 @@ public class ComparisonContractTest
         Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.Comparable));
         var equality = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
         var ordering = c.Library.GetSymbol(KimiDeclarationId.Comparable)!;
-        Assert.Equal("equals", Assert.Single(equality.Contract!.Requirements).Name);
+        Assert.Equal("equals", Assert.Single(equality.Contract!.Requirements).Symbol.Name);
         Assert.Contains(equality, ordering.Contract!.Ancestors);
         Assert.Equal(2, ordering.Contract.Requirements.Count);
     }
