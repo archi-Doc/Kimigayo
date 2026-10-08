@@ -51,7 +51,7 @@ internal sealed partial class BodyLowering
             var field = StructStorage.Field(type, i);
             if (field.BoundSymbol is not { } symbol || !body.SymbolPlaces.TryGetValue(symbol, out var place) ||
                 body.Places[place].Kind != OwnershipPlaceKind.Local || !ReferenceEquals(body.Places[place].Source, field) ||
-                !ReferenceEquals(body.Places[place].Type, SignatureType(this, field.BoundType)))
+                !ReferenceEquals(body.Places[place].Type, body.Resolve(field.BoundType, InterpretationContext.Root)))
             {
                 return Fail("Special receiver field has no verified storage Place.", out failure);
             }

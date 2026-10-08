@@ -104,7 +104,7 @@ internal sealed partial class BodyLowering
     internal void ClearFunctionContext()
     {
         this.matchBody = null;
-        this.matchDefaultContext = -1;
+        this.matchContext = InterpretationContext.Root;
         this.functions = null;
         this.GenericCalls = null;
         this.FormattingCalls = null;
@@ -184,8 +184,8 @@ internal sealed partial class BodyLowering
             return Fail("A call needs unsupported callee or argument acquisition lowering.", out failure);
         }
 
-        if (SignatureType(this, plan.ReturnType) is not { } returnType ||
-            !ReferenceEquals(body.ConcreteAt(ElementAccess.PlaceCallReference(call) ?? call.BoundType, id), returnType))
+        if (body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { } returnType ||
+            !ReferenceEquals(body.Resolve(ElementAccess.PlaceCallReference(call) ?? call.BoundType, body.ContextAt(id)), returnType))
         {
             return Fail($"Call {plan.Target.Name} has inconsistent expression and retained result Types: {Binding.DiagnosticTypeName(call.BoundType ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(plan.ReturnType)}.", out failure);
         }
@@ -196,7 +196,7 @@ internal sealed partial class BodyLowering
         }
 
         var runtime = formatting || clone || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
-        if (clone && (plan.ArgumentOperations.Length != 1 || SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowedHandle ||
+        if (clone && (plan.ArgumentOperations.Length != 1 || body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowedHandle ||
             !ReferenceTypes.StorageMatches(borrowedHandle.Components[0], returnType)))
         {
             return Fail("Strong clone requires a shared handle-slot borrow with the same result mode and payload.", out failure);
@@ -254,7 +254,7 @@ internal sealed partial class BodyLowering
                 ? new BoundArgumentOperation(omitted.Expression, omitted.Expression.BoundType, omitted.ParameterType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: parameter)
                 : plan.ArgumentOperations[i];
             var sourceArgument = i < 0 ? plan.Receiver! : isDefault ? omitted.Expression : call.ArgumentNodes[i];
-            var parameterType = body.ConcreteAt(acquisition.ParameterType, id);
+            var parameterType = body.Resolve(acquisition.ParameterType, body.ContextAt(id));
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||
                 (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
@@ -309,13 +309,13 @@ internal sealed partial class BodyLowering
                 // The instantiated parameter Type was matched against the callee's entry above; a
                 // monomorphized instance forwards its ref/T parameter as the substituted string reference.
                 if (!ReferenceTypes.IsString(parameterType) || !this.ValidateReferenceUse(body, entry, id) ||
-                    !ReferenceEquals(acquisition.Source, sourceArgument) || !ReferenceEquals(SignatureType(this, acquisition.SourceType), SignatureType(this, sourceArgument.BoundType)))
+                    !ReferenceEquals(acquisition.Source, sourceArgument) || !ReferenceEquals(body.Resolve(acquisition.SourceType, InterpretationContext.Root), body.Resolve(sourceArgument.BoundType, InterpretationContext.Root)))
                 {
                     return Fail("Reference argument lacks its call-wide Loan or Origin substitution.", out failure);
                 }
 
                 var root = this.referenceRoots[entry];
-                var sourceType = body.ConcreteAt(isDefault && acquisition.SourceType is { } declaredSource ? call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan) : acquisition.SourceType, id);
+                var sourceType = body.Resolve(isDefault && acquisition.SourceType is { } declaredSource ? call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan) : acquisition.SourceType, body.ContextAt(id));
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, OwnershipAnalysis.BorrowedArgumentSource(sourceArgument))
@@ -402,7 +402,7 @@ internal sealed partial class BodyLowering
             if (formatting && physical.Kind == AbiParameterKind.Context && plan.Target.CompilerFunction is CompilerFunctionKind.TextFixed or CompilerFunctionKind.TextTryFormat)
             {
                 var destination = plan.Target.CompilerFunction == CompilerFunctionKind.TextFixed ? 0 : 1;
-                if (SignatureType(this, plan.ArgumentOperations[destination].ParameterType) is not { Components.Count: 1 } borrowed ||
+                if (body.Resolve(plan.ArgumentOperations[destination].ParameterType, InterpretationContext.Root) is not { Components.Count: 1 } borrowed ||
                     borrowed.Components[0] is not { Kind: BoundTypeKind.FixedArray, Length: >= 0 } array)
                 {
                     return Fail("Fixed buffer requires a concrete initialized byte array.", out failure);

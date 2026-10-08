@@ -571,7 +571,7 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 if (source.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } candidateReference &&
-                    this.body.Places[candidate.Subject].Type is var subjectType && ReferenceEquals(subjectType, this.Concrete(candidateReference.Components[0])))
+                    this.body.Places[candidate.Subject].Type is var subjectType && ReferenceEquals(subjectType, this.Resolve(candidateReference.Components[0], this.Active)))
                 {
                     // SPEC 14.8.3: a candidate of a whole owned Subject is a shared reference to the Subject Place; a
                     // Scalar value is materialized in the Subject's slot at the borrow.

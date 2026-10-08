@@ -23,7 +23,7 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var value = body.Values[id];
         if (operation.Kind != OwnershipOperationKind.Produce || operation.Source is not FormattingKoto { Plan: { } plan } syntax ||
-            !ReferenceEquals(plan.Root.Formatting, plan) || !ReferenceEquals(ValueType(body, id), SignatureType(this, syntax.BoundType)))
+            !ReferenceEquals(plan.Root.Formatting, plan) || !ReferenceEquals(ValueType(body, id), body.Resolve(syntax.BoundType, InterpretationContext.Root)))
         {
             return Fail("Formatting requires its bound root plan and matching result storage.", out failure);
         }
@@ -107,7 +107,7 @@ internal sealed partial class BodyLowering
             hints[i] = total < 0 ? 0 : total;
             var write = plan.Writes[i];
             var amount = write.ArgumentNodes[1] is StringLiteralKoto text ? Encoding.UTF8.GetByteCount(text.Literal)
-                : this.FormattingBound(SignatureType(this, write.BoundCall!.TypeArguments[0]));
+                : this.FormattingBound(this.Resolve(write.BoundCall!.TypeArguments[0], InterpretationContext.Root));
             bounded &= amount >= 0;
             amount = Math.Max(0, amount);
             if (total < 0 || total > long.MaxValue - amount)

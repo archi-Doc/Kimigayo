@@ -265,7 +265,7 @@ internal sealed partial class GenericStoragePlan
                 continue;
             }
 
-            var declared = body.SubstituteDefaultType(produced, body.DefaultContextAt(i));
+            var declared = body.SubstituteDefaults(produced, body.ContextAt(i));
             var item = declared is null || call is null ? declared : binding.InstantiateStorageType(declared, call);
             if (item is null || binding.FunctionItemContext(item) is not { } context || context.Target.Declaration is not FunctionKoto implementation)
             {
@@ -302,7 +302,7 @@ internal sealed partial class GenericStoragePlan
                 continue;
             }
 
-            var declared = body.SubstituteDefaultType(environment, body.DefaultContextAt(i));
+            var declared = body.SubstituteDefaults(environment, body.ContextAt(i));
             var type = declared is null || call is null ? declared : compilation.Binding.InstantiateStorageType(declared, call);
             if (type?.ClosureContext is not { } context || !this.templates.TryGetValue(closure, out var template) ||
                 !this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))

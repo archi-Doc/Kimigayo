@@ -188,7 +188,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is BinaryKoto objectPart && !Binding.IsGetterResult(objectPart) && !this.SpecialField(objectPart) &&
-            this.Concrete(objectPart.BoundType) is { } storedObject && ObjectTypes.HandleMode(storedObject) is not null && ReferenceEquals(storedObject.Components[0], type.Components[0]) &&
+            this.Resolve(objectPart.BoundType, this.Active) is { } storedObject && ObjectTypes.HandleMode(storedObject) is not null && ReferenceEquals(storedObject.Components[0], type.Components[0]) &&
             (ElementAccess.OwnedPathRoot(objectPart) is not null || (objectPart is MemberAccessKoto objectField && ElementAccess.BorrowedPathRoot(objectField) is not null) ||
                 (objectPart is IndexKoto objectIndex && (objectIndex.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(objectIndex.Left.BoundType)))))
         {
@@ -369,8 +369,8 @@ public sealed partial class OwnershipAnalysis
     // from safe code; it is counted until its Place route replaces it (STATUS).
     private bool SnapshotAdmitted(BinaryKoto selection, BoundType type, bool address)
     {
-        var part = this.Concrete(selection.BoundType);
-        if (part is not null && type.Components.Count == 1 && !ReferenceTypes.StorageMatches(part, this.Concrete(type.Components[0])))
+        var part = this.Resolve(selection.BoundType, this.Active);
+        if (part is not null && type.Components.Count == 1 && !ReferenceTypes.StorageMatches(part, this.Resolve(type.Components[0], this.Active)))
         {
             return true; // A Reborrow through a read stored reference or handle addresses its referent, not the selection's slot.
         }
@@ -462,7 +462,7 @@ public sealed partial class OwnershipAnalysis
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
     private int Receiver(Koto root, bool exclusive = false, int reservation = -1)
     {
-        if (this.Concrete(root.BoundType) is { } handle && ObjectTypes.HandleMode(handle) is not null)
+        if (this.Resolve(root.BoundType, this.Active) is { } handle && ObjectTypes.HandleMode(handle) is not null)
         {
             return this.BorrowIntermediate(root, this.compilation.Binding.ObjectView(root, handle, exclusive), reservation);
         }
@@ -475,7 +475,7 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.5.5.1, 15.6.2: for a shared access the reference of an explicitly selected referent (`p@follow.x`) lends its
         // referent as the adapted receiver of `p.x` does; an exclusive access uses the reference itself, so a write is judged
         // by its own path and disjoint parts stay separate.
-        if (!exclusive && ElementAccess.IsFollowedRoot(root) && this.Concrete(root.BoundType) is { Components.Count: 1 } reference)
+        if (!exclusive && ElementAccess.IsFollowedRoot(root) && this.Resolve(root.BoundType, this.Active) is { Components.Count: 1 } reference)
         {
             return this.BorrowStruct(root, this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, reference.Components[0], reference.Origin));
         }
@@ -491,7 +491,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        if (this.Concrete(field.BoundType) is not { } type)
+        if (this.Resolve(field.BoundType, this.Active) is not { } type)
         {
             this.Unsupported(field);
             return -1;
@@ -519,10 +519,10 @@ public sealed partial class OwnershipAnalysis
         // SPEC 13.7: secure the RHS, then acquire the field's exclusive address once. References and owning object
         // paths share the same read/update/replacement, including destruction of the old value.
         var root = ElementAccess.BorrowedPathRoot(field)!;
-        var receiverType = this.Concrete(ElementAccess.AccessType(root, true));
+        var receiverType = this.Resolve(ElementAccess.AccessType(root, true), this.Active);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
         if (!(receiverType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || ObjectTypes.HandleMode(receiverType) is { PayloadAuthority: LoanRequirement.Uniq }) ||
-            this.Concrete(field.BoundType) is not { } stored || (operation != KotoKind.Equals && !this.SupportsUpdate(field, stored, operation)))
+            this.Resolve(field.BoundType, this.Active) is not { } stored || (operation != KotoKind.Equals && !this.SupportsUpdate(field, stored, operation)))
         {
             this.Unsupported(source);
             return -1;
@@ -571,6 +571,6 @@ public sealed partial class OwnershipAnalysis
     // a generic integer, and a raw pointer displaced by + or - (SPEC 5.3) where the target may hold one. Any other target, such
     // as a string, is outside the implemented subset on every path that reaches it.
     private bool SupportsUpdate(Koto target, BoundType? type, KotoKind operation, bool pointer = false)
-        => operation != KotoKind.Invalid && this.Concrete(type) is { } concrete &&
+        => operation != KotoKind.Invalid && this.Resolve(type, this.Active) is { } concrete &&
             (concrete.IsNumeric || this.GenericInteger(target) || (pointer && ReferenceTypes.IsPointer(concrete) && operation is KotoKind.Plus or KotoKind.Minus));
 }

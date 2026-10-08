@@ -64,7 +64,7 @@ public sealed partial class OwnershipAnalysis
             {
                 address = this.PointerAddress(target);
             }
-            else if (target is ConversionKoto followed && this.FollowsReference(followed) && this.Concrete(followed.Left.BoundType)?.Semantics == SemanticsKind.Uniq)
+            else if (target is ConversionKoto followed && this.FollowsReference(followed) && this.Resolve(followed.Left.BoundType, this.Active)?.Semantics == SemanticsKind.Uniq)
             {
                 storage = followed.Left;
                 address = this.ReadsStoredReference(followed) ? this.StoredReference(KotoHelper.UnwrapParentheses(storage), SemanticsKind.Uniq)

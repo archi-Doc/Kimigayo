@@ -11,11 +11,11 @@ internal sealed partial class BodyLowering
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter is not [0] || target.Parameters.Count != 1 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } input ||
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } input ||
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
-            SignatureType(this, plan.ReturnType) is not { Kind: BoundTypeKind.Tuple, Components: [var address, var stride] } result ||
+            body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Tuple, Components: [var address, var stride] } result ||
             address is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
-            !ReferenceEquals(stride, BoundType.ISize) || !ReferenceEquals(SignatureType(this, call.BoundType), result) ||
+            !ReferenceEquals(stride, BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), result) ||
             this.aggregateLayouts.Get(result) is not { Fields.Length: 2 } layout || layout.Offset(0) != 0 || layout.Offset(1) != 8)
         {
             return Fail("Dictionary layout projection requires its mutable handle and physical metadata result.", out failure);
@@ -54,7 +54,7 @@ internal sealed partial class BodyLowering
             return Fail("Dictionary storage borrow has an unsupported argument plan.", out failure);
         }
 
-        var input = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
+        var input = body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root);
         if (input is not { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } ||
             input.Semantics != (exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref) ||
             plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
@@ -63,8 +63,8 @@ internal sealed partial class BodyLowering
             return Fail("Dictionary storage borrow has an unsupported Dictionary or entry Type.", out failure);
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType))
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType))
         {
             return Fail("Dictionary storage borrow result does not match its call.", out failure);
         }
@@ -103,15 +103,15 @@ internal sealed partial class BodyLowering
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || target.Parameters.Count != 1 || plan.ArgumentToParameter is not [0] ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.FixedArray, Components: [var elementType] } array] } input ||
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.FixedArray, Components: [var elementType] } array] } input ||
             plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
             array.LengthExpression is not null || !this.TryGetArrayElement(elementType, out _))
         {
             return Fail("Fixed-array storage borrow needs a concrete borrowed array.", out failure);
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder ||
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder ||
             !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 4 || remainder.Fields[3].Layout.Size != 0 || remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16)
         {
             return Fail("Fixed-array storage borrow result is not the contiguous remainder.", out failure);
@@ -151,9 +151,9 @@ internal sealed partial class BodyLowering
         }
 
         // keyAt and valueAt name K and V explicitly; ownStorage reads them from the Dictionary.
-        var input = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
-        var keyType = owning ? input?.Components is [var ownedKey, _] ? ownedKey : null : SignatureType(this, plan.TypeArguments[0]);
-        var valueType = owning ? input?.Components is [_, var ownedValue] ? ownedValue : null : SignatureType(this, plan.TypeArguments[1]);
+        var input = body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root);
+        var keyType = owning ? input?.Components is [var ownedKey, _] ? ownedKey : null : body.Resolve(plan.TypeArguments[0], InterpretationContext.Root);
+        var valueType = owning ? input?.Components is [_, var ownedValue] ? ownedValue : null : body.Resolve(plan.TypeArguments[1], InterpretationContext.Root);
         if (input is null || keyType is null || valueType is null ||
             (owning ? input.Kind != BoundTypeKind.Dictionary || plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value
                 : plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead)) ||
@@ -162,9 +162,9 @@ internal sealed partial class BodyLowering
             return Fail("Owned Dictionary storage operation has an unsupported Dictionary or entry Type.", out failure);
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
         var pointer = owning ? null : input;
-        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) ||
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) ||
             (!owning && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
                 returnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var addressed] } ||
                 !ReferenceEquals(addressed, plan.Target.CompilerFunction == CompilerFunctionKind.StorageKeyAt ? keyType : valueType))))

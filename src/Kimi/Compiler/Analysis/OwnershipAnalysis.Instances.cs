@@ -107,7 +107,7 @@ public sealed partial class OwnershipAnalysis
             return false;
         }
 
-        var operand = this.Concrete(conversion.Left.BoundType);
+        var operand = this.Resolve(conversion.Left.BoundType, this.Active);
         if (Binding.TryPairLayer(operand, out _, out _))
         {
             // SPEC 8.10: a followed layer belongs to a resolved binder, which every case run and instance substitutes; a layer
@@ -117,22 +117,22 @@ public sealed partial class OwnershipAnalysis
         }
 
         return operand is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
-            ReferenceEquals(referent, this.Concrete(conversion.BoundType));
+            ReferenceEquals(referent, this.Resolve(conversion.BoundType, this.Active));
     }
 
     // A pair layer exists in an instance exactly when its operand is a reference to the selected target: an owner binding of
     // s/(t/U), or of s/T with a reference T, is no layer although its concrete operand is a reference (SPEC 13.5.5.1).
     private bool PairLayerExists(BoundType? operand, BoundType? target)
-        => this.Concrete(operand) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
-            ReferenceEquals(referent, this.Concrete(target));
+        => this.Resolve(operand, this.Active) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } &&
+            ReferenceEquals(referent, this.Resolve(target, this.Active));
 
     // The number of concrete safe reference layers of an operand above a target in an instance, or -1 when they do not end
     // in it (SPEC 13.5.5.1: nested pair layers exist only for their ref or uniq bindings).
     private int ReferenceLayers(BoundType? operand, BoundType? target)
     {
-        var terminal = this.Concrete(target);
+        var terminal = this.Resolve(target, this.Active);
         var layers = 0;
-        for (var type = this.Concrete(operand); type is not null && layers < 16; type = type.Components[0], layers++)
+        for (var type = this.Resolve(operand, this.Active); type is not null && layers < 16; type = type.Components[0], layers++)
         {
             if (ReferenceEquals(type, terminal))
             {
@@ -175,7 +175,7 @@ public sealed partial class OwnershipAnalysis
         var ownedSlot = left is BinaryKoto path && !Binding.IsGetterResult(path) && !this.SpecialField(path) && ElementAccess.OwnedPathRoot(path) is not null;
         if (ElementAccess.IsUserIndex(left) || ElementAccess.IsPlaceCall(left) || ownedSlot)
         {
-            var stored = this.Concrete(left.BoundType)!;
+            var stored = this.Resolve(left.BoundType, this.Active)!;
             // SPEC 15.6.7: the exclusive slot borrow and the loaded reference of a reserved argument are reserved with it,
             // so a later argument may still inspect the same stored reference until the call activates all three.
             var reserved = ownedSlot && reservation >= 0 && mode == SemanticsKind.Uniq;
@@ -219,7 +219,7 @@ public sealed partial class OwnershipAnalysis
 
         if (left is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } followed &&
             (followed.ConversionBinding == ConversionBinding.Follow || this.FollowsReference(followed)) &&
-            this.Concrete(left.BoundType) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } inner)
+            this.Resolve(left.BoundType, this.Active) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } inner)
         {
             // SPEC 3.4, 13.5.5.1: a selected referent that is itself a reference (r@follow with r: uniq/uniq/T, or a pair layer
             // followed in a case or instance where it exists) is read only for its address through the outer reference, as a
@@ -256,7 +256,7 @@ public sealed partial class OwnershipAnalysis
     // prepared Type in its closed substitution, whose Origins are the caller's.
     private int BorrowThrough(Koto source, int reference, BoundType type, int reservation)
     {
-        var result = this.Place(source, this.Concrete(type)!, OwnershipPlaceKind.Temporary, false);
+        var result = this.Place(source, this.Resolve(type, this.Active)!, OwnershipPlaceKind.Temporary, false);
         var operation = this.Emit(OwnershipOperationKind.Borrow, source, reference, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
         this.SetValue(operation, OwnershipValueKind.Address, [this.Value(reference)], constant: reference);
         return this.RegisterTemporary(result);
@@ -268,8 +268,8 @@ public sealed partial class OwnershipAnalysis
     private int ThroughPairLayers(Koto node, SemanticsKind mode)
     {
         if (!this.Substituting || this.compilation.Binding.PairTerminalOf(node) is not { } target || this.ReferenceLayers(node.BoundType, target) < 2 ||
-            this.Concrete(node.BoundType) is not { } concrete ||
-            this.compilation.Binding.SharedReferenceThroughLayers(concrete, this.Concrete(target)!, out _) is not { } shared)
+            this.Resolve(node.BoundType, this.Active) is not { } concrete ||
+            this.compilation.Binding.SharedReferenceThroughLayers(concrete, this.Resolve(target, this.Active)!, out _) is not { } shared)
         {
             return -2;
         }
@@ -288,15 +288,11 @@ public sealed partial class OwnershipAnalysis
         return node;
     }
 
-    // Declared Types of the analyzed body: a Semantics case sees its case Types (SPEC 8.10) and an instance its closed
-    // substitution; a case substitution cannot fail.
-    private BoundType? Concrete(BoundType? type)
+    // A declared Type of the analyzed body interpreted in a context (SPEC 7.2.3, 8.10): the context's default substitution, then
+    // the Semantics case's Types or the instance's closed substitution; a case substitution cannot fail.
+    private BoundType? Resolve(BoundType? type, InterpretationContext context)
     {
-        if (this.defaultContext >= 0)
-        {
-            type = this.body.SubstituteDefaultType(type, this.defaultContext);
-        }
-
+        type = this.body.SubstituteDefaults(type, context);
         if (type is null)
         {
             return type;

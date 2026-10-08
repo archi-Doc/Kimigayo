@@ -549,7 +549,7 @@ internal sealed partial class BodyLowering
     private bool LowerPatternProjection(OwnershipBody body, EmissionFunction function, int id, out string? failure)
     {
         this.matchBody = body;
-        this.matchDefaultContext = body.DefaultContextAt(id);
+        this.matchContext = body.ContextAt(id);
         failure = null;
         var operation = body.Operations[id];
         var armIndex = body.OperationSteps[id];

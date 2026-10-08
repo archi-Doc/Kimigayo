@@ -15,7 +15,7 @@ internal sealed partial class BodyLowering
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 1 || call.ArgumentNodes.Count != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
             plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.FixedArray, LengthExpression: null } array ||
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.FixedArray, LengthExpression: null } array ||
             !this.TryGetArrayElement(array, out var whole))
         {
             return Fail("Fixed-array ownStorage has an unsupported argument plan or array Type.", out failure);
@@ -31,8 +31,8 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false, Fields.Length: 3 } remainder ||
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false, Fields.Length: 3 } remainder ||
             !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
             return Fail(failure ?? "Fixed-array ownStorage result is not the owning remainder record.", out failure);

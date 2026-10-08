@@ -416,7 +416,7 @@ internal sealed partial class BodyLowering
                 }
 
                 if (body.Operations[cursor].Kind is OwnershipOperationKind.Deliver or OwnershipOperationKind.TestAbort ||
-                    (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(SignatureType(this, body.Operations[cursor].Source.BoundType), BoundType.Never)))
+                    (body.Operations[cursor].Kind == OwnershipOperationKind.Call && ReferenceEquals(body.Resolve(body.Operations[cursor].Source.BoundType, InterpretationContext.Root), BoundType.Never)))
                 {
                     break;
                 }
@@ -473,7 +473,7 @@ internal sealed partial class BodyLowering
             return Fail("Scalar expression attributes need explicit lowering support.", out failure);
         }
 
-        var type = operation.Place >= 0 ? body.Places[operation.Place].Type : SignatureType(this, operation.Source.BoundType);
+        var type = operation.Place >= 0 ? body.Places[operation.Place].Type : body.Resolve(operation.Source.BoundType, InterpretationContext.Root);
         if (operation.Kind == OwnershipOperationKind.Branch && value.Kind == OwnershipValueKind.None)
         {
             return true;

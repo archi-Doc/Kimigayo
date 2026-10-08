@@ -100,12 +100,12 @@ internal sealed partial class BodyLowering
                 operation.Source is InvocationKoto { BoundCall: { } projectedPlan } &&
                 CallReceiverOperation(projectedPlan) is { Kind: ArgumentOperationKind.BaseBorrow } projectedCall)
             {
-                var sourceType = body.ConcreteAt(projectedCall.SourceType, id);
+                var sourceType = body.Resolve(projectedCall.SourceType, body.ContextAt(id));
                 var sourceCore = ObjectTypes.IsBorrow(output) ? ObjectTypes.ViewTarget(sourceType) : ReferenceTypes.IsReference(sourceType) || ObjectTypes.HandleMode(sourceType) is not null || ObjectTypes.IsBorrow(sourceType) ? sourceType!.Components[0] : sourceType;
                 if (projectedCall.ObjectCompatibility != ConstraintProof.Proven || projectedCall.BasePath is null ||
                     value.Count != 1 ||
                     !ReferenceTypes.StorageMatches(type.Components[0], sourceCore) ||
-                    !ReferenceTypes.StorageMatches(output.Components[0], body.ConcreteAt(projectedCall.BasePath.Type, id)) ||
+                    !ReferenceTypes.StorageMatches(output.Components[0], body.Resolve(projectedCall.BasePath.Type, body.ContextAt(id))) ||
                     !ReferenceTypes.StorageMatches(ValueType(body, Input(body, id, 0)), type) ||
                     (body.IsReachable(id) && !this.Dominates(Input(body, id, 0), id)))
                 {
@@ -120,7 +120,7 @@ internal sealed partial class BodyLowering
             if (operation.Projection >= 0)
             {
                 if (!this.ValidateElementBorrow(body, id, id) || output.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq) || value.Count != 0 ||
-                    !ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), output.Components[0]))
+                    !ReferenceEquals(body.Resolve(operation.Source.BoundType, body.ContextAt(id)), output.Components[0]))
                 {
                     return Fail("Stored element borrow requires its protected projection and complete stored Type.", out failure);
                 }
@@ -144,7 +144,7 @@ internal sealed partial class BodyLowering
 
                 var upcast = (ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) &&
                     operation.Source.Parent is ConversionKoto conversion && ElementAccess.ConversionKind(conversion, body, id) == ConversionBinding.ObjectUpcast &&
-                    ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(body.ConcreteAt(conversion.BoundType, id), output) &&
+                    ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(body.Resolve(conversion.BoundType, body.ContextAt(id)), output) &&
                     ObjectTypes.Supports(type.Components[0], output.Components[0]);
                 if (!(ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) || (!ReferenceEquals(type.Components[0], output.Components[0]) && !upcast) ||
                     (output.Semantics == SemanticsKind.ObjUniq && type.Semantics != SemanticsKind.ObjUniq &&
@@ -171,12 +171,12 @@ internal sealed partial class BodyLowering
 
             // A field projection borrows its slot, including through an object view; it is not a complete payload borrow.
             if (operation.Source is MemberAccessKoto projected && !ReceiverField(body, operation.Place) &&
-                body.ConcreteAt(projected.BoundType, id) is var projectedType &&
+                body.Resolve(projected.BoundType, body.ContextAt(id)) is var projectedType &&
                 (!ReferenceTypes.IsStorage(projectedType) || ReferenceEquals(projectedType, output.Components[0])) &&
                 ElementAccess.BorrowedPathRoot(projected) is { } projectedRoot)
             {
                 if (!this.TryBorrowedPathOffset(body, id, projected, projectedRoot, out var projectedOffset) || value.Count != 1 ||
-                    !ElementAccess.ReceiverMatches(type, body.ConcreteAt(ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq), id), projectedRoot) ||
+                    !ElementAccess.ReceiverMatches(type, body.Resolve(ElementAccess.AccessType(projectedRoot, type.Semantics == SemanticsKind.Uniq), body.ContextAt(id)), projectedRoot) ||
                     !ReferenceEquals(ValueType(body, Input(body, id, 0)), type) ||
                     !ReferenceEquals(projectedType, output.Components[0]) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics is not (SemanticsKind.Uniq or SemanticsKind.ObjUniq)) ||
@@ -192,14 +192,14 @@ internal sealed partial class BodyLowering
             if ((ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) && !ReferenceTypes.StorageMatches(type, output.Components[0]))
             {
                 var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } selected &&
-                    ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(body.ConcreteAt(selected.BoundType, id), output.Components[0]) &&
+                    ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(body.Resolve(selected.BoundType, body.ContextAt(id)), output.Components[0]) &&
                     (output.Semantics == SemanticsKind.Ref ||
                         (selected.Parent is ConversionKoto conversion && ElementAccess.ConversionKind(conversion, body, id) == ConversionBinding.Borrow &&
-                            ReferenceEquals(conversion.Left, selected) && ReferenceEquals(body.ConcreteAt(conversion.BoundType, id), output)));
+                            ReferenceEquals(conversion.Left, selected) && ReferenceEquals(body.Resolve(conversion.BoundType, body.ContextAt(id)), output)));
                 var memberProjection = operation.Source.Parent is MemberAccessKoto selectedMember &&
                     MemberReceiverOperation(selectedMember, output.Semantics) is { ObjectCompatibility: ConstraintProof.Proven } memberReceiver &&
                     ReferenceEquals(memberReceiver.Source, operation.Source) &&
-                    ((memberReceiver.Kind == ArgumentOperationKind.PayloadProjection && ReferenceTypes.StorageMatches(body.ConcreteAt(memberReceiver.ParameterType, id), output)) ||
+                    ((memberReceiver.Kind == ArgumentOperationKind.PayloadProjection && ReferenceTypes.StorageMatches(body.Resolve(memberReceiver.ParameterType, body.ContextAt(id)), output)) ||
                     (memberReceiver.Kind == ArgumentOperationKind.BaseBorrow && output.Semantics == SemanticsKind.Ref && memberReceiver.BasePath is not null));
                 if (!ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.ObjUniq &&
@@ -235,7 +235,7 @@ internal sealed partial class BodyLowering
                 var borrowedReceiver = array >= 0 && body.Operations[array].Kind == OwnershipOperationKind.Borrow;
                 if ((uint)array >= (uint)id || (uint)subscript >= (uint)id || type.Semantics != SemanticsKind.Ref || operation.LoanMode != LoanRequirement.Ref ||
                     !(ReferenceTypes.IsStorage(output) || ReferenceTypes.IsString(output)) || output.Semantics != SemanticsKind.Ref || !ReferenceEquals(output.Components[0], element) ||
-                    !ReferenceEquals(body.ConcreteAt(ElementAccess.AccessType(indexed.Left), id), borrowedReceiver ? type.Components[0] : type) || !ReferenceEquals(body.ConcreteAt(indexed.BoundType, id), element) ||
+                    !ReferenceEquals(body.Resolve(ElementAccess.AccessType(indexed.Left), body.ContextAt(id)), borrowedReceiver ? type.Components[0] : type) || !ReferenceEquals(body.Resolve(indexed.BoundType, body.ContextAt(id)), element) ||
                     (!borrowedReceiver && body.Operations[array].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Produce)) ||
                     (borrowedReceiver ? body.Operations[array].Input : body.Operations[array].Place) != operation.Place ||
                     !ReferenceEquals(ValueType(body, array), type) || !ReferenceEquals(KotoHelper.UnwrapParentheses(body.Operations[array].Source), KotoHelper.UnwrapParentheses(indexed.Left)) ||
@@ -290,8 +290,8 @@ internal sealed partial class BodyLowering
             }
             else if (operation.Source is BinaryKoto path && !Binding.IsGetterResult(path) && !ReceiverField(body, operation.Place) && ElementAccess.OwnedPathRoot(path) is { } owner)
             {
-                if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(body.ConcreteAt(owner.BoundType, id), type) ||
-                    !ReferenceEquals(body.ConcreteAt(path.BoundType, id), output.Components[0]) || !this.TryBorrowedPathOffset(body, id, path, owner, out var pathOffset))
+                if (value.Count != 0 || this.aggregatePlaces[operation.Place] is null || !ReferenceEquals(body.Resolve(owner.BoundType, body.ContextAt(id)), type) ||
+                    !ReferenceEquals(body.Resolve(path.BoundType, body.ContextAt(id)), output.Components[0]) || !this.TryBorrowedPathOffset(body, id, path, owner, out var pathOffset))
                 {
                     return Fail("Owned path borrow does not match its stored layout and Types.", out failure);
                 }
@@ -348,12 +348,12 @@ internal sealed partial class BodyLowering
             };
         var receiver = Input(body, id, 0);
         var root = field is null ? null : ElementAccess.BorrowedPathRoot(field);
-        var fieldType = field is null ? null : body.ConcreteAt(field.BoundType, id);
+        var fieldType = field is null ? null : body.Resolve(field.BoundType, body.ContextAt(id));
         // Copy aggregate fields use the common byte transfer, preserving the enum tag and payload
         // without interpreting padding as typed values.
         var handle = fieldType is not null ? this.aggregateLayouts.Get(fieldType) : null;
         if (field is null || root is null ||
-            (!ElementAccess.ReceiverMatches(ValueType(body, receiver), body.ConcreteAt(ElementAccess.AccessType(root, ValueType(body, receiver)?.Semantics == SemanticsKind.Uniq), id), root) &&
+            (!ElementAccess.ReceiverMatches(ValueType(body, receiver), body.Resolve(ElementAccess.AccessType(root, ValueType(body, receiver)?.Semantics == SemanticsKind.Uniq), body.ContextAt(id)), root) &&
                 !(value.Kind == OwnershipValueKind.BorrowedField && this.PreparedBorrowMatches(body, id, receiver, root))) || !(ReferenceTypes.IsValue(fieldType) || ReferenceEquals(fieldType, BoundType.Unit) || handle is not null) ||
             (body.IsReachable(id) && !this.Dominates(receiver, id)))
         {
@@ -412,7 +412,7 @@ internal sealed partial class BodyLowering
         return KotoHelper.UnwrapParentheses(root).BoundSymbol is { } symbol &&
             this.IsPreparedArgument(body, read, symbol, place) &&
             body.Operations[this.elementNextCalls[read]].Source is InvocationKoto { BoundCall: not null } &&
-            ReferenceTypes.StorageMatches(body.ConcreteAt(root.BoundType, read), ValueType(body, receiver));
+            ReferenceTypes.StorageMatches(body.Resolve(root.BoundType, body.ContextAt(read)), ValueType(body, receiver));
     }
 
     // Inline parts are contiguous in their containing layout: sum each
@@ -420,15 +420,15 @@ internal sealed partial class BodyLowering
     private bool TryBorrowedPathOffset(OwnershipBody body, int operation, BinaryKoto field, Koto root, out int offset)
     {
         // Object views point at the allocation header; ordinary borrows point at payload storage.
-        var rootType = body.ConcreteAt(ElementAccess.AccessType(root), operation);
+        var rootType = body.Resolve(ElementAccess.AccessType(root), body.ContextAt(operation));
         offset = ObjectTypes.IsBorrow(rootType) || ObjectTypes.HandleMode(rootType) is not null ? 16 : 0;
         for (var level = field; ;)
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);
-            owner = body.ConcreteAt(owner, operation);
-            element = body.ConcreteAt(element, operation);
+            owner = body.Resolve(owner, body.ContextAt(operation));
+            element = body.Resolve(element, body.ContextAt(operation));
             var layout = owner is null ? null : this.aggregateLayouts.Get(owner);
-            var selected = body.ConcreteAt(level.BoundType, operation);
+            var selected = body.Resolve(level.BoundType, body.ContextAt(operation));
             if (layout is null || (uint)position >= (uint)layout.StorageCount || element is null || selected is null ||
                 !level.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(element, selected, level))
             {

@@ -13,13 +13,13 @@ internal sealed partial class BodyLowering
         if (operation.Kind != OwnershipOperationKind.Produce || body.Values[id].Count != 1 ||
             operation.Source is not IsKoto { BoundRuntimeTest: { SharedType: { } shared } plan } source ||
             !ReferenceEquals(ValueType(body, id), BoundType.Boolean) ||
-            this.ObjectRuntimeTypes?.GetValueOrDefault(body.ConcreteAt(plan.TargetType, id)!) is not > 0)
+            this.ObjectRuntimeTypes?.GetValueOrDefault(body.Resolve(plan.TargetType, body.ContextAt(id))!) is not > 0)
         {
             return Fail("Runtime Type test requires its finalized identity and shared operand plan.", out failure);
         }
 
         var input = Input(body, id, 0);
-        if ((uint)input >= (uint)id || !ReferenceEquals(ValueType(body, input), body.ConcreteAt(shared, id)) ||
+        if ((uint)input >= (uint)id || !ReferenceEquals(ValueType(body, input), body.Resolve(shared, body.ContextAt(id))) ||
             body.Operations[input].Kind != OwnershipOperationKind.Borrow ||
             !ReferenceEquals(body.Operations[input].Source, source.Left) ||
             (body.IsReachable(id) && !this.Dominates(input, id)))
@@ -27,7 +27,7 @@ internal sealed partial class BodyLowering
             return Fail("Runtime Type test requires one evaluated, verified shared object borrow.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.ObjectTypeTest, id, [this.PhysicalOperand(body, input), new(EmissionOperandKind.Integer, this.ObjectRuntimeTypes![body.ConcreteAt(plan.TargetType, id)!])], op: source.IsNegated ? "not" : null);
+        function.AddScalar(EmissionOpcode.ObjectTypeTest, id, [this.PhysicalOperand(body, input), new(EmissionOperandKind.Integer, this.ObjectRuntimeTypes![body.Resolve(plan.TargetType, body.ContextAt(id))!])], op: source.IsNegated ? "not" : null);
         return true;
     }
 }

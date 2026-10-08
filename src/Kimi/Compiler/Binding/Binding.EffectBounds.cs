@@ -2037,7 +2037,7 @@ public sealed partial class Binding
         }
 
         private BoundType? Type(BoundType type)
-            => this.cleanupSource is { } body ? body.Concrete(type)
+            => this.cleanupSource is { } body ? body.Resolve(type, InterpretationContext.Root)
             : this.contexts[this.context] is { } call ? binding.InstantiateStorageType(type, call) : type;
 
         // A call instantiates the callee's parameters, lengths and Origins; a call that substitutes nothing reads

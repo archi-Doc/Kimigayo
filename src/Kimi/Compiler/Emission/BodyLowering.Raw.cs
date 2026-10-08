@@ -20,19 +20,19 @@ internal sealed partial class BodyLowering
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
             plan.ArgumentToParameter[0] != 0 || (inputs == 2 && plan.ArgumentToParameter[1] != 1) || plan.TypeArguments.Length != 1 ||
-            SignatureType(this, plan.TypeArguments[0]) is not { } elementType || !this.TryGetArrayElement(elementType, out var element))
+            body.Resolve(plan.TypeArguments[0], InterpretationContext.Root) is not { } elementType || !this.TryGetArrayElement(elementType, out var element))
         {
             return Fail("Raw storage operation has an unsupported argument plan or element Type.", out failure);
         }
 
-        var pointer = kind == CompilerFunctionKind.RawAllocate ? SignatureType(this, plan.ReturnType) : SignatureType(this, plan.ArgumentOperations[0].ParameterType);
-        var result = SignatureType(this, call.BoundType);
+        var pointer = kind == CompilerFunctionKind.RawAllocate ? body.Resolve(plan.ReturnType, InterpretationContext.Root) : body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root);
+        var result = body.Resolve(call.BoundType, InterpretationContext.Root);
         if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, elementType) ||
             (kind == CompilerFunctionKind.RawSlice
                 ? result is not { Kind: BoundTypeKind.Slice, Components: [var sliced] } || !ReferenceEquals(sliced, elementType) ||
-                    !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), BoundType.ISize)
+                    !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), BoundType.ISize)
                 : !ReferenceEquals(result, kind == CompilerFunctionKind.RawAllocate ? pointer : BoundType.Unit)) ||
-            (kind == CompilerFunctionKind.RawAllocate && !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[0].ParameterType), BoundType.ISize)))
+            (kind == CompilerFunctionKind.RawAllocate && !ReferenceEquals(body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root), BoundType.ISize)))
         {
             return Fail("Raw storage operation does not match its element Type.", out failure);
         }

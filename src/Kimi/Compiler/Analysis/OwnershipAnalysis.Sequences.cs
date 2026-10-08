@@ -44,7 +44,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (ReferenceTypes.IsDictionary(source.Left.BoundType))
         {
-            if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } stored || !this.SupportsCopySnapshot(stored, source))
+            if (acquisition == AcquisitionKind.Move || this.Resolve(source.BoundType, this.Active) is not { } stored || !this.SupportsCopySnapshot(stored, source))
             {
                 if (acquisition is null && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven)
                 {
@@ -85,7 +85,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         int result;
-        if (acquisition == AcquisitionKind.Move || this.Concrete(source.BoundType) is not { } resultType ||
+        if (acquisition == AcquisitionKind.Move || this.Resolve(source.BoundType, this.Active) is not { } resultType ||
             !this.SupportsCopySnapshot(resultType, source))
         {
             if (acquisition is null && source.BoundType is { } element && this.compilation.Binding.ProveCopy(element, source) != ConstraintProof.Proven)

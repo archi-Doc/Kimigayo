@@ -41,7 +41,7 @@ internal sealed partial class BodyLowering
         }
 
         var acquiredSource = syntaxReceiver is ConversionKoto borrow && ElementAccess.ConversionKind(borrow, body, id) == ConversionBinding.Borrow &&
-            (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, body.ConcreteAt(borrow.BoundType, id))
+            (ReferenceTypes.IsArray(receiverPlace.Type) || ReferenceTypes.IsDynamicArray(receiverPlace.Type) || ReferenceTypes.IsDictionary(receiverPlace.Type)) && ReferenceEquals(receiverPlace.Type, body.Resolve(borrow.BoundType, body.ContextAt(id)))
             ? ElementAccess.ValueSource(borrow.Left, body, id) : syntaxReceiver;
         // A shared iterable written as an explicit borrow (dictionary@ref) is reborrowed from the evaluated borrow itself.
         var receiverSource = ElementAccess.ValueSource(receiverPlace.Source, body, id);
@@ -98,7 +98,7 @@ internal sealed partial class BodyLowering
                 return Fail("Sequence receiver projection is not available.", out failure);
             }
 
-            receiver = SignatureType(this, body.Operations[projection.Operation].Source.BoundType)!;
+            receiver = body.Resolve(body.Operations[projection.Operation].Source.BoundType, InterpretationContext.Root)!;
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
         }
 
@@ -184,7 +184,7 @@ internal sealed partial class BodyLowering
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(SignatureType(this, ElementAccess.AccessType(index.Left))) || ReferenceTypes.IsDynamicArray(SignatureType(this, ElementAccess.AccessType(index.Left)))) :
+            var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(body.Resolve(ElementAccess.AccessType(index.Left), InterpretationContext.Root)) || ReferenceTypes.IsDynamicArray(body.Resolve(ElementAccess.AccessType(index.Left), InterpretationContext.Root))) :
                 operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice or BoundTypeKind.Array };
             var aggregate = this.aggregateLayouts.Get(ValueType(body, id)!);
             if ((arrayRead ? receiver.Kind != BoundTypeKind.FixedArray : receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array)) || !validSource ||
@@ -223,14 +223,14 @@ internal sealed partial class BodyLowering
             {
                 // SPEC 4.6.4: one ResolvedRange value, written or resolved from a Range, supplies both boundaries.
                 resolvedKey = ElementAccess.KeySyntax(keyed);
-                sliceType = SignatureType(this, keyed.BoundType);
+                sliceType = body.Resolve(keyed.BoundType, InterpretationContext.Root);
             }
             else if (operation.Source is IndexKoto { Right: RangeKoto rangeSyntax } source)
             {
                 // SPEC 4.6.4: a `^x` boundary evaluates x and resolves against the length in the slice operation.
                 startSyntax = rangeSyntax.Start is FromEndIndexKoto { Operand: var startOffset } ? startOffset : rangeSyntax.Start;
                 endSyntax = rangeSyntax.End is FromEndIndexKoto { Operand: var endOffset } ? endOffset : rangeSyntax.End;
-                sliceType = SignatureType(this, source.BoundType);
+                sliceType = body.Resolve(source.BoundType, InterpretationContext.Root);
                 shape = (rangeSyntax.Start is FromEndIndexKoto ? SliceShape.StartFromEnd : 0) | (rangeSyntax.End is FromEndIndexKoto ? SliceShape.EndFromEnd : 0) | (rangeSyntax.IsInclusive ? SliceShape.Closed : 0);
             }
 

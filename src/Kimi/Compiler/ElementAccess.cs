@@ -140,7 +140,7 @@ internal static class ElementAccess
     // default-argument context precedes the body's Semantics-case or closed-call substitution.
     internal static ConversionBinding ConversionKind(ConversionKoto conversion, OwnershipBody body, int operation)
         => conversion.Adaptation is { } plan
-            ? ExplicitAdaptationPlan.Select(body.ConcreteAt(plan.Source, operation)!, body.ConcreteAt(plan.Target, operation)!, plan.IsShorthand)
+            ? ExplicitAdaptationPlan.Select(body.Resolve(plan.Source, body.ContextAt(operation))!, body.Resolve(plan.Target, body.ContextAt(operation))!, plan.IsShorthand)
             : conversion.ConversionBinding;
 
     internal static IdentifierNameKoto? WritableRoot(Koto source)

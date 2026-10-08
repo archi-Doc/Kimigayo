@@ -33,7 +33,7 @@ public sealed partial class OwnershipAnalysis
             {
                 // SPEC 7.6.2: the entry initializes its environment binding as `let x = x` (a Reborrow) or `let x = x@ref`
                 // and `x@uniq` (a borrow of the outer slot) would; the closure keeps the borrow's Loan (SPEC 15.8.2).
-                var borrowed = this.BorrowCapture(source, place, this.Concrete(capture.Environment.Type!)!);
+                var borrowed = this.BorrowCapture(source, place, this.Resolve(capture.Environment.Type!, this.Active)!);
                 var acquired = this.Place(source, capture.Environment.Type, OwnershipPlaceKind.Temporary, false);
                 var borrowedValue = this.Value(borrowed);
                 read = this.Emit(OwnershipOperationKind.Consume, source, borrowed, acquired, AcquisitionKind.Move);
@@ -183,7 +183,7 @@ public sealed partial class OwnershipAnalysis
             else
             {
                 var entry = this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
-                this.body.RecordCallInput(entry, this.Concrete(plan.Arguments[i - mark].ParameterType));
+                this.body.RecordCallInput(entry, this.Resolve(plan.Arguments[i - mark].ParameterType, this.Active));
             }
         }
 
@@ -203,7 +203,7 @@ public sealed partial class OwnershipAnalysis
         var result = plan.Signature.ResultMode == FunctionResultMode.Value ? this.Temporary(call) : this.ReferenceTemporary(call, plan.ReturnType);
         this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
         // An instance's `(T) -> T` returns its substituted T.
-        if (this.Concrete(plan.ReturnType) is { } returned && ScalarResult(returned))
+        if (this.Resolve(plan.ReturnType, this.Active) is { } returned && ScalarResult(returned))
         {
             this.SetValue(invoke, OwnershipValueKind.Call, []);
             this.SetValue(this.Value(result), OwnershipValueKind.Alias, [invoke]);

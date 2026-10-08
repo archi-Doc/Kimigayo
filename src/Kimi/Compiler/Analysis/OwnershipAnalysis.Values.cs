@@ -11,7 +11,7 @@ public sealed partial class OwnershipAnalysis
     private bool TryScalarLiteral(Koto source, out Int128 value)
     {
         // An instance fits a literal of a generic integer Type to its concrete Type (SPEC 8.4.7.3).
-        var type = this.Concrete(source.BoundType);
+        var type = this.Resolve(source.BoundType, this.Active);
         if (FloatingTypes.Supports(type))
         {
             var success = FloatingTypes.TryLiteral(source, out var bits);
@@ -132,7 +132,7 @@ public sealed partial class OwnershipAnalysis
 
     private int ComputeUpdate(Koto source, BoundType? type, int previous, int right, KotoKind operation)
     {
-        if (operation is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.Concrete(type), this.compilation.PointerWidth) == 128)
+        if (operation is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.Resolve(type, this.Active), this.compilation.PointerWidth) == 128)
         {
             this.Unsupported(source); // SPEC 8.4.7.3, IMPL 21.5.3: a generic integer instance's 128-bit division.
         }

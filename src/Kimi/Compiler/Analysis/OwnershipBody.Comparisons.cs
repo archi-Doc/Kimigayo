@@ -281,7 +281,7 @@ public sealed partial class OwnershipBody
     private bool CallableReceiverType(int place, BoundValueCall plan)
     {
         var type = this.Places[place].Type;
-        var receiver = this.Concrete(plan.ReceiverType);
+        var receiver = this.Resolve(plan.ReceiverType, InterpretationContext.Root);
         return ReferenceEquals(type, receiver) || (receiver?.Kind == BoundTypeKind.Function && this.Places[place].Kind == OwnershipPlaceKind.Temporary &&
             type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && ReferenceEquals(type.Components[0], receiver));
     }

@@ -27,7 +27,7 @@ internal sealed partial class BodyLowering
         kind = -1;
         dispatch = new(EmissionOperandKind.NullAddress, 0);
         failure = null;
-        if (call.ArgumentOperations.Length != 1 || SignatureType(this, call.ArgumentOperations[0].ParameterType) is not { Components.Count: 1 } input ||
+        if (call.ArgumentOperations.Length != 1 || this.Resolve(call.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Components.Count: 1 } input ||
             input.Semantics != SemanticsKind.Uniq || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer ||
             this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[8].Layout.Size != 0)
         {
@@ -84,7 +84,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (SignatureType(this, required) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } reference)
+        if (this.Resolve(required, InterpretationContext.Root) is not { Semantics: SemanticsKind.Ref, Components.Count: 1 } reference)
         {
             return -1;
         }

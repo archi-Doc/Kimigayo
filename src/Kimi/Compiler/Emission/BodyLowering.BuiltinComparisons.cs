@@ -17,7 +17,7 @@ internal sealed partial class BodyLowering
 
         var equality = call.Target.CompilerFunction == CompilerFunctionKind.BuiltinEquals;
         var contract = equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable;
-        if (SignatureType(this, call.ConformingType) is not { } self || !ComparisonTypes.IsBuiltin(self, contract) ||
+        if (body.Resolve(call.ConformingType, InterpretationContext.Root) is not { } self || !ComparisonTypes.IsBuiltin(self, contract) ||
             WindowsLowering.GetValue(self) is not { } representation ||
             !ReferenceEquals(ValueType(body, id), equality ? BoundType.Boolean : BoundType.I32) || body.Values[id].Kind != OwnershipValueKind.Call)
         {

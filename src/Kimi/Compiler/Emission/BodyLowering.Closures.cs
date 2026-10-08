@@ -51,7 +51,7 @@ internal sealed partial class BodyLowering
     private bool BorrowingEntry(in BoundCapture capture)
         => capture.Environment.CaptureAcquisition is CaptureAcquisition.Reborrow or CaptureAcquisition.SharedSlotBorrow or CaptureAcquisition.ExclusiveSlotBorrow ||
             (capture.Environment.CaptureAcquisition == CaptureAcquisition.Bare &&
-                SignatureType(this, capture.Environment.Type) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 });
+                this.Resolve(capture.Environment.Type, InterpretationContext.Root) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 });
 
     private bool CaptureSourcePlace(OwnershipBody body, FunctionKoto closure, BindingSymbol source, int input, out int place)
     {
@@ -132,7 +132,7 @@ internal sealed partial class BodyLowering
         if (source?.Kind == BoundTypeKind.FunctionItem)
         {
             if (operation.Kind != OwnershipOperationKind.Produce || source.Symbol?.Declaration is not FunctionKoto itemDefinition ||
-                !ReferenceEquals(body.ConcreteAt(operation.Source.ErasedFunctionType, id), body.Places[operation.Place].Type) ||
+                !ReferenceEquals(body.Resolve(operation.Source.ErasedFunctionType, body.ContextAt(id)), body.Places[operation.Place].Type) ||
                 operation.Source.CodeContext.Compilation.Binding.FunctionItemSignature(source) is not { } itemSignature ||
                 !operation.Source.CodeContext.Compilation.Binding.ItemContractFits(source, itemSignature, body.Places[operation.Place].Type, operation.Source) ||
                 this.ClosureEntry(source, itemDefinition, address: true) is not { } itemEntry ||
@@ -147,7 +147,7 @@ internal sealed partial class BodyLowering
 
         if (operation.Kind != OwnershipOperationKind.Produce || source?.Kind != BoundTypeKind.Closure ||
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
-            !ReferenceEquals(body.ConcreteAt(operation.Source.ErasedFunctionType, id), body.Places[operation.Place].Type) ||
+            !ReferenceEquals(body.Resolve(operation.Source.ErasedFunctionType, body.ContextAt(id)), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
             !Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
             this.aggregateLayouts.Get(source) is not { } layout ||
@@ -176,7 +176,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (body.Function.BoundClosure is not { } closure || value.Constant < 0 || value.Constant >= closure.Captures.Count ||
             body.Operations[id].Kind != OwnershipOperationKind.Produce || !ReferenceEquals(body.Operations[id].Source, body.Function) ||
-            !ReferenceEquals(ValueType(body, id), SignatureType(this, closure.Captures[(int)value.Constant].Environment.Type)) ||
+            !ReferenceEquals(ValueType(body, id), body.Resolve(closure.Captures[(int)value.Constant].Environment.Type, InterpretationContext.Root)) ||
             !body.SymbolPlaces.TryGetValue(closure.Captures[(int)value.Constant].Environment, out var place) || place != body.Operations[id].Place)
         {
             return Fail("Invalid closure capture parameter.", out failure);
@@ -184,7 +184,7 @@ internal sealed partial class BodyLowering
 
         if (closure.EnvironmentType is { } environment)
         {
-            return (this.aggregateLayouts.Get(SignatureType(this, environment)!) is { } layout && layout.Count == closure.Captures.Count) || Fail("Capture environment layout is inconsistent.", out failure);
+            return (this.aggregateLayouts.Get(body.Resolve(environment, InterpretationContext.Root)!) is { } layout && layout.Count == closure.Captures.Count) || Fail("Capture environment layout is inconsistent.", out failure);
         }
 
         var offset = CaptureOffset(closure, (int)value.Constant);
@@ -205,7 +205,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (operation.Source is not FunctionKoto { BoundClosure: { } closure } source ||
             closure.Signature.Kind != BoundTypeKind.Function ||
-            !ReferenceEquals(body.Places[operation.Place].Type, body.ConcreteAt(closure.EnvironmentType ?? closure.Signature, id)) || value.Count != closure.Captures.Count ||
+            !ReferenceEquals(body.Places[operation.Place].Type, body.Resolve(closure.EnvironmentType ?? closure.Signature, body.ContextAt(id))) || value.Count != closure.Captures.Count ||
             this.ClosureEntry(body.Places[operation.Place].Type, source) is not { } callee ||
             (body.IsReachable(id) && (body.GetInputState(id, operation.Place) & PlaceState.MayInit) != 0))
         {
@@ -228,7 +228,7 @@ internal sealed partial class BodyLowering
         }
 
         var patternStart = function.PatternSteps.Count;
-        var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(body.ConcreteAt(environmentType, id)!) : null;
+        var environmentLayout = closure.EnvironmentType is { } environmentType ? this.aggregateLayouts.Get(body.Resolve(environmentType, body.ContextAt(id))!) : null;
         if (closure.EnvironmentType is not null && environmentLayout is null)
         {
             return Fail("Concrete environment has no storage layout.", out failure);
@@ -248,7 +248,7 @@ internal sealed partial class BodyLowering
                 (uint)input >= (uint)id || body.Operations[input].Kind != (environmentLayout is null ? OwnershipOperationKind.Read : OwnershipOperationKind.Consume) ||
                 (borrowed ? environmentLayout is null || body.Places[place = body.Operations[input].Place].Kind != OwnershipPlaceKind.Temporary
                     : !this.CaptureSourcePlace(body, source, capture.Source, input, out place) || place != body.Operations[input].Place) ||
-                !ReferenceEquals(body.Places[place].Type, body.ConcreteAt(capture.Environment.Type, id)) ||
+                !ReferenceEquals(body.Places[place].Type, body.Resolve(capture.Environment.Type, body.ContextAt(id))) ||
                 (body.IsReachable(id) && (!this.Dominates(input, id) || (body.GetInputState(input, place) & PlaceState.MustInit) == 0)))
             {
                 return Fail("Closure capture requires a checked initialized inline scalar snapshot.", out failure);
@@ -268,9 +268,9 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         // A monomorphized instance calls the value through its substituted signature (SPEC 21.3.1).
-        var receiver = SignatureType(this, plan.ReceiverType);
-        var signature = SignatureType(this, plan.Signature);
-        var returnType = SignatureType(this, plan.ReturnType);
+        var receiver = body.Resolve(plan.ReceiverType, InterpretationContext.Root);
+        var signature = body.Resolve(plan.Signature, InterpretationContext.Root);
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
             !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || IsPartReceiver(body.Places[operation.Input], receiver)) || !ReferenceEquals(ElementAccess.PlaceCallReference(call) ?? call.BoundType, plan.ReturnType) ||
             plan.Arguments.Length != call.ArgumentNodes.Count ||
@@ -313,7 +313,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < plan.Arguments.Length; i++)
         {
             var argument = plan.Arguments[i];
-            var parameterType = SignatureType(this, argument.ParameterType);
+            var parameterType = body.Resolve(argument.ParameterType, InterpretationContext.Root);
             if (argument.ParameterIndex != i ||
                 argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
                 parameterType is null || !ReferenceEquals(parameterType, inputs.Components[i]) ||

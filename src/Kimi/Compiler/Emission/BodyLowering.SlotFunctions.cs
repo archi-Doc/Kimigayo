@@ -48,7 +48,7 @@ internal sealed partial class BodyLowering
 
             var place = body.Places[operation.Place];
             if (place.Kind != OwnershipPlaceKind.Parameter || !ReferenceEquals(place.Source, parameter.Type) ||
-                !ReferenceEquals(operation.Source, parameter.Type) || !ReferenceEquals(place.Type, SignatureType(this, parameter.Type.BoundType)))
+                !ReferenceEquals(operation.Source, parameter.Type) || !ReferenceEquals(place.Type, body.Resolve(parameter.Type.BoundType, InterpretationContext.Root)))
             {
                 return Fail("Parameter storage does not match its logical signature.", out failure);
             }
@@ -68,7 +68,7 @@ internal sealed partial class BodyLowering
 
         if (body.Function.BoundClosure is { EnvironmentType: { } environment } closure)
         {
-            if (this.aggregateLayouts.Get(SignatureType(this, environment)!) is not { } layout)
+            if (this.aggregateLayouts.Get(body.Resolve(environment, InterpretationContext.Root)!) is not { } layout)
             {
                 return Fail("Concrete closure has no finite environment layout.", out failure);
             }
@@ -103,7 +103,7 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (SlotTypes.IsResult(SignatureType(this, body.DeclaredResultType)) != (returns == 1))
+        if (SlotTypes.IsResult(body.Resolve(body.DeclaredResultType, InterpretationContext.Root)) != (returns == 1))
         {
             return Fail("Missing stored return value.", out failure);
         }
@@ -113,7 +113,7 @@ internal sealed partial class BodyLowering
             var call = body.Operations[id];
             // SPEC 7.1.1: a Place call returns its reference, whatever the stored Type its syntax designates.
             var evaluator = body.Values[id].Kind == OwnershipValueKind.DefaultCall;
-            if (call.Kind != OwnershipOperationKind.Call || !SlotTypes.IsResult(evaluator ? body.Places[call.Place].Type : body.ConcreteAt(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, id)))
+            if (call.Kind != OwnershipOperationKind.Call || !SlotTypes.IsResult(evaluator ? body.Places[call.Place].Type : body.Resolve(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, body.ContextAt(id))))
             {
                 continue;
             }
@@ -131,7 +131,7 @@ internal sealed partial class BodyLowering
             }
 
             var place = body.Places[call.Place];
-            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || (!evaluator && !ReferenceEquals(place.Type, body.ConcreteAt(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, id))))
+            if (place.Kind != OwnershipPlaceKind.Temporary || !ReferenceEquals(place.Source, call.Source) || (!evaluator && !ReferenceEquals(place.Type, body.Resolve(ElementAccess.PlaceCallReference(call.Source) ?? call.Source.BoundType, body.ContextAt(id)))))
             {
                 return Fail("Stored call result must have its own temporary storage.", out failure);
             }

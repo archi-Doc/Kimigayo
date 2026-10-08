@@ -29,14 +29,14 @@ internal sealed partial class BodyLowering
                 // acquired Type; the Type targets of Identity Acquisition keep their supported set. An operand read through its
                 // reference layers (SPEC 13.5.2) supplies the read Type.
                 var left = OperandType(source);
-                var context = (uint)identity.Place < (uint)body.Places.Count ? body.Places[identity.Place].DefaultContext : -1;
+                var context = (uint)identity.Place < (uint)body.Places.Count ? body.ContextOf(identity.Place) : InterpretationContext.Root;
                 var selected = source.Adaptation is { } plan
-                    ? ExplicitAdaptationPlan.Select(body.Concrete(body.SubstituteDefaultType(plan.Source, context))!, body.Concrete(body.SubstituteDefaultType(plan.Target, context))!, plan.IsShorthand)
+                    ? ExplicitAdaptationPlan.Select(body.Resolve(plan.Source, context)!, body.Resolve(plan.Target, context)!, plan.IsShorthand)
                     : source.ConversionBinding;
                 if ((uint)identity.Place >= (uint)body.Places.Count || selected is not (ConversionBinding.Identity or ConversionBinding.Transfer) ||
-                    body.Concrete(body.SubstituteDefaultType(source.BoundType, context)) is not { } type ||
+                    body.Resolve(source.BoundType, context) is not { } type ||
                     (selected == ConversionBinding.Identity && !Binding.SupportsIdentityAcquisition(type) && !Binding.IsCopyOperation(source)) ||
-                    !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(left, context))) || !ReferenceEquals(type, body.Concrete(body.SubstituteDefaultType(source.Right.BoundType, context))) ||
+                    !ReferenceEquals(type, body.Resolve(left, context)) || !ReferenceEquals(type, body.Resolve(source.Right.BoundType, context)) ||
                     !ReferenceEquals(type, body.Places[identity.Place].Type))
                 {
                     return false;
@@ -90,7 +90,7 @@ internal sealed partial class BodyLowering
             }
 
             if (value.Kind == OwnershipValueKind.Phi && (!scalar || operation.Kind != OwnershipOperationKind.Branch ||
-                !ReferenceEquals(ValueType(body, id), body.ConcreteAt(operation.Source.BoundType, id))))
+                !ReferenceEquals(ValueType(body, id), body.Resolve(operation.Source.BoundType, body.ContextAt(id)))))
             {
                 return false;
             }
@@ -138,7 +138,7 @@ internal sealed partial class BodyLowering
                     : value.Constant == OwnershipValue.RawPlaceBorrow
                     ? !ReferenceTypes.IsPointer(ValueType(body, Input(body, id, 0))) || !ReferenceTypes.IsReference(ValueType(body, id))
                     : operation.Source is not Parsing.ConversionKoto conversion ||
-                        !ReferenceEquals(ValueType(body, id), body.ConcreteAt(conversion.BoundType, id)) ||
+                        !ReferenceEquals(ValueType(body, id), body.Resolve(conversion.BoundType, body.ContextAt(id))) ||
                         !ReferenceEquals(ValueType(body, Input(body, id, 0)), OperandType(body, conversion, id)) ||
                         !ValidScalarConversion(ElementAccess.ConversionKind(conversion, body, id), ValueType(body, Input(body, id, 0)), ValueType(body, id)))))
             {
@@ -149,7 +149,7 @@ internal sealed partial class BodyLowering
                 (operation.Kind != OwnershipOperationKind.Produce || body.Places[operation.Place].Kind != OwnershipPlaceKind.Parameter ||
                 value.Constant < 0 || value.Constant >= body.ParameterCount ||
                 !ReferenceEquals(operation.Source, body.Function.Parameters[(int)value.Constant].Type) ||
-                !ReferenceEquals(ValueType(body, id), SignatureType(lowering, body.Function.Parameters[(int)value.Constant].Type.BoundType))))
+                !ReferenceEquals(ValueType(body, id), body.Resolve(body.Function.Parameters[(int)value.Constant].Type.BoundType, InterpretationContext.Root))))
             {
                 return false;
             }
@@ -167,11 +167,11 @@ internal sealed partial class BodyLowering
                     continue;
                 }
 
-                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(SignatureType(lowering, operation.Source.BoundType)))
+                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(body.Resolve(operation.Source.BoundType, InterpretationContext.Root)))
                 {
                     // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded bits.
                     var folded = operation.Source is Parsing.ConversionKoto { FoldedConstant: { } constant } ? constant : (Int128?)null;
-                    if (!ReferenceEquals(type, SignatureType(lowering, operation.Source.BoundType)) ||
+                    if (!ReferenceEquals(type, body.Resolve(operation.Source.BoundType, InterpretationContext.Root)) ||
                         (folded is null ? !FloatingTypes.TryLiteral(operation.Source, out var bits) || bits != value.Constant : folded != value.Constant))
                     {
                         return false;
@@ -182,7 +182,7 @@ internal sealed partial class BodyLowering
 
                 if (ReferenceEquals(type, BoundType.Char) || operation.Source is Parsing.CharLiteralKoto)
                 {
-                    if (!ReferenceEquals(type, BoundType.Char) || !ReferenceEquals(SignatureType(lowering, operation.Source.BoundType), BoundType.Char) ||
+                    if (!ReferenceEquals(type, BoundType.Char) || !ReferenceEquals(body.Resolve(operation.Source.BoundType, InterpretationContext.Root), BoundType.Char) ||
                         operation.Source is not Parsing.CharLiteralKoto { Value: { } character } ||
                         !ScalarTypes.IsCharacterValue(value.Constant) || value.Constant != character.Value)
                     {
@@ -195,7 +195,7 @@ internal sealed partial class BodyLowering
                 if (ReferenceTypes.IsPointer(type) || operation.Source is Parsing.NullLiteralKoto)
                 {
                     // SPEC 5.1: null is the only pointer literal.
-                    if (!ReferenceTypes.IsPointer(type) || !ReferenceEquals(type, SignatureType(lowering, operation.Source.BoundType)) || operation.Source is not Parsing.NullLiteralKoto || value.Constant != 0)
+                    if (!ReferenceTypes.IsPointer(type) || !ReferenceEquals(type, body.Resolve(operation.Source.BoundType, InterpretationContext.Root)) || operation.Source is not Parsing.NullLiteralKoto || value.Constant != 0)
                     {
                         return false;
                     }
@@ -217,14 +217,14 @@ internal sealed partial class BodyLowering
                     if (source is Parsing.ConversionKoto { FoldedConstant: { } folded })
                     {
                         // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded payload.
-                        if (folded != value.Constant || !ReferenceEquals(type, SignatureType(lowering, source.BoundType)))
+                        if (folded != value.Constant || !ReferenceEquals(type, body.Resolve(source.BoundType, InterpretationContext.Root)))
                         {
                             return false;
                         }
                     }
                     else if (number is not null)
                     {
-                        if (!ReferenceEquals(type, SignatureType(lowering, source.BoundType)) || !number.TryGetIntegerMagnitude(out var magnitude) ||
+                        if (!ReferenceEquals(type, body.Resolve(source.BoundType, InterpretationContext.Root)) || !number.TryGetIntegerMagnitude(out var magnitude) ||
                             !ScalarTypes.TryLiteral(type, magnitude, source is Parsing.PrefixMinusKoto, 64, out var bits) || bits != value.Constant)
                         {
                             return false;
@@ -293,10 +293,10 @@ internal sealed partial class BodyLowering
     {
         if (conversion.Adaptation is { } plan && ElementAccess.ConversionKind(conversion, body, operation) == ConversionBinding.Address)
         {
-            return body.ConcreteAt(plan.AddressBorrow, operation);
+            return body.Resolve(plan.AddressBorrow, body.ContextAt(operation));
         }
 
-        return body.ConcreteAt(OperandType(conversion), operation);
+        return body.Resolve(OperandType(conversion), body.ContextAt(operation));
     }
 
     private static bool ValidScalarConversion(ConversionBinding binding, BoundType? source, BoundType? target)
@@ -323,7 +323,7 @@ internal sealed partial class BodyLowering
         var declaredTarget = target.Kind == OwnershipPlaceKind.Result && target.Source is Parsing.FunctionKoto function
             ? function.ReturnType?.BoundType : target.Source.BoundType;
         return this.instance is not null && declaredSource is not null && declaredTarget is not null &&
-            ReferenceEquals(SignatureType(this, declaredSource), source.Type) && ReferenceEquals(SignatureType(this, declaredTarget), target.Type) &&
+            ReferenceEquals(this.Resolve(declaredSource, InterpretationContext.Root), source.Type) && ReferenceEquals(this.Resolve(declaredTarget, InterpretationContext.Root), target.Type) &&
             ReferenceTypes.StorageMatches(source.Type, target.Type) && this.instanceBinding!.FitsVerifiedTypeAt(declaredSource, declaredTarget, use);
     }
 }

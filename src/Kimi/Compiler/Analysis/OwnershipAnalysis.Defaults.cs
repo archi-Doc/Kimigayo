@@ -13,6 +13,9 @@ public sealed partial class OwnershipAnalysis
     private int defaultDepth;
     private int defaultContext = -1;
 
+    // The builder's active interpretation context: the innermost default being evaluated, or the root.
+    private InterpretationContext Active => new(this.defaultContext);
+
     private void PrepareDefaults(BoundCall plan, int mark)
     {
         if (plan.DefaultArguments.IsEmpty || plan.Target.Declaration is not FunctionKoto target)
@@ -140,12 +143,12 @@ public sealed partial class OwnershipAnalysis
 
         var invoke = this.Emit(OwnershipOperationKind.Call, expression);
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
-        var type = this.Concrete(this.compilation.Binding.InstantiateStorageType(((FunctionKoto)call.Target.Declaration).Parameters[parameter].Type.BoundType!, call))!;
+        var type = this.Resolve(this.compilation.Binding.InstantiateStorageType(((FunctionKoto)call.Target.Declaration).Parameters[parameter].Type.BoundType!, call), this.Active)!;
         var result = this.Place(expression, type, OwnershipPlaceKind.Temporary, false);
         var produce = this.Emit(OwnershipOperationKind.Produce, expression, result);
         this.body.OperationStorage[invoke] = this.body.Operations[invoke] with { Place = result };
         this.SetValue(invoke, OwnershipValueKind.DefaultCall, [], constant: evaluations.Count);
-        evaluations.Add(new(invoke, this.body.SubstituteDefaultCall(call, this.defaultContext)!, parameter, start));
+        evaluations.Add(new(invoke, call, parameter, start)); // The call plan is already resolved in the active context.
         if (ScalarResult(type) || ReferenceTypes.IsString(type))
         {
             this.SetValue(produce, OwnershipValueKind.Alias, [invoke]);

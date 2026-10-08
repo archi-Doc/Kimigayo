@@ -11,7 +11,7 @@ public sealed partial class OwnershipAnalysis
     private int WriteBorrowedArrayElement(Koto source, IndexKoto target)
     {
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        var type = this.Concrete(target.BoundType);
+        var type = this.Resolve(target.BoundType, this.Active);
         if (type is null || (operation != KotoKind.Equals && !this.SupportsUpdate(target, target.BoundType, operation)))
         {
             this.Unsupported(source);

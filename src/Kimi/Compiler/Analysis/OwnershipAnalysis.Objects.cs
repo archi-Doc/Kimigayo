@@ -8,7 +8,7 @@ public sealed partial class OwnershipAnalysis
 {
     private int ReadObjectPayload(ConversionKoto source)
     {
-        if (this.Concrete(source.BoundType) is not { } payload)
+        if (this.Resolve(source.BoundType, this.Active) is not { } payload)
         {
             this.Unsupported(source);
             return -1;

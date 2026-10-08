@@ -158,7 +158,7 @@ internal sealed partial class BodyLowering
             plan.ReceiverOperation.Kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != call.ArgumentNodes.Count || plan.ArgumentToParameter.Length != call.ArgumentNodes.Count ||
             call.ArgumentNodes.Count + 1 != target.Parameters.Count || target.BoundSymbol?.ReceiverIndex != 0 ||
-            SignatureType(this, plan.ReceiverOperation.ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq } receiverType ||
+            body.Resolve(plan.ReceiverOperation.ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq } receiverType ||
             receiverType.Components[0] is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
         {
             return Fail("Array operation has an unsupported receiver, argument plan or element Type.", out failure);
@@ -185,8 +185,8 @@ internal sealed partial class BodyLowering
             return Fail("An Array operation has no diagnostic source location.", out failure);
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (!ReferenceEquals(SignatureType(this, call.BoundType), returnType) || returnType is null)
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (!ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || returnType is null)
         {
             return Fail("Array operation result Type does not match its call.", out failure);
         }
@@ -388,7 +388,7 @@ internal sealed partial class BodyLowering
 
         // A reference parameter is Copied, Reborrowed or borrowed from its Place, and every form supplies the pointer;
         // ownStorage takes the Array's acquired slot.
-        var argumentType = SignatureType(this, plan.ArgumentOperations[0].ParameterType);
+        var argumentType = body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root);
         var referent = kind == CompilerFunctionKind.StorageOwn ? argumentType : argumentType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var target0] } ? target0 : null;
         if (referent is null || argumentType is null || plan.ArgumentOperations[0].Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
             (kind == CompilerFunctionKind.StorageOwn && plan.ArgumentOperations[0].Kind != ArgumentOperationKind.Value))
@@ -437,8 +437,8 @@ internal sealed partial class BodyLowering
             return Fail("Storage operation argument borrow is unavailable at the call.", out failure);
         }
 
-        var returnType = SignatureType(this, plan.ReturnType);
-        if (returnType is null || !ReferenceEquals(SignatureType(this, call.BoundType), returnType) || this.aggregateLayouts.Get(returnType) is not { } result ||
+        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || this.aggregateLayouts.Get(returnType) is not { } result ||
             !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
             return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
@@ -473,8 +473,8 @@ internal sealed partial class BodyLowering
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != 2 || call.ArgumentNodes.Count != 2 || target.Parameters.Count != 2 || plan.ArgumentToParameter.Length != 2 ||
             plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array }] } receiver ||
-            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), BoundType.ISize) || !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit) || !ReferenceEquals(SignatureType(this, plan.ReturnType), BoundType.Unit))
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array }] } receiver ||
+            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), BoundType.Unit) || !ReferenceEquals(body.Resolve(plan.ReturnType, InterpretationContext.Root), BoundType.Unit))
         {
             return Fail("Publishing an Array length requires its exclusive handle and isize length.", out failure);
         }
@@ -506,7 +506,7 @@ internal sealed partial class BodyLowering
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto { IsConstructor: true } target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             call.ArgumentNodes.Count != 1 || plan.ArgumentOperations.Length != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            body.ConcreteAt(call.BoundType, id) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
+            body.Resolve(call.BoundType, body.ContextAt(id)) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
         {
             return Fail("Array construction has an unsupported argument plan or element Type.", out failure);
         }

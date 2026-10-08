@@ -100,7 +100,7 @@ internal sealed class ObjectGenerationPlan
             var operation = body.Operations[i];
             if (operation.Source is IsKoto { BoundRuntimeTest: { } test })
             {
-                this.RegisterType(compilation, body.ConcreteAt(test.TargetType, i)!);
+                this.RegisterType(compilation, body.Resolve(test.TargetType, body.ContextAt(i))!);
                 module.NeedsObjectRuntime = true;
             }
 

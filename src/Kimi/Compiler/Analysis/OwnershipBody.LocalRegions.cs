@@ -370,7 +370,7 @@ public sealed partial class OwnershipBody
             if (!this.loanPartIndex.TryGetValue(key, out var slot))
             {
                 var owner = this.loanParts[parent];
-                var type = this.Concrete(this.Operations[projection.Operation].Source.BoundType)!;
+                var type = this.Resolve(this.Operations[projection.Operation].Source.BoundType, InterpretationContext.Root)!;
                 slot = this.loanParts.Count;
                 this.loanPartIndex.Add(key, slot);
                 this.loanParts.Add(new(projection.Root, parent, projection.Selector, type) { Next = owner.Child });

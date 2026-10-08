@@ -117,7 +117,7 @@ public class GenericAdaptationTest
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.Adaptation is not null);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "inspect");
-        var type = body.Concrete(conversion.BoundType)!;
+        var type = body.Resolve(conversion.BoundType, InterpretationContext.Root)!;
         Assert.Equal(SemanticsKind.Ref, type.Semantics);
         Assert.Equal(SemanticsKind.Ref, type.Components[0].Semantics);
         NativeAllocationAudit.WriteFixture("GenericAdaptationMixedSlot", Source, 1, 1, 20);

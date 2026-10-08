@@ -395,11 +395,6 @@ public sealed partial class OwnershipBody
 
     public bool IsReachable(int operation) => this.Reachable[operation];
 
-    // A declared Type as this body's plan sees it: a case run sees its case Types and an instance plan its closed substitution.
-    internal BoundType? Concrete(BoundType? type)
-        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
-        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
-
     // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
     // Concrete, from building and solving to lowering, sees the substituted Type.
     internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
@@ -524,6 +519,12 @@ public sealed partial class OwnershipBody
 
         return condition;
     }
+
+    // The root stage of Resolve: a case run sees its case Types and an instance plan its closed substitution. Every consumer
+    // names its interpretation context through Resolve (SPEC 7.2.3, 8.10).
+    private BoundType? Concrete(BoundType? type)
+        => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
+        : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
 
     private bool HasUnsupportedIssue()
     {

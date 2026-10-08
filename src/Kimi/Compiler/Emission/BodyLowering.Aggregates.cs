@@ -482,9 +482,9 @@ internal sealed partial class BodyLowering
                 // A transfer (@move) of a Copy aggregate is the same byte transfer as its Copy.
                 var upcast = operation.Kind == OwnershipOperationKind.Consume && operation.Source is ConversionKoto conversion &&
                     ElementAccess.ConversionKind(conversion, body, id) == ConversionBinding.ObjectUpcast &&
-                    ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(body.ConcreteAt(conversion.BoundType, id)) == sourceMode &&
-                    ReferenceEquals(body.ConcreteAt(conversion.Left.BoundType, id), place.Type) &&
-                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(body.ConcreteAt(conversion.BoundType, id), body.Places[operation.Input].Type) &&
+                    ObjectTypes.HandleMode(place.Type) is { } sourceMode && ObjectTypes.HandleMode(body.Resolve(conversion.BoundType, body.ContextAt(id))) == sourceMode &&
+                    ReferenceEquals(body.Resolve(conversion.Left.BoundType, body.ContextAt(id)), place.Type) &&
+                    (uint)operation.Input < (uint)body.Places.Count && ReferenceEquals(body.Resolve(conversion.BoundType, body.ContextAt(id)), body.Places[operation.Input].Type) &&
                     ObjectTypes.Supports(place.Type.Components[0], body.Places[operation.Input].Type.Components[0]);
                 if ((uint)operation.Input >= (uint)body.Places.Count || operation.Input == place.Id ||
                     (!upcast && !(operation.Kind == OwnershipOperationKind.Consume
@@ -669,7 +669,7 @@ internal sealed partial class BodyLowering
             {
                 var capture = closure.Captures[i];
                 if (capture.Environment.CaptureAcquisition is CaptureAcquisition.Copy or CaptureAcquisition.Bare && !this.BorrowingEntry(capture) && capture.Source is { } source &&
-                    ReferenceEquals(body.ConcreteAt(capture.Environment.Type, id), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
+                    ReferenceEquals(body.Resolve(capture.Environment.Type, body.ContextAt(id)), place.Type) && this.IsPreparedArgument(body, id, source, place.Id))
                 {
                     return true;
                 }
@@ -678,7 +678,7 @@ internal sealed partial class BodyLowering
             return false;
         }
 
-        return ReferenceEquals(body.ConcreteAt(operation.Source.BoundType, id), place.Type) &&
+        return ReferenceEquals(body.Resolve(operation.Source.BoundType, body.ContextAt(id)), place.Type) &&
             operation.Source is IdentifierNameKoto { BoundSymbol: { } symbol } && this.IsPreparedArgument(body, id, symbol, place.Id);
     }
 }

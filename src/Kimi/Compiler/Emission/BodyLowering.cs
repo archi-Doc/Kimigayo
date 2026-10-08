@@ -104,9 +104,17 @@ internal sealed partial class BodyLowering
         return false;
     }
 
-    // Declared signature Types of the lowered body; a monomorphized instance sees its substitution.
-    private static BoundType? SignatureType(BodyLowering? lowering, BoundType? type)
-        => type is null || lowering?.instance is not { } call ? type : lowering.instanceBinding!.InstantiateStorageType(type, call);
+    // The lowered function's own declared Types (SPEC 21.3.1) are interpreted in the root context, which only the closed call of
+    // a monomorphized instance substitutes; a Type inside a default interval is resolved through its ownership body instead.
+    private BoundType? Resolve(BoundType? type, InterpretationContext context)
+    {
+        if (!context.IsRoot)
+        {
+            throw new InvalidOperationException("A lowering-level Type has no default context; resolve it through its ownership body.");
+        }
+
+        return type is null || this.instance is not { } call ? type : this.instanceBinding!.InstantiateStorageType(type, call);
+    }
 
     private bool MarkDeferredPlans(OwnershipBody body, Span<byte> marks)
     {

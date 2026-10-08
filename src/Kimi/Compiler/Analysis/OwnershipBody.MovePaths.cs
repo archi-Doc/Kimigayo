@@ -122,7 +122,7 @@ public sealed partial class OwnershipBody
                 // Like the root's Place Type, a part's Type is the closed one in an instance plan; lowering lays it out.
                 var owner = this.movePaths[parent];
                 var type = this.Operations[plan.Operation].Source.BoundType!;
-                this.movePaths.Add(new(plan.Root, parent, plan.Selector, this.Concrete(type) ?? type));
+                this.movePaths.Add(new(plan.Root, parent, plan.Selector, this.Resolve(type, InterpretationContext.Root) ?? type));
                 this.movePaths[parent] = owner with { Children = owner.Children + 1 };
                 this.movePathOrder.Add((parent, -plan.Selector, path));
             }

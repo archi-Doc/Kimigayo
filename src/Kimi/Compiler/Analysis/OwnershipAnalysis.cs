@@ -621,7 +621,7 @@ public sealed partial class OwnershipAnalysis
         for (var i = 0; i < parameterCount; i++)
         {
             var parameter = function.Parameters[i];
-            var type = this.Concrete(parameter.Type.BoundType);
+            var type = this.Resolve(parameter.Type.BoundType, this.Active);
             var place = this.Place(parameter.Type, type, OwnershipPlaceKind.Parameter, false);
             this.body.SymbolPlaces[this.compilation.Binding.ParameterSymbol(function, i)] = place;
             this.locals.Add(new(place, parameter.Type, this.registrationSequence++));
@@ -749,7 +749,7 @@ public sealed partial class OwnershipAnalysis
     private int Place(Koto source, BoundType? type, OwnershipPlaceKind kind, bool mutable, AcquisitionKind? plannedAcquisition = null)
     {
         var id = this.body.PlaceStorage.Count;
-        type = this.Concrete(type) ?? BoundType.Unit;
+        type = this.Resolve(type, this.Active) ?? BoundType.Unit;
         // Never has no value storage. Its result marker is only used on unreachable
         // delivery nodes; control-flow checking rejects any normal completion.
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);
@@ -1178,7 +1178,7 @@ public sealed partial class OwnershipAnalysis
                     return this.ReadCandidate(node, use);
                 }
 
-                if (node.BoundSymbol?.Kind == BindingSymbolKind.Function && this.Concrete(node.BoundType)?.Kind == BoundTypeKind.Function)
+                if (node.BoundSymbol?.Kind == BindingSymbolKind.Function && this.Resolve(node.BoundType, this.Active)?.Kind == BoundTypeKind.Function)
                 {
                     // SPEC 7.6.4: a Function Item converted to its fixed common Function Type is a new owned value without an
                     // environment; the item itself is not a Place.
@@ -1212,8 +1212,8 @@ public sealed partial class OwnershipAnalysis
             case ConversionKoto conversion:
                 if (conversion.Adaptation is { } adaptation)
                 {
-                    var sourceType = this.Concrete(adaptation.Source)!;
-                    var targetType = this.Concrete(adaptation.Target)!;
+                    var sourceType = this.Resolve(adaptation.Source, this.Active)!;
+                    var targetType = this.Resolve(adaptation.Target, this.Active)!;
                     var operation = ExplicitAdaptationPlan.Select(sourceType, targetType, adaptation.IsShorthand);
                     if ((adaptation.Operations & (1U << (int)operation)) == 0)
                     {
@@ -1229,7 +1229,7 @@ public sealed partial class OwnershipAnalysis
 
                     if (operation == ConversionBinding.Address)
                     {
-                        var referenceType = this.Concrete(adaptation.AddressBorrow)!;
+                        var referenceType = this.Resolve(adaptation.AddressBorrow, this.Active)!;
                         var adaptedBorrow = this.BorrowStruct(conversion.Left, referenceType, address: true);
                         if (adaptedBorrow < 0)
                         {
@@ -1268,7 +1268,7 @@ public sealed partial class OwnershipAnalysis
                     }
 
                     var owner = this.Expression(conversion.Left, PlaceUseKind.Read);
-                    return this.Use(conversion, owner, PlaceUseKind.Consume, AcquisitionKind.Move, this.Concrete(conversion.BoundType));
+                    return this.Use(conversion, owner, PlaceUseKind.Consume, AcquisitionKind.Move, this.Resolve(conversion.BoundType, this.Active));
                 }
 
                 if (conversion.ConversionBinding == ConversionBinding.Borrow && ReferenceTypes.IsBorrow(conversion.BoundType))
@@ -1291,7 +1291,7 @@ public sealed partial class OwnershipAnalysis
                     return address;
                 }
 
-                if (use == PlaceUseKind.Consume && this.FollowsReference(conversion) && this.Concrete(conversion.BoundType) is { } referent &&
+                if (use == PlaceUseKind.Consume && this.FollowsReference(conversion) && this.Resolve(conversion.BoundType, this.Active) is { } referent &&
                     this.compilation.Binding.ProveCopy(referent, conversion) != ConstraintProof.Proven)
                 {
                     // SPEC 3.5: a selected referent is a Place, never moved by bare acquisition, and a reference offers no Take.
@@ -1750,7 +1750,7 @@ public sealed partial class OwnershipAnalysis
         // A selected case call already carries its default and case/instance context.
         if (selected is null && this.defaultContext >= 0)
         {
-            if (this.body.SubstituteDefaultCall(plan, this.defaultContext) is not { } substituted)
+            if (this.body.ResolveCall(plan, this.Active) is not { } substituted)
             {
                 this.Unsupported(call);
                 return -1;
@@ -1823,7 +1823,7 @@ public sealed partial class OwnershipAnalysis
                 var contract = offset < 0 ? plan.ReceiverOperation.ParameterType
                     : offset < plan.ArgumentOperations.Length ? plan.ArgumentOperations[offset].ParameterType
                     : plan.DefaultArguments[offset - plan.ArgumentOperations.Length].ParameterType;
-                this.body.RecordCallInput(entry, this.Concrete(contract));
+                this.body.RecordCallInput(entry, this.Resolve(contract, this.Active));
             }
             else
             {

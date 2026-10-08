@@ -111,14 +111,14 @@ internal sealed partial class BodyLowering
         var inputs = transfer ? 3 : 1;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
-            !(transfer ? ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit) : BytePointer(SignatureType(this, call.BoundType))))
+            !(transfer ? ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), BoundType.Unit) : BytePointer(body.Resolve(call.BoundType, InterpretationContext.Root))))
         {
             return Fail("A private storage byte primitive requires its fixed signature.", out failure);
         }
 
         for (var i = 0; i < inputs; i++)
         {
-            var parameter = SignatureType(this, plan.ArgumentOperations[i].ParameterType);
+            var parameter = body.Resolve(plan.ArgumentOperations[i].ParameterType, InterpretationContext.Root);
             if (plan.ArgumentToParameter[i] != i || !(i == inputs - 1 ? ReferenceEquals(parameter, BoundType.ISize) : BytePointer(parameter)))
             {
                 return Fail("A private storage byte primitive requires its arguments in order.", out failure);
@@ -138,7 +138,7 @@ internal sealed partial class BodyLowering
         this.callOperands.Clear();
         for (var i = 0; i < inputs; i++)
         {
-            if (!this.ScalarArrayArgument(body, id, i, SignatureType(this, plan.ArgumentOperations[i].ParameterType)!, out var operand))
+            if (!this.ScalarArrayArgument(body, id, i, body.Resolve(plan.ArgumentOperations[i].ParameterType, InterpretationContext.Root)!, out var operand))
             {
                 return Fail("A private storage byte primitive argument is unavailable at the call.", out failure);
             }
@@ -163,13 +163,13 @@ internal sealed partial class BodyLowering
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
             plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 || plan.ArgumentToParameter[2] != 2 || plan.TypeArguments.Length != 2 ||
-            SignatureType(this, plan.ArgumentOperations[0].ParameterType) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } handleType ||
+            body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } handleType ||
             !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
-            SignatureType(this, plan.TypeArguments[0]) is not { } keyType || SignatureType(this, plan.TypeArguments[1]) is not { } valueType ||
-            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[1].ParameterType), keyType) ||
-            !ReferenceEquals(SignatureType(this, plan.ArgumentOperations[inputs - 1].ParameterType), valueType) ||
+            body.Resolve(plan.TypeArguments[0], InterpretationContext.Root) is not { } keyType || body.Resolve(plan.TypeArguments[1], InterpretationContext.Root) is not { } valueType ||
+            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), keyType) ||
+            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[inputs - 1].ParameterType, InterpretationContext.Root), valueType) ||
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
-            !ReferenceEquals(SignatureType(this, call.BoundType), BoundType.Unit))
+            !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), BoundType.Unit))
         {
             return Fail("Dictionary placement requires the physical slot and acquired key/value Types.", out failure);
         }

@@ -214,7 +214,8 @@ public sealed partial class OwnershipBody
     }
 
     // Preorder evaluation intervals preserve the declaration-to-call Type/Origin substitution at each replica of a default.
-    // A nested default substitutes its own call first, then its enclosing defaults, then the body's case or instance.
+    // A nested default's call is recorded already resolved in its enclosing context, so it composes every enclosing substitution
+    // and one application of it, then the body's case or instance, interprets the replica (Resolve).
     internal List<(int Start, int End, BoundCall Call, int Parent)>? DefaultContexts { get; set; }
 
     internal Dictionary<(BindingSymbol Symbol, int Context), int>? DefaultSymbolPlaces { get; set; }
@@ -266,33 +267,25 @@ public sealed partial class OwnershipBody
         return context;
     }
 
-    internal BoundType? SubstituteDefaultType(BoundType? type, int context)
-    {
-        while (type is not null && context >= 0)
-        {
-            var entry = this.DefaultContexts![context];
-            type = this.Function.CodeContext.Compilation.Binding.InstantiateStorageType(type, entry.Call);
-            context = entry.Parent;
-        }
+    // An operation's interpretation context, and the context recorded with a Place at its construction.
+    internal InterpretationContext ContextAt(int operation) => new(this.DefaultContextAt(operation));
 
-        return type;
-    }
+    internal InterpretationContext ContextOf(int place) => new(this.Places[place].DefaultContext);
 
-    internal BoundType? ConcreteAt(BoundType? type, int operation)
-        => this.Concrete(this.SubstituteDefaultType(type, this.DefaultContextAt(operation)));
+    // SPEC 7.2.3, 8.10: declared information is interpreted once per stage, in a fixed order: the context's call, recorded when
+    // its interval began and already composing every enclosing default's substitution, then the body's case or instance.
+    internal BoundType? Resolve(BoundType? type, InterpretationContext context) => this.Concrete(this.SubstituteDefaults(type, context));
+
+    // The default stage alone, for a consumer that applies its own closed call instead of this body's case or instance.
+    internal BoundType? SubstituteDefaults(BoundType? type, InterpretationContext context)
+        => type is null || context.IsRoot ? type : this.Function.CodeContext.Compilation.Binding.InstantiateStorageType(type, this.DefaultContexts![context.Index].Call);
+
+    // A declared call as interpreted in a context; a call plan that a default context already resolved is never resolved again.
+    internal BoundCall? ResolveCall(BoundCall? call, InterpretationContext context)
+        => call is null || context.IsRoot ? call : this.Function.CodeContext.Compilation.Binding.InstantiateDefaultCall(call, this.DefaultContexts![context.Index].Call);
 
     internal BoundCall? CallAt(int operation)
         => this.Values[operation].Kind == OwnershipValueKind.DefaultCall ? null
         : this.resolvedCalls is not null && this.resolvedCalls.TryGetValue(operation, out var resolved) ? resolved
-        : this.SubstituteDefaultCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.DefaultContextAt(operation));
-
-    internal BoundCall? SubstituteDefaultCall(BoundCall? call, int context)
-    {
-        for (; call is not null && context >= 0; context = this.DefaultContexts![context].Parent)
-        {
-            call = this.Function.CodeContext.Compilation.Binding.InstantiateDefaultCall(call, this.DefaultContexts![context].Call);
-        }
-
-        return call;
-    }
+        : this.ResolveCall((this.Operations[operation].Source as Parsing.InvocationKoto)?.BoundCall, this.ContextAt(operation));
 }

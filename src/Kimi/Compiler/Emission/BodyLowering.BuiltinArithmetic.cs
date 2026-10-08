@@ -9,13 +9,13 @@ internal sealed partial class BodyLowering
     private ArithmeticCheckKind NumericCallCheck(OwnershipBody body, int id)
         => body.Operations[id].Source is InvocationKoto { BoundCall: { ConformingType: { } conforming } call } &&
             ArithmeticContracts.Identity(call.Target.Scope.Owner.BoundSymbol) is { } identity &&
-            SignatureType(this, conforming) is { } self && ArithmeticContracts.Supports(self, identity)
+            body.Resolve(conforming, InterpretationContext.Root) is { } self && ArithmeticContracts.Supports(self, identity)
             ? NumericArithmetic.Check(ArithmeticContracts.Operator(identity), self) : ArithmeticCheckKind.None;
 
     private bool LowerBuiltinArithmetic(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, BoundCall call, int id, out string? failure)
     {
         failure = null;
-        if (SignatureType(this, call.ConformingType) is not { } self ||
+        if (body.Resolve(call.ConformingType, InterpretationContext.Root) is not { } self ||
             ArithmeticContracts.Identity(call.Target.Scope.Owner.BoundSymbol) is not { } identity || !ArithmeticContracts.Supports(self, identity) ||
             !ReferenceEquals(ValueType(body, id), self))
         {
