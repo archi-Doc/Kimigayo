@@ -13,6 +13,12 @@ namespace XunitTest;
 public class ArrayTypeRecoveryTest(ITestOutputHelper output)
 {
     [Theory]
+    [InlineData("let values: [::width of i32] = source")]
+    [InlineData("let values = [::width of 1]")]
+    public void RootQualifiedLengthsUseTheNameGrammar(string source)
+        => ParseTestHelper.VerifyParents(ParseTestHelper.ParseSuccess(source).RootKoto);
+
+    [Theory]
     [InlineData("[i32]", "ExpectedSyntax_Kd", "i32", "Syntax.ArrayLength")]
     [InlineData("[-1 of u8]", "MisplacedSyntax_Kd", "-1", "Syntax.CompoundArrayLength")]
     [InlineData("[Width * Height of u8]", "MisplacedSyntax_Kd", "Width * Height", "Syntax.CompoundArrayLength")]

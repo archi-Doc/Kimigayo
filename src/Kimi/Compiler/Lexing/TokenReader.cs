@@ -15,7 +15,14 @@ namespace Kimi.Compiler.Lexing;
 /// <param name="ModifierKind">The current modifiers.</param>
 /// <param name="IsExcluded">Whether the current declaration is excluded.</param>
 /// <param name="DispatchModifierSpan">The first virtual or override modifier, when present.</param>
-public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded, SourceSpan DispatchModifierSpan = default);
+public readonly record struct TokenContext(AttributeKoto? AttributeKoto, ModifierKind ModifierKind, bool IsExcluded, SourceSpan DispatchModifierSpan = default)
+{
+    internal SourceSpan PendingExclusion { get; init; }
+
+    internal int PendingExclusionStart { get; init; }
+
+    internal int DocumentationExcludedStart { get; init; }
+}
 
 /// <summary>
 /// The restrictions of the region the parser is in (SPEC 2.2.1): a new delimiter region lifts them, a body or header adds one, and
@@ -179,6 +186,9 @@ public ref partial struct TokenReader
     /// <summary>Gets or sets the innermost directive that excludes the pending item, meaningful while <see cref="IsExcluded"/> holds.</summary>
     internal SourceSpan PendingExclusion { get; set; }
 
+    /// <summary>Gets or sets the first source position excluded by the pending directive, after its own header.</summary>
+    internal int PendingExclusionStart { get; set; }
+
     /// <summary>Gets a value indicating whether the current position lies inside excluded syntax.</summary>
     internal readonly bool InExcludedSyntax => this.ExclusionDepth > 0;
 
@@ -289,11 +299,15 @@ public ref partial struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void ClearContext()
     {
-        this.AttributeKoto = default;
-        this.ModifierKind = default;
-        this.DispatchModifierSpan = default;
-        this.IsExcluded = false;
-        this.HasCompileTimeIfPrefix = false;
+        if (this.IsExcluded)
+        {
+            // Recovery can discard a header before its owner enters the target. Its prefixes still exclude that syntax.
+            var end = this.PreviousSyntaxEnd;
+            this.RecordPendingExclusion(end);
+            this.CodeContext.Documentation?.Exclude(this.DocumentationExcludedStart, end, this.CurrentTokenRange.Start);
+        }
+
+        this.ResetContext();
     }
 
     /// <summary>
@@ -303,8 +317,13 @@ public ref partial struct TokenReader
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public TokenContext TakeContext()
     {
-        var context = new TokenContext(this.AttributeKoto, this.ModifierKind, this.IsExcluded, this.DispatchModifierSpan);
-        this.ClearContext();
+        var context = new TokenContext(this.AttributeKoto, this.ModifierKind, this.IsExcluded, this.DispatchModifierSpan)
+        {
+            PendingExclusion = this.PendingExclusion,
+            PendingExclusionStart = this.PendingExclusionStart,
+            DocumentationExcludedStart = this.DocumentationExcludedStart,
+        };
+        this.ResetContext();
         return context;
     }
 
@@ -319,6 +338,9 @@ public ref partial struct TokenReader
         this.ModifierKind = context.ModifierKind;
         this.DispatchModifierSpan = context.DispatchModifierSpan;
         this.IsExcluded = context.IsExcluded;
+        this.PendingExclusion = context.PendingExclusion;
+        this.PendingExclusionStart = context.PendingExclusionStart;
+        this.DocumentationExcludedStart = context.DocumentationExcludedStart;
     }
 
     /// <summary>
@@ -844,6 +866,16 @@ public ref partial struct TokenReader
         }
     }
 
+    /// <summary>Records the completed part of a pending exclusion without allocating a stack of directive prefixes.</summary>
+    /// <param name="end">The end of the source interval, including any following directive header.</param>
+    internal readonly void RecordPendingExclusion(int end)
+    {
+        if (end > this.PendingExclusionStart)
+        {
+            this.CodeContext.RecordExcludedRange(SourceSpan.FromBounds(this.PendingExclusionStart, end), this.PendingExclusion);
+        }
+    }
+
     private bool TryConsumeWithRecovery(TokenKind targetKind, out SourceSpan range, bool addDiagnostic)
     {
         // An attribute where the grammar takes none is misplaced: it is reported and skipped, and the expected token may follow it.
@@ -914,6 +946,16 @@ public ref partial struct TokenReader
         {
             this.AdvanceOne(); // The dedent after a nested body separates nothing inside the grouping.
         }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private void ResetContext()
+    {
+        this.AttributeKoto = default;
+        this.ModifierKind = default;
+        this.DispatchModifierSpan = default;
+        this.IsExcluded = false;
+        this.HasCompileTimeIfPrefix = false;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

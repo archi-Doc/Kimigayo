@@ -32,7 +32,13 @@ public static partial class Parser
     /// <param name="reader">The token reader positioned at the excluded item.</param>
     /// <returns>The state that <see cref="EndExcludedRegion"/> restores.</returns>
     internal static ExcludedRegion BeginExcludedRegion(ref TokenReader reader)
-        => BeginExcludedRegion(ref reader, reader.PendingExclusion, reader.DocumentationExcludedStart);
+    {
+        var region = BeginExcludedRegion(ref reader, reader.PendingExclusion, reader.DocumentationExcludedStart);
+        // The target starts after the excluding header, so later prefixes and modifiers belong to it too. Once entered,
+        // ExclusionDepth owns this interval; clearing an item's context must not finish or leak the pending exclusion.
+        reader.IsExcluded = false;
+        return region with { Start = reader.PendingExclusionStart };
+    }
 
     /// <summary>Leaves excluded syntax: its documentation is excluded and its range is recorded for <c>excludedBy</c> (SPEC 19.5, 23.3.6.2).</summary>
     /// <param name="reader">The token reader positioned after the excluded syntax.</param>
@@ -415,13 +421,19 @@ public static partial class Parser
     /// <param name="documentationStart">Where documentation exclusion begins when this is the outermost exclusion of the target.</param>
     private static void ExcludeTarget(ref TokenReader reader, SourceSpan directive, int documentationStart)
     {
-        if (!reader.IsExcluded)
+        if (reader.IsExcluded)
+        {
+            // This header is the previous directive's target, never its own. Finish that segment before changing cause.
+            reader.RecordPendingExclusion(reader.PreviousSyntaxEnd);
+        }
+        else
         {
             reader.DocumentationExcludedStart = documentationStart;
         }
 
         reader.IsExcluded = true;
         reader.PendingExclusion = directive;
+        reader.PendingExclusionStart = reader.PreviousSyntaxEnd + 1;
     }
 
     /// <summary>Consumes one syntax item for error recovery, without constructing Koto nodes.</summary>

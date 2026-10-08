@@ -360,7 +360,8 @@ public static partial class Parser
     // Types and fill literals use the same surface grammar (SPEC 4.2); Binding checks constant eligibility and value.
     private static void CheckArrayLengthSyntax(ref TokenReader reader, Koto length)
     {
-        if (length is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or ParenthesizedKoto or ErrorKoto) &&
+        if (length is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or
+            SyntaxFormKoto { Akind: KotoKind.RootName } or ParenthesizedKoto or ErrorKoto) &&
             length.CodeContext.RecoveryCause(length) is null)
         {
             RecoverItem(ref reader, length, length.Unexpected(SyntaxForm.CompoundArrayLength));
