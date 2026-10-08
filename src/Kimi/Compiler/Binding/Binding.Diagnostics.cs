@@ -1987,6 +1987,8 @@ public sealed partial class Binding
         this.captureRepeats?.Clear();
         this.arityFailures?.Clear();
         this.originQualifierLimits?.Clear();
+        this.staticStorageLimits?.Clear();
+        this.invalidStaticOriginSlots?.Clear();
         this.rejectedCandidates?.Clear();
         this.unboundSlots?.Clear();
         this.acquisitionPlaces?.Clear();

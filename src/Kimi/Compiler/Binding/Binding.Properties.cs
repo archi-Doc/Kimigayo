@@ -280,7 +280,7 @@ public sealed partial class Binding
 
             var proof = this.ValidateAccessor(property.Getter);
             proof = CombineProof(proof, this.ValidateAccessor(property.Setter), true);
-            property.IsVerified = proof == ConstraintProof.Proven && !InvalidDeclarationContext(syntax);
+            property.IsVerified = proof == ConstraintProof.Proven && syntax.BindingFailure == BindingFailure.None && !InvalidDeclarationContext(syntax);
 
             // SPEC 23.3.6.4: an accessor's own declaration Error explains the Property's failed verification; a second record at
             // the Property would restate it. Every other failure is the Property's own problem.

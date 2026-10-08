@@ -159,6 +159,8 @@
   + Name="UnsupportedBinding_Kd"
     Category="Unsupported"
     Message="The semantic obligations of this syntax are not yet implemented and cannot pass final Binding"
+    Evidence="reason:Text"
+    Label="{0}"
 
   + Name="UnavailableFeature_Kd"
     Category="Language"

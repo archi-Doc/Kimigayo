@@ -6,6 +6,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private Dictionary<Koto, BoundType>? staticStorageLimits;
+    private Dictionary<Koto, OriginParameter>? invalidStaticOriginSlots;
+
     // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
     internal static bool ContainsOrigin(BoundType type, BoundOrigin origin)
     {
@@ -82,6 +85,24 @@ public sealed partial class Binding
             this.typeScratch.Return(types, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
         }
+    }
+
+    private static Koto OriginFormationSite(Koto node, BoundType type)
+    {
+        var declaration = node is VariableKoto ? node : node.BoundSymbol?.Declaration;
+        Koto? annotation = declaration switch
+        {
+            VariableKoto variable => variable.TypeKoto,
+            FunctionKoto function => function.ReturnType,
+            _ => null,
+        };
+        var site = annotation is not null && ReferenceEquals(annotation.BoundType, type) ? annotation : node;
+        while (site.Parent is TypeKoto parent && ReferenceEquals(parent.BoundType, type))
+        {
+            site = parent;
+        }
+
+        return site;
     }
 
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
@@ -394,29 +415,49 @@ public sealed partial class Binding
                 continue;
             }
 
+            var invalid = false;
             if (type.Symbol?.Schema is { } schema)
             {
                 for (var i = 0; i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
                 {
                     if (type.OriginArguments[i].Kind == OriginKind.Static && schema.Origins[i].LoanRequirement == LoanRequirement.Uniq)
                     {
-                        this.Fail(node, BindingFailure.InvalidOrigin);
+                        // A late storage summary may establish uniq after this Type was completed. The written
+                        // annotation owns formation; its declaration and names only repeat the already invalid Type.
+                        var site = OriginFormationSite(node, type);
+                        this.FailExplained(ref this.invalidStaticOriginSlots, site, BindingFailure.InvalidOrigin, schema.Origins[i]);
+                        if (!ReferenceEquals(site, node))
+                        {
+                            this.CompleteDependent(node, site);
+                        }
+
+                        invalid = true;
                     }
                 }
             }
 
+            if (invalid)
+            {
+                continue;
+            }
+
             if (node is PropertyKoto property && IsStoredVariable(property) && this.symbols[property].Scope.Owner is GroupKoto)
             {
-                if (this.symbols[property].Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 })
+                if (property.TypeKoto is { BindingState: BindingState.Invalid } annotation)
                 {
-                    // Check the stored value under the inherited premises, not the enclosing Type.
-                    this.RequireConstraint(property, this.ProveOwned(type, property), this.capabilityMode);
+                    this.CompleteDependent(property, annotation);
+                    continue;
                 }
 
+                // Check the stored value under the inherited premises, not the enclosing Type. A shared static borrow
+                // may be Owned; carrying a borrow is not itself a language error (SPEC 11.3.2, 15.4.2).
+                var owned = this.ProveOwned(type, property);
+                this.RequireConstraint(property, owned, this.capabilityMode);
+
                 this.borrowVisiting.Clear();
-                if (this.RetainsBorrow(type, this.borrowVisiting))
+                if (owned == ConstraintProof.Proven && this.RetainsBorrow(type, this.borrowVisiting))
                 {
-                    this.Fail(node, BindingFailure.InvalidTypeFormation);
+                    this.FailExplained(ref this.staticStorageLimits, node, BindingFailure.Unsupported, type, true);
                 }
             }
         }

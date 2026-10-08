@@ -941,6 +941,14 @@ public sealed partial class Binding
         {
             this.ReportOriginQualifier(issue.Node, qualifierLimit, requirement, issue.Code);
         }
+        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.staticStorageLimits?.TryGetValue(issue.Node, out var staticType) == true)
+        {
+            issue.Node.Report(requirement, issue.Code, evidence: ["static storage with retained borrows is not implemented"], note: $"The stored Type {DiagnosticTypeName(staticType)} satisfies Owned. Static storage permits shared borrows with static Origins, but initialization and retained-borrow tracking for this storage are not yet implemented (SPEC 11.3.2, 15.4.2)");
+        }
+        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.invalidStaticOriginSlots?.TryGetValue(issue.Node, out var invalidSlot) == true)
+        {
+            issue.Node.Report(requirement, issue.Code, evidence: [$"static cannot supply uniq for Origin slot {invalidSlot.Name}"], note: $"Origin slot {invalidSlot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", invalidSlot.Origin.Binder!, invalidSlot.Span, "requires uniq")]);
+        }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
             this.ReportDuplicateBindingSet(bindingSet, reusedSet, requirement, issue.Code);

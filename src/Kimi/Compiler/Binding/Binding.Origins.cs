@@ -626,6 +626,13 @@ public sealed partial class Binding
             return pending;
         }
 
+        if (context.Position == TypePosition.StaticStorage && requirement != LoanRequirement.Uniq)
+        {
+            // SPEC 15.4.2: after explicit relations, shared layers and none/ref aggregate slots default to static.
+            // Owned and the static-source rules remain separate obligations; this never grants an exclusive loan.
+            return BoundOrigin.Static;
+        }
+
         if (aggregateSlot >= 0 && context.Position == TypePosition.Parameter &&
             context.Owner is FunctionKoto { IsAnonymous: false } or PropertyAccessorKoto)
         {
