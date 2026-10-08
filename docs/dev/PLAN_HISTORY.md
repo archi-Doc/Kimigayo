@@ -6,6 +6,7 @@ Archive line numbers below refer to that immutable snapshot, not this file. Hist
 
 ## Sessions
 
+- **2026-10-08 — G82 plan revision:** restructured the [G82 proposal](../../draft/Proposals/2026-10-08%20G82%20Generic%20Default%20Context%20Repair%20Plan.md) around a §8.10 instantiation oracle, one explicit interpretation context per operation (composed substitution and proof environment), stage-separated resolvers, a behavior-preserving context unit before the repairs, generated context replicas and an inline-versus-instance default decision with measurable reopening triggers. It proposes one non-semantic SPEC §7.2.3 cross-reference through a separate intake unit. No implementation, SPEC or support change. Documentation-only diff/reference review; no builds, tests or native verification run.
 - **2026-10-08 — G82 repair planning:** created the [generic-default context repair proposal](../../draft/Proposals/2026-10-08%20G82%20Generic%20Default%20Context%20Repair%20Plan.md), combining operation-aware Type/acquisition APIs with ownership, effect, lowering and lifecycle regressions. Prior probe results and historical attribution remain subject to a clean baseline; no implementation or support change is claimed. Documentation-only diff/reference review; no builds, tests or native verification run.
 
 <a id="associated-inference-completion"></a>
