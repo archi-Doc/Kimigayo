@@ -471,6 +471,31 @@ public class LocalOriginClauseTest
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
+    // SPEC 15.4.4, 15.3.6: a local's omitted Origin is bounded by the values fitted to it; an `if` join is fitted as its meet, so the
+    // order of its branches changes no relation.
+    [Theory]
+    [InlineData("a", "b", "(a and b)", null)]
+    [InlineData("b", "a", "(a and b)", null)]
+    [InlineData("a", "b", "a", "UnprovenOriginRelation_Kd")]
+    [InlineData("b", "a", "a", "UnprovenOriginRelation_Kd")]
+    public void AJoinBoundsAnOmittedOriginWithItsMeet(string first, string second, string result, string? code)
+    {
+        var source = "func f(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 during " + result + "\n    let k: ref/i32 = if c => " + first + " else => " + second + "\n    return k\n" + Main;
+        Assert.Equal(code is null ? [] : [code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
+    // SPEC 10.1, 15.4.4: only the selected candidate's fits bound a local's omitted Origin, whatever the declaration order.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void OnlyTheSelectedCandidateBoundsAnOmittedOrigin(bool boolFirst)
+    {
+        const string Flag = "func pick(x: ref/i32, flag: bool) -> ref/i32 during x => x\n";
+        const string Number = "func pick(x: ref/i32, flag: i32) -> ref/i32 during x => x\n";
+        var source = (boolFirst ? Flag + Number : Number + Flag) + "func f(a: ref/i32) -> ref/i32 during a\n    let r: ref/i32 = pick(a, true)\n    return r\n" + Main;
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
     // A warm rebind of locals whose clauses read inferred slots, with an upper-bound meet, allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]

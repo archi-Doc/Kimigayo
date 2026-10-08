@@ -259,7 +259,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (!equality && longer.Kind == OriginKind.Intersection && !this.ProvesOriginOutlives(longer, shorter, at))
+        if (!equality && longer.Kind == OriginKind.Intersection && !this.FitOriginOutlives(longer, shorter, at))
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
@@ -270,8 +270,8 @@ public sealed partial class Binding
         }
 
         // Complete initializer-owned holes before deferring finite constraints to the body graph.
-        var forwardProven = this.ProvesOriginOutlives(longer, shorter, at);
-        var backwardProven = !equality || this.ProvesOriginOutlives(shorter, longer, at);
+        var forwardProven = this.FitOriginOutlives(longer, shorter, at);
+        var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at);
         if (!FixedOrigin(longer) || !FixedOrigin(shorter))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null));

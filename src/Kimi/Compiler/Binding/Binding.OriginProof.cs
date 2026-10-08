@@ -8,6 +8,15 @@ public sealed partial class Binding
 {
     private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter)> originProofPath = new();
 
+    // Bounds collected while call candidates are tried; only the selected candidate's are kept (CandidateBounds).
+    private readonly List<(OriginDeclaration Declaration, BoundOrigin Variable, BoundOrigin Bound, Koto Use)> candidateBounds = new();
+
+    // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
+    private int originStateVersion;
+
+    // The calls whose candidates are being tried, outermost first; bounds wait until the outermost selection completes.
+    private int candidateBoundDepth;
+
     // SPEC 15.6.1, 23.3.6.5: whether an Origin obligation is a fit, reported at the value with the source `fit`, rather than the
     // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or of a
     // callee's result at its call (RequireResultPremises), or a Type's clause substituted at its occurrence (AddTypeClauseObligations),
@@ -148,6 +157,7 @@ public sealed partial class Binding
                 if (!this.initializerOrigins.TryGetValue(variable, out var declaration))
                 {
                     this.initializerOrigins.Add(variable, declaration = new(variable));
+                    this.originStateVersion++;
                 }
 
                 return declaration.State < 2 ? declaration : null;
@@ -176,24 +186,102 @@ public sealed partial class Binding
         return origin;
     }
 
+    // SPEC 15.3.6 (PLAN G74 U1): a pure question: whether the premises visible at `use` entail `longer outlives shorter`. A request
+    // leaves inference, obligation and declaration state unchanged, which every top-level request checks (originStateVersion).
     private bool ProvesOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
+    {
+        if (this.originProofPath.Count != 0)
+        {
+            return this.ProvesResolvedOrigins(this.OriginAtUse(longer, use), this.OriginAtUse(shorter, use), use);
+        }
+
+        var version = this.originStateVersion;
+        var proven = this.ProvesResolvedOrigins(this.OriginAtUse(longer, use), this.OriginAtUse(shorter, use), use);
+        if (version != this.originStateVersion)
+        {
+            throw new InvalidOperationException($"The Origin proof of `{longer} outlives {shorter}` changed inference or obligation state (PLAN G74).");
+        }
+
+        return proven;
+    }
+
+    // SPEC 15.4.4 (PLAN G74 U1): the constraint a fit collects. A fit that requires a value to outlive an Origin omitted in a local's
+    // annotation or initializer, while that initializer is still bound, bounds the Origin with the value, and the relation is proven
+    // again once the Origin is resolved; any other requirement is the pure proof. An open region holds no Loans, so a value fitted
+    // into it would lose its Loans: such a fit is never collected here.
+    private bool FitOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        this.OriginProofMetrics?.Enter(longer, shorter, use, this.originProofPath.Count);
-        if (OriginOutlives(longer, shorter))
+        if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
         {
+            this.BoundInitializerOrigin(pending, shorter, longer, use);
             return true;
         }
 
-        // An open region holds no Loans, so a value fitted into it would lose its Loans: such a fit is never proven here.
-        if (shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializerInference(shorter, use) is { } pending)
+        return this.ProvesOriginOutlives(longer, shorter, use);
+    }
+
+    // Records `bound` for a local's omitted Origin: at once, or, while call candidates are tried, for the selected candidate only.
+    private void BoundInitializerOrigin(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use)
+    {
+        if (this.candidateBoundDepth != 0)
         {
-            // SPEC 15.4.4: an Origin omitted in a local annotation or initializer Type expression is
-            // inferred from the values fitted to it: each one bounds it, and the relation is proven again once the local's
-            // initializer has been bound and the Origin resolved.
-            pending.Replacements[shorter] = pending.Replacements.TryGetValue(shorter, out var previous) ? this.Meet(previous, longer) : longer;
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, longer, shorter));
+            this.candidateBounds.Add((pending, variable, bound, use));
+            return;
+        }
+
+        this.ApplyInitializerBound(pending, variable, bound, use);
+    }
+
+    private void ApplyInitializerBound(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use)
+    {
+        pending.Replacements[variable] = pending.Replacements.TryGetValue(variable, out var previous) ? this.Meet(previous, bound) : bound;
+        this.originStateVersion++;
+        this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, bound, variable));
+    }
+
+    // A call's candidate selection collects the bounds of its fits from the returned mark.
+    private int BeginCandidateBounds()
+    {
+        this.candidateBoundDepth++;
+        return this.candidateBounds.Count;
+    }
+
+    // SPEC 10.1, 15.4.4: only the selected candidate's fits are values fitted to an omitted Origin; the bounds other candidates
+    // collected between `mark` and `trialsEnd` are dropped, the selected one's [`start`, `end`) kept.
+    private void KeepCandidateBounds(int mark, int start, int end, int trialsEnd)
+    {
+        this.candidateBounds.RemoveRange(end, trialsEnd - end);
+        this.candidateBounds.RemoveRange(mark, start - mark);
+    }
+
+    // Ends a call's selection: without a selected candidate its bounds are dropped (a later attempt collects its own), and the
+    // outermost selection applies the bounds that remain.
+    private void EndCandidateBounds(int mark, bool selected)
+    {
+        if (!selected)
+        {
+            this.candidateBounds.RemoveRange(mark, this.candidateBounds.Count - mark);
+        }
+
+        if (--this.candidateBoundDepth == 0)
+        {
+            for (var i = 0; i < this.candidateBounds.Count; i++)
+            {
+                var (declaration, variable, bound, use) = this.candidateBounds[i];
+                this.ApplyInitializerBound(declaration, variable, bound, use);
+            }
+
+            this.candidateBounds.Clear();
+        }
+    }
+
+    private bool ProvesResolvedOrigins(BoundOrigin longer, BoundOrigin shorter, Koto use)
+    {
+        this.OriginProofMetrics?.Enter(longer, shorter, use, this.originProofPath.Count);
+        if (OriginOutlives(longer, shorter))
+        {
             return true;
         }
 

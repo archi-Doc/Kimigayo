@@ -195,6 +195,7 @@ public sealed partial class Binding
                 inheritedDeclaration ??= this.OriginDeclarationFor(function);
                 inheritedDeclaration.Scope = scope;
                 inheritedDeclaration.State = 3;
+                this.originStateVersion++;
                 // A written implementation clause is a claim to check, never its own premise.
                 // Rebuild the environment solely from the original before rebinding the header.
                 inheritedDeclaration.Replacements.Clear();
@@ -210,6 +211,7 @@ public sealed partial class Binding
                             if (!ReferenceEquals(from, to))
                             {
                                 inheritedDeclaration.Replacements[from] = to;
+                                this.originStateVersion++;
                             }
                         }
                     }

@@ -658,6 +658,9 @@ public sealed partial class Binding
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
         BoundDefaultArgument[]? defaults = null;
+        var boundStarts = this.indexScratch.Rent(candidateCount + 1);
+        var boundMark = this.BeginCandidateBounds();
+        var boundsSelected = false;
         try
         {
             if (generic is not null)
@@ -724,6 +727,7 @@ public sealed partial class Binding
                 }
 
                 var index = count++;
+                boundStarts[index] = this.candidateBounds.Count;
                 operations.AsSpan(index * operationStride, operationStride).Clear();
                 var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
                 var state = CandidateApplicability.Inapplicable;
@@ -794,6 +798,7 @@ public sealed partial class Binding
                 }
             }
 
+            boundStarts[count] = this.candidateBounds.Count;
             if (error)
             {
                 // A candidate in a failed declaration cannot be judged, so the selection rests on that failure (SPEC 23.3.6.4).
@@ -919,6 +924,8 @@ public sealed partial class Binding
                 }
             }
 
+            this.KeepCandidateBounds(boundMark, boundStarts[winnerIndex], winnerIndex + 1 < count ? boundStarts[winnerIndex + 1] : boundStarts[count], boundStarts[count]);
+            boundsSelected = true;
             var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
             this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.
@@ -1180,6 +1187,8 @@ public sealed partial class Binding
         }
         finally
         {
+            this.EndCandidateBounds(boundMark, boundsSelected);
+            this.indexScratch.Return(boundStarts);
             this.activeRequirementContract = null;
             if (defaults is not null)
             {

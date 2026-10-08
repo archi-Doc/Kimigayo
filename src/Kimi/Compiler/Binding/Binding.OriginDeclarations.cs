@@ -75,6 +75,7 @@ public sealed partial class Binding
         if (!this.originDeclarations.TryGetValue(owner, out var declaration))
         {
             this.originDeclarations.Add(owner, declaration = new(owner));
+            this.originStateVersion++;
         }
 
         return declaration;
@@ -279,6 +280,7 @@ public sealed partial class Binding
 
         declaration.Scope = scope;
         declaration.State = 1;
+        this.originStateVersion++;
         foreach (var entry in declaration.Sets)
         {
             for (var current = scope; current is not null; current = current.Parent)
@@ -503,6 +505,7 @@ public sealed partial class Binding
             // static, or supply premises through the valid-looking subset of the same rejected declaration.
             declaration.Relations.Clear();
             declaration.State = 3;
+            this.originStateVersion++;
             foreach (var pending in declaration.Pending)
             {
                 this.CompleteDependent(pending.Use, failure);
@@ -540,6 +543,7 @@ public sealed partial class Binding
                 if (Flexibility(a) != 0 && !Contains(b, a))
                 {
                     declaration.Replacements[a] = b;
+                    this.originStateVersion++;
                     changed = true;
                 }
             }
@@ -551,6 +555,7 @@ public sealed partial class Binding
         }
 
         declaration.State = 2; // Further omission performs the established position rule.
+        this.originStateVersion++;
         foreach (var pending in declaration.Pending)
         {
             var origin = this.ResolveOrigin(pending.Origin, declaration);
@@ -610,6 +615,7 @@ public sealed partial class Binding
             if (completed is not null && !ReferenceEquals(completed, origin))
             {
                 declaration.Replacements[origin] = completed;
+                this.originStateVersion++;
             }
         }
 
@@ -628,6 +634,7 @@ public sealed partial class Binding
         }
 
         declaration.State = 3;
+        this.originStateVersion++;
 
         int Flexibility(BoundOrigin origin)
         {
@@ -718,6 +725,7 @@ public sealed partial class Binding
     {
         declaration.Scope = scope;
         declaration.State = 3;
+        this.originStateVersion++;
         foreach (var replacement in declaration.Replacements)
         {
             this.RecordRegionBound(this.ResolveOrigin(replacement.Value, declaration), replacement.Key, declaration.Owner);
@@ -758,6 +766,7 @@ public sealed partial class Binding
 
         declaration.Scope = scope;
         declaration.State = 3;
+        this.originStateVersion++;
         var visitor = this.originRewriteVisitor ??= new(this);
         visitor.Declaration = declaration;
         visitor.Visit(owner.TypeKoto!);
@@ -812,6 +821,7 @@ public sealed partial class Binding
                     var region = declaration.Replacements.TryGetValue(pending, out var previous) && IsLocalRegion(previous)
                         ? previous : this.LocalRegionSlot(owner, localSlot--);
                     declaration.Replacements[pending] = region;
+                    this.originStateVersion++;
                     if (!ReferenceEquals(value, pending))
                     {
                         this.AddOriginFit(value, region, declared, owner.InitializerKoto!, polarity);
@@ -820,6 +830,7 @@ public sealed partial class Binding
                 else
                 {
                     declaration.Replacements[pending] = declaration.Replacements.TryGetValue(pending, out var previous) ? this.Meet(previous, value) : value;
+                    this.originStateVersion++;
                 }
 
                 if (declaration.Relations.Count != 0)
@@ -853,6 +864,7 @@ public sealed partial class Binding
                     if (!this.ProvesOriginOutlives(lowerCandidate, lower, relation.Syntax) && this.ProvesOriginOutlives(lower, lowerCandidate, relation.Syntax))
                     {
                         declaration.Replacements[relation.Longer] = lower;
+                        this.originStateVersion++;
                         changed = true;
                     }
                 }
@@ -874,6 +886,7 @@ public sealed partial class Binding
                 if (!ReferenceEquals(met, current))
                 {
                     declaration.Replacements[relation.Shorter] = met;
+                    this.originStateVersion++;
                     changed = true;
                 }
             }

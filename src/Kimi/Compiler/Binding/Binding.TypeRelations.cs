@@ -192,7 +192,7 @@ public sealed partial class Binding
         return true;
 
         bool OriginFits(BoundOrigin a, BoundOrigin b) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
-            binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+            binding is null ? OriginOutlives(a, b) : binding.FitOriginOutlives(a, b, use!);
     }
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
@@ -281,7 +281,7 @@ public sealed partial class Binding
             return true;
         }
 
-        return binding is null ? OriginOutlives(a, b) : binding.ProvesOriginOutlives(a, b, use!);
+        return binding is null ? OriginOutlives(a, b) : binding.FitOriginOutlives(a, b, use!);
     }
 
     // SPEC 10.7, 15.6.1, 23.3.6.5: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
