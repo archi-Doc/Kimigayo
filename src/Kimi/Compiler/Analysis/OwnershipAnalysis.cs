@@ -171,6 +171,8 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.issues.Clear();
+        this.obligationVerdicts.Clear();
+        this.obligationVerdictVersion = -1;
         this.invalidDefaults.Clear();
         this.checkedDefaults.Clear();
         this.candidates.Clear();

@@ -184,7 +184,12 @@ public sealed partial class Binding
             // in every case, but value/object cases impose no outlives relation to an inactive outer slot.
             if (origin is not null && type.Components.Count != 0 && !InactiveOuterOrigin(type, this, use))
             {
-                this.RetainInnerOutlives(type.Components[0], origin, use);
+                // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
+                // binding, guarantees its own stored Origins outlive the borrow: each call's borrow formation checks them.
+                var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
+                    origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
+                    (ReferenceTypes.IsStruct(type) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;
+                this.RetainInnerOutlives(type.Components[0], origin, use, discharge);
             }
         }
         else
@@ -276,7 +281,8 @@ public sealed partial class Binding
         return type;
     }
 
-    private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use)
+    // `discharge` applies to the Origins stored directly in `inner`; those of its components are judged.
+    private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use, OriginDischarge discharge = OriginDischarge.Judgment)
     {
         if (!inner.CarriesOrigin)
         {
@@ -285,7 +291,7 @@ public sealed partial class Binding
 
         if (inner.Origin is { } origin && !OriginOutlives(origin, outer))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge));
         }
 
         for (var i = 0; i < inner.OriginArguments.Count; i++)
@@ -293,7 +299,7 @@ public sealed partial class Binding
             var argument = inner.OriginArguments[i];
             if (!OriginOutlives(argument, outer))
             {
-                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer));
+                this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, argument, outer, Discharge: discharge));
             }
         }
 

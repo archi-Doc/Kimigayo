@@ -6,34 +6,95 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    internal bool SupportsOriginObligations() => this.UnprovenOriginObligation() is null;
+    // One verdict per Binding obligation in order, and the Binding state version they were computed from; -1 before analysis.
+    private readonly List<ObligationVerdict> obligationVerdicts = new();
+    private int obligationVerdictVersion = -1;
 
-    // A well-formed borrowed input, or a pair-layer input whose outer slot is active only for a borrow binding (SPEC 8.1.2),
-    // guarantees its nested stored Origins outlive that input. Call-site borrow formation checks the concrete nested dependencies,
-    // including drop uses, in VerifyBorrows.
-    private static bool InputWellFormedObligation(in BindingObligation obligation)
-        => obligation is { Kind: BindingObligationKind.OriginOutlives, Deadline: BindingDeadline.BodyOrigins, Equality: false, Shorter: { Kind: OriginKind.Input, Binder: FunctionKoto function } outer } &&
-            (uint)outer.Slot < (uint)function.Parameters.Count &&
-            function.Parameters[outer.Slot].Type.BoundType is { } input && (ReferenceTypes.IsStruct(input) || Binding.TryPairLayer(input, out _, out _)) &&
-            ReferenceEquals(input.Origin, outer) && ReferenceEquals(input.Components[0], obligation.Type) &&
-            (input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer));
-
-    // SPEC 15.6.1: every Origin obligation that Binding left unproven and this analysis cannot check is its own record, reported
-    // without adding constraints. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it;
-    // any other unchecked obligation, such as an unsolved inference, stops the analysis.
-    private bool ReportUnprovenOriginObligations()
+    // Whether every Binding obligation is discharged, from the verdicts of this analysis (PLAN G74 U4); false before analysis.
+    internal bool SupportsOriginObligations()
     {
-        var obligations = this.compilation.Binding.Obligations;
-        var stop = false;
-        for (var i = 0; i < obligations.Count; i++)
+        if (!this.CurrentVerdicts())
         {
-            if (this.UncheckedOriginObligation(obligations[i]))
+            return false;
+        }
+
+        for (var i = 0; i < this.obligationVerdicts.Count; i++)
+        {
+            if (this.obligationVerdicts[i].Unchecked)
             {
-                stop |= this.ReportUnprovenOriginObligation(obligations[i], false);
+                return false;
             }
         }
 
+        return true;
+    }
+
+    // Whether the verdicts are computed for the current Binding. Binding invalidates this analysis whenever it rebinds, so verdicts
+    // whose obligation or inference state has changed since were computed from other inputs: an internal invariant, never a reason
+    // to judge again.
+    private bool CurrentVerdicts()
+    {
+        if (this.obligationVerdictVersion < 0)
+        {
+            return false;
+        }
+
+        var binding = this.compilation.Binding;
+        if (this.obligationVerdictVersion != binding.OriginStateVersion || this.obligationVerdicts.Count != binding.Obligations.Count)
+        {
+            throw new InvalidOperationException("Binding's obligations or inference state changed after their verdicts were computed (PLAN G74 U4).");
+        }
+
+        return true;
+    }
+
+    // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
+    // remains unchecked is its own record, reported without adding constraints. A failed Origin relation leaves the Loan, destruction
+    // and result checks to proceed without it; any other unchecked obligation, such as an unsolved inference, stops the analysis.
+    private bool ReportUnprovenOriginObligations()
+    {
+        var binding = this.compilation.Binding;
+        var obligations = binding.Obligations;
+        this.obligationVerdicts.Clear();
+        var stop = false;
+        for (var i = 0; i < obligations.Count; i++)
+        {
+            var verdict = this.JudgeObligation(obligations[i]);
+            this.obligationVerdicts.Add(verdict);
+            if (verdict.Unchecked)
+            {
+                stop |= this.ReportJudgedOriginObligation(obligations[i], verdict.Judgment, verdict.Reversed, false);
+            }
+        }
+
+        this.obligationVerdictVersion = binding.OriginStateVersion;
         return stop;
+    }
+
+    // The verdict of one obligation, by the check that owns it: Binding's length verification, call-site borrow formation for a
+    // borrowed input's well-formedness, or the proof and region judgment of SPEC 15.6.5.
+    private ObligationVerdict JudgeObligation(in BindingObligation obligation)
+    {
+        var binding = this.compilation.Binding;
+        binding.OriginProofMetrics?.Verdict();
+        if (binding.IsVerifiedLengthObligation(obligation))
+        {
+            return default; // Definition conditions and each call's substituted lengths were checked by Binding.
+        }
+
+        binding.CompareDischarge(obligation);
+        if (obligation.Discharge == OriginDischarge.CallBorrows || binding.IsVerifiedOriginObligation(obligation))
+        {
+            return default;
+        }
+
+        if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null })
+        {
+            return new(true, default, false);
+        }
+
+        var judgment = binding.JudgeOriginObligation(obligation, out var reversed);
+        return judgment == OriginJudgment.Proven ? default : new(true, judgment, reversed);
     }
 
     // SPEC 15.3.6, 15.6.1 Identity: a meet at the longer end of an `outlives` relation outlives an Origin exactly when each operand
@@ -41,9 +102,16 @@ public sealed partial class OwnershipAnalysis
     // whole. True when the analysis must stop.
     private bool ReportUnprovenOriginObligation(in BindingObligation obligation, bool operand)
     {
+        var reversed = false;
+        var judgment = obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null }
+            ? this.compilation.Binding.JudgeOriginObligation(obligation, out reversed) : default;
+        return this.ReportJudgedOriginObligation(obligation, judgment, reversed, operand);
+    }
+
+    private bool ReportJudgedOriginObligation(in BindingObligation obligation, OriginJudgment judgment, bool reversed, bool operand)
+    {
         if (obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: not null, Use: var use })
         {
-            var judgment = this.compilation.Binding.JudgeOriginObligation(obligation, out var reversed);
             if (operand && judgment == OriginJudgment.Proven)
             {
                 return false;
@@ -96,35 +164,6 @@ public sealed partial class OwnershipAnalysis
 
         this.issues.Add(new(obligation.Use, OwnershipFailure.UnprovenOrigin, Obligation: obligation));
         return obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
-    }
-
-    // The use of the first Origin obligation that Binding left unproven and this analysis cannot check, or null.
-    private Koto? UnprovenOriginObligation()
-    {
-        var obligations = this.compilation.Binding.Obligations;
-        for (var i = 0; i < obligations.Count; i++)
-        {
-            if (this.UncheckedOriginObligation(obligations[i]))
-            {
-                return obligations[i].Use;
-            }
-        }
-
-        return null;
-    }
-
-    private bool UncheckedOriginObligation(in BindingObligation obligation)
-    {
-        if (this.compilation.Binding.IsVerifiedLengthObligation(obligation))
-        {
-            return false; // Definition conditions and each call's substituted lengths were checked by Binding.
-        }
-
-        // The structural exclusion is checked before any proof: both orders give the same answer, and an excluded obligation
-        // needs none (PLAN G74 U0b).
-        return !InputWellFormedObligation(obligation) && !this.compilation.Binding.IsVerifiedOriginObligation(obligation) &&
-            !(obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null } &&
-                this.compilation.Binding.JudgeOriginObligation(obligation, out _) == OriginJudgment.Proven);
     }
 
     // SPEC 3.4: each branch below is one Place route (raw, stored reference, published Place, Reborrow, object payload, sequence
@@ -568,4 +607,8 @@ public sealed partial class OwnershipAnalysis
     private bool SupportsUpdate(Koto target, BoundType? type, KotoKind operation, bool pointer = false)
         => operation != KotoKind.Invalid && this.Resolve(type, this.Active) is { } concrete &&
             (concrete.IsNumeric || this.GenericInteger(target) || (pointer && ReferenceTypes.IsPointer(concrete) && operation is KotoKind.Plus or KotoKind.Minus));
+
+    // An obligation's verdict: whether it remains unchecked and, for an Origin relation, its judgment and whether its reverse
+    // direction decides it.
+    private readonly record struct ObligationVerdict(bool Unchecked, OriginJudgment Judgment, bool Reversed);
 }

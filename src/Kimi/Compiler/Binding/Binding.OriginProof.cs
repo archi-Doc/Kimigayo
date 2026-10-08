@@ -15,6 +15,9 @@ public sealed partial class Binding
     // The calls whose candidates are being tried, outermost first; bounds wait until the outermost selection completes.
     private int candidateBoundDepth;
 
+    // The version of inference, obligation and Origin declaration state; every change advances it.
+    internal int OriginStateVersion => this.originStateVersion;
+
     // SPEC 15.6.1, 23.3.6.5: whether an Origin obligation is a fit, reported at the value with the source `fit`, rather than the
     // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or of a
     // callee's result at its call (RequireResultPremises), or a Type's clause substituted at its occurrence (AddTypeClauseObligations),

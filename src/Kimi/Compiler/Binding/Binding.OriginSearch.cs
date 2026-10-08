@@ -14,6 +14,39 @@ public sealed partial class Binding
     private readonly HashSet<(BoundOrigin Longer, BoundOrigin Shorter)> originProofPath = new();
     private int originSearchWork;
 
+    // U4: the recorded discharge owner of an input's well-formedness against the structural recognition it replaces. An
+    // obligation the recognition excluded must be recorded for call-site borrow formation; one recorded there that the recognition
+    // missed, as after a header's Origins were completed, must have been discharged by the previous judgment.
+    internal void CompareDischarge(in BindingObligation obligation)
+    {
+        if (OriginSearchComparison.Active is not { } comparison)
+        {
+            return;
+        }
+
+        var recorded = obligation.Discharge == OriginDischarge.CallBorrows;
+        var recognized = InputWellFormedShape(obligation);
+        if (recorded && !recognized)
+        {
+            comparison.Unrecognized();
+        }
+
+        if ((recognized && !recorded) || (recorded && !recognized && !this.IsVerifiedOriginObligation(obligation) &&
+            this.JudgeOriginObligation(obligation, out _) != OriginJudgment.Proven))
+        {
+            var description = $"discharge {obligation.Discharge} of `{obligation.Longer} outlives {obligation.Shorter}` at {obligation.Use.GetType().Name} {obligation.Use.Span}";
+            comparison.Mismatch(description);
+            throw new InvalidOperationException($"The recorded discharge owner disagrees with the structural recognition: {description} (PLAN G74 comparison mode).");
+        }
+    }
+
+    private static bool InputWellFormedShape(in BindingObligation obligation)
+        => obligation is { Kind: BindingObligationKind.OriginOutlives, Deadline: BindingDeadline.BodyOrigins, Equality: false, Shorter: { Kind: OriginKind.Input, Binder: FunctionKoto function } outer } &&
+            (uint)outer.Slot < (uint)function.Parameters.Count &&
+            function.Parameters[outer.Slot].Type.BoundType is { } input && (ReferenceTypes.IsStruct(input) || TryPairLayer(input, out _, out _)) &&
+            ReferenceEquals(input.Origin, outer) && ReferenceEquals(input.Components[0], obligation.Type) &&
+            (input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer));
+
     private void CompareOriginSearch(OriginSearchComparison comparison, BoundOrigin longer, BoundOrigin shorter, Koto use, bool entailed)
     {
         this.originSearchWork = 0;
@@ -357,6 +390,7 @@ internal sealed class OriginSearchComparison
     private long mismatches;
     private long incomplete;
     private long incompleteUnproven;
+    private long unrecognized;
 
     private OriginSearchComparison(string path)
     {
@@ -378,6 +412,8 @@ internal sealed class OriginSearchComparison
     }
 
     internal void Censor() => Interlocked.Increment(ref this.censored);
+
+    internal void Unrecognized() => Interlocked.Increment(ref this.unrecognized);
 
     // A request whose environment met an enclosing declaration contract not yet established (State 1 or 2).
     internal void RecordEnvironment(bool incomplete, bool entailed)
@@ -416,5 +452,5 @@ internal sealed class OriginSearchComparison
     private void Write()
         => File.WriteAllText(
             this.path + $".{Environment.ProcessId}.json",
-            $"{{\"compared\": {this.compared}, \"entailed\": {this.entailed}, \"censored\": {this.censored}, \"mismatches\": {this.mismatches}, \"incomplete\": {this.incomplete}, \"incompleteUnproven\": {this.incompleteUnproven}, \"budget\": {Binding.OriginSearchBudget}}}{Environment.NewLine}");
+            $"{{\"compared\": {this.compared}, \"entailed\": {this.entailed}, \"censored\": {this.censored}, \"mismatches\": {this.mismatches}, \"incomplete\": {this.incomplete}, \"incompleteUnproven\": {this.incompleteUnproven}, \"unrecognizedCallBorrows\": {this.unrecognized}, \"budget\": {Binding.OriginSearchBudget}}}{Environment.NewLine}");
 }
