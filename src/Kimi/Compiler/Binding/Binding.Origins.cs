@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -144,6 +145,12 @@ public sealed partial class Binding
         return false;
     }
 
+    private static GenericSlotKind SlotKind(TypeKoto syntax, BindingSymbol symbol)
+        => syntax is LengthParameterKoto ? GenericSlotKind.Length : symbol.Pair is not null ? GenericSlotKind.Pair : GenericSlotKind.Type;
+
+    private static SourceSpan OriginSpan(Koto owner, IReadOnlyList<string> names, int index)
+        => names is OriginNameList locations && index < locations.Spans.Count ? locations.Spans[index] : owner.Span;
+
     private BoundType? BoundInputType(Koto owner, int index)
         => ReferenceEquals(owner, this.closureHeader) && InputType(owner, index) is SyntaxFormKoto { Akind: KotoKind.InferredType }
             ? this.closureHeaderInputs!.Components[index]
@@ -152,9 +159,11 @@ public sealed partial class Binding
     private BoundOrigin OriginAtom(Koto binder, OriginKind kind, int slot, string? name = null)
     {
         var key = (binder, kind, slot);
-        if (!this.originAtoms.TryGetValue(key, out var origin))
+        if (!this.originAtoms.TryGetValue(key, out var origin) || (name is not null && origin.Name != name))
         {
-            this.originAtoms.Add(key, origin = new(kind, binder, slot, name));
+            // An edited declaration may reuse a slot with a different name. Keep old expressions immutable while
+            // rebuilding the current signature; unchanged passes retain the same interned atom.
+            this.originAtoms[key] = origin = new(kind, binder, slot, name);
         }
 
         return origin;
@@ -316,13 +325,13 @@ public sealed partial class Binding
             var genericCount = parameters.Count + (inherited?.GenericSlots.Count ?? 0);
             var originCount = origins.Count + (inherited?.Origins.Count ?? 0);
             var schema = symbol.Schema;
-            if (schema is null || schema.GenericSlots.Count != genericCount || schema.Origins.Count != originCount)
+            if (!this.SchemaMatches(schema, node, parameters, origins, inherited))
             {
                 var slots = genericCount == 0 ? Array.Empty<GenericSlot>() : new GenericSlot[genericCount];
                 for (var i = 0; i < parameters.Count; i++)
                 {
                     var parameter = this.symbols[parameters[i]];
-                    slots[i] = new(parameters[i] is LengthParameterKoto ? GenericSlotKind.Length : parameter.Pair is not null ? GenericSlotKind.Pair : GenericSlotKind.Type, parameter, parameter.Pair);
+                    slots[i] = new(SlotKind(parameters[i], parameter), parameter, parameter.Pair);
                 }
 
                 for (var i = 0; inherited is not null && i < inherited.GenericSlots.Count; i++)
@@ -334,7 +343,7 @@ public sealed partial class Binding
                 var bindings = originCount == 0 ? Array.Empty<OriginParameter>() : new OriginParameter[originCount];
                 for (var i = 0; i < origins.Count; i++)
                 {
-                    bindings[i] = new(origins[i], i, this.OriginAtom(node, OriginKind.Parameter, i, origins[i]), origins is OriginNameList locations && i < locations.Spans.Count ? locations.Spans[i] : node.Span);
+                    bindings[i] = new(origins[i], i, this.OriginAtom(node, OriginKind.Parameter, i, origins[i]), OriginSpan(node, origins, i));
                 }
 
                 for (var i = 0; inherited is not null && i < inherited.Origins.Count; i++)
@@ -346,7 +355,7 @@ public sealed partial class Binding
                 symbol.Schema = schema = new(slots, bindings);
             }
 
-            for (var i = 0; i < schema.GenericSlots.Count; i++)
+            for (var i = 0; i < schema!.GenericSlots.Count; i++)
             {
                 schema.GenericSlots[i].OriginVariance = OriginVariance.Unused;
                 if (i >= parameters.Count)
@@ -391,6 +400,50 @@ public sealed partial class Binding
 
             return null;
         }
+    }
+
+    // Schema reuse follows the complete ordered header, including its inherited environment. Counting slots alone
+    // misses same-sized edits. The unchanged path compares existing storage without allocating a replacement header.
+    private bool SchemaMatches(DeclarationSchema? schema, Koto owner, IReadOnlyList<TypeKoto> parameters, IReadOnlyList<string> origins, DeclarationSchema? inherited)
+    {
+        if (schema is null || schema.GenericSlots.Count != parameters.Count + (inherited?.GenericSlots.Count ?? 0) ||
+            schema.Origins.Count != origins.Count + (inherited?.Origins.Count ?? 0))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < schema.GenericSlots.Count; i++)
+        {
+            var slot = schema.GenericSlots[i];
+            var symbol = i < parameters.Count ? this.symbols[parameters[i]] : inherited!.GenericSlots[i - parameters.Count].Symbol;
+            var kind = i < parameters.Count ? SlotKind(parameters[i], symbol) : inherited!.GenericSlots[i - parameters.Count].Kind;
+            if (!ReferenceEquals(slot.Symbol, symbol) || !ReferenceEquals(slot.Semantics, symbol.Pair) || slot.Kind != kind)
+            {
+                return false;
+            }
+        }
+
+        for (var i = 0; i < schema.Origins.Count; i++)
+        {
+            var slot = schema.Origins[i];
+            if (i < origins.Count)
+            {
+                if (slot.Name != origins[i] || slot.Span != OriginSpan(owner, origins, i))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                var original = inherited!.Origins[i - origins.Count];
+                if (!ReferenceEquals(slot.Origin, original.Origin) || slot.Name != original.Name || slot.Span != original.Span)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     private TypeBindingContext TypeContext(Koto syntax, BindingScope scope)
