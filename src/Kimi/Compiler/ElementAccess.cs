@@ -230,11 +230,19 @@ internal static class ElementAccess
             return node.BoundType;
         }
 
-        // A synthesized shared receiver read does not decide an indexer's later projection capability.
-        // Only an already bound exclusive entry can supply the stronger acquisition.
-        return exclusive && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow && IndexerCall(node, true) is not null
+        // SPEC 3.4.1, 4.6.9: a synthesized shared access does not decide the later projection's capability; the final acquisition
+        // does. An exclusive use takes an indexer's bound exclusive entry, or a synthesized access exclusively when the real path
+        // grants exclusive access, with the same Origin.
+        return exclusive && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow &&
+            (IndexerCall(node, true) is not null || (IsSynthesizedAccess(node) && Binding.PathAuthority(node) == SemanticsKind.Uniq))
             ? binding.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : adaptation.Type;
     }
+
+    // SPEC 3.4.1: a shared borrow that Binding synthesized to read a Place in place, of the Place's own complete stored Type, is a
+    // representation of the selection rather than a reference layer on its path.
+    internal static bool IsSynthesizedAccess(Koto node)
+        => node.CodeContext.Compilation.Binding.TryGetAdaptation(node, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow &&
+            adaptation.Type.Components.Count == 1 && ReferenceEquals(adaptation.Type.Components[0], node.BoundType);
 
     // SPEC 15.6: a direct field/Tuple path whose base is a borrowed struct or
     // Tuple reference; nested levels must be inline stored parts. Returns the

@@ -11,6 +11,9 @@ namespace XunitTest;
 
 public class BorrowedArrayWriteTest(ITestOutputHelper output)
 {
+    // SPEC 3.4.1: a member below a Non-Copy element is reached through a synthesized access, which an exclusive path makes exclusive.
+    private const string Inner = "struct Inner\n    public var name: string\n    public var count: i32 = 0\n    public init(name: string) => self.name = name@move\n    public func bump(self: uniq/Self) => self.count += 1\n";
+
     [Theory]
     [InlineData("Scalar", "func put(a: uniq/Array<i32>) => a[0] = 42\nvar a: Array<i32> = [1]\nput(a@uniq)\nrequire a[0] == 42 else => $abort(\"value\")", "")]
     [InlineData("String", "func put(a: uniq/Array<string>) => a[^1] = \"new\"\nvar a: Array<string> = [\"old\"]\nput(a@uniq)\nConsole.writeLine(a[0])", "new\n")]
@@ -22,6 +25,8 @@ public class BorrowedArrayWriteTest(ITestOutputHelper output)
     [InlineData("Unit", "func put(a: uniq/Array<()>) => a[0] = ()\nvar a: Array<()> = [()]\nput(a@uniq)\nrequire a.length == 1 else => $abort(\"unit\")", "")]
     [InlineData("AbruptRhs", "func key() -> isize\n    Console.writeLine(\"wrong\")\n    return 0\nfunc put(a: uniq/Array<i32>)\n    a[key()] = (do => return)\nvar a: Array<i32> = [1]\nput(a@uniq)\nrequire a[0] == 1 else => $abort(\"unchanged\")", "")]
     [InlineData("ReceiverOnce", "func receiver(a: uniq/Array<i32>) -> uniq/Array<i32> during a\n    Console.writeLine(\"receiver\")\n    return a\nvar a: Array<i32> = [1]\nreceiver(a@uniq)[0] += 41\nrequire a[0] == 42 else => $abort(\"value\")", "receiver\n")]
+    [InlineData("Member", Inner + "func put(a: uniq/Array<Inner>)\n    a[0].count = 40\n    a[0].count += 1\n    a[0].bump()\nvar a: Array<Inner> = [Inner.init(\"x\")]\nput(a@uniq)\nrequire a[0].count == 42 else => $abort(\"value\")", "")]
+    [InlineData("TupleMember", Inner + "func put(a: uniq/Array<(Inner, i32)>)\n    a[0].0.bump()\n    a[0].1 = 41\nvar a: Array<(Inner, i32)> = [(Inner.init(\"x\"), 0)]\nput(a@uniq)\nrequire a[0].0.count + a[0].1 == 42 else => $abort(\"value\")", "")]
     public void Executes(string name, string source, string stdout)
     {
         ScalarEmissionTest.EmitFixture("BorrowedArrayWrite" + name, source, stdout);

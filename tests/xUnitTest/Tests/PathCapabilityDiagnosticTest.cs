@@ -5,8 +5,8 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>SPEC 3.4, 15.1.5: one path computation decides writes, Moves and exclusive borrows; the diagnostic names the
-/// layer that denies the capability.</summary>
+/// <summary>SPEC 3.4, 3.4.1, 15.1.5: one path computation decides writes, Moves and exclusive borrows; the diagnostic names the
+/// layer that denies the capability. A shared access Binding synthesizes for an element is not such a layer.</summary>
 public class PathCapabilityDiagnosticTest
 {
     private const string S = "struct S\n    public var f: string\n    public var n: i32 = 0\n    public init(f: string) => self.f = f@move\n";
@@ -35,6 +35,9 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Layers + "func f(r: ref/Outer{o})\n    let u = r.inner.n@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o})\n    match r.slot\n        .Some(let x) => x@follow += 1\n        .None => ()", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(Layers + "func f(r: ref/Outer{o})\n    let s = r.slot@uniq", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(S + "func f(a: ref/Array<S>) => a[0].n = 3", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(S + "func f(a: ref/[2 of S]) => a[1].n += 3", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(S + "func f(a: uniq/Array<S>) -> string => a[0].f@move", DiagnosticCode.ExclusivePathTake_Kd)]
     public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -56,6 +59,9 @@ public class PathCapabilityDiagnosticTest
     [InlineData(S + "func f(r: uniq/S) => r.n = 3")]
     [InlineData("func f(r: uniq/i32) => r@follow += 1")]
     [InlineData("func f(r: uniq/string) -> uniq/string => r@move")]
+    [InlineData(S + "func f(a: uniq/Array<S>) => a[0].n = 3")]
+    [InlineData(S + "func f(a: uniq/[2 of S]) => a[1].n += 3")]
+    [InlineData(S + "var v: Array<S> = [S.init(\"a\")]\nlet r = v@uniq\nr[0].n = 3")]
     public void OwnedAndExclusivePathsKeepTheirCapabilities(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
