@@ -1365,19 +1365,10 @@ EndOfFile:
     [MethodImpl(MethodImplOptions.NoInlining)]
     private bool TryReadNumberLiteral(ReadOnlySpan<char> span)
     {
-        if (this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind == TokenKind.Dot)
-        {
-            var digits = 1;
-            while (digits < span.Length && span[digits] is >= '0' and <= '9')
-            {
-                digits++;
-            }
-
-            this.AddTokenAndSlice(TokenKind.NumericLiteral, digits);
-            return true;
-        }
-
-        if (NumberLiteralHelper.ScanNumberLiteral(span, out var numberLiteralLength))
+        var valid = this.tokenCount > 0 && this.tokens[this.tokenCount - 1].Kind == TokenKind.Dot
+            ? NumberLiteralHelper.ScanTupleIndex(span, out var numberLiteralLength)
+            : NumberLiteralHelper.ScanNumberLiteral(span, out numberLiteralLength);
+        if (valid)
         {// Numeric literal
             this.AddTokenAndSlice(TokenKind.NumericLiteral, numberLiteralLength);
             return true;

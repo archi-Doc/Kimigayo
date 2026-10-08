@@ -705,7 +705,7 @@ public ref partial struct TokenReader
     }
 
     /// <summary>
-    /// Consumes the '&gt;' that closes Type arguments or parameters, splitting '&gt;&gt;', '&gt;=' and '&gt;&gt;=' only here, in Type
+    /// Consumes the '&gt;' that closes Type arguments or parameters, splitting '&gt;&gt;' and '&gt;&gt;=' only here, in Type
     /// context (SPEC 2.4); shift and comparison expressions keep their tokens, and the shared token buffer stays immutable.
     /// </summary>
     /// <param name="range">The consumed '&gt;'.</param>
@@ -716,7 +716,8 @@ public ref partial struct TokenReader
         var remainingKind = this.currentToken.Kind switch
         {
             TokenKind.GreaterThanGreaterThan => TokenKind.GreaterThan,
-            TokenKind.GreaterThanEquals => TokenKind.Equals,
+            // Only the remainder of an original '>>=' can supply the second closer. A standalone '>=' is indivisible.
+            TokenKind.GreaterThanEquals when this.tokens[this.Position].Kind == TokenKind.GreaterThanGreaterThanEquals => TokenKind.Equals,
             TokenKind.GreaterThanGreaterThanEquals => TokenKind.GreaterThanEquals,
             _ => TokenKind.Invalid,
         };

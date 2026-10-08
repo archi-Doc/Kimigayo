@@ -44,35 +44,43 @@ internal static class CharLiteralHelper
     internal static Rune? Decode(ReadOnlySpan<char> literal, Koto koto)
     {
         var content = literal[1..^1];
-        Rune value;
-        if (!content.IsEmpty && content[0] == '\\')
+        var sourceEnd = koto.Span.End - 1;
+        var validEscapes = true;
+        var validContent = true;
+        var count = 0;
+        Rune value = default;
+        while (!content.IsEmpty)
         {
-            content = content[1..];
-            if (!StringLiteralHelper.TryReadCharacterEscape(ref content, koto, koto.Span.Start + 1, out var scalar))
+            if (content[0] == '\\')
             {
-                return null;
+                var start = sourceEnd - content.Length;
+                content = content[1..];
+                if (!StringLiteralHelper.TryReadCharacterEscape(ref content, koto, start, out var scalar))
+                {
+                    validEscapes = false;
+                    continue;
+                }
+
+                value = new Rune((int)scalar);
+            }
+            else
+            {
+                var status = Rune.DecodeFromUtf16(content, out value, out var consumed);
+                validContent &= status == OperationStatus.Done &&
+                    value.Value is not (<= 0x1F or >= 0x7F and <= 0x9F or 0x2028 or 0x2029 or 0x27 or 0x5C);
+                content = content[Math.Max(1, consumed)..];
             }
 
-            value = new Rune((int)scalar);
-        }
-        else
-        {
-            if (Rune.DecodeFromUtf16(content, out value, out var consumed) != OperationStatus.Done ||
-                value.Value is <= 0x1F or >= 0x7F and <= 0x9F or 0x2028 or 0x2029 or 0x27 or 0x5C)
-            {
-                koto.AddDiagnostic(DiagnosticCode.InvalidCharLiteral_Kd);
-                return null;
-            }
-
-            content = content[consumed..];
+            count++;
         }
 
-        if (!content.IsEmpty)
+        // The scalar count depends on every escape decoding successfully; each malformed escape owns its own failure.
+        if (!validContent || (validEscapes && count != 1))
         {
             koto.AddDiagnostic(DiagnosticCode.InvalidCharLiteral_Kd);
             return null;
         }
 
-        return value;
+        return validEscapes ? value : null;
     }
 }

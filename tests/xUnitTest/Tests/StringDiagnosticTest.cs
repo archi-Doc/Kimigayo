@@ -258,11 +258,13 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(source.IndexOf("\\z", StringComparison.Ordinal), 2), errors[1].Span);
     }
 
-    [Fact]
-    public void CliAndLspUnderlineEachEscape()
+    [Theory]
+    [InlineData('"')]
+    [InlineData('\'')]
+    public void CliAndLspUnderlineEachEscape(char quote)
     {
         var path = Path.GetFullPath("Hello.kimi");
-        var c = Analyze("let text = \"prefix \\q middle \\z suffix\"", path);
+        var c = Analyze("let text = " + quote + "prefix \\q middle \\z suffix" + quote, path);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal(2, result.Diagnostics.Length);
