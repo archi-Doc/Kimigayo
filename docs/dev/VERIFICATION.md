@@ -94,6 +94,17 @@ Acquisition has one authority in SPEC §3.5; a published Place result uses §3.4
 
 For duration-bound sessions, record implementation start, the last unit's start, verification completion and final documentation separately. Report actual total elapsed time, including required verification after the unit-work deadline. Keep failed runs and superseded experiments with the successful evidence; do not use a serial retry or extra warming to certify a failed parallel allocation check.
 
+## Writing tests
+
+Test code is reviewed and maintained like compiler code. Each case should add coverage that no existing case provides.
+
+- **Placement.** Add a case to the class that already owns the feature; find it through the representative tests in [CODEMAP.md](CODEMAP.md) or by searching for the diagnostic code or SPEC section. Prefer a new `[InlineData]` row on an existing theory when the assertions are the same. Create a new class only for a feature without an owning class, and name it after the feature, never after a fix unit or issue.
+- **Shared helpers.** Use `CompilationTestHelper` (`Parse`, `BindSuccess`, `Reload`, `WriteIr`), `DiagnosticCorpus.Check`, `TestDiagnostics.Of`, `MinimalEmissionTest.Analyze`/`Describe`, `ScalarEmissionTest.EmitFixture` and `AllocationMeasurement.Measure`. Do not copy a helper or an inlined `Reload` round trip into a test class; extend a shared helper, or move a helper needed by two classes into a shared file.
+- **One layer per rule.** Assert a rule at the lowest layer that observes it. A diagnostic case checks its code, category, span and the label, Related or Advice specific to that case. Console rendering and LSP placement (`Finalize`, `DiagnosticConsole`, `WorkspaceCheck.Place`) are shared contracts covered by `DiagnosticContractTest`; repeat them only when a change affects that path or a case's own Related/Advice publication is in question.
+- **Native fixtures.** Emit a fixture only when the behavior depends on generated code: runtime results, layout, ABI or cleanup order. Choose representative combinations under the dimensions above rather than a fixture per case.
+- **No duplicates.** Before adding a case, search for one with the same source and expectation. Do not add a case that differs only in details irrelevant to the rule.
+- **Comments.** State the rule a case checks and its SPEC section. Do not narrate earlier behavior, fix history or issue identifiers; those belong in commit messages.
+
 ## Three purposes
 
 | Purpose | Location / selection | Required execution |
