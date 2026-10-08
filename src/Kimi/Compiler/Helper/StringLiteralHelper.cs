@@ -103,7 +103,7 @@ public static class StringLiteralHelper
                 return rawLiteral;
             }
 
-            var decodedLength = first + GetDecodedLength(span.Slice(first), koto, content);
+            var decodedLength = first + GetDecodedLength(span.Slice(first), koto, content.Start + span.Length);
 
             return string.Create(
                 decodedLength,
@@ -226,12 +226,12 @@ public static class StringLiteralHelper
 
     // Input begins immediately after a backslash. Shared by char and escaped string
     // literals; interpolation is deliberately handled only by the string parser.
-    internal static bool TryReadCharacterEscape(ref ReadOnlySpan<char> span, Koto? koto, SourceSpan at, out uint scalar)
+    internal static bool TryReadCharacterEscape(ref ReadOnlySpan<char> span, Koto? koto, int start, out uint scalar)
     {
         scalar = 0;
         if (span.IsEmpty)
         {
-            koto?.AddDiagnostic(at, DiagnosticCode.UnsupportedEscape_Kd, '\\');
+            koto?.AddDiagnostic(new(start, 1), DiagnosticCode.UnsupportedEscape_Kd, '\\');
             return false;
         }
 
@@ -239,7 +239,7 @@ public static class StringLiteralHelper
         span = span[1..];
         if (escape == 'u')
         {
-            return TryReadUnicodeEscape(ref span, koto, at, out scalar);
+            return TryReadUnicodeEscape(ref span, koto, start, out scalar);
         }
 
         var value = escape switch
@@ -256,7 +256,7 @@ public static class StringLiteralHelper
         };
         if (value < 0)
         {
-            koto?.AddDiagnostic(at, DiagnosticCode.UnsupportedEscape_Kd, escape);
+            koto?.AddDiagnostic(new(start, 2), DiagnosticCode.UnsupportedEscape_Kd, $"\\{escape}");
             return false;
         }
 
@@ -265,7 +265,7 @@ public static class StringLiteralHelper
     }
 
     // The length of escaped text decoded: an escape gives its scalar, and a CRLF or CR gives one LF (SPEC 2.9).
-    private static int GetDecodedLength(ReadOnlySpan<char> span, Koto? koto, SourceSpan at)
+    private static int GetDecodedLength(ReadOnlySpan<char> span, Koto? koto, int sourceEnd)
     {
         var length = 0;
         while (!span.IsEmpty)
@@ -284,7 +284,7 @@ public static class StringLiteralHelper
             }
 
             span = span[(index + 1)..];
-            var succeeded = TryReadCharacterEscape(ref span, koto, at, out var scalar);
+            var succeeded = TryReadCharacterEscape(ref span, koto, sourceEnd - span.Length - 1, out var scalar);
             length += succeeded && scalar > 0xFFFF ? 1 : 0;
         }
 
@@ -381,15 +381,16 @@ public static class StringLiteralHelper
     private static int LineBreakLength(ReadOnlySpan<char> span, int index)
         => index + 1 < span.Length && span[index + 1] == '\n' ? 2 : 1;
 
-    private static bool TryReadUnicodeEscape(ref ReadOnlySpan<char> span, Koto? koto, SourceSpan at, out uint scalar)
+    private static bool TryReadUnicodeEscape(ref ReadOnlySpan<char> span, Koto? koto, int start, out uint scalar)
     {
         scalar = 0;
         if (span.IsEmpty || span[0] != '(')
         {
-            koto?.AddDiagnostic(at, DiagnosticCode.InvalidUnicodeEscape_Kd);
+            koto?.AddDiagnostic(new(start, 2), DiagnosticCode.InvalidUnicodeEscape_Kd);
             return false;
         }
 
+        var remaining = span.Length + 2; // Include the already consumed backslash and 'u'.
         span = span.Slice(1);
 
         uint value = 0;
@@ -404,7 +405,7 @@ public static class StringLiteralHelper
             {
                 if (digitCount == 0 || !isValid)
                 {
-                    koto?.AddDiagnostic(at, DiagnosticCode.InvalidUnicodeEscape_Kd);
+                    koto?.AddDiagnostic(new(start, remaining - span.Length), DiagnosticCode.InvalidUnicodeEscape_Kd);
 
                     return false;
                 }
@@ -412,7 +413,7 @@ public static class StringLiteralHelper
                 if (value > 0x10FFFF ||
                     value is >= 0xD800 and <= 0xDFFF)
                 {
-                    koto?.AddDiagnostic(at, DiagnosticCode.InvalidUnicodeScalar_Kd);
+                    koto?.AddDiagnostic(new(start, remaining - span.Length), DiagnosticCode.InvalidUnicodeScalar_Kd);
 
                     return false;
                 }
@@ -434,7 +435,7 @@ public static class StringLiteralHelper
             digitCount++;
         }
 
-        koto?.AddDiagnostic(at, DiagnosticCode.InvalidUnicodeEscape_Kd);
+        koto?.AddDiagnostic(new(start, remaining), DiagnosticCode.InvalidUnicodeEscape_Kd);
 
         return false;
     }

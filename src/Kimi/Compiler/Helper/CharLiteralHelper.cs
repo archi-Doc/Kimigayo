@@ -48,7 +48,7 @@ internal static class CharLiteralHelper
         if (!content.IsEmpty && content[0] == '\\')
         {
             content = content[1..];
-            if (!StringLiteralHelper.TryReadCharacterEscape(ref content, koto, koto.Span, out var scalar))
+            if (!StringLiteralHelper.TryReadCharacterEscape(ref content, koto, koto.Span.Start + 1, out var scalar))
             {
                 return null;
             }

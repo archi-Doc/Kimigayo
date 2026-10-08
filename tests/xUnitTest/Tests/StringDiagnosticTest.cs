@@ -209,17 +209,85 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(("\"c\"", "c"), (Text(source, nested.Span), nested.Literal));
     }
 
-    // Escape problems are located at the literal's text, without the delimiters, in literals and interpolation segments alike.
+    // Each escape owns its source range, in literals and interpolation segments alike.
     [Theory]
-    [InlineData("let text = \"a\\qb\"", "a\\qb")]
+    [InlineData("let text = \"a\\qb\"", "\\q")]
     [InlineData("let text = \"\\u(D800)\"", "\\u(D800)")]
-    [InlineData("let n: i32 = 1\nlet text = \"a\\q \\(n) b\"", "a\\q ")]
-    [InlineData("let c = '\\q'", "'\\q'")]
-    public void EscapeProblemsStayAtTheLiteralText(string source, string text)
+    [InlineData("let n: i32 = 1\nlet text = \"a\\q \\(n) b\"", "\\q")]
+    [InlineData("let c = '\\q'", "\\q")]
+    public void EscapeProblemsStayAtTheEscape(string source, string text)
     {
         var error = Assert.Single(TestDiagnostics.Of(Analyze(source)));
         Assert.True(error.Code is nameof(DiagnosticCode.UnsupportedEscape_Kd) or nameof(DiagnosticCode.InvalidUnicodeScalar_Kd), error.ToString());
         Assert.Equal(text, error.Text);
+    }
+
+    [Theory]
+    [InlineData("\\q", nameof(DiagnosticCode.UnsupportedEscape_Kd))]
+    [InlineData("\\u", nameof(DiagnosticCode.InvalidUnicodeEscape_Kd))]
+    [InlineData("\\u()", nameof(DiagnosticCode.InvalidUnicodeEscape_Kd))]
+    [InlineData("\\u(1234567)", nameof(DiagnosticCode.InvalidUnicodeEscape_Kd))]
+    [InlineData("\\u(G)", nameof(DiagnosticCode.InvalidUnicodeEscape_Kd))]
+    [InlineData("\\u(D800)", nameof(DiagnosticCode.InvalidUnicodeScalar_Kd))]
+    [InlineData("\\u(110000)", nameof(DiagnosticCode.InvalidUnicodeScalar_Kd))]
+    public void SeparateEscapesRetainSeparateErrors(string escape, string code)
+    {
+        var source = "let text = \"prefix " + escape + " middle " + escape + " suffix\"";
+        var c = Analyze(source);
+        var errors = TestDiagnostics.Of(c);
+        Assert.Equal(2, errors.Length);
+        Assert.All(errors, x => Assert.Equal((code, escape), (x.Code, x.Text)));
+        Assert.Equal(new SourceSpan(source.IndexOf(escape, StringComparison.Ordinal), escape.Length), errors[0].Span);
+        Assert.Equal(new SourceSpan(source.LastIndexOf(escape, StringComparison.Ordinal), escape.Length), errors[1].Span);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        c.Bind();
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(errors, TestDiagnostics.Of(c));
+    }
+
+    [Theory]
+    [InlineData("\n")]
+    [InlineData("\r\n")]
+    [InlineData("\r")]
+    public void EscapeLocationsFollowPhysicalText(string lineEnd)
+    {
+        var source = "let text = \"a\\n" + lineEnd + "\\q \\(1) b\\z\"\nlet wrong: i32 = true";
+        var errors = TestDiagnostics.Of(Analyze(source));
+        Assert.Equal([nameof(DiagnosticCode.UnsupportedEscape_Kd), nameof(DiagnosticCode.UnsupportedEscape_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], errors.Select(static x => x.Code));
+        Assert.Equal(new SourceSpan(source.IndexOf("\\q", StringComparison.Ordinal), 2), errors[0].Span);
+        Assert.Equal(new SourceSpan(source.IndexOf("\\z", StringComparison.Ordinal), 2), errors[1].Span);
+    }
+
+    [Fact]
+    public void CliAndLspUnderlineEachEscape()
+    {
+        var path = Path.GetFullPath("Hello.kimi");
+        var c = Analyze("let text = \"prefix \\q middle \\z suffix\"", path);
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize(rejected: true);
+        Assert.Equal(2, result.Diagnostics.Length);
+        Assert.Equal(["The escape sequence '\\q' is not supported", "The escape sequence '\\z' is not supported"], result.Diagnostics.Select(static x => x.Message));
+        Assert.All(result.Diagnostics, x =>
+        {
+            Assert.Equal(DiagnosticSeverity.Error, x.Severity);
+            Assert.Equal(DiagnosticCategory.Language, x.Category);
+            Assert.Null(x.Advice);
+            Assert.Null(x.Repairs);
+        });
+        Assert.Equal([new SourceRange(new(0, 19), new(0, 21)), new SourceRange(new(0, 29), new(0, 31))], result.Diagnostics.Select(static x => x.Display!.Range));
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains("Hello.kimi:1:20", console.Text, StringComparison.Ordinal);
+        Assert.Contains("Hello.kimi:1:30", console.Text, StringComparison.Ordinal);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var capability in new[] { false, true })
+        {
+            var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, capability)[identity];
+            Assert.Equal(result.Diagnostics.Select(static x => x.Display!.Range!.Value), sent.Select(static x => x.Range));
+            Assert.Equal(result.Diagnostics.Select(static x => x.Message), sent.Select(static x => x.Message));
+            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
+        }
     }
 
     // A missing form is inserted after the closing quote of a string that ends the line.
