@@ -128,7 +128,11 @@ public sealed partial class OwnershipAnalysis
             !(input.Components[0].OriginArguments.Contains(obligation.Longer!) || ReferenceEquals(input.Components[0].Origin, obligation.Longer));
     }
 
-    private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
+    // SPEC 3.4: each branch below is one Place route (raw, stored reference, published Place, Reborrow, object payload, sequence
+    // element, borrowed path, owned static path), chosen from the selection's form; designator outcomes are alternatives, never
+    // fallback stages. Only the final Value route evaluates its source, and a Place selection that no route reached fails closed
+    // there (PLAN G59 U1). An address-producing use (`@raw`, an address adaptation) observes the borrowed address itself.
+    private int BorrowStruct(Koto source, BoundType type, int reservation = -1, bool address = false)
     {
         var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
         if (ElementAccess.IsRawPlace(unwrapped))
@@ -161,7 +165,7 @@ public sealed partial class OwnershipAnalysis
 
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
         {
-            return this.BorrowStruct(indexer, type, reservation); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
+            return this.BorrowStruct(indexer, type, reservation, address); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
         }
 
         if (unwrapped is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
@@ -180,7 +184,7 @@ public sealed partial class OwnershipAnalysis
         {
             // SPEC 13.5.5.2: a Reborrow or payload borrow lends the referent's capability through the parent
             // reference or handle, which is read but never moved; the borrowed address is the parent's value.
-            return this.BorrowStruct(selected.Left, type, reservation);
+            return this.BorrowStruct(selected.Left, type, reservation, address);
         }
 
         if (unwrapped is BinaryKoto objectPart && !Binding.IsGetterResult(objectPart) && !this.SpecialField(objectPart) &&
@@ -265,8 +269,8 @@ public sealed partial class OwnershipAnalysis
             }
 
             var projected = this.Place(index, type, OwnershipPlaceKind.Temporary, false);
-            var address = this.Emit(OwnershipOperationKind.Borrow, index, receiver, projected, loanMode: LoanRequirement.Ref);
-            this.SetValue(address, OwnershipValueKind.Address, [receiverValue, this.Value(subscript)], constant: receiver);
+            var elementBorrow = this.Emit(OwnershipOperationKind.Borrow, index, receiver, projected, loanMode: LoanRequirement.Ref);
+            this.SetValue(elementBorrow, OwnershipValueKind.Address, [receiverValue, this.Value(subscript)], constant: receiver);
             return this.RegisterTemporary(projected);
         }
 
@@ -318,6 +322,14 @@ public sealed partial class OwnershipAnalysis
             return this.RegisterTemporary(borrowed);
         }
 
+        // The Value route: a value expression, including a getter's result or a range selection's Slice, is evaluated once and its
+        // temporary borrowed (SPEC 10.2, 4.6.6). A stored Field, Tuple or element selection that reaches here has no Place route;
+        // reading it would borrow a copy (PLAN G59).
+        if (this.UnroutedSelection(unwrapped) is { } selection && !this.SnapshotAdmitted(selection, type, address))
+        {
+            return -1;
+        }
+
         var direct = (StructStorage.IsStruct(source.BoundType) || EnumStorage.IsEnum(source.BoundType) || ReferenceEquals(source.BoundType, BoundType.String) || source.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication || ScalarTypes.Supports(source.BoundType) || ReferenceTypes.IsPointer(source.BoundType)) &&
             unwrapped is IdentifierNameKoto && unwrapped.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate;
         var place = this.SpecialField(unwrapped) ? this.Local(unwrapped)
@@ -342,6 +354,101 @@ public sealed partial class OwnershipAnalysis
         var materialized = ScalarTypes.Supports(actual.Type) && actual.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result;
         this.SetValue(operation, OwnershipValueKind.Address, ReferenceTypes.IsBorrow(actual.Type) || materialized ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
+    }
+
+    // A stored Field, Tuple or element Place selection, other than a receiver's own Field (a named Place), a getter or accessor
+    // result, or a range selection's Slice value.
+    private BinaryKoto? UnroutedSelection(Koto unwrapped)
+        => KotoHelper.UnwrapParentheses(unwrapped) is BinaryKoto selection && ElementAccess.IsSyntax(selection) && !ElementAccess.IsSlicing(selection) &&
+            !Binding.IsGetterResult(selection) && this.compilation.Binding.PropertyCall(selection, PropertyAccessorKind.Get) is null &&
+            !this.SpecialField(selection) ? selection : null;
+
+    // PLAN G59 U1: an exclusive or address-producing borrow of an unrouted selection, or a borrow of a part not proven Copy, would
+    // update, expose or acquire a temporary copy, so it fails closed before any state is emitted and names the route it lacks
+    // (SPEC 3.4, 5.4, 10.2). A shared borrow of a Copy part keeps the snapshot it reads, which the retained root protection hides
+    // from safe code; it is counted until its Place route replaces it (STATUS).
+    private bool SnapshotAdmitted(BinaryKoto selection, BoundType type, bool address)
+    {
+        var part = this.Concrete(selection.BoundType);
+        if (part is not null && type.Components.Count == 1 && !ReferenceTypes.StorageMatches(part, this.Concrete(type.Components[0])))
+        {
+            return true; // A Reborrow through a read stored reference or handle addresses its referent, not the selection's slot.
+        }
+
+        if (!address && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef && part is not null &&
+            this.compilation.Binding.ProveCopy(part, selection) == ConstraintProof.Proven)
+        {
+            this.body.SnapshotBorrows++;
+            return true;
+        }
+
+        this.ReadSelectionInputs(selection);
+        this.UnsupportedRoute(selection);
+        return false;
+    }
+
+    // SPEC 23.3.6.4 (PLAN G59): an unsupported Place borrow names the route it lacks, which follows the root: a reference or Slice
+    // receiver on the path needs the borrowed path; otherwise a runtime selector needs the owned projection, and a value root the
+    // temporary's Place. The segment that decides it is related.
+    private void UnsupportedRoute(BinaryKoto selection)
+    {
+        var feature = OwnershipFeature.TemporaryPartBorrow;
+        Koto segment = selection;
+        Koto? runtime = null;
+        for (var level = selection; ;)
+        {
+            var receiver = ElementAccess.AccessType(level.Left);
+            if (receiver?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsBorrow(receiver) || ObjectTypes.HandleMode(receiver) is not null || ObjectTypes.IsBorrow(receiver))
+            {
+                feature = OwnershipFeature.ReferencedElementBorrow;
+                segment = level;
+                break;
+            }
+
+            if (runtime is null && level is IndexKoto && ElementAccess.StaticSelector(level) < 0)
+            {
+                runtime = level;
+            }
+
+            if (KotoHelper.UnwrapParentheses(level.Left) is not BinaryKoto parent || !ElementAccess.IsSyntax(parent) || Binding.IsGetterResult(parent))
+            {
+                if (runtime is not null)
+                {
+                    feature = OwnershipFeature.RuntimeElementBorrow;
+                    segment = runtime;
+                }
+                else if (level.Left is { } root)
+                {
+                    segment = root;
+                }
+
+                break;
+            }
+
+            level = parent;
+        }
+
+        this.Emit(OwnershipOperationKind.Unsupported, selection);
+        this.body.ReportIssue(new(selection, OwnershipFailure.Unsupported, Related: segment, Feature: feature));
+    }
+
+    // SPEC 23.3.6.4 (PLAN G59 U1): a rejected selection still reads its root and runtime keys in evaluation order, so their own
+    // diagnostics remain; no element is located, protected or acquired, and no value is consumed as an acquisition.
+    private void ReadSelectionInputs(BinaryKoto level)
+    {
+        if (KotoHelper.UnwrapParentheses(level.Left) is BinaryKoto parent && ElementAccess.IsSyntax(parent) && !Binding.IsGetterResult(parent))
+        {
+            this.ReadSelectionInputs(parent);
+        }
+        else
+        {
+            this.Expression(level.Left, PlaceUseKind.Read);
+        }
+
+        if (level is IndexKoto index && ElementAccess.StaticSelector(index) < 0)
+        {
+            this.Expression(index.Right, PlaceUseKind.Read);
+        }
     }
 
     private int BorrowFieldAddress(MemberAccessKoto field, int receiver, BoundType type, int reservation = -1)

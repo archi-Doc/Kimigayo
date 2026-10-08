@@ -74,7 +74,9 @@ public sealed partial class OwnershipBody
 
     internal void VerifyCallReservations()
     {
-        if (this.CallReservations.Count == 0)
+        // A completed reservation always begins its Loan, which starts the Loan states; without them every reservation was
+        // abandoned by a failed preparation and holds nothing to check.
+        if (this.CallReservations.Count == 0 || this.LoanInputs.Count == 0)
         {
             return;
         }

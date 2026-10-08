@@ -301,8 +301,8 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(
                 requirement,
                 issue.Code,
-                note: Note(CaseNote(AcquisitionNote(issue), found, single)),
-                evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
+                note: Note(CaseNote(AcquisitionNote(issue) ?? FeatureNote(issue.Feature), found, single)),
+                evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : issue.Feature != OwnershipFeature.None ? issue.Feature : null, found),
                 advice: transfer ? Binding.TransferAdvice(issue.Source, judgment) : null,
                 related: Locations(this.WithCaseDeclarations(RelatedLocations(issue), found)),
                 condition: Condition(issue),
@@ -419,7 +419,7 @@ public sealed partial class OwnershipAnalysis
             => found is null ? note : (note is null ? "Found" : note + "; found") + (single ? " under the Semantics case " : " under the Semantics cases ") + found + " (SPEC 8.10)";
 
         // The `case` fact closes the evidence alternative of the codes that carry it; a code without the alternative keeps its Note.
-        static object?[]? CaseEvidence(DiagnosticCode code, string? target, string? found)
+        static object?[]? CaseEvidence(DiagnosticCode code, object? target, string? found)
         {
             var withCase = found is not null && HasCaseEvidence(code);
             return target is null ? (withCase ? [found] : null) : withCase ? [target, found] : [target];
@@ -1230,7 +1230,7 @@ public sealed partial class OwnershipAnalysis
                     if (operation == ConversionBinding.Address)
                     {
                         var referenceType = this.Concrete(adaptation.AddressBorrow)!;
-                        var adaptedBorrow = this.BorrowStruct(conversion.Left, referenceType);
+                        var adaptedBorrow = this.BorrowStruct(conversion.Left, referenceType, address: true);
                         if (adaptedBorrow < 0)
                         {
                             return -1;
@@ -1280,7 +1280,7 @@ public sealed partial class OwnershipAnalysis
                 {
                     // SPEC 5.4: P@raw checks P as an immediately ending shared borrow and converts the borrowed address. The
                     // pointer carries no Origin, so the Loan ends with the borrow's only use.
-                    var borrowed = this.BorrowStruct(conversion.Left, conversion.Right.BoundType!);
+                    var borrowed = this.BorrowStruct(conversion.Left, conversion.Right.BoundType!, address: true);
                     if (borrowed < 0)
                     {
                         return -1;

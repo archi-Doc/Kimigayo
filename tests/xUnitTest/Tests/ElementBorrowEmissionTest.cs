@@ -8,6 +8,10 @@ namespace XunitTest;
 public class ElementBorrowEmissionTest
 {
     private const string Same = "func same(left: ref/string, right: ref/string) -> bool => left == right\n";
+    private const string Item = "struct Item\n    public var name: string\n    public var n: i32\n    public init(name: string, n: i32)\n        self.name = name@move\n        self.n = n\n";
+    private const string Counter = "struct Counter\n    Self is Copy\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func inc(self: uniq/Self) => self.value += 1\n";
+    private const string Bump = "func bump(target: uniq/i32) => target@follow += 1\n";
+    private const string SharedCopyPart = Item + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar xs: Array<Item> = [Item.init(\"a\", 7)]\nshow(xs[0].n)";
 
     public static TheoryData<string, string> Fixtures => new()
     {
@@ -95,6 +99,91 @@ public class ElementBorrowEmissionTest
     [InlineData("let a: [1 of string] = [\"first\"]\nlet equal = a[0 + 0] == \"first\"")]
     public void UnsupportedReceiversAndPathsRemainExplicit(string source)
         => Reject(Same + source, OwnershipFailure.Unsupported);
+
+    // SPEC 3.4, 5.4, 10.2: a borrow of a Place without a borrow route is one located Unsupported naming that route, never a
+    // borrow, receiver or address of a temporary copy of the part.
+    [Theory]
+    [InlineData(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)", "xs[0].n", "xs[0]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Bump + "var ys: [2 of i32] = [41, 5]\nlet i: isize = 0\nbump(ys[i]@uniq)", "ys[i]", "ys[i]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Item + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nunsafe\n    let p = xs[0].n@raw\n    *p = 42", "xs[0].n", "xs[0]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Counter + "struct Box\n    public var c: Counter\n    public init(c: Counter) => self.c = c\nvar xs: Array<Box> = [Box.init(Counter.init(41))]\nxs[0].c.inc()", "xs[0].c", "xs[0]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Bump + "var ts: Array<(string, i32)> = [(\"a\", 41)]\nbump(ts[0].1@uniq)", "ts[0].1", "ts[0]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Item + "var xs: Array<Item> = [Item.init(\"a\", 1)]\nlet name = xs[0].name@ref", "xs[0].name", "xs[0]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Item + "var xs: Array<Item> = [Item.init(\"a\", 1)]\nConsole.writeLine(\"\\(xs[0].name)\")", "xs[0].name", "xs[0]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Item + "var ys: [2 of Item] = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\nlet i: isize = 1\nConsole.writeLine(ys[i].name)", "ys[i].name", "ys[i]", OwnershipFeature.RuntimeElementBorrow)]
+    [InlineData(Counter + "func touch(xs: uniq/Array<(Counter, i32)>) => xs[0].0.inc()\nvar ts: Array<(Counter, i32)> = [(Counter.init(41), 0)]\ntouch(ts@uniq)", "xs[0].0", "xs[0]", OwnershipFeature.ReferencedElementBorrow)]
+    public void UnroutedPlaceBorrowsFailClosed(string source, string selection, string selector, OwnershipFeature feature)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.Equal((OwnershipFailure.Unsupported, feature, selection, selector), (issue.Failure, issue.Feature, issue.Source.ToString(), issue.Related?.ToString()));
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+    }
+
+    // SPEC 23.3.6.4: the route is the record's Reason fact and its deciding segment a related location.
+    [Fact]
+    public void AnUnroutedBorrowNamesItsRouteAndSelector()
+    {
+        var c = MinimalEmissionTest.Analyze(Item + "var xs: Array<Item> = [Item.init(\"a\", 1)]\nConsole.writeLine(xs[0].name)");
+        c.Ownership.ReportDiagnostics();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(Kimi.DiagnosticCode.UnsupportedOwnership_Kd), record.Code);
+        Assert.Equal("xs[0].name", record.Text);
+        var result = c.Diagnostics.Finalize();
+        var published = Assert.Single(result.Diagnostics, static x => x.Code == nameof(Kimi.DiagnosticCode.UnsupportedOwnership_Kd));
+        Assert.Equal([("feature", nameof(OwnershipFeature.RuntimeElementBorrow))], published.Reason!.Select(static x => (x.Name, x.Value)));
+        Assert.Equal(("selector", "runtime-selected element"), (Assert.Single(published.Related!).Role, published.Related![0].Label));
+    }
+
+    // SPEC 23.3.6.4: a rejected selection still reads its root and keys, so their own problems remain; no conflict is derived
+    // from the unsupported borrow.
+    [Theory]
+    [InlineData("var k: isize\nbump(xs[k].n@uniq)", OwnershipFailure.UninitializedUse)]
+    [InlineData("var ws: Array<Item>\nbump(ws[0].n@uniq)", OwnershipFailure.UninitializedUse)]
+    [InlineData("let r = xs[0]@ref\nxs.append(Item.init(\"b\", 2))\nConsole.writeLine(r.name)\nbump(xs[0].n@uniq)", OwnershipFailure.ComparisonLoanConflict)]
+    [InlineData("func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nbump(xs[index()].n@uniq)", null)]
+    [InlineData("func two(a: ref/Item, b: uniq/i32) => ()\ntwo(xs[0]@ref, xs[0].n@uniq)", null)]
+    public void AnUnroutedBorrowKeepsOnlyIndependentProblems(string use, OwnershipFailure? independent)
+    {
+        var c = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\n" + use);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Equal(OwnershipFeature.RuntimeElementBorrow, Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported).Feature);
+        Assert.Equal(independent is { } failure ? [failure] : [], c.Ownership.Issues.Where(static x => x.Failure != OwnershipFailure.Unsupported).Select(static x => x.Failure));
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    // SPEC 3.4, 5.4: emission admits a borrow of a temporary read from its Place selection only as a shared Copy borrow.
+    [Theory]
+    [InlineData("mode")]
+    [InlineData("acquisition")]
+    [InlineData("result")]
+    public void CorruptedSnapshotBorrowsFailBeforeOutputAndRecover(string defect)
+    {
+        var c = MinimalEmissionTest.Analyze(SharedCopyPart);
+        Assert.True(c.Emission.Validate(out var error), error);
+        var body = Assert.Single(c.Ownership.Bodies, static x => x.SnapshotBorrows == 1);
+        var borrow = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i] is { Kind: OwnershipOperationKind.Borrow, Place: >= 0 } operation &&
+            body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary } input && ReferenceEquals(input.Source, KotoHelper.UnwrapParentheses(operation.Source)));
+        var snapshot = body.Operations[borrow];
+        switch (defect)
+        {
+            case "mode": body.OperationStorage[borrow] = snapshot with { LoanMode = LoanRequirement.Uniq }; break;
+            case "acquisition": body.PlaceStorage[snapshot.Place] = body.Places[snapshot.Place] with { Acquisition = AcquisitionKind.Move }; break;
+            case "result":
+                var result = body.Places[snapshot.Input];
+                body.PlaceStorage[snapshot.Input] = result with { Type = c.Binding.Reference(Kimi.Compiler.Parsing.SemanticsKind.Uniq, result.Type.Components[0], result.Type.Origin) };
+                break;
+        }
+
+        using var writer = new StringWriter();
+        Assert.False(c.Emission.WriteIr(writer, out _));
+        Assert.Empty(writer.ToString());
+        Assert.True(c.Ownership.Analyze().IsVerified);
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
+    }
 
     [Theory]
     [InlineData("Comparison", "func f() -> string\n    var a = (\"held\", \"sibling\")\n    defer => a.0 = \"new\"\n    a.0 == (return \"ok\")\n    return \"bad\"\nConsole.writeLine(f())", "held=1;sibling=1;new=1;ok=1;bad=0", new[] { 0, 1, 2, 3 })]
@@ -232,6 +321,21 @@ public class ElementBorrowEmissionTest
         Assert.True(success);
         Assert.Equal(0, bindingBytes);
         Assert.Equal(0, bytes);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmRouteClassificationAllocatesNothing()
+    {
+        var accepted = MinimalEmissionTest.Analyze(SharedCopyPart);
+        var rejected = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nConsole.writeLine(xs[0].name)");
+        var success = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            success &= accepted.Ownership.Analyze().IsVerified;
+            success &= !rejected.Ownership.Analyze().IsVerified;
+        }));
+        Assert.True(success);
     }
 
     private static void Reject(string source, OwnershipFailure failure)

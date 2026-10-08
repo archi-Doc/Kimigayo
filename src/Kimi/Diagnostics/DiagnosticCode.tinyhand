@@ -656,7 +656,7 @@
   + Name="UnsupportedOwnership_Kd"
     Category="Unsupported"
     Message="This operation requires ownership or cleanup analysis outside the implemented subset"
-    Evidence="case:Text"
+    Evidence="feature:Enumeration,case:Text|feature:Enumeration|case:Text"
 
   + Name="UnsupportedIntegerOperation_Kd"
     Category="Unsupported"

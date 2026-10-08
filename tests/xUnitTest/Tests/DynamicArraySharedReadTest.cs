@@ -38,9 +38,19 @@ public class DynamicArraySharedReadTest
     public void ChainedReadsThroughViewsBorrowTheNonCopyElement(string name, string read)
         => ScalarEmissionTest.EmitFixture("DynamicArraySharedRead" + name, Task + "var values: Array<Task> = [Task.init(42)]\nrequire " + read + " == 42 else => $abort(\"value\")", "drop\n");
 
+    // SPEC 10.2: a Copy part below an element is lent at a fixed ref/U expectation; it is the counted shared snapshot route.
+    [Fact]
+    public void ACopyPartIsLentAtASharedExpectation()
+    {
+        const string Source = Task + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar values: Array<Task> = [Task.init(42)]\nshow(values[0].id)";
+        ScalarEmissionTest.EmitFixture("DynamicArraySharedReadCopyPart", Source, "42\ndrop\n");
+        Assert.Equal(1, MinimalEmissionTest.Analyze(Source).Ownership.Bodies.Sum(static x => x.SnapshotBorrows));
+    }
+
     [Theory]
     [InlineData("func make() -> Array<Task> => [Task.init(42)]\nlet item = make()[0]@ref\nlet id = item.id")]
     [InlineData("func inspect(item: ref/Task, ignored: ()) => ()\nvar values: Array<Task> = [Task.init(42)]\ninspect(values[0], values@uniq.clear())")]
+    [InlineData("var values: Array<Task> = [Task.init(42)]\nlet id = values[0].id@ref\nvalues[0] = Task.init(7)\nlet read: i32 = id@follow")]
     public void RejectsExpiredOrInvalidatedSharedReads(string source)
     {
         var c = MinimalEmissionTest.Analyze(Task + source);

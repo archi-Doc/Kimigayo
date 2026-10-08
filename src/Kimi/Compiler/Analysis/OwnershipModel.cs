@@ -174,6 +174,25 @@ public enum OwnershipFailure : byte
     CaseLimit,
 }
 
+/// <summary>
+/// SPEC 3.4, 23.3.6.4: the Place route that an unsupported Place borrow lacks, the stable `feature` fact of its
+/// `UnsupportedOwnership_Kd` record (PLAN G59).
+/// </summary>
+public enum OwnershipFeature : byte
+{
+    /// <summary>No feature fact; the record names no route.</summary>
+    None,
+
+    /// <summary>A borrow of a Place selected below a runtime-selected element of an owned root.</summary>
+    RuntimeElementBorrow,
+
+    /// <summary>A borrow of a Place selected below a collection reached through a reference or Slice.</summary>
+    ReferencedElementBorrow,
+
+    /// <summary>A borrow of a part of a temporary value.</summary>
+    TemporaryPartBorrow,
+}
+
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
 {
     // Deferred bodies share syntax, but each expansion has distinct temporary storage.
@@ -226,7 +245,7 @@ public readonly record struct OwnershipLending(Koto Input, Koto Call);
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
     OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null,
-    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
+    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0, OwnershipFeature Feature = OwnershipFeature.None)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -343,6 +362,10 @@ public sealed partial class OwnershipBody
 
     public bool IsConcrete { get; internal set; }
 
+    /// <summary>Gets the shared borrows of a Copy part that still borrow the snapshot read from their Place selection (PLAN G59
+    /// U1): the one transitional route that emission admits, counted until the Place route replaces it.</summary>
+    public int SnapshotBorrows { get; internal set; }
+
     internal int DefaultParameter { get; set; } = -1;
 
     internal int ParameterCount => this.DefaultParameter >= 0 ? this.DefaultParameter : this.Function.Parameters.Count;
@@ -397,6 +420,7 @@ public sealed partial class OwnershipBody
         this.InstanceBinding = instance is null && cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
+        this.SnapshotBorrows = 0;
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
         this.DefaultContexts?.Clear();
