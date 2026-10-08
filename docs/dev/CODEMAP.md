@@ -8,7 +8,7 @@ The main path is source input → Koto syntax → Binding → control-flow/owner
 
 Paths below are relative to [src/Kimi](../../src/Kimi/).
 
-Tokenizer layout transitions and surrogate scanning are covered by `LayoutRecoveryTest` and `SourceEncodingTest`; literal escape ranges by `StringDiagnosticTest`.
+Tokenizer layout transitions and surrogate scanning are covered by `LayoutRecoveryTest` and `SourceEncodingTest`; literal escape ranges by `StringDiagnosticTest`, and shared unterminated-token recovery (`RecoverLexicalToken`) by `LexicalRecoveryTest`.
 
 Constraint recovery enters through `Parser.ParseTypeConstraint`, then the shared `Binding.Constraints.BindConstraint` guard and conditional-conformance prerequisites; `ConstraintRecoveryTest` and the syntax corpus cover these paths.
 

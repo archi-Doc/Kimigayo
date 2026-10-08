@@ -1421,8 +1421,9 @@ EndOfFile:
         }
         else
         {
-            this.Report(this.NewRange(length), DiagnosticCode.MissingCharLiteralEnd_Kd);
-            this.AddTokenAndSlice(TokenKind.Invalid, length);
+            var opening = this.NewRange(1);
+            this.Report(opening, DiagnosticCode.MissingCharLiteralEnd_Kd);
+            this.RecoverLexicalToken(opening, length);
         }
     }
 
@@ -1441,21 +1442,26 @@ EndOfFile:
         {// Invalid
             var opening = this.NewRange(doubleQuoteCount);
             this.Report(opening, DiagnosticCode.MissingStringLiteralEnd_Kd, new string('"', doubleQuoteCount));
-            var cause = this.diagnostics.LastError!.Value;
-            for (var i = 0; i < this.indentCount; i++)
-            {
-                var entry = this.indentStack[i];
-                if (entry.Source is not (IndentSource.Block or IndentSource.LineContinuation))
-                {
-                    (this.delimiterRecoveryCauses ??= []).TryAdd(entry.Position, cause);
-                }
-            }
-
-            // Retain the operand and its exact lexical subject for the parser's ErrorKoto. Dropping it would turn a
-            // malformed argument into an absent argument and cause an unrelated overload-selection diagnostic.
-            this.AddToken(new(TokenKind.Invalid, opening));
-            this.Slice(stringLiteralLength);
+            this.RecoverLexicalToken(opening, stringLiteralLength);
         }
+    }
+
+    // The scan consumed text that may have contained the enclosing closers. Keep one invalid token at its lexical
+    // subject so parser recovery (including a missing operand) and delimiter recovery share the originating check.
+    private void RecoverLexicalToken(SourceSpan subject, int consumed)
+    {
+        var cause = this.diagnostics.LastError!.Value;
+        for (var i = 0; i < this.indentCount; i++)
+        {
+            var entry = this.indentStack[i];
+            if (entry.Source is not (IndentSource.Block or IndentSource.LineContinuation))
+            {
+                (this.delimiterRecoveryCauses ??= []).TryAdd(entry.Position, cause);
+            }
+        }
+
+        this.AddToken(new(TokenKind.Invalid, subject));
+        this.Slice(consumed);
     }
 
     // Returns true when a comment crosses a physical line and ends the current line.
@@ -1467,8 +1473,9 @@ EndOfFile:
             var length = this.span.IndexOf("*/");
             if (length < 0)
             {
-                this.Report(this.NewRange(Math.Min(2, this.span.Length)), DiagnosticCode.MissingBlockCommentEnd_Kd);
-                this.Slice(this.span.Length);
+                var opening = this.NewRange(Math.Min(2, this.span.Length));
+                this.Report(opening, DiagnosticCode.MissingBlockCommentEnd_Kd);
+                this.RecoverLexicalToken(opening, this.span.Length);
                 return true;
             }
 
