@@ -871,6 +871,20 @@ public sealed partial class Binding
         {
             this.ReportEffectBound(effect, requirement);
         }
+        else if (issue.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or DiagnosticCode.InvalidAssociatedType_Kd && this.contractAgreementFailures?.TryGetValue(issue.Node, out var agreement) == true)
+        {
+            var first = DiagnosticTypeName(agreement.Left.Type!);
+            var second = DiagnosticTypeName(agreement.Right.Type!);
+            object[] evidence = agreement.AssociatedLeft is { } a
+                ? [first, second, agreement.Associated!.Name, DiagnosticTypeName(a), DiagnosticTypeName(agreement.AssociatedRight!)]
+                : [$"At {first} = {second}, effective implementation mappings do not agree"];
+            issue.Node.Report(
+                requirement,
+                issue.Code,
+                evidence: evidence,
+                related: [("contract", agreement.Left.Declaration, first), ("contract", agreement.Right.Declaration, second)],
+                note: "Associated Types and effective implementation mappings must agree for every overlapping binding allowed by the declaration and conformance conditions (SPEC 8.4.9.2)");
+        }
         else if (issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd &&
             (this.ReportCallablePremiseFailure(issue.Node, requirement) || this.ReportEffectViolation(issue.Node, requirement, issue.Code)))
         {

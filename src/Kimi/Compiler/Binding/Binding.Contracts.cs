@@ -169,6 +169,7 @@ public sealed partial class Binding
         this.userIterations.Clear();
         this.associatedApplications.Clear();
         this.associatedAmbiguities?.Clear();
+        this.contractAgreementFailures?.Clear();
         this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
         foreach (var group in this.requirementGroups.Values)
@@ -618,6 +619,7 @@ public sealed partial class Binding
         {
             result.Active = true;
             result.InheritedFrom = null;
+            result.AdditionalInheritedSources?.Clear();
             result.InheritedBase = null;
             result.Use = use;
             result.Declaration = use;
@@ -830,6 +832,7 @@ public sealed partial class Binding
                 }
             }
 
+            this.ValidateBoundConformanceAgreement();
             for (var i = 0; i < this.projectionUses.Count; i++)
             {
                 var use = this.projectionUses[i];
@@ -848,6 +851,7 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[this.nodes[n]];
+            this.ValidateAssociatedOverlapAgreement(scope);
             if (scope.Constraints is { } environment)
             {
                 this.associatedIdentityChecks.Clear();

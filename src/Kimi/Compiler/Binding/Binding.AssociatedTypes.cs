@@ -479,23 +479,27 @@ public sealed partial class Binding
 
     private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated)
     {
-        if (path.InheritedFrom is { } source)
+        if (path.InheritedFrom is not null)
         {
             BoundType? inheritedResult = null;
-            foreach (var original in source.Contract.Contract!.AssociatedStorage)
+            for (var s = 0; s < path.InheritedSourceCount; s++)
             {
-                if (original.Symbol != associated.Symbol || this.SubstituteRequirementContract(original.Contract, path.InheritedBase!) != associated.Contract)
+                var source = path.InheritedSource(s);
+                foreach (var original in source.Contract.Contract!.AssociatedStorage)
                 {
-                    continue;
-                }
+                    if (original.Symbol != associated.Symbol || this.SubstituteRequirementContract(original.Contract, path.InheritedBase!) != associated.Contract)
+                    {
+                        continue;
+                    }
 
-                if (this.ResolveAssociated(source, original) is not { } inherited || this.StoredType(inherited, path.InheritedBase!) is not { } current ||
-                    (inheritedResult is not null && !ReferenceEquals(inheritedResult, current)))
-                {
-                    return null;
-                }
+                    if (this.ResolveAssociated(source, original) is not { } inherited || this.StoredType(inherited, path.InheritedBase!) is not { } current ||
+                        (inheritedResult is not null && !ReferenceEquals(inheritedResult, current)))
+                    {
+                        return null;
+                    }
 
-                inheritedResult = current;
+                    inheritedResult = current;
+                }
             }
 
             return inheritedResult;

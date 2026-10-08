@@ -80,7 +80,19 @@ public sealed partial class Binding
                     var source = identity.Paths[j];
                     var path = this.RegisterConformance(type, contract, Substitute(source.RootContract), source.Declaration, this.scopes[declaration], source.Premises);
                     path.Use = syntax;
-                    path.InheritedFrom = source;
+                    if (path.InheritedFrom is null)
+                    {
+                        path.InheritedFrom = source;
+                    }
+                    else if (!ReferenceEquals(path.InheritedFrom, source))
+                    {
+                        var sources = path.AdditionalInheritedSources ??= new();
+                        if (!sources.Contains(source))
+                        {
+                            sources.Add(source);
+                        }
+                    }
+
                     path.InheritedBase = baseType;
                 }
             }
@@ -117,8 +129,12 @@ public sealed partial class Binding
         path.PropertyWitnessMap.Clear();
         try
         {
-            var source = path.InheritedFrom!;
-            var proof = this.VerifyConformance(source);
+            var proof = ConstraintProof.Proven;
+            for (var i = 0; i < path.InheritedSourceCount; i++)
+            {
+                proof = CombineProof(proof, this.VerifyConformance(path.InheritedSource(i)), true);
+            }
+
             if (proof != ConstraintProof.Proven)
             {
                 return proof;
@@ -161,52 +177,71 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, scope, self), scope), true);
             }
 
-            foreach (var witness in source.WitnessStorage)
+            for (var s = 0; s < path.InheritedSourceCount; s++)
             {
-                var identity = new BoundRequirement(witness.Requirement, this.SubstituteRequirementContract(witness.Identity.Contract, path.InheritedBase!));
-                if (!ReferenceEquals(identity.Contract, path.Contract))
+                foreach (var witness in path.InheritedSource(s).WitnessStorage)
                 {
-                    var ancestor = this.conformancePaths[(path.Type, identity.Contract, path.Declaration, path.RootContract)];
-                    if (!CopyRequirementWitness(ancestor, path, identity))
+                    var identity = new BoundRequirement(witness.Requirement, this.SubstituteRequirementContract(witness.Identity.Contract, path.InheritedBase!));
+                    if (path.WitnessMap.TryGetValue(identity, out var previous))
                     {
-                        proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                        // The same exact requirement and implementation on this one inline base path have the same
+                        // substituted signature, receiver correspondence and Origin map. Every source was verified above.
+                        if (!ReferenceEquals(previous.Implementation, witness.Implementation))
+                        {
+                            return ConstraintProof.Refuted;
+                        }
+
+                        continue;
                     }
 
-                    continue;
-                }
+                    if (!ReferenceEquals(identity.Contract, path.Contract))
+                    {
+                        var ancestor = this.conformancePaths[(path.Type, identity.Contract, path.Declaration, path.RootContract)];
+                        if (!CopyRequirementWitness(ancestor, path, identity))
+                        {
+                            proof = CombineProof(proof, ConstraintProof.Unknown, true);
+                        }
+                        else if (!ReferenceEquals(path.WitnessMap[identity].Implementation, witness.Implementation))
+                        {
+                            return ConstraintProof.Refuted;
+                        }
 
-                var selection = this.InheritedWitnessSelection(self, witness.Implementation);
-                if (selection.Pending)
-                {
-                    return ConstraintProof.Unknown;
-                }
+                        continue;
+                    }
 
-                if (witness.Requirement.Property is { } property)
-                {
-                    proof = CombineProof(proof, this.VerifyPropertyRequirement(path, property, self, scope, selection), true);
-                    continue;
-                }
+                    var selection = this.InheritedWitnessSelection(self, witness.Implementation);
+                    if (selection.Pending)
+                    {
+                        return ConstraintProof.Unknown;
+                    }
 
-                if (witness.Requirement.Declaration is not FunctionKoto requirement || witness.Implementation.Declaration is not FunctionKoto implementation)
-                {
-                    return ConstraintProof.Unknown;
-                }
+                    if (witness.Requirement.Property is { } property)
+                    {
+                        proof = CombineProof(proof, this.VerifyPropertyRequirement(path, property, self, scope, selection), true);
+                        continue;
+                    }
 
-                var matches = this.MatchesRequirement(requirement, implementation, self, scope, selection);
-                if (matches != true)
-                {
-                    // Object receiver projection is a separate implementation limit, not evidence of a Self mismatch.
-                    var receiver = requirement.BoundSymbol!.ReceiverIndex;
-                    path.RejectedSelfSignature = matches == false && (receiver < 0 || requirement.Parameters[receiver].Type.BoundType?.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq)) ? witness.Implementation : null;
-                    return matches is null ? ConstraintProof.Unknown : ConstraintProof.Refuted;
-                }
+                    if (witness.Requirement.Declaration is not FunctionKoto requirement || witness.Implementation.Declaration is not FunctionKoto implementation)
+                    {
+                        return ConstraintProof.Unknown;
+                    }
 
-                var compatible = this.CompatibleRequirement(path, requirement, implementation, self, scope, selection);
-                // Incompatibility of the retained mapping rules out this path, not the derived declaration.
-                proof = CombineProof(proof, compatible == ConstraintProof.Error ? ConstraintProof.Refuted : compatible, true);
-                var inherited = new BoundWitness(identity, witness.Implementation, this.FunctionWitness(path, identity));
-                path.WitnessStorage.Add(inherited);
-                path.WitnessMap.Add(identity, inherited);
+                    var matches = this.MatchesRequirement(requirement, implementation, self, scope, selection);
+                    if (matches != true)
+                    {
+                        // Object receiver projection is a separate implementation limit, not evidence of a Self mismatch.
+                        var receiver = requirement.BoundSymbol!.ReceiverIndex;
+                        path.RejectedSelfSignature = matches == false && (receiver < 0 || requirement.Parameters[receiver].Type.BoundType?.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq)) ? witness.Implementation : null;
+                        return matches is null ? ConstraintProof.Unknown : ConstraintProof.Refuted;
+                    }
+
+                    var compatible = this.CompatibleRequirement(path, requirement, implementation, self, scope, selection);
+                    // Incompatibility of the retained mapping rules out this path, not the derived declaration.
+                    proof = CombineProof(proof, compatible == ConstraintProof.Error ? ConstraintProof.Refuted : compatible, true);
+                    var inherited = new BoundWitness(identity, witness.Implementation, this.FunctionWitness(path, identity));
+                    path.WitnessStorage.Add(inherited);
+                    path.WitnessMap.Add(identity, inherited);
+                }
             }
 
             path.IsVerified = proof == ConstraintProof.Proven;
@@ -222,6 +257,9 @@ public sealed partial class Binding
     {
         if (path.InheritedFrom is { } source)
         {
+            // Registration merges only paths with the same original declaration, root Contract and inline base.
+            // Additional sources therefore carry the same declaration premises; their mapping obligations are
+            // verified separately in VerifyInheritedConformance and ProveConformanceConditions.
             this.AddInheritedPremises(source, this.StoredType(path.InheritedBase!, self)!, scope);
         }
         else if (path.Premises is { } premises)

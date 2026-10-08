@@ -263,6 +263,8 @@
   + Name="InvalidAssociatedType_Kd"
     Category="Language"
     Message="The associated Type has an ambiguous, missing, contradictory, or invalid Core-Type binding"
+    Evidence="left:Type,right:Type,associated:Text,first:Type,second:Type"
+    Label="at {0} = {1}, {2}'s Types {3} and {4} are not proven equal"
 
   + Name="InvalidCompileTimeCondition_Kd"
     Category="Language"

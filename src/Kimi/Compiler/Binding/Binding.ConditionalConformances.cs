@@ -155,14 +155,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    same &= ReferenceEquals(x.Requirement, y.Requirement) && ReferenceEquals(x.Implementation, y.Implementation) && x.Kind == y.Kind && this.SameMemberPath(x.BasePath, y.BasePath, scope) && x.ObjectCompatibility == y.ObjectCompatibility
-                        && this.SameConformanceType(x.ReceiverType, y.ReceiverType, scope) && this.SameConformanceType(x.InputType, y.InputType, scope)
-                        && this.SameConformanceType(x.ResultType, y.ResultType, scope) && this.SameConformanceType(x.ImplementationType, y.ImplementationType, scope)
-                        && x.InputOrigins.Count == y.InputOrigins.Count;
-                    for (var o = 0; o < Math.Min(x.InputOrigins.Count, y.InputOrigins.Count); o++)
-                    {
-                        same &= ReferenceEquals(x.InputOrigins[o], y.InputOrigins[o]);
-                    }
+                    same &= this.SamePropertyWitness(x, y, scope);
                 }
 
                 if (!same)
@@ -417,9 +410,20 @@ public sealed partial class Binding
 
     private ConstraintProof ProveConformanceConditions(BoundConformancePath path, BoundType type, BindingScope scope)
     {
-        if (path.InheritedFrom is { } source)
+        if (path.InheritedFrom is not null)
         {
-            return this.StoredType(path.InheritedBase!, type) is { } parent ? this.ProveConformanceConditions(source, parent, scope) : ConstraintProof.Unknown;
+            if (this.StoredType(path.InheritedBase!, type) is not { } parent)
+            {
+                return ConstraintProof.Unknown;
+            }
+
+            var proof = ConstraintProof.Proven;
+            for (var i = 0; i < path.InheritedSourceCount; i++)
+            {
+                proof = CombineProof(proof, this.ProveConformanceConditions(path.InheritedSource(i), parent, scope), true);
+            }
+
+            return proof;
         }
 
         if (path.Scope.Parent?.Constraints?.Invalid == true)

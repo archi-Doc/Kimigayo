@@ -175,6 +175,12 @@ public sealed class BoundConformancePath
 
     internal BoundConformancePath? InheritedFrom { get; set; }
 
+    // Distinct ancestor references of the same source clause can converge after a base substitution.
+    // Their obligations remain conjunctive; only their equal, verified mappings may share storage.
+    internal List<BoundConformancePath>? AdditionalInheritedSources { get; set; }
+
+    internal int InheritedSourceCount => this.InheritedFrom is null ? 0 : 1 + (this.AdditionalInheritedSources?.Count ?? 0);
+
     internal BoundType? InheritedBase { get; set; }
 
     internal BindingSymbol? RejectedSelfSignature { get; set; }
@@ -209,4 +215,6 @@ public sealed class BoundConformancePath
     /// <returns>The operation mapping, or null if unavailable.</returns>
     public BoundPropertyWitness? GetPropertyWitness(BoundRequirement requirement, PropertyAccessorKind kind)
         => this.IsVerified && this.PropertyWitnessMap.TryGetValue((requirement, kind), out var witness) ? witness : null;
+
+    internal BoundConformancePath InheritedSource(int index) => index == 0 ? this.InheritedFrom! : this.AdditionalInheritedSources![index - 1];
 }
