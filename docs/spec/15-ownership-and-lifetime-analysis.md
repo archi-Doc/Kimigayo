@@ -1,5 +1,7 @@
 # 15. Ownership and lifetime analysis
 
+[Bounded associated-Type inference](associated-type-inference.md#3-extract-complete-types) preserves complete Types and their Origins, rejects escaping method binders and adds no borrowing or lifetime-shortening rule. Ordinary formation and Loan verification still apply.
+
 Virtual calls compose the [public receiver, effect and earlier-result guarantees](virtual-dispatch.md#5-receiver-safety-and-completeness) with this analysis. Object base views retain whole-payload Loans and Owned erasure evidence; direct-base calls retain their distinct implementation identity.
 
 [Specification index](../SPEC.md)

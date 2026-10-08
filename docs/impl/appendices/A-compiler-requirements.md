@@ -325,6 +325,8 @@ Coordinate with the cleanup, refinement, and Pattern checks in A.7, A.9, and A.1
 
 ## A.16. Dependencies, artifacts, and bounded reuse
 
+The [associated-Type inference profile](../associated-type-inference.md) additionally requires shared staged headers, frozen per-path evidence, retained identification, graph-bounded reuse and the specified functional, public-output, allocation and scaling coverage.
+
 Implement [§18](../../spec/18-modules-and-dependencies.md), the native connection rules (§20.8.2) and product and test planning (§21.3.7) so that processing order and cache presence change neither acceptance nor selection.
 
 Stream hashes from fixed input bytes instead of building large concatenation buffers. Intern and share each dependency's declarations, strings, Types, Origins and verification facts; use range-checked integer references, and reconstruct diagnostic paths on demand instead of copying paths per node. Share immutable lexical data only when its language conditions agree, and never share mutable Binding or Koto state across definition environments or target and mode checks.

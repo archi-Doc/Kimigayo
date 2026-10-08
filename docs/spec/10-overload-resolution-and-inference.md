@@ -1,5 +1,7 @@
 # 10. Overload resolution and inference
 
+[Associated-Type inference](associated-type-inference.md) is declaration completion under frozen conformance premises. It does not change the call-site selection, adaptation or Type/Origin inference rules in this chapter.
+
 [Specification index](../SPEC.md)
 
 Container qualifiers are resolved under §9.6.1 before call inference. This chapter infers a function's own arguments or the selected construction target's own arguments (§10.8.1), keeping their declaration identities distinct. An omitted outer Container environment is never inferred from call arguments or an expected result. Candidate identity includes the retained environment, and a failed later constraint does not reopen qualifier lookup.

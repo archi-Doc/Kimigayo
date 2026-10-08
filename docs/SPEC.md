@@ -35,7 +35,7 @@ Implementation coverage is recorded separately ([Appendix C](#appendix-c-impleme
 
 - [6. Declarations and containers](spec/06-declarations-and-containers.md)
 - [7. Functions and callable values](spec/07-functions-and-callable-values.md)
-- [8. Generics, constraints, and contracts](spec/08-generics-constraints-and-contracts.md)
+- [8. Generics, constraints, and contracts](spec/08-generics-constraints-and-contracts.md): [bounded associated-Type inference](spec/associated-type-inference.md), frozen declaration premises, retained implementation identification and complete public bindings.
 - [9. Names, signatures, and access](spec/09-names-signatures-and-access.md)
 - [10. Overload resolution and inference](spec/10-overload-resolution-and-inference.md): common inference, conditional acquisition contracts and [constructor Type inference](spec/10-overload-resolution-and-inference.md#1081-constructor-type-inference).
 - [11. Properties](spec/11-properties.md)

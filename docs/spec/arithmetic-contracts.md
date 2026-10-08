@@ -39,7 +39,7 @@ Explicit ordinary and unary conformances require a user provider Self. Explicit 
 
 These eligibility conditions are published conformance conditions of the standard Contracts. Definition checking proves them for every admitted binding, using known shapes, Semantics constraints and existing capability facts. Unknown eligibility is not deferred to an instantiation. Outer owner is not the `Owned` capability; internal external dependencies are allowed. Uses of a proven arithmetic Contract may rely on its eligibility conditions.
 
-Specify `Output` explicitly per conformance or through a uniquely determined published Type identity; do not infer it from an implementation body or result signature. Disambiguate it as `T.(Multipliable<R>).Output` when necessary. It may differ from Self, contain a `Result` or preserve external borrows. It is not a family indexed by each call's fresh borrow Origins. Neither Copy nor Owned is imposed on it.
+Determine `Output` under the common [associated-Type rules](associated-type-inference.md): explicit/fixed identities or bounded inference from a uniquely identified implementation's declared value result. A body never determines it. Disambiguate it as `T.(Multipliable<R>).Output` when necessary. It may differ from Self, contain a `Result` or preserve external borrows. It is not a family indexed by each call's fresh borrow Origins. Neither Copy nor Owned is imposed on it.
 
 Ordinary conformance matching, Origin contracts, effects and result-Loan verification apply. These requirements impose no `confined`, `preserves-results`, purity, totality or allocation-free guarantee. Public APIs describe their rounding, domain and failure behavior; the Contracts assert no algebraic laws.
 

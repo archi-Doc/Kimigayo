@@ -1,5 +1,7 @@
 # Kimigayo Implementation Status
 
+**Bounded associated-Type inference (2026-10-08):** formal rules are integrated in [SPEC](spec/associated-type-inference.md). Compiler implementation and verification are in progress (PLAN G84); existing explicit binding support does not establish support for omitted bindings. Valid new forms remain an implementation gap until verified.
+
 **Conditional-premise recovery (2026-10-08; SPEC §8.4.8, §23.3.6.4):** a missing `is` in a `when` list is located and the failed premise stays in the syntax tree, including after an earlier valid premise. The common Constraint binder rejects recovered clauses; conformance validity depends on their causes. `ConstraintRecoveryTest` checks retained syntax/parents, unavailable conformance evidence, independent errors, rebinding and CLI/LSP records. Other invalid-environment propagation remains G55.
 
 **Lexical boundaries (2026-10-08; SPEC §2.4, §2.6–2.8):** Tuple indices reject a Name-continuation suffix as one malformed numeric token. Generic closers split only `>>` and `>>=`, retaining the original token to distinguish the latter's `>=` remainder from a standalone comparison. Char literals validate every character escape independently, with exact ranges and no derived scalar-count failure when decoding fails. `LexicalBoundaryTest`, `SpecConformanceParseTest` and `StringDiagnosticTest` cover rejection, valid counterparts, immutable tokens, public adapters and zero-allocation pooled tokenization.

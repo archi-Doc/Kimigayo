@@ -199,7 +199,7 @@ An associated Type denotes a **complete Type**: Semantics, Type arguments, neste
 | `associate LentItem(step) for uniq/Self during step` | Declares it with a formation Type that bounds the domain of `step` (below). |
 | `associate C.LentItem(a) is ref/E during a` | Specifies an Origin-parameterized associated Type; `a` is the implementation's parameter for the first requirement parameter. |
 
-Each associated Type is determined uniquely by explicit specifications and Type-identity Constraints on the Contract or its ancestors. Bindings are never inferred from implementation signatures, member search, function bodies, implicit adaptations, Copy judgments or instantiated Types, and a Type is never chosen merely because it satisfies a capability; contradictory identity facts from several requirements are rejected. Bindings are substituted before implementations are matched. For example, an unconstrained `Source.Element` is not inferred as `i32` merely because an implementation of `read` returns `i32`.
+Each associated Type is determined uniquely by explicit specifications, available Type-identity Constraints, inherited bindings or [bounded declaration inference](associated-type-inference.md). Inference completes an omitted non-family binding from the declared value result of an implementation uniquely identified under frozen premises. It never uses bodies, call sites, instantiated Types, implicit adaptations, Copy judgments or capability search. Contradictory identity facts are rejected. Available bindings are substituted for identification; newly inferred bindings complete compatibility without reselecting an implementation.
 
 **Qualified specifications.** `associate C.Element is T` selects an associated Type through a direct conformance or its ancestor `C`; `C` may carry the Contract's Type arguments. An unqualified `associate Element is T` is valid only when exactly one distinct associated-Type identity with that name is available across those conformances and refinements. As in §8.4.2, several paths to the same declaration with the same normalized bindings count once; distinct bindings remain distinct even when the declaration is shared. For example, `C<i32>.Element` and `C<i64>.Element` need their respective bound qualifiers when both are available. Ambiguous names require qualification, and a short form never applies to all same-named identities. A bare `associate Element` is not an implementation specification.
 
@@ -243,7 +243,7 @@ contract IntSource: Source
     Self.(Source).Element is i32
 ```
 
-An `IntSource` implementation need not repeat the inherited `Source.Element is i32` binding. Explicit Type-identity facts support substitution and normalization, and contradictory bindings are errors. Unresolved bindings remain obligations until the required finalization point. There is no associated-Type inference or proof search beyond the [limited proof rules](#87-constraint-proof-system).
+An `IntSource` implementation need not repeat the inherited `Source.Element is i32` binding. Explicit Type-identity facts support substitution and normalization, and contradictory bindings are errors. Unresolved bindings remain obligations until the required finalization point. Only [bounded declaration inference](associated-type-inference.md) can supply an omitted binding; it does not extend the [limited proof rules](#87-constraint-proof-system).
 
 #### 8.4.3.1. Origin parameters
 
@@ -325,7 +325,7 @@ No warning is required merely because an open base has a conformance that its de
 
 Ordinary declarations are validated first: functions that differ only in result Type, Origins, Constraints or `unsafe` are duplicate declarations under the Signature rules (§9.1), before any conformance matching.
 
-After `Self`, the conforming Type's arguments and the associated Types are substituted, a function implementation is identified by the following key:
+After `Self`, the conforming Type's arguments and available associated Types are substituted, a function implementation is identified by the following key. [Bounded inference](associated-type-inference.md#2-identify-once) retains the result of this identification under frozen premises; an input key depending on a missing associated Type cannot supply inference evidence:
 
 | Component | Required match |
 | --- | --- |
@@ -1065,7 +1065,7 @@ Evidence comes from the current declaration's validated input Constraints, the d
 | Semantics admitted set | A requirement on a Semantics binding is decided by containment of the binding's admitted set, defined below. |
 | Verified conformance | A verified explicit or inherited mapping, after its prerequisites are proven, including inheritance matching (§8.4.4) and conditional premises (§8.4.8). Legitimate unresolved prerequisites are retained; cyclic declarations alone prove nothing. |
 | Contract refinement | From an available `T is C`, each ancestor conformance and inherited requirement Constraint, substituting `T` for `Self`. This does not discharge an unverified declaration's implementation obligations. |
-| Associated-Type identity | Substitute and normalize explicit associated-Type specifications and available Type-identity Constraints under the [associated-Type rules](#843-associated-types). Bindings are not inferred from members, and no satisfying Type is searched for. |
+| Associated-Type identity | Substitute and normalize completed associated-Type bindings and available Type-identity Constraints under the [associated-Type rules](#843-associated-types). Bounded declaration inference completes metadata separately; proof never searches members or chooses a satisfying Type. |
 | Type identity | `X is U` is Proven when both normalize to the same Type after substituting available identity premises, including the same binders, and Refuted when both are fully bound and differ. No equation is solved beyond this substitution. |
 | Closed implication | `T is PrimitiveInteger` supplies `T is Position` (§8.4.7.3). |
 | Other cases | Unknown, unless validation requires Error. |
@@ -1080,7 +1080,7 @@ All proof operands are validated, and Error absorbs even a determined truth resu
 
 **Contradictions.** After the specified normalization and conjunction elimination, directly available `P` and `not P` are contradictory evidence and produce Error; so is evidence establishing both polarities of a queried proposition. Arbitrary capabilities are never derived from an inconsistent environment. Detecting more complex contradictions through excluded logical transformations is not required and cannot supply proof.
 
-**Use and finalization.** A required Constraint succeeds only when Proven. Refuted fails the requirement, and Error reports invalid input or contradictory evidence. Unknown may be retained only when an identified later binding, instantiation or prerequisite analysis can resolve it before the applicable deadline; otherwise it is an unproven-requirement error wherever proof is required. Every required concrete-call or instantiation obligation is resolved before finalization. Unknown is never accepted, converted to Refuted or used as evidence for a negated Constraint. Associated-Type inference beyond explicit identity facts and stronger symbolic reasoning remain design boundaries.
+**Use and finalization.** A required Constraint succeeds only when Proven. Refuted fails the requirement, and Error reports invalid input or contradictory evidence. Unknown may be retained only when an identified later binding, instantiation or prerequisite analysis can resolve it before the applicable deadline; otherwise it is an unproven-requirement error wherever proof is required. Every required concrete-call or instantiation obligation is resolved before finalization. Unknown is never accepted, converted to Refuted or used as evidence for a negated Constraint. Associated-Type inference beyond the [bounded declaration rule](associated-type-inference.md) and stronger symbolic reasoning remain design boundaries.
 
 ## 8.8. Explicit full function specialization
 
