@@ -10,6 +10,8 @@ Paths below are relative to [src/Kimi](../../src/Kimi/).
 
 Tokenizer layout transitions and surrogate scanning are covered by `LayoutRecoveryTest` and `SourceEncodingTest`; literal escape ranges by `StringDiagnosticTest`.
 
+Constraint recovery enters through `Parser.ParseTypeConstraint`, then the shared `Binding.Constraints.BindConstraint` guard and conditional-conformance prerequisites; `ConstraintRecoveryTest` and the syntax corpus cover these paths.
+
 | Area | Entry point / source | Responsibility and handoff |
 | --- | --- | --- |
 | Commands and project input | [Unit/Command](../../src/Kimi/Unit/Command/), [Project.cs](../../src/Kimi/SolutionAndProject/Project.cs): `Check`, `Generate`, `Build`, `Run` | Load configuration and sources, orchestrate phases. `Generate` publishes IR/manifest inputs; `Build` invokes native tools; `Run` executes an existing build. Dependency discovery/locks live in `SolutionAndProject/Dependency*.cs`. |

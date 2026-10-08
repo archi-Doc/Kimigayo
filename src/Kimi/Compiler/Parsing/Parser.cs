@@ -2246,16 +2246,16 @@ CloseParameters:
     /// </remarks>
     /// <param name="reader">The token reader positioned at the constraint subject.</param>
     /// <param name="finishLine">Whether to diagnose and consume trailing tokens on the clause's line.</param>
-    /// <returns>The parsed constraint, or <see langword="null"/> when its required prefix is invalid.</returns>
-    public static IsKoto? ParseTypeConstraint(ref TokenReader reader, bool finishLine = true)
+    /// <returns>The parsed constraint, retained as a recovery when any required part is invalid.</returns>
+    public static IsKoto ParseTypeConstraint(ref TokenReader reader, bool finishLine = true)
     {
         var lastError = reader.Diagnostic.LastError;
         var subject = HasSimpleConstraintSubject(ref reader) ? ParseConstraintSubject(ref reader) : ParseDeclarationType(ref reader);
 
         if (!reader.TryConsume(TokenKind.Is, out var isRange, false))
         {
-            // Every caller saw the keyword through IsTypeConstraintStart; a subject that consumed it is parsed as no Constraint.
-            return null;
+            // A `when` list calls directly, without prefix lookahead. Keep the failed premise rather than weakening the list.
+            reader.Expect(SyntaxForm.IsKeyword);
         }
 
         var previousRequirement = reader.ConstraintRequirement;

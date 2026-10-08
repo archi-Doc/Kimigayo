@@ -1,4 +1,8 @@
 [
+  { "Name": "conditional-premise-missing-is", "Source": "contract C\nstruct S<T>\n    Self is C when T is Copy, T\npublic func main() => ()\n", "Intended": "a malformed later premise is retained and cannot weaken the conditional conformance",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "IsKeyword", "After": "T is Copy, T" } ] },
+  { "Name": "conditional-premise-expected-is", "Source": "contract C\nstruct S<T>\n    Self is C when T Copy\npublic func main() => ()\n", "Intended": "a requirement after a subject needs is at the requirement token; Binding rests on that syntax failure",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "IsKeyword", "At": "Copy", "Found": "Copy" } ] },
   { "Name": "missing-operand", "Source": "public func main()\n    var x = 1 +\n    Console.writeLine(\"a\")\n", "Intended": "a binary operator whose right operand is missing at the end of the line",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "1 +" } ] },
   { "Name": "missing-prefix-operand", "Source": "public func main()\n    var x = -\n", "Intended": "a prefix operator whose operand is missing at the end of the line",

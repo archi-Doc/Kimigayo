@@ -266,4 +266,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>A virtual or override modifier outside a function declaration.</summary>
     VirtualModifier,
+
+    /// <summary>The 'is' between a Constraint subject and its requirement.</summary>
+    IsKeyword,
 }

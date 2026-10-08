@@ -378,6 +378,11 @@
     Phrase="'of'"
     Advice="A fixed-array Type is '[length of Type]'."
 
+  + Name="Syntax.IsKeyword"
+    Description="a Constraint separates its subject and requirement with 'is'"
+    Phrase="'is'"
+    Advice="Write each condition as 'Type is Requirement'."
+
   + Name="Syntax.PatternLiteral"
     Description="a literal Pattern is an integer, char, string or bool"
     Phrase="integer, char, string or bool literal Pattern"

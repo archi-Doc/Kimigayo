@@ -318,13 +318,7 @@ public sealed partial class Binding
                     for (var j = 0; j < function.TypeConstraints.Count; j++)
                     {
                         var clause = (IsKoto)function.TypeConstraints[j];
-                        if (IsRecovery(clause, out _))
-                        {
-                            // The parser reported the prefix (SPEC 7.4); its parts are not judged again, and the clause rests on the Error.
-                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
-                            this.Fail(clause, BindingFailure.InvalidConstraint);
-                        }
-                        else if (this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
+                        if (IsRecovery(clause, out _) || this.DeferredConstraint(clause, this.scopes[function]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[function]);
                         }
@@ -341,13 +335,7 @@ public sealed partial class Binding
                     for (var j = 0; j < container.ConstraintNodes.Count; j++)
                     {
                         var clause = container.ConstraintNodes[j];
-                        if (IsRecovery(clause, out _))
-                        {
-                            // The parser reported a part of the clause; its parts are not judged again, and the clause rests on the Error.
-                            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
-                            this.Fail(clause, BindingFailure.InvalidConstraint);
-                        }
-                        else if (this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
+                        if (IsRecovery(clause, out _) || this.DeferredConstraint(clause, this.scopes[container]) == (pass != 0))
                         {
                             this.BindConstraint(clause, this.scopes[container]);
                         }
@@ -426,6 +414,14 @@ public sealed partial class Binding
 
     private void BindConstraint(IsKoto clause, BindingScope scope)
     {
+        if (IsRecovery(clause, out _))
+        {
+            // Every entry path, including conditional premises, depends on the clause's complete syntax.
+            clause.BoundConstraint = this.InternConstraint(new(ConstraintKind.Error));
+            this.Fail(clause, BindingFailure.InvalidConstraint);
+            return;
+        }
+
         if (clause.FormationType is not null && !IsAssociatedRequirement(clause))
         {
             this.Fail(clause, BindingFailure.InvalidConstraint); // SPEC 8.4.3: only a requirement may end with a formation Type.

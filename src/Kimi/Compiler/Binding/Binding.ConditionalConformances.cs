@@ -248,6 +248,8 @@ public sealed partial class Binding
                     }
 
                     this.BindConstraint(condition, scope);
+                    this.AddPrerequisite(syntax, condition);
+                    this.AddPrerequisite(target, condition);
                     var subject = condition.BoundConstraint?.Subject ?? condition.Left.BoundType;
                     while (subject?.Kind == BoundTypeKind.AssociatedProjection)
                     {

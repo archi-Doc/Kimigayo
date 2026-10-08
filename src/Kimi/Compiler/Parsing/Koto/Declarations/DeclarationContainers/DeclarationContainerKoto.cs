@@ -1200,19 +1200,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
             }
 
             var constraint = Parser.ParseTypeConstraint(ref reader, finishLine: false);
-            if (constraint is not null && reader.IsCurrentIdentifier("when"))
+            if (reader.IsCurrentIdentifier("when"))
             {
                 reader.Advance();
                 var conditions = new List<Koto>();
                 do
                 {
-                    var condition = Parser.ParseTypeConstraint(ref reader, finishLine: false);
-                    if (condition is null)
-                    {
-                        break;
-                    }
-
-                    conditions.Add(condition);
+                    conditions.Add(Parser.ParseTypeConstraint(ref reader, finishLine: false));
                 }
                 while (reader.TryConsume(TokenKind.Comma));
                 var span = SourceSpan.FromBounds(constraint.Span.Start, conditions.Count == 0 ? constraint.Span.End : conditions[^1].Span.End);
