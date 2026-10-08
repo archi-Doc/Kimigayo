@@ -831,10 +831,11 @@ LineContent:
 
         if (indentDelta > 0)
         {
-            if (this.nonBlockDepth > 0 && !this.PreviousLineStartsBody())
+            if (this.nonBlockDepth > 0 && this.indentStack[this.indentCount - 1].Source != IndentSource.Block && !this.PreviousLineStartsBody())
             {
                 // Extra indentation cannot invent an executable body inside a grouping. Keep its content in the
-                // existing delimiter region, whose written closer still closes it at the original baseline.
+                // existing delimiter region, whose written closer still closes it at the original baseline. An inner
+                // block has its own grammar, including match arm headers with no body-introducing keyword.
                 if (unnecessarySpaces == 0)
                 {
                     this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
