@@ -36,6 +36,27 @@ public class HeaderDelimiterContinuationTest
         Assert.Equal("next", Assert.IsType<FieldKoto>(last).NameKoto.IdentifierName);
     }
 
+    [Fact]
+    public void ACommaAfterAnAnonymousBodyKeepsTheArgumentList()
+    {
+        const string Source = "func call(action: (i32) -> i32, value: i32) -> i32 => action(value)\nlet result = call(func (n) -> i32\n    return n + 1\n, 2)\nrequire result == 3 else => $abort(\"argument\")";
+        ScalarEmissionTest.EmitFixture("HeaderDelimiterAnonymousComma", Source, string.Empty);
+    }
+
+    [Fact]
+    public void ConsecutiveDefaultBodiesShareTheOriginalListBaseline()
+    {
+        const string Source = "func f(x: i32 = (loop\n    exit 3\n), y: i32 = (loop\n    exit x + 1\n)) -> i32 => y\nrequire f() == 4 else => $abort(\"default\")";
+        ScalarEmissionTest.EmitFixture("HeaderDelimiterDefaultBodies", Source, string.Empty);
+    }
+
+    [Fact]
+    public void AParameterNameBoundaryAfterABodyKeepsTheParameterList()
+    {
+        const string Source = "func f(action: () -> i32 = func () -> i32\n    return 3\n! value: i32 = 2) -> i32 => action() + value\nrequire f() == 5 else => $abort(\"boundary\")";
+        ScalarEmissionTest.EmitFixture("HeaderDelimiterNameBoundary", Source, string.Empty);
+    }
+
     [Theory]
     [InlineData("_", "Wildcard")]
     [InlineData("false", "Literal")]
@@ -50,6 +71,8 @@ public class HeaderDelimiterContinuationTest
     [Theory]
     [InlineData("let value = select((loop\n    exit (7, 9)\n).0,\n    2\n)\nlet next = 3")]
     [InlineData("let value = select(\n    match false\n        _\n            prepare()\n            yield 2\n)\nlet next = 3")]
+    [InlineData("func f(x: i32 = (loop\n    exit 3\n), y: i32 = (loop\n    exit x + 1\n)) -> i32 => y")]
+    [InlineData("let value = select(func (n) -> i32\n    return n + 1\n, 2)")]
     public void CompletedHeaderDelimitersReuseTheirStack(string text)
     {
         var c = Compilation.CreateForTest();

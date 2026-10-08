@@ -46,6 +46,8 @@ Measured with an interleaved, pinned A/B harness with tiering off over the 71 mi
 
 ## Open findings
 
+Current continuation and verified boundaries: [G55/G60 handoff](G55_G60.md) (paused by user on 2026-10-08). Follow-ups below record completed repairs; dropped Name/context recovery and measured structural costs remain open.
+
 Reproduced, not repaired in this review; each needs its own unit or a decision.
 
 - **Layout recovery (tokenizer).** The follow-ups below repair outer-aligned chains, shared header delimiters, over-indented grouping content, wrong-kind closers, lexical causes for swallowed closers and invalid indentation after a bare modifier.
@@ -79,6 +81,8 @@ Interpolation-scan follow-up (2026-10-08): the shared scanner returns a value ca
 Shared-header continuation regression (2026-10-08): after a nested body's written closer, an outer call can still have an access/adaptation suffix and remaining arguments. Dedent recovery no longer synthesizes that outer closer before reading the rest of the physical line; surviving header delimiters resume ordinary indentation after the nested body. HeaderDelimiterContinuationTest covers same-line and next-line arguments, missing outer closers, native Tuple/adaptation results and zero-allocation stack reuse. The existing ElementBorrowOwnerEmissionTest loop-result and defer-clone cases were the independent reproducers found by the broader static-Origin verification.
 
 Inner arm-body regression (2026-10-08): the extra-indentation guard applies to the innermost grouping region, not to a Block nested inside it. A match arm's Pattern can introduce its Body without a keyword; no additional lexer grammar or duplicated parser is needed. HeaderDelimiterContinuationTest covers wildcard/literal/binding arms, native results, a following independent error and zero-allocation tokenization. ControlFlowConformanceTest supplied the original parse-only reproducer during the broader static-Origin verification.
+
+Closing Session regressions (2026-10-08): after an anonymous/default body ends by dedent, a comma or parameter-name boundary resumes its enclosing list. A subsequent body-bearing default shares older list delimiters only when their original physical baseline matches its header. Shallower ordinary continuations keep their level. HeaderDelimiterContinuationTest adds native and allocation regressions; existing ErasureOwnedDiagnosticTest, ContextualClosureTest, ContinuationVerificationTest and ScalarDefaultEmissionTest supply the independent public-diagnostic/default-evaluation reproducers. No body grammar or expected output is weakened.
 
 Property recovery (2026-10-08): Property and storage references obtain their Type from the header, never by revisiting accessor bodies. An unavailable written annotation cannot be replaced by an initializer's inferred Type. Header inference cycles remain cyclic bindings; annotated runtime initialization cycles retain their separate execution check. Accessor receiver/input/result failures keep their written cause without a false formation or conformance error. PropertyRecoveryTest covers storage reads/writes, instance/static headers, annotation replacement, independent body failures, CLI/LSP output, native instance accessors and zero-allocation warm Binding. Existing grouping-Origin and static-storage tests now assert the earlier follow-ups' public syntax/Unsupported contracts rather than obsolete secondary binding errors.
 

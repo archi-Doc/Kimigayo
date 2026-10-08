@@ -36,6 +36,8 @@ Measured with an interleaved, pinned A/B harness with full JIT (`artifacts/bench
 
 ## Open findings
 
+Current continuation and verified boundaries: [G55/G60 handoff](G55_G60.md) (paused by user on 2026-10-08). The original findings below are historical; follow-up repairs supersede their repaired portions, and remaining reproducers must be rechecked before implementation.
+
 Reproduced, not repaired in this review; each needs its own unit or a decision.
 
 - **Valid programs rejected.** Function requirement and associated-Type identities under distinct bound parents are repaired by the follow-ups below; equivalent-candidate merging still needs the same review. Shared unresolved candidate expectations remain §10.5/G10; a single selected outer candidate now supplies determined nested expectations (`ApplicabilityChainRegressionTest`, 2026-10-06). Static storage elision and classification of the remaining static-borrow execution boundary are repaired by the follow-up below. Result-only implementation Origins are repaired by the follow-up below.

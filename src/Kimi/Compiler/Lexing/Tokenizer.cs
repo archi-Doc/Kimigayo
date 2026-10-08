@@ -922,9 +922,11 @@ LineContent:
             // closes, discharge it too unless an aligned branch joins the construct inside it.
             for (var i = indentDelta; i < 0 || (!branchJoin && this.indentCount > 0 && this.indentStack[this.indentCount - 1].SharesBodyIndent); i++)
             {
-                if (i >= 0 && closedDelimiter && !this.span.IsEmpty && this.span[0] is not (Constants.CrChar or Constants.LfChar))
+                if (i >= 0 && !this.span.IsEmpty && this.span[0] is not (Constants.CrChar or Constants.LfChar) &&
+                    (closedDelimiter || this.span[0] is ',' or '!'))
                 {
-                    // A written closer may be followed by an access, adaptation or another argument on this line.
+                    // A written closer may be followed by an access, adaptation or another argument on this line;
+                    // a comma or parameter-name boundary after the dedent also resumes the enclosing list.
                     // Remaining shared header delimiters belong to that outer expression. Resume ordinary tokenization
                     // and restore their ordinary indentation now that the nested body's grouping has ended.
                     for (var s = this.indentCount - 1; s >= 0 && this.indentStack[s].SharesBodyIndent; s--)
@@ -1313,9 +1315,22 @@ EndOfFile:
         for (var i = this.indentCount - 1; i >= 0; i--)
         {
             var entry = this.indentStack[i];
-            if (entry.Position < lineStart || entry.Source is IndentSource.Block or IndentSource.LineContinuation)
+            if (entry.Source is IndentSource.Block or IndentSource.LineContinuation)
             {
                 break;
+            }
+
+            if (entry.Position < lineStart)
+            {
+                // A preceding body's closer can continue an older list with another body-bearing item on this line.
+                // Only delimiters opened at this header's physical baseline share its indentation; an ordinary
+                // outer delimiter opened at a shallower baseline keeps its continuation level.
+                var openingLine = this.sourceText[..entry.Position].LastIndexOfAny('\r', '\n') + 1;
+                _ = CountIndentation(this.sourceText[openingLine..], out var openingColumns, out _);
+                if ((openingColumns / Constants.IndentationSpaces) - this.indentationOffset != headerIndent)
+                {
+                    break;
+                }
             }
 
             if (!entry.SharesBodyIndent)

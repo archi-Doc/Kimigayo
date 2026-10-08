@@ -228,7 +228,11 @@ public class IntrinsicCapabilityTest
     {
         var c = CompilationTestHelper.ParseSuccess("enum E<T>\n    Value(T)\ngroup Globals\n    var value: E<ref/i32 during static>");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
+        // Owned is a language capability; retained static-borrow initialization remains an implementation boundary.
+        c.Binding.ReportDiagnostics();
+        var record = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnsupportedBinding_Kd", record.Code);
+        Assert.Equal("var value: E<ref/i32 during static>", record.Text);
     }
 
     [Fact]

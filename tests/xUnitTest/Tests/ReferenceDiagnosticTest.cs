@@ -245,7 +245,7 @@ public class ReferenceDiagnosticTest
         Assert.Empty(DiagnosticCorpus.Check(Head + "    public func make(value: ref/i32 during a) -> Holder{a2}\n        origin a2.a == a\n        return Holder.init(value)\n" + Tail).Diagnostics);
     }
 
-    // SPEC 15.3.3, 7.3: the Advice offers only a form its position can hold. A stored Field's initializer, a group's too, relates the
+    // SPEC 15.3.3, 7.3: the Advice offers only a form its position can hold. An instance Field's initializer relates the
     // slot on the Field's declaration; a parameter default and a base initializer, an anonymous function inside a default too, hold no
     // local declaration and no supported clause over their sets, so they get no Advice. Each offered a local declaration, which neither
     // a default nor a struct body can hold (written in a struct body, it declares a Field). An anonymous function in a Field initializer
@@ -257,11 +257,9 @@ public class ReferenceDiagnosticTest
     [InlineData("struct S\n    public var v: i32 = (Holder{w}).zero()\n\n    public init() => self.v = 1\n", "(Holder{w})", "Relate w.a in an origin clause under this declaration, as in origin w.a == <its Origin>")]
     [InlineData("struct S\n    public var v: i32 = Holder.twice(5@ref)\n\n    public init() => self.v = 1\n", "Holder", null)]
     [InlineData("struct S\n    public var v: i32 = (Holder{w}).twice(5@ref)\n\n    public init() => self.v = 1\n", "(Holder{w})", null)]
-    [InlineData("group G\n    public let v: i32 = Holder.twice(5@ref)\n", "Holder", null)]
     [InlineData("struct S\n    public var v: i32 = Holder.peek(Holder.init(5@ref)@ref)\n\n    public init() => self.v = 1\n", "Holder", null)]
     [InlineData(Tag + "struct S\n    public var v: i32 = Tag.add(4)\n\n    public init() => self.v = 1\n", "Tag", "Name the slot with a binding set and relate it in an origin clause under this declaration, as in (Tag{q}).add(...) followed by origin q.a == <its Origin>")]
     [InlineData(Tag + "struct S\n    public var v: i32 = (Tag{w}).add(4)\n\n    public init() => self.v = 1\n", "(Tag{w})", "Relate w.a in an origin clause under this declaration, as in origin w.a == <its Origin>")]
-    [InlineData("group G\n    public let v: i32 = Holder.zero()\n", "Holder", "Name the slot with a binding set and relate it in an origin clause under this declaration, as in (Holder{q}).zero() followed by origin q.a == <its Origin>")]
     [InlineData("struct S\n    public var g: () -> i32 = func () => Holder.zero()\n\n    public init() => ()\n", "Holder", "Name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (Holder{q}).zero() followed by origin q.a == <its Origin>")]
     [InlineData("func f(k: i32 = Holder.zero()) -> i32 => k\n", "Holder", null)]
     [InlineData("func f(n: ref/i32, k: i32 = Holder.twice(n)) -> i32 => k\n", "Holder", null)]
@@ -276,6 +274,25 @@ public class ReferenceDiagnosticTest
         Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), source.IndexOf(text + ".", Helpers.Length, StringComparison.Ordinal), text.Length), (error.Code, error.Span!.Value.Start, error.Span!.Value.Length));
         Assert.Contains("so the call to", error.Note, StringComparison.Ordinal);
         Assert.Equal(advice, error.Advice);
+    }
+
+    [Fact]
+    public void AStaticQualifierSlotDefaultsWithoutAnUnnecessaryRepair()
+    {
+        const string Source = Helpers + "group G\n    public let v: i32 = Holder.zero()\nrequire G.v == 0 else => $abort(\"static qualifier\")";
+        Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
+        ScalarEmissionTest.EmitFixture("ReferenceStaticQualifier", Source, string.Empty);
+    }
+
+    [Fact]
+    public void AStaticQualifierDoesNotExtendATemporaryBorrow()
+    {
+        const string Source = Helpers + "group G\n    public let v: i32 = Holder.twice(5@ref)\nlet present = 1";
+        var record = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal("UnsatisfiedOriginRelation_Kd", record.Code);
+        Assert.Equal(new SourceSpan(Source.IndexOf("5@ref", StringComparison.Ordinal), 5), record.Span);
+        Assert.Equal(DiagnosticCategory.Language, record.Category);
+        Assert.Empty(record.Repairs ?? []);
     }
 
     // SPEC 15.3.3: the forms the Field Advice writes run, on an instance Field and a group's Field, related to static and to the
