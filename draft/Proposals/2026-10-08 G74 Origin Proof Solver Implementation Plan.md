@@ -8,6 +8,8 @@ This plan combines the responsibility separation proposed in the supplied `G74a.
 
 The present task creates this proposal only. It does not start implementation, close G74, resume paused G55/G60 work, change the milestone order, or integrate a specification change. Documentation-only verification consists of reviewing this file, its references and its diff; no build or test is required for this proposal.
 
+Revision (2026-10-08): a comparison of both inputs against the inspection baseline added the following: the order-dependent inference effects and caller-side repetition in §2.1, the clause-provable measurement and profile path in §2.2, the selection, invariance and extraction checks in §§3.1–3.2, and the universe-restriction argument in §3.3. It also added an early decision on function-level environments in §3.4, the rejected alternatives in §3.6, the ownership exclusion unit U0b and the whole-suite comparison mode in U3. `src/` is unchanged between the inspection baseline and this revision, so the cited line numbers refer to that baseline.
+
 ## 1. Objective and scope
 
 Replace path-dependent recursive Origin proof search with a finite calculation over explicit premises. Separate inference constraint collection from proof before changing the search algorithm. Make correctness, work bounds, allocation behavior and invalidation independently verifiable.
@@ -45,6 +47,21 @@ Each premise can currently cause more recursive queries, while each query redisc
 
 `OpenInitializerInference` is especially significant: a recursive proof can update `Replacements` and add an obligation before another subgoal fails. Keeping the first part of `ProvesOriginOutlives` textually unchanged while replacing its later recursive calls does not preserve those effects. The new design must assign required constraints to actual fits instead of relying on which proof branches happen to run.
 
+The baseline already makes these effects depend on proof control flow in three places of [Binding.OriginProof](../../src/Kimi/Compiler/Binding/Binding.OriginProof.cs):
+
+- The longer-meet loop (line 240) deliberately evaluates every operand with `all &=`. Short-circuiting it as an optimization would also skip bound collection for the remaining operands.
+- The shorter-meet loop (line 253) returns at the first operand that succeeds. Consider `x outlives (?i and b)` where `x outlives b` is provable. Whether the open variable `?i` receives the bound `x` depends on the canonical operand order of `CompareOrigins` (Kind, then source position), not on any fit.
+- In the premise loop (lines 303 and 308), the first conjunct can record a bound before the second conjunct fails. The bound remains although that premise path was rejected.
+
+These are U1 reproducer candidates. Their required behavior is decided from SPEC §15.4.4 and §15.3.6, not from the current evaluation order.
+
+Callers repeat complete proofs:
+
+- In [OwnershipAnalysis.Borrows](../../src/Kimi/Compiler/Analysis/OwnershipAnalysis.Borrows.cs), `UncheckedOriginObligation` evaluates `IsVerifiedOriginObligation` and `JudgeOriginObligation` (lines 113–115) before its structural exclusion of input well-formedness obligations (lines 123–128). `VerifyBorrows` checks the nested dependencies of those obligations at call sites. An excluded obligation yields `false` on either path, so the order affects only cost.
+- `ReportUnprovenOriginObligation` judges each reported obligation again and once per meet operand. `SupportsOriginObligations` repeats the whole scan before emission ([LlvmEmitter](../../src/Kimi/Compiler/Emission/LlvmEmitter.cs) line 532).
+- Diagnostic chain construction in [Binding.Diagnostics](../../src/Kimi/Compiler/Binding/Binding.Diagnostics.cs) calls `FailingOperand` once with `refuted == true` and once with `false` (line 1609). `OriginPartFails` and `AddFailingChains` repeat proof and judgment per failing operand.
+- Result-premise detection (`ResultPremiseAction.Detect`) proves relations with the function's own result premise excluded. Its queries fail exactly when that premise is needed, and each such failure pays the full search cost.
+
 ### 2.2. Historical and reported measurements
 
 | Evidence source | Report | Treatment in this plan |
@@ -52,6 +69,7 @@ Each premise can currently cause more recursive queries, while each query redisc
 | [PLAN G74](../../docs/dev/PLAN.md) | Historical 254 s / 292 s checks; removing `keep` reduced one case to 2.6 s. | Historical observations, not current baseline values. The abbreviated example must be reconstructed as a complete source. |
 | `G74o.md` | Original `t_g1` completed in 0.97 s including process startup; 7 Holder inputs took 9.7 s and 8 exceeded a 60 s limit. | Preliminary reported observations from a build containing uncommitted changes, with one run per case. Reproduce before updating current support or performance claims. |
 | `G74o.md` | A valid 7-input program took 5.7 s; profiles attributed much of the time to ownership-side Origin obligation proof. | Include valid programs and ownership verification in the workload. Reconfirm phase attribution. |
+| `G74o.md` | Adding the clauses that make the 7-input relation provable increased the time to more than 60 s. Traces attributed 85% (valid program) and 94.5% (clause-provable program) to `UncheckedOriginObligation → IsVerifiedOriginObligation → ProvesOriginOutlives → ProvesTypeOriginPremise → ProvesStoredOriginPremise`, with up to 24 nested proof frames; Binding itself took 2–5%. | More premises can make the old search slower. Keep family D at the same sizes as A–C. Confirm with U0 counters whether the dominant obligations are the input well-formedness obligations that ownership later excludes (U0b). |
 | Commit `0e6fd329` | Added direct-premise priority and skipped Origin-free targets as part of fixed-Origin Loan work. | Confirmed historical optimization; its commit message does not establish a general bound on proof search. |
 
 Neither the reported speed of the old reproducer nor Program 26's historical warm Binding time closes G74. Retain the original case as a regression and add scalable families that isolate the remaining search behavior.
@@ -69,6 +87,11 @@ Use three explicit responsibilities; final API names are implementation choices.
 | Judge an obligation | Proof result, fixed/finite/inferred classification, region bounds and the existing ownership rules. | Existing `Proven`, `Refuted`, `Unknown` or `Unrepresentable` judgment and use-specific diagnostics. |
 
 Audit every `ProvesOriginOutlives` caller, including capability checks, invariant/reversed fits, calls, result-premise detection, local annotations and anonymous function headers. Record which operations legitimately collect constraints and which only ask for proof.
+
+The audit also covers two semantic boundaries:
+
+- **Selection independence:** an Origin proof outcome must not change overload selection, candidate applicability or retries. Origin requirements are judged after selection and never make a candidate inapplicable (SPEC §15.3.6, §15.6.1). Identify every caller that runs while candidates are still open, including capability checks, and show that its proof result cannot influence the choice.
+- **Invariant positions:** proof and constraint collection never weaken an invariant inner Origin to a meet. This covers `uniq`, `obj`, `objuniq` and `raw` targets, and pair layers whose admitted Semantics include an invariant one (SPEC §15.3.5; §15.3.6, Invariant row). An `==` obligation stays two directions.
 
 Resolve already published substitutions before proof. Where active inference remains, route required fitting constraints to their owner and take a new proof snapshot after relevant state changes. Do not freeze an unfinished inference variable as a universal Origin or turn its desired bound into an assumed premise.
 
@@ -101,6 +124,17 @@ Extract premises once for an environment, resolving their endpoints under the sa
 
 Include eligible local-Place relations for intermediate nodes reached through other premises, not just for the original shorter endpoint. Memoize discovery under the appropriate context so shared stored-Type or local-dependency graphs are not unfolded once per path.
 
+At the baseline, the recursive search applies the local-Place premise (line 228) at every recursive subgoal, not only at the original query. An extractor that expands it only from the seed target would therefore prove less than the old search. That would violate the requirement above, not be an accepted difference.
+
+Check the following baseline extraction details against SPEC before encoding them. They are candidates for the rule, not a specification to copy:
+
+- A pair layer returns after recursing into its target and does not continue to the component loop (lines 369–380).
+- Stored-Origin traversal of an input enters nested Function Types, whereas result premises stop at them; see §8 for the §15.3.4 question.
+- Borrow and slice components contribute stored relations only under the current `CarriesOrigin` and outer-Origin conditions (line 385).
+- Only declarations with `State == 3` contribute contract relations.
+- Associated-requirement and formation premises exclude the requirement's own declaration (`ReferenceEquals(associated.Declaration, node)` in [Binding.AssociatedOrigins](../../src/Kimi/Compiler/Binding/Binding.AssociatedOrigins.cs) and [Binding.AssociatedFormation](../../src/Kimi/Compiler/Binding/Binding.AssociatedFormation.cs)).
+- Function Type input premises are assumptions only inside that signature.
+
 Premise extraction must not recursively invoke the same proof engine through `AdmittedSemantics` or capability checking. Complete required semantic inputs before freezing the environment, or model a finite dependency explicitly. A re-entry guard alone must not turn unfinished construction into a final negative answer.
 
 ### 3.3. Finite closure over composite Origin nodes
@@ -120,6 +154,17 @@ For a stable environment and target `S`, compute `Outlivers(S)`:
 This retains a composite premise such as `x >= (a and b)` without deriving `x >= a` or `x >= b`. For example, that premise alone proves the composite query while both atomic queries can remain unproven. This is a required test from SPEC §15.3.6.
 
 Cycles with no supporting fact add nothing. A negative result is final only after convergence for this environment; a node on an active search path is not a negative cache entry. Premise order must not change the result.
+
+Expected universe-restriction argument, to be completed in U2. The fragment covered is explicit edges, equality as two edges, reflexivity, transitivity, the meet laws and the top-like `static`/`Anchor` facts.
+
+1. Map each expression `t` of the universe to the set `T(t)` of universe targets `S'` with `t ∈ Outlivers(S')`.
+2. The rules make edges monotone (`A >= B` implies `T(B) ⊆ T(A)`) and make `T(a and b)` equal to `T(a) ∩ T(b)`. Top-like facts give the full set.
+3. These sets, ordered by inclusion with meet as intersection, therefore form a region model that satisfies every premise.
+4. If `L` is not reached from `S`, then `S ∈ T(S)` but `S ∉ T(L)`, so the model refutes `L >= S`.
+
+Restricting to the universe therefore loses no consequence of this fragment. The remaining obligations are the context-dependent rules: local-Place relations, admitted pair-layer conditions and any premise that is not a plain edge. Each needs its own argument or an explicit encoding as edges of the environment.
+
+The old search is supplementary evidence of the same conclusion. It is a goal search over ground Horn rules with an ancestor loop check, and such a search is complete for the least model. Its entailments should therefore match the closure, except where the closure omits a context rule the old search applied at intermediate subgoals, or where the old search produced inference effects. Each observed difference needs one of these explanations; any other difference indicates an encoding or algorithm error.
 
 Move the existing contextual local-projection and premise recursion into the finite calculation. Structural fast paths may remain if they are pure and have an explicit work bound; they must not retain a separate unbounded search before the solver runs. An implementation that only replaces the final premise loop has not established the full G74 bound.
 
@@ -141,6 +186,8 @@ Specify a bound for each extraction state and each permitted dependency expansio
 
 Do not always materialize all-pairs reachability. One scratch closure has linear storage in the extracted graph; retaining all target sets can require quadratic storage in `V`. Query-local reuse is the default. Add retained target sets only for a measured benefit with a tested eviction or environment-lifetime policy.
 
+Decide the environment granularity from U0 evidence, not after integration. Valid programs issue many ownership-side requests in the same function, so per-request construction costs about `Q * P` per function. If U0 counters show that this term dominates the valid workloads, plan the completed-Binding, function-level environment from §3.5 as part of U3 instead of the optional U4 extension. Record the decision and its counter values.
+
 ### 3.5. Reuse and invalidation
 
 The proof engine may share entailed facts within one stable environment. Final judgments and diagnostic records remain outside its cache: the `Proven` judgment used to constrain a finite/inferred region is not an established theorem between fixed Origins.
@@ -148,6 +195,17 @@ The proof engine may share entailed facts within one stable environment. Final j
 If repeated ownership, diagnostics or emission queries justify broader reuse, prefer environments after Binding completion. A declaration's `State == 3` alone is insufficient to establish that all effective substitutions and scope-dependent conditions are stable.
 
 Invalidate or replace the environment after relevant premise, substitution, binder, header, Semantics or result-exclusion changes. `ResetPass`, reparsing and cross-Compilation use must not retain stale syntax or facts. Test source removal as well as addition. Reusable arrays and tables must release old object references while retaining only the capacity justified by the allocation policy.
+
+A cache key must identify the excluded result-premise owner itself, not only whether an exclusion is active.
+
+### 3.6. Rejected alternatives
+
+| Alternative | Reason not adopted |
+| --- | --- |
+| More search-order heuristics or pruning, extending `0e6fd329` | They lower the branching factor but leave the path-dependent worst case. The Holder family was still reported to grow about 25–30 times per added input after that commit. |
+| Tabling the existing recursive pair search | A tabled negative result needs completion detection over mutually dependent pairs. Premises would still be rediscovered per query, and the table ranges over pairs and conjunctive subgoals instead of a single-target closure. |
+| Step, depth or time limits with a resource diagnostic | Would reject specification-valid programs, contrary to §1. A finite polynomial calculation exists. |
+| Replacing only the final premise loop and keeping the earlier stages unchanged | Leaves the inference effects of §2.1 inside proof, and the local-projection and meet recursion outside the work bound. Callers therefore cannot reuse whole proof results. Not an acceptable U3 exit. |
 
 ## 4. Reproducer, regression and measurement design
 
@@ -178,7 +236,7 @@ Wall-clock benchmarks belong in `src/Benchmark`. Functional and allocation/work-
 
 ## 5. Implementation sequence
 
-The dependency order is U0 → U1 → U2 → U3 → U4 → U5. Each unit includes its reproducer, change and focused verification. Compiler units require Unit verification; each implementation session ends with one Session verification under [VERIFICATION](../../docs/dev/VERIFICATION.md). Stage only the unit's files, commit verified work and push without force.
+The dependency order is U0 → U1 → U2 → U3 → U4 → U5. U0b depends only on U0 and may land before or after U1. Each unit includes its reproducer, change and focused verification. Compiler units require Unit verification; each implementation session ends with one Session verification under [VERIFICATION](../../docs/dev/VERIFICATION.md). Stage only the unit's files, commit verified work and push without force.
 
 ### U0 — Freeze evidence and measurement contracts
 
@@ -188,9 +246,17 @@ The dependency order is U0 → U1 → U2 → U3 → U4 → U5. Each unit include
 
 **Exit:** Complete reproducer sources, source/configuration identity, raw counter/timing evidence, observed phase attribution and reproducible benchmark commands. Update PLAN's G74 description with confirmed current observations only. Do not close G74.
 
+### U0b — Check cheap ownership exclusions before proof
+
+**Change:** In `UncheckedOriginObligation`, evaluate the structural exclusion of input well-formedness obligations before `IsVerifiedOriginObligation` and `JudgeOriginObligation` (§2.1). Both orders return the same value. Ownership runs after Binding has closed initializer inference, so this proof cannot record bounds; confirm this with the U1 purity check or an assertion rather than assuming it. Do not otherwise change ownership semantics.
+
+**Verification:** Related ownership and Origin relation tests, plus diagnostic snapshot comparison with zero differences. Use U0 counters to report how many full proofs the reorder removes in each family.
+
+**Exit:** The U0 baseline stays the reference for later A/B comparisons. Report this gain separately from the solver gain. Workloads whose old cost came only from excluded obligations no longer measure the solver. Keep failing, clause-provable and Binding-side families that still do.
+
 ### U1 — Give inference effects explicit owners
 
-**Change:** Audit proof callers and move required initializer fitting effects into constraint collection. Keep the old search behind a pure interface. Cover local annotations, initialization branches, invariant/equality directions, nested anonymous headers and subsequent uses of the same local.
+**Change:** Audit proof callers and move required initializer fitting effects into constraint collection. Keep the old search behind a pure interface. Cover local annotations, initialization branches, invariant/equality directions, nested anonymous headers and subsequent uses of the same local. Start from the three order-dependent effects in §2.1 and the selection-independence boundary in §3.1. Include anonymous-function inputs inside a local initializer whose omitted Origins are still open when they appear as premise endpoints.
 
 **Verification:** Assert that proof does not change inference state on either result. Compare permutations of equivalent premises and fit branches. Check inferred Types, obligations, actual Loans and diagnostics. Add focused cases where old speculative proof branches used to encounter an open inference variable.
 
@@ -208,7 +274,9 @@ The dependency order is U0 → U1 → U2 → U3 → U4 → U5. Each unit include
 
 **Change:** Route the pure proof interface through the new environment/closure. Include contextual local-Place and meet processing so the old recursive search is not left in a wrapper. Preserve `JudgeOriginRelation`, region inference and Loan analysis as separate consumers. Reuse proof facts during failed-operand selection without caching diagnostic records.
 
-**Verification:** Compare old and new pure engines on bounded cases in independent state or immutable snapshots; run only the new engine for large scaling cases. Compare compiler acceptance, required diagnostics and actual-Loan regressions. Cover repeated ownership and emission checks, result-premise exclusion, capability queries and rejected fit branches. Check A–G through sizes 8/16/32 and assert the bounds from §3.4 rather than an unexplained timing ratio.
+**Verification:** Compare old and new pure engines on bounded cases in independent state or immutable snapshots; run only the new engine for large scaling cases.
+
+Add a temporary comparison mode, enabled by an internal switch or environment variable. In this mode every production proof request also runs the old pure engine and compares the two entailment results. U1 has already removed inference effects, so only truth values are compared. A mismatch is an internal invariant failure that records both expressions and the environment identity. Give the old engine a fixed work budget per request; a request that exceeds it is recorded as not compared, never counted as agreement. Run the whole Functional suite once with the mode enabled. Store the evidence, including the number of compared and censored requests, under `artifacts/verify/<id>-origin-oracle`. Each mismatch needs a disposition under §3.3 before U3 exits. Compare compiler acceptance, required diagnostics and actual-Loan regressions. Cover repeated ownership and emission checks, result-premise exclusion, capability queries and rejected fit branches. Check A–G through sizes 8/16/32 and assert the bounds from §3.4 rather than an unexplained timing ratio.
 
 **Exit:** No remaining proof path can reintroduce path enumeration or inference side effects. All differences have a SPEC-based disposition. Large valid and invalid workloads complete with bounded measured work; the proof/region judgment distinction and diagnostic source attribution remain intact.
 
@@ -263,7 +331,8 @@ G74 is complete only when all of the following are evidenced:
 - Pure proof is independent of inference mutation, premise order and prior query order.
 - All permitted premise sources and quantification/exclusion boundaries are represented; local/Field obligations cannot establish themselves.
 - Composite relations retain their meaning; fixed-Origin proof and finite/inferred-region judgments remain distinct.
-- Source expectations, the independent rule oracle and the affected regression suite agree, with every intentional behavior correction documented.
+- Source expectations, the independent rule oracle, the whole-suite comparison mode and the affected regression suite agree, with every intentional behavior correction and censored comparison documented.
+- Origin proof outcomes do not influence selection, and invariant positions are never weakened to a meet.
 - Valid and invalid scalable workloads have bounds on environment construction, closure work, caller repetition and retained storage. No old recursive path escapes that accounting.
 - Repeated fixed-condition measurements establish a practical improvement on pathological workloads and an acceptable normal-case cost. Choose numeric targets from U0 evidence before final candidate tuning and retain that decision; do not relax them after a failing comparison.
 - Existing allocation guarantees pass with their original fixed warm-up conditions. Capacity and object-reference retention remain bounded across edits and failures.
