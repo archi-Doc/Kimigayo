@@ -1082,7 +1082,7 @@ public sealed partial class Binding
                     break;
             }
 
-            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && (this.IsDerived(node) || this.RestsOnAbsentSlot(node)))
+            if (mode == BindingMode.Final && node.BindingState != BindingState.Resolved && node.BindingFailure != BindingFailure.None && this.IsDerived(node))
             {
                 this.derivedIssues.Add(node);
             }

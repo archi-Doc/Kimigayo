@@ -1473,7 +1473,13 @@ public sealed partial class Binding
 
             if (this.FailedOriginRelation(actualType, expectedType, node, OriginVariance.Covariant) is { } unproven)
             {
-                // An Unbound end follows from a failed Origin declaration (SPEC 15.3.2) and stays that failure's derived record.
+                if (this.FailedOriginEnvironment(node) is { } cause)
+                {
+                    return this.CompleteDependent(node, cause);
+                }
+
+                // No concrete lifetime was refuted above. An unresolved end without an identified failed contract remains
+                // an independent proof failure; it must not be hidden by the presence of an unrelated declaration error.
                 return unproven.Longer.Kind == OriginKind.Unbound || unproven.Shorter.Kind == OriginKind.Unbound
                     ? this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, unproven with { At = at, Destination = expectedType })
                     : this.Fail(node, BindingFailure.Unsupported);
@@ -2045,6 +2051,8 @@ public sealed partial class Binding
         => IsRecovery(node, out _) || this.RestsOnRecovery(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
             this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null) ||
+            (node.BindingFailure == BindingFailure.InvalidOrigin && this.originDeclarations.TryGetValue(node, out var declaration) &&
+            declaration.Failure is { } clause && this.partPrerequisites.TryGetValue(node, out var cause) && ReferenceEquals(cause, clause)) ||
             (node.BindingFailure == BindingFailure.InvalidConstraint && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid);
 
     // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.

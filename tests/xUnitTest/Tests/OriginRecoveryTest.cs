@@ -121,6 +121,66 @@ public class OriginRecoveryTest(ITestOutputHelper output)
     }
 
     [Fact]
+    public void AnAbsentProjectionDoesNotHideAnIndependentlyRefutedLifetime()
+    {
+        const string Source = Prelude + "func f<T>(value: View<T>) -> ref/i32 during static\n    origin value.sorce outlives static\n    let local = 1\n    return local@ref\nlet wrong: i32 = true";
+        var c = MinimalEmissionTest.Analyze(Source);
+        c.Binding.ReportDiagnostics();
+        var errors = c.Diagnostics.Finalize(rejected: true).Diagnostics;
+        output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span)));
+        Assert.Equal(["InvalidOriginBinding_Kd", "UnsatisfiedOriginRelation_Kd", "TypeMismatch_Kd"], errors.Select(static x => x.Code));
+        Assert.Equal(new SourceSpan(Source.IndexOf("sorce", StringComparison.Ordinal), 5), errors[0].Span);
+        Assert.Equal(new SourceSpan(Source.IndexOf("local@ref", StringComparison.Ordinal), 9), errors[1].Span);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+        c.Bind();
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(errors, c.Diagnostics.Finalize(rejected: true).Diagnostics);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void FailedOriginClausesReuseTheirCauseStorage()
+    {
+        var c = MinimalEmissionTest.Analyze(Prelude + "func f<T>(value: View<T>) -> View<T>{result}\n    origin result.sorce == value.sorce\n    return value\nlet next = 1");
+        var invalid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Bind();
+            invalid &= !c.Binding.Result.IsComplete;
+        }));
+        Assert.True(invalid);
+    }
+
+    [Fact]
+    public void CliAndLspLocateTheFailedProjectionAndIndependentMismatch()
+    {
+        const string Source = Prelude + "func f<T>(value: View<T>) -> View<T>{result}\n    origin result.source == value.sorce\n    return 1\nlet next = 2";
+        var path = Path.GetFullPath("origin-projection.kimi");
+        var c = MinimalEmissionTest.Analyze(Source, path);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize(rejected: true);
+        Assert.Equal(["InvalidOriginBinding_Kd", "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
+        var projection = result.Diagnostics[0];
+        Assert.Equal(new SourceSpan(Source.IndexOf("sorce", StringComparison.Ordinal), 5), projection.Span);
+        Assert.Equal("View has no Origin slot sorce", projection.Label);
+        Assert.Equal("The Origin slots of View are source", projection.Note);
+        Assert.Equal(new SourceSpan(Source.IndexOf("{source}", StringComparison.Ordinal), 8), Assert.Single(projection.Related!).Span);
+        Assert.Empty(projection.Repairs ?? []);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        output.WriteLine(console.Text);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity];
+            Assert.Equal(result.Diagnostics.Select(static x => x.Display!.Range!.Value), sent.Select(static x => x.Range));
+            output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
+        }
+    }
+
+    [Fact]
     public void CliAndLspExplainTheAnnotationCause()
     {
         const string Source = "func f(x: [2 of i32]{a}) => ()\nlet wrong: i32 = true";

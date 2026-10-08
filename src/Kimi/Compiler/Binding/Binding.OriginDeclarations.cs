@@ -99,7 +99,6 @@ public sealed partial class Binding
         }
 
         this.absentSlotProjections?.Clear();
-        this.absentSlotFunctions?.Clear();
 
         for (var i = 0; i < this.nodes.Count; i++)
         {
@@ -441,13 +440,25 @@ public sealed partial class Binding
             var clause = clauses[i];
             var a = this.BindOrigin(clause.Left, declaration.Scope!);
             var b = this.BindOrigin(clause.Right, declaration.Scope!);
-            if (IsRecovery(clause, out _) || a is null || b is null)
+            var recovered = IsRecovery(clause, out _);
+            if (recovered || a is null || b is null)
             {
                 // A guessed operator or unavailable operand supplies no equality, outlives edge or elision evidence.
-                this.Fail(clause, BindingFailure.InvalidOrigin);
-                this.AddPrerequisite(clause, a is null ? clause.Left : clause.Right);
-                this.Fail(declaration.Owner, BindingFailure.InvalidOrigin);
-                this.AddPrerequisite(declaration.Owner, clause);
+                if (recovered)
+                {
+                    this.Fail(clause, BindingFailure.InvalidOrigin);
+                }
+                else
+                {
+                    this.CompleteDependent(clause, a is null ? clause.Left : clause.Right);
+                }
+
+                if (declaration.Owner.BindingFailure == BindingFailure.None)
+                {
+                    this.Fail(declaration.Owner, BindingFailure.InvalidOrigin);
+                    this.AddPrerequisite(declaration.Owner, clause);
+                }
+
                 declaration.Failure ??= clause;
             }
             else

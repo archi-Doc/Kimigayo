@@ -7,10 +7,9 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 15.3.2: the projections of a slot their Type does not declare, with that Type, and the first such projection in each
-    // function's clauses, on which the function's result and returns rest. Recorded only on failure and reused across passes.
+    // SPEC 15.3.2: the projections of a slot their Type does not declare, with that Type.
+    // Recorded only on failure and reused across passes; dependent checks use the failed Origin contract's cause.
     private Dictionary<Koto, BoundType>? absentSlotProjections;
-    private Dictionary<FunctionKoto, Koto>? absentSlotFunctions;
 
     private static bool HasUngroupedBorrowSuffix(Koto syntax)
     {
@@ -357,50 +356,7 @@ public sealed partial class Binding
     }
 
     private void RecordAbsentSlot(Koto projection, BoundType type)
-    {
-        (this.absentSlotProjections ??= new(ReferenceEqualityComparer.Instance))[projection] = type;
-        if (OriginOwner(projection) is FunctionKoto function)
-        {
-            (this.absentSlotFunctions ??= new(ReferenceEqualityComparer.Instance)).TryAdd(function, projection);
-        }
-    }
-
-    // SPEC 15.3.2: a function whose clauses project a slot their Type does not declare leaves its result slot unbound and its
-    // returned values without the intended contract; those failures rest on the projection, not on independent causes.
-    private bool RestsOnAbsentSlot(Koto node)
-    {
-        if (this.absentSlotFunctions is not { Count: > 0 } functions || node.BindingFailure is not (BindingFailure.MissingOrigin or BindingFailure.TypeMismatch or BindingFailure.OriginRelation))
-        {
-            return false;
-        }
-
-        var returned = false;
-        var inResult = false;
-        for (var current = node; current is not null; current = current.Parent)
-        {
-            if (current is FunctionKoto function)
-            {
-                // A returned value is affected only where it differs from the result in its bindings, not in its Type; an Origin
-                // relation differs in its Origins only by construction.
-                if (!functions.TryGetValue(function, out var projection) ||
-                    !(node.BindingFailure == BindingFailure.MissingOrigin ? inResult
-                        : node.BindingFailure == BindingFailure.OriginRelation ? returned
-                        : returned && this.mismatches?.TryGetValue(node, out var mismatch) == true && mismatch.Actual is BoundType { Symbol: { } actual } &&
-                            mismatch.Expected is BoundType { Symbol: var expected } && ReferenceEquals(actual, expected)))
-                {
-                    return false;
-                }
-
-                this.partPrerequisites[node] = projection;
-                return true;
-            }
-
-            returned |= current is ReturnKoto;
-            inResult |= current.Parent is FunctionKoto owner && ReferenceEquals(owner.ReturnType, current);
-        }
-
-        return false;
-    }
+        => (this.absentSlotProjections ??= new(ReferenceEqualityComparer.Instance))[projection] = type;
 
     // SPEC 15.3.2: a projection of a slot that its Type does not declare, once per projection at the slot name, relating the
     // Type's header and listing the declared slots.
