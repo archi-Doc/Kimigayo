@@ -1,4 +1,8 @@
 [
+  { "Name": "origin-annotation-invalid-target", "Source": "func f(x: [2 of i32]{a}) => ()\nlet wrong: i32 = true\n", "Intended": "an Origin annotation with no legal target establishes no Type and retains the next independent mismatch",
+    "Records": [ { "Code": "OriginBindingSetTarget_Kd", "At": "{a}" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "origin-relation-invalid-operator", "Source": "func f(x: ref/i32 during a, y: ref/i32 during b) -> ref/i32 during b\n    origin a = b\n    return x\nlet wrong: i32 = true\n", "Intended": "a guessed Origin operator supplies no premise; a returned value's unknown relation depends on that unavailable contract",
+    "Records": [ { "Code": "OriginRelationOperator_Kd", "At": "= b", "Length": 1 }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
   { "Name": "array-type-missing-length", "Source": "let n: [i32]\nlet next = 2\n", "Intended": "a Type where a length belongs fails once; the unavailable array head does not invent further of/element failures",
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "ArrayLength", "At": "i32", "Found": "i32" } ] },
   { "Name": "array-type-ungrouped-length", "Source": "let n: [-1 of Missing]\n", "Intended": "the compound length needs parentheses and its independent element Type is still checked as a Type",

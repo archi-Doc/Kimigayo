@@ -1442,6 +1442,21 @@ public sealed partial class Binding
             all.Clear();
             if (this.FailedOriginRelation(actualType, expectedType, node, OriginVariance.Covariant, judged: true, all: all) is { } relation)
             {
+                if (!relation.Refuted && this.FailedOriginEnvironment(node) is { } cause)
+                {
+                    var refuted = false;
+                    for (var i = 0; i < all.Count; i++)
+                    {
+                        refuted |= all[i].Refuted;
+                    }
+
+                    if (!refuted)
+                    {
+                        all.Clear();
+                        return this.CompleteDependent(node, cause);
+                    }
+                }
+
                 // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
                 var failed = node.BindingFailure == BindingFailure.None;
                 for (var i = 0; i < all.Count && failed; i++)

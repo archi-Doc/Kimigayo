@@ -273,6 +273,12 @@ public sealed partial class Binding
             for (var i = 0; i < clauses.Count; i++)
             {
                 var clause = clauses[i];
+                if (IsRecovery(clause, out _))
+                {
+                    this.AddPrerequisite(function, clause);
+                    return false;
+                }
+
                 var a = this.BindOrigin(clause.Left, scope);
                 var b = this.BindOrigin(clause.Right, scope);
                 if (a is null || b is null || !this.ProvesOriginOutlives(a, b, function) || (clause.IsEquality && !this.ProvesOriginOutlives(b, a, function)))

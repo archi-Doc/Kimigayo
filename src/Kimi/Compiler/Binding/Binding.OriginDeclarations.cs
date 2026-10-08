@@ -441,11 +441,34 @@ public sealed partial class Binding
             var clause = clauses[i];
             var a = this.BindOrigin(clause.Left, declaration.Scope!);
             var b = this.BindOrigin(clause.Right, declaration.Scope!);
-            if (a is not null && b is not null)
+            if (IsRecovery(clause, out _) || a is null || b is null)
+            {
+                // A guessed operator or unavailable operand supplies no equality, outlives edge or elision evidence.
+                this.Fail(clause, BindingFailure.InvalidOrigin);
+                this.AddPrerequisite(clause, a is null ? clause.Left : clause.Right);
+                this.Fail(declaration.Owner, BindingFailure.InvalidOrigin);
+                this.AddPrerequisite(declaration.Owner, clause);
+                declaration.Failure ??= clause;
+            }
+            else
             {
                 declaration.Relations.Add(new(a, b, clause.IsEquality, clause));
                 clause.BindingState = BindingState.Resolved;
             }
+        }
+
+        if (declaration.Failure is { } failure)
+        {
+            // The contract is unavailable. In particular, its missing relations cannot justify defaulting a result to
+            // static, or supply premises through the valid-looking subset of the same rejected declaration.
+            declaration.Relations.Clear();
+            declaration.State = 3;
+            foreach (var pending in declaration.Pending)
+            {
+                this.CompleteDependent(pending.Use, failure);
+            }
+
+            return;
         }
 
         // Equalities are substitutions before result defaulting. Revisit equations after
@@ -605,6 +628,20 @@ public sealed partial class Binding
 
             return false;
         }
+    }
+
+    // Queried only after an Origin fit failed: structural Type failures and refuted lifetime relations stay independent.
+    private Koto? FailedOriginEnvironment(Koto use)
+    {
+        for (var owner = use; owner is not null; owner = owner.Parent)
+        {
+            if (this.originDeclarations.TryGetValue(owner, out var declaration) && declaration.Failure is { } failure)
+            {
+                return failure;
+            }
+        }
+
+        return null;
     }
 
     private BoundType RewriteOrigins(BoundType type, OriginDeclaration declaration)
@@ -851,6 +888,8 @@ public sealed partial class Binding
 
         internal int State { get; set; }
 
+        internal Koto? Failure { get; set; }
+
         internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
 
         internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
@@ -866,6 +905,7 @@ public sealed partial class Binding
         internal void Reset()
         {
             this.State = 0;
+            this.Failure = null;
             this.Scope = null;
             this.Sets.Clear();
             this.Replacements.Clear();

@@ -1934,18 +1934,21 @@ CloseParameters:
         }
 
         var origin = ParseOriginBraces(ref reader);
+        var annotated = type as TypeSemanticsKoto ?? new TypeSemanticsKoto(ref reader, type.Span, type);
+        RecoverItem(ref reader, annotated, origin.Cause);
         if (type is ParenthesizedTypeKoto or TupleTypeKoto or FunctionTypeKoto or FixedArrayTypeKoto ||
             type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false })
         {
             reader.Diagnostic.Add(origin.Span, DiagnosticCode.OriginBindingSetTarget_Kd);
+            RecoverItem(ref reader, annotated, reader.Diagnostic.LastError);
         }
 
-        var annotated = type as TypeSemanticsKoto ?? new TypeSemanticsKoto(ref reader, type.Span, type);
         annotated.SetOrigin(origin.Expression, origin.Arguments, origin.Span.End);
         if (origin.InvalidContent || origin.Arguments is not null ||
             (origin.Expression is not ErrorKoto && origin.Expression is not IdentifierNameKoto { IdentifierName: not ("static" or "_") }))
         {
             reader.Diagnostic.Add(origin.Span, DiagnosticCode.OriginBindingSetName_Kd);
+            RecoverItem(ref reader, annotated, reader.Diagnostic.LastError);
         }
 
         annotated.MarkBindingSet(reader.CurrentTokenKind == TokenKind.Slash);
@@ -1961,7 +1964,7 @@ CloseParameters:
         return annotated;
     }
 
-    private static (Koto? Expression, OriginArgument[]? Arguments, SourceSpan Span, bool InvalidContent) ParseOriginBraces(ref TokenReader reader)
+    private static (Koto? Expression, OriginArgument[]? Arguments, SourceSpan Span, bool InvalidContent, DiagnosticKey? Cause) ParseOriginBraces(ref TokenReader reader)
     {
         var open = reader.Read();
         Koto? expression = null;
@@ -2005,7 +2008,7 @@ CloseParameters:
             }
         }
 
-        reader.ExpectCloser(TokenKind.CloseBrace, out var close);
+        var cause = reader.ExpectCloser(TokenKind.CloseBrace, out var close);
         end = Math.Max(end, close.End);
 
         if (arguments is not null && argumentCount != arguments.Length)
@@ -2013,7 +2016,7 @@ CloseParameters:
             Array.Resize(ref arguments, argumentCount);
         }
 
-        return (expression, arguments, SourceSpan.FromBounds(open.Span.Start, end), invalidContent);
+        return (expression, arguments, SourceSpan.FromBounds(open.Span.Start, end), invalidContent, cause);
     }
 
     private static Koto ParseOriginExpression(ref TokenReader reader)
@@ -2035,8 +2038,10 @@ CloseParameters:
         {
             var open = reader.Read().Span;
             var inner = ParseOriginExpression(ref reader);
-            reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
-            return new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open.Start, Math.Max(inner.Span.End, close.End)), inner);
+            var cause = reader.ExpectCloser(TokenKind.CloseParenthesis, out var close);
+            var grouped = new ParenthesizedKoto(ref reader, SourceSpan.FromBounds(open.Start, Math.Max(inner.Span.End, close.End)), inner);
+            RecoverItem(ref reader, grouped, cause);
+            return grouped;
         }
 
         if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
@@ -2056,7 +2061,7 @@ CloseParameters:
         {
             if (!reader.CurrentTokenKind.IsIdentifierOrContextualKeyword())
             {
-                reader.Expect(SyntaxForm.Name);
+                RecoverItem(ref reader, left, reader.Expect(SyntaxForm.Name));
                 return left;
             }
 

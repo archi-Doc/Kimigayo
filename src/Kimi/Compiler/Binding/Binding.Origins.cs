@@ -529,6 +529,12 @@ public sealed partial class Binding
 
     private BoundOrigin? BindOrigin(Koto syntax, BindingScope scope)
     {
+        if (IsRecovery(syntax, out _))
+        {
+            this.Fail(syntax, BindingFailure.InvalidOrigin);
+            return null;
+        }
+
         BoundOrigin? result = null;
         if (syntax is IdentifierNameKoto name)
         {
