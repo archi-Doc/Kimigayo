@@ -220,16 +220,21 @@ public sealed partial class OwnershipAnalysis
     }
 
     // SPEC 8.4.10.7: abstract input effects use the same regions as requirement calls. The callable value, rather than a
-    // requirement's receiver, identifies earlier calls covered by preserves results. No result borrows its environment.
+    // requirement's receiver, identifies earlier calls covered by preserves results. No result borrows its environment. The plan's
+    // declared Types are interpreted in the active context, so a default's replica with a concrete callable records none.
     private void CallableEffects(InvocationKoto call, BoundValueCall plan, int invoke, int result)
     {
-        var type = plan.ReceiverType;
+        if (this.Resolve(plan.ReceiverType, this.Active) is not { } type)
+        {
+            return;
+        }
+
         if (type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
         {
             type = type.Components[0];
         }
 
-        if (!AbstractTypes.IsAbstract(type))
+        if (!AbstractTypes.IsAbstract(type) || this.Resolve(plan.DeclaredSignature, this.Active) is not { } signature)
         {
             return;
         }
@@ -243,7 +248,7 @@ public sealed partial class OwnershipAnalysis
         var receiver = this.ValueIdentity(path) with { CallablePath = path };
         var effects = this.body.RequirementEffects ??= new();
         var bounds = true;
-        var preserves = this.compilation.Binding.AvailableCallableEffects(type, plan.DeclaredSignature, plan.ReceiverKind, call).Preserves;
+        var preserves = this.compilation.Binding.AvailableCallableEffects(type, signature, plan.ReceiverKind, call).Preserves;
         var acquired = plan.ReceiverKind == SemanticsKind.Owner ? type : this.compilation.Binding.Reference(plan.ReceiverKind, type);
         this.RequirementEffect(call, acquired, type, invoke, receiver, receiver, null, ref bounds, ref preserves);
         var mark = effects.Count;
@@ -251,10 +256,10 @@ public sealed partial class OwnershipAnalysis
         {
             var argument = plan.Arguments[i];
             var input = argument.Source is { } source ? this.ValueIdentity(source) : new(-1, null);
-            this.RequirementEffect(call, argument.ParameterType, type, invoke, input, receiver, null, ref bounds, ref preserves);
+            this.RequirementEffect(call, this.Resolve(argument.ParameterType, this.Active), type, invoke, input, receiver, null, ref bounds, ref preserves);
         }
 
-        if (result < 0 || effects.Count == mark || !AbstractTypes.HasAbstractPart(plan.ReturnType) || ReferenceTypes.IndependentResult(plan.ReturnType))
+        if (result < 0 || effects.Count == mark || this.Resolve(plan.ReturnType, this.Active) is not { } returned || !AbstractTypes.HasAbstractPart(returned) || ReferenceTypes.IndependentResult(returned))
         {
             return;
         }

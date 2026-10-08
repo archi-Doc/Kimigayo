@@ -23,7 +23,7 @@ internal sealed partial class BodyLowering
         var operation = body.Operations[id];
         var value = body.Values[id];
         if (operation.Kind != OwnershipOperationKind.Produce || operation.Source is not FormattingKoto { Plan: { } plan } syntax ||
-            !ReferenceEquals(plan.Root.Formatting, plan) || !ReferenceEquals(ValueType(body, id), body.Resolve(syntax.BoundType, InterpretationContext.Root)))
+            !ReferenceEquals(plan.Root.Formatting, plan) || !ReferenceEquals(ValueType(body, id), body.Resolve(syntax.BoundType, body.ContextAt(id))))
         {
             return Fail("Formatting requires its bound root plan and matching result storage.", out failure);
         }

@@ -111,7 +111,7 @@ internal sealed partial class BodyLowering
         var inputs = transfer ? 3 : 1;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
-            !(transfer ? ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), BoundType.Unit) : BytePointer(body.Resolve(call.BoundType, InterpretationContext.Root))))
+            !(transfer ? ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), BoundType.Unit) : BytePointer(body.Resolve(call.BoundType, body.ContextAt(id)))))
         {
             return Fail("A private storage byte primitive requires its fixed signature.", out failure);
         }
@@ -169,7 +169,7 @@ internal sealed partial class BodyLowering
             !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), keyType) ||
             !ReferenceEquals(body.Resolve(plan.ArgumentOperations[inputs - 1].ParameterType, InterpretationContext.Root), valueType) ||
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
-            !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), BoundType.Unit))
+            !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), BoundType.Unit))
         {
             return Fail("Dictionary placement requires the physical slot and acquired key/value Types.", out failure);
         }

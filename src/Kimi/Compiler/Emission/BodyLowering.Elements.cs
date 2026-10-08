@@ -400,7 +400,7 @@ internal sealed partial class BodyLowering
             last = value;
         }
         else if (source is not BinaryKoto { Akind: KotoKind.Equals } assignment ||
-            !ReferenceEquals(WrittenPlace(assignment.Left), target) || !ReferenceEquals(body.Resolve(source.BoundType, InterpretationContext.Root), BoundType.Unit) ||
+            !ReferenceEquals(WrittenPlace(assignment.Left), target) || !ReferenceEquals(body.Resolve(source.BoundType, body.ContextAt(plan.Operation)), BoundType.Unit) ||
             (!ReferenceEquals(input.Source, ElementAccess.ValueSource(assignment.Right, body, plan.Write)) &&
                 !(KotoHelper.UnwrapParentheses(assignment.Right) is ConversionKoto borrowed && ElementAccess.ConversionKind(borrowed, body, plan.Write) == ConversionBinding.Borrow &&
                     ReferenceEquals(body.Resolve(borrowed.BoundType, body.ContextAt(plan.Write)), input.Type) && ReferenceEquals(input.Source, ElementAccess.ValueSource(borrowed.Left, body, plan.Write)))) ||
@@ -432,7 +432,7 @@ internal sealed partial class BodyLowering
         var op = ElementAccess.UpdateOperator(source.Akind);
         var unary = source is UnaryKoto;
         if (op == KotoKind.Invalid || !type.IsNumeric || !IsScalar(type) || (unary && !type.HasIntegerArithmetic) ||
-            !ReferenceEquals(body.Resolve(source.BoundType, InterpretationContext.Root), unary ? type : BoundType.Unit) ||
+            !ReferenceEquals(body.Resolve(source.BoundType, body.ContextAt(plan.Operation)), unary ? type : BoundType.Unit) ||
             !ReferenceEquals(KotoHelper.UnwrapParentheses(source is UnaryKoto increment ? increment.Operand : ((BinaryKoto)source).Left), target) ||
             value != update.Computation || value <= plan.Output ||
             body.Operations[value] is not { Kind: OwnershipOperationKind.Produce, Input: -1 } computation ||
@@ -461,7 +461,7 @@ internal sealed partial class BodyLowering
         if ((uint)update.Result >= (uint)body.Operations.Count || update.Result != plan.Write + 2 ||
             body.Operations[update.Result] is not { Kind: OwnershipOperationKind.Produce, Input: -1 } result ||
             (uint)result.Place >= (uint)body.Places.Count || body.Places[result.Place].Kind != OwnershipPlaceKind.Temporary ||
-            !ReferenceEquals(result.Source, source) || !ReferenceEquals(ValueType(body, update.Result), body.Resolve(source.BoundType, InterpretationContext.Root)) ||
+            !ReferenceEquals(result.Source, source) || !ReferenceEquals(ValueType(body, update.Result), body.Resolve(source.BoundType, body.ContextAt(plan.Operation))) ||
             !ConsecutiveElementEdge(body, plan.Write + 1, update.Result) ||
             (unary ? body.Values[update.Result] is not { Kind: OwnershipValueKind.Alias, Count: 1 } ||
                 Input(body, update.Result, 0) != (source.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement ? plan.Output : value)

@@ -15,7 +15,7 @@ internal sealed partial class BodyLowering
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
             body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Tuple, Components: [var address, var stride] } result ||
             address is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
-            !ReferenceEquals(stride, BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), result) ||
+            !ReferenceEquals(stride, BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), result) ||
             this.aggregateLayouts.Get(result) is not { Fields.Length: 2 } layout || layout.Offset(0) != 0 || layout.Offset(1) != 8)
         {
             return Fail("Dictionary layout projection requires its mutable handle and physical metadata result.", out failure);
@@ -64,7 +64,7 @@ internal sealed partial class BodyLowering
         }
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
-        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType))
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType))
         {
             return Fail("Dictionary storage borrow result does not match its call.", out failure);
         }
@@ -111,7 +111,7 @@ internal sealed partial class BodyLowering
         }
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
-        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder ||
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder ||
             !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 4 || remainder.Fields[3].Layout.Size != 0 || remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16)
         {
             return Fail("Fixed-array storage borrow result is not the contiguous remainder.", out failure);
@@ -164,7 +164,7 @@ internal sealed partial class BodyLowering
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
         var pointer = owning ? null : input;
-        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) ||
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) ||
             (!owning && (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
                 returnType is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var addressed] } ||
                 !ReferenceEquals(addressed, plan.Target.CompilerFunction == CompilerFunctionKind.StorageKeyAt ? keyType : valueType))))

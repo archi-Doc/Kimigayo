@@ -176,7 +176,7 @@ internal sealed partial class BodyLowering
         var value = body.Values[id];
         if (body.Function.BoundClosure is not { } closure || value.Constant < 0 || value.Constant >= closure.Captures.Count ||
             body.Operations[id].Kind != OwnershipOperationKind.Produce || !ReferenceEquals(body.Operations[id].Source, body.Function) ||
-            !ReferenceEquals(ValueType(body, id), body.Resolve(closure.Captures[(int)value.Constant].Environment.Type, InterpretationContext.Root)) ||
+            !ReferenceEquals(ValueType(body, id), body.Resolve(closure.Captures[(int)value.Constant].Environment.Type, body.ContextAt(id))) ||
             !body.SymbolPlaces.TryGetValue(closure.Captures[(int)value.Constant].Environment, out var place) || place != body.Operations[id].Place)
         {
             return Fail("Invalid closure capture parameter.", out failure);
@@ -184,7 +184,7 @@ internal sealed partial class BodyLowering
 
         if (closure.EnvironmentType is { } environment)
         {
-            return (this.aggregateLayouts.Get(body.Resolve(environment, InterpretationContext.Root)!) is { } layout && layout.Count == closure.Captures.Count) || Fail("Capture environment layout is inconsistent.", out failure);
+            return (this.aggregateLayouts.Get(body.Resolve(environment, body.ContextAt(id))!) is { } layout && layout.Count == closure.Captures.Count) || Fail("Capture environment layout is inconsistent.", out failure);
         }
 
         var offset = CaptureOffset(closure, (int)value.Constant);
@@ -267,10 +267,12 @@ internal sealed partial class BodyLowering
     {
         failure = null;
         var operation = body.Operations[id];
-        // A monomorphized instance calls the value through its substituted signature (SPEC 21.3.1).
-        var receiver = body.Resolve(plan.ReceiverType, InterpretationContext.Root);
-        var signature = body.Resolve(plan.Signature, InterpretationContext.Root);
-        var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
+        // A monomorphized instance or a default's replica calls the value through the signature of the call's own context (SPEC 8.10,
+        // 21.3.1); the plan's declared Types are interpreted there once.
+        var context = body.ContextAt(id);
+        var receiver = body.Resolve(plan.ReceiverType, context);
+        var signature = body.Resolve(plan.Signature, context);
+        var returnType = body.Resolve(plan.ReturnType, context);
         if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
             !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || IsPartReceiver(body.Places[operation.Input], receiver)) || !ReferenceEquals(ElementAccess.PlaceCallReference(call) ?? call.BoundType, plan.ReturnType) ||
             plan.Arguments.Length != call.ArgumentNodes.Count ||
@@ -313,7 +315,7 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < plan.Arguments.Length; i++)
         {
             var argument = plan.Arguments[i];
-            var parameterType = body.Resolve(argument.ParameterType, InterpretationContext.Root);
+            var parameterType = body.Resolve(argument.ParameterType, context);
             if (argument.ParameterIndex != i ||
                 argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||
                 parameterType is null || !ReferenceEquals(parameterType, inputs.Components[i]) ||

@@ -32,7 +32,7 @@ internal sealed partial class BodyLowering
         }
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
-        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false, Fields.Length: 3 } remainder ||
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false, Fields.Length: 3 } remainder ||
             !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
             return Fail(failure ?? "Fixed-array ownStorage result is not the owning remainder record.", out failure);

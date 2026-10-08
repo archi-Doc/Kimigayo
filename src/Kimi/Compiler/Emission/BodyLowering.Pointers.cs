@@ -51,8 +51,8 @@ internal sealed partial class BodyLowering
         if (operation.Kind != OwnershipOperationKind.Produce || operation.Source is not Parsing.BinaryKoto element ||
             ValueType(body, id) is not { } type || !ReferenceTypes.IsPointer(type) ||
             ValueType(body, address) is not { } containerType || !ReferenceTypes.IsPointer(containerType) ||
-            !ReferenceEquals(body.Resolve(element.Left.BoundType, InterpretationContext.Root), containerType.Components[0]) ||
-            !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(body.Resolve(part, InterpretationContext.Root), type.Components[0]) ||
+            !ReferenceEquals(body.Resolve(element.Left.BoundType, body.ContextAt(id)), containerType.Components[0]) ||
+            !ElementAccess.TryType(element, out var part, out _) || !ReferenceEquals(body.Resolve(part, body.ContextAt(id)), type.Components[0]) ||
             this.aggregateLayouts.Get(containerType.Components[0]) is not { } layout ||
             (index < 0 ? ElementAccess.PathSelector(element, out _, out _) != position || position < 0 || position >= layout.StorageCount
                 : value.Constant != -1 || !layout.IsArray || element is not Parsing.IndexKoto || !ReferenceEquals(ValueType(body, index), BoundType.ISize)) ||
@@ -102,8 +102,8 @@ internal sealed partial class BodyLowering
         var sourceType = store && ((operation.Source is BinaryKoto inline && ElementAccess.IsSyntax(inline) && ElementAccess.WritableRoot(inline) is not null) ||
             (operation.Source is MemberAccessKoto replaced && ElementAccess.BorrowedPathRoot(replaced) is not null) ||
             ElementAccess.IsExclusiveArrayElement(operation.Source)) &&
-            ReferenceEquals(body.Resolve(operation.Source.BoundType, InterpretationContext.Root), type) ? pointerType
-            : body.Resolve(ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType, InterpretationContext.Root);
+            ReferenceEquals(body.Resolve(operation.Source.BoundType, body.ContextAt(id)), type) ? pointerType
+            : body.Resolve(ElementAccess.PlaceCallReference(operation.Source) ?? operation.Source.BoundType, body.ContextAt(id));
         // SPEC 3.5.3, 13.5.5.1: a load through a safe reference copies its referent layer by layer, and a
         // referent write stores through a uniq reference; both use the reference value as the address.
         // SPEC 10.2, 3.4.1: a stored ref or uniq reference may be loaded as one reference to the same referent, shared,

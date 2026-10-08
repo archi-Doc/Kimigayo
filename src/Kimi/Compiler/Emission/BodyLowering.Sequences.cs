@@ -98,7 +98,7 @@ internal sealed partial class BodyLowering
                 return Fail("Sequence receiver projection is not available.", out failure);
             }
 
-            receiver = body.Resolve(body.Operations[projection.Operation].Source.BoundType, InterpretationContext.Root)!;
+            receiver = body.Resolve(body.Operations[projection.Operation].Source.BoundType, body.ContextAt(projection.Operation))!;
             address = new(EmissionOperandKind.ElementAddress, projection.Operation);
         }
 
@@ -184,7 +184,7 @@ internal sealed partial class BodyLowering
                 address = new(EmissionOperandKind.NullAddress, 0);
             }
 
-            var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(body.Resolve(ElementAccess.AccessType(index.Left), InterpretationContext.Root)) || ReferenceTypes.IsDynamicArray(body.Resolve(ElementAccess.AccessType(index.Left), InterpretationContext.Root))) :
+            var validSource = borrowedArray ? operation.Source is IndexKoto index && (ReferenceTypes.IsArray(body.Resolve(ElementAccess.AccessType(index.Left), body.ContextAt(id))) || ReferenceTypes.IsDynamicArray(body.Resolve(ElementAccess.AccessType(index.Left), body.ContextAt(id)))) :
                 operation.Source is IndexKoto { Left.BoundType.Kind: BoundTypeKind.Slice or BoundTypeKind.Array };
             var aggregate = this.aggregateLayouts.Get(ValueType(body, id)!);
             if ((arrayRead ? receiver.Kind != BoundTypeKind.FixedArray : receiver.Kind is not (BoundTypeKind.Slice or BoundTypeKind.Array)) || !validSource ||
@@ -223,14 +223,14 @@ internal sealed partial class BodyLowering
             {
                 // SPEC 4.6.4: one ResolvedRange value, written or resolved from a Range, supplies both boundaries.
                 resolvedKey = ElementAccess.KeySyntax(keyed);
-                sliceType = body.Resolve(keyed.BoundType, InterpretationContext.Root);
+                sliceType = body.Resolve(keyed.BoundType, body.ContextAt(id));
             }
             else if (operation.Source is IndexKoto { Right: RangeKoto rangeSyntax } source)
             {
                 // SPEC 4.6.4: a `^x` boundary evaluates x and resolves against the length in the slice operation.
                 startSyntax = rangeSyntax.Start is FromEndIndexKoto { Operand: var startOffset } ? startOffset : rangeSyntax.Start;
                 endSyntax = rangeSyntax.End is FromEndIndexKoto { Operand: var endOffset } ? endOffset : rangeSyntax.End;
-                sliceType = body.Resolve(source.BoundType, InterpretationContext.Root);
+                sliceType = body.Resolve(source.BoundType, body.ContextAt(id));
                 shape = (rangeSyntax.Start is FromEndIndexKoto ? SliceShape.StartFromEnd : 0) | (rangeSyntax.End is FromEndIndexKoto ? SliceShape.EndFromEnd : 0) | (rangeSyntax.IsInclusive ? SliceShape.Closed : 0);
             }
 

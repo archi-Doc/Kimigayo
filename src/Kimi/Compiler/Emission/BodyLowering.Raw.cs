@@ -26,7 +26,7 @@ internal sealed partial class BodyLowering
         }
 
         var pointer = kind == CompilerFunctionKind.RawAllocate ? body.Resolve(plan.ReturnType, InterpretationContext.Root) : body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root);
-        var result = body.Resolve(call.BoundType, InterpretationContext.Root);
+        var result = body.Resolve(call.BoundType, body.ContextAt(id));
         if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, elementType) ||
             (kind == CompilerFunctionKind.RawSlice
                 ? result is not { Kind: BoundTypeKind.Slice, Components: [var sliced] } || !ReferenceEquals(sliced, elementType) ||

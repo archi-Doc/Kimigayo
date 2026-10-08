@@ -167,11 +167,11 @@ internal sealed partial class BodyLowering
                     continue;
                 }
 
-                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(body.Resolve(operation.Source.BoundType, InterpretationContext.Root)))
+                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(body.Resolve(operation.Source.BoundType, body.ContextAt(id))))
                 {
                     // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded bits.
                     var folded = operation.Source is Parsing.ConversionKoto { FoldedConstant: { } constant } ? constant : (Int128?)null;
-                    if (!ReferenceEquals(type, body.Resolve(operation.Source.BoundType, InterpretationContext.Root)) ||
+                    if (!ReferenceEquals(type, body.Resolve(operation.Source.BoundType, body.ContextAt(id))) ||
                         (folded is null ? !FloatingTypes.TryLiteral(operation.Source, out var bits) || bits != value.Constant : folded != value.Constant))
                     {
                         return false;
@@ -182,7 +182,7 @@ internal sealed partial class BodyLowering
 
                 if (ReferenceEquals(type, BoundType.Char) || operation.Source is Parsing.CharLiteralKoto)
                 {
-                    if (!ReferenceEquals(type, BoundType.Char) || !ReferenceEquals(body.Resolve(operation.Source.BoundType, InterpretationContext.Root), BoundType.Char) ||
+                    if (!ReferenceEquals(type, BoundType.Char) || !ReferenceEquals(body.Resolve(operation.Source.BoundType, body.ContextAt(id)), BoundType.Char) ||
                         operation.Source is not Parsing.CharLiteralKoto { Value: { } character } ||
                         !ScalarTypes.IsCharacterValue(value.Constant) || value.Constant != character.Value)
                     {
@@ -195,7 +195,7 @@ internal sealed partial class BodyLowering
                 if (ReferenceTypes.IsPointer(type) || operation.Source is Parsing.NullLiteralKoto)
                 {
                     // SPEC 5.1: null is the only pointer literal.
-                    if (!ReferenceTypes.IsPointer(type) || !ReferenceEquals(type, body.Resolve(operation.Source.BoundType, InterpretationContext.Root)) || operation.Source is not Parsing.NullLiteralKoto || value.Constant != 0)
+                    if (!ReferenceTypes.IsPointer(type) || !ReferenceEquals(type, body.Resolve(operation.Source.BoundType, body.ContextAt(id))) || operation.Source is not Parsing.NullLiteralKoto || value.Constant != 0)
                     {
                         return false;
                     }
@@ -217,14 +217,14 @@ internal sealed partial class BodyLowering
                     if (source is Parsing.ConversionKoto { FoldedConstant: { } folded })
                     {
                         // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded payload.
-                        if (folded != value.Constant || !ReferenceEquals(type, body.Resolve(source.BoundType, InterpretationContext.Root)))
+                        if (folded != value.Constant || !ReferenceEquals(type, body.Resolve(source.BoundType, body.ContextAt(id))))
                         {
                             return false;
                         }
                     }
                     else if (number is not null)
                     {
-                        if (!ReferenceEquals(type, body.Resolve(source.BoundType, InterpretationContext.Root)) || !number.TryGetIntegerMagnitude(out var magnitude) ||
+                        if (!ReferenceEquals(type, body.Resolve(source.BoundType, body.ContextAt(id))) || !number.TryGetIntegerMagnitude(out var magnitude) ||
                             !ScalarTypes.TryLiteral(type, magnitude, source is Parsing.PrefixMinusKoto, 64, out var bits) || bits != value.Constant)
                         {
                             return false;

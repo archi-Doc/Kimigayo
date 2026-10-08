@@ -254,7 +254,8 @@ internal sealed partial class BodyLowering
                 ? new BoundArgumentOperation(omitted.Expression, omitted.Expression.BoundType, omitted.ParameterType, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: parameter)
                 : plan.ArgumentOperations[i];
             var sourceArgument = i < 0 ? plan.Receiver! : isDefault ? omitted.Expression : call.ArgumentNodes[i];
-            var parameterType = body.Resolve(acquisition.ParameterType, body.ContextAt(id));
+            // The call plan is already resolved in the call's context (CallAt); only the body's root stage remains (SPEC 8.10).
+            var parameterType = body.Resolve(acquisition.ParameterType, InterpretationContext.Root);
             if ((uint)parameter >= (uint)target.Parameters.Count || this.parameterArguments[parameter] != -1 ||
                 !ReferenceEquals(acquisition.Source, sourceArgument) ||
                 (isDefault && (parameter <= previousDefault || !ReferenceEquals(target.Parameters[parameter].DefaultValue, omitted.Expression) ||
@@ -309,13 +310,15 @@ internal sealed partial class BodyLowering
                 // The instantiated parameter Type was matched against the callee's entry above; a
                 // monomorphized instance forwards its ref/T parameter as the substituted string reference.
                 if (!ReferenceTypes.IsString(parameterType) || !this.ValidateReferenceUse(body, entry, id) ||
-                    !ReferenceEquals(acquisition.Source, sourceArgument) || !ReferenceEquals(body.Resolve(acquisition.SourceType, InterpretationContext.Root), body.Resolve(sourceArgument.BoundType, InterpretationContext.Root)))
+                    !ReferenceEquals(acquisition.Source, sourceArgument) ||
+                    !ReferenceEquals(body.Resolve(acquisition.SourceType, InterpretationContext.Root), body.Resolve(sourceArgument.BoundType, isDefault ? InterpretationContext.Root : body.ContextAt(id))))
                 {
                     return Fail("Reference argument lacks its call-wide Loan or Origin substitution.", out failure);
                 }
 
                 var root = this.referenceRoots[entry];
-                var sourceType = body.Resolve(isDefault && acquisition.SourceType is { } declaredSource ? call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan) : acquisition.SourceType, body.ContextAt(id));
+                var sourceType = isDefault && acquisition.SourceType is { } declaredSource
+                    ? body.Resolve(call.CodeContext.Compilation.Binding.InstantiateStorageType(declaredSource, plan), body.ContextAt(id)) : body.Resolve(acquisition.SourceType, InterpretationContext.Root);
                 if (acquisition.Kind == ArgumentOperationKind.Borrow
                     ? this.callLoanPlans[id] < 0 || body.Values[root].Kind != OwnershipValueKind.Borrow || !ReferenceEquals(body.ComparisonLoans[body.LoanStates[root]].Call, call) ||
                         !ReferenceEquals(body.Operations[root].Source, OwnershipAnalysis.BorrowedArgumentSource(sourceArgument))

@@ -39,7 +39,7 @@ internal sealed partial class BodyLowering
             if ((uint)plan.Operation >= (uint)body.Operations.Count || this.stringComparisons[plan.Operation] >= 0 ||
                 body.Operations[plan.Operation].Kind != OwnershipOperationKind.Produce || body.Values[plan.Operation].Kind != OwnershipValueKind.StringComparison ||
                 body.Operations[plan.Operation].Source is not BinaryKoto source ||
-                !ReferenceTypes.EndsInString(body.Resolve(source.Left.BoundType, InterpretationContext.Root)) || !ReferenceTypes.EndsInString(body.Resolve(source.Right.BoundType, InterpretationContext.Root)) ||
+                !ReferenceTypes.EndsInString(body.Resolve(source.Left.BoundType, body.ContextAt(plan.Operation))) || !ReferenceTypes.EndsInString(body.Resolve(source.Right.BoundType, body.ContextAt(plan.Operation))) ||
                 !ReferenceEquals(ValueType(body, plan.Operation), BoundType.Boolean) ||
                 source.Akind != body.Values[plan.Operation].Operator)
             {
@@ -67,7 +67,7 @@ internal sealed partial class BodyLowering
     private bool ValidateStringInspection(OwnershipBody body, int id, int place, int loan, Koto operand, int reference)
     {
         // SPEC 13.4: a string reference, or an operand inspected through its shared borrow.
-        var inspected = body.Resolve(ElementAccess.AccessType(operand), InterpretationContext.Root);
+        var inspected = body.Resolve(ElementAccess.AccessType(operand), body.ContextAt(id));
         if (ReferenceTypes.IsStringReference(inspected))
         {
             // SPEC 4.6.9: receiver[key] on a user Type reads its published Place through the synthesized index call.
@@ -79,7 +79,7 @@ internal sealed partial class BodyLowering
         {
             // SPEC 5.2: a raw string Place is read in place through its dominating handle address.
             var address = ValueType(body, reference)!;
-            return place == -1 && loan == -1 && ReferenceEquals(body.Resolve(operand.BoundType, InterpretationContext.Root), BoundType.String) &&
+            return place == -1 && loan == -1 && ReferenceEquals(body.Resolve(operand.BoundType, body.ContextAt(id)), BoundType.String) &&
                 ReferenceEquals(address.Components[0], BoundType.String) && (!body.IsReachable(id) || this.Dominates(reference, id));
         }
 

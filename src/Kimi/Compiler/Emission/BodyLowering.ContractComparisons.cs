@@ -26,7 +26,7 @@ internal sealed partial class BodyLowering
             KotoKind.GreaterThan => "sgt", KotoKind.GreaterThanEquals => "sge",
             _ => null,
         };
-        if (predicate is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), ValueType(body, input)) ||
+        if (predicate is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), ValueType(body, input)) ||
             body.Operations[Definition(body, input)] is not { Kind: OwnershipOperationKind.Call } producer || !ReferenceEquals(producer.Source, call))
         {
             return Fail("Contract comparison has an inconsistent requirement result.", out failure);

@@ -186,7 +186,7 @@ internal sealed partial class BodyLowering
         }
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
-        if (!ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || returnType is null)
+        if (!ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || returnType is null)
         {
             return Fail("Array operation result Type does not match its call.", out failure);
         }
@@ -438,7 +438,7 @@ internal sealed partial class BodyLowering
         }
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
-        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), returnType) || this.aggregateLayouts.Get(returnType) is not { } result ||
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { } result ||
             !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
             return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
@@ -474,7 +474,7 @@ internal sealed partial class BodyLowering
             plan.ArgumentOperations.Length != 2 || call.ArgumentNodes.Count != 2 || target.Parameters.Count != 2 || plan.ArgumentToParameter.Length != 2 ||
             plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 ||
             body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array }] } receiver ||
-            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, InterpretationContext.Root), BoundType.Unit) || !ReferenceEquals(body.Resolve(plan.ReturnType, InterpretationContext.Root), BoundType.Unit))
+            !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), BoundType.Unit) || !ReferenceEquals(body.Resolve(plan.ReturnType, InterpretationContext.Root), BoundType.Unit))
         {
             return Fail("Publishing an Array length requires its exclusive handle and isize length.", out failure);
         }
