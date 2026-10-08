@@ -875,6 +875,20 @@ LineContent:
             // closes, discharge it too unless an aligned branch joins the construct inside it.
             for (var i = indentDelta; i < 0 || (!branchJoin && this.indentCount > 0 && this.indentStack[this.indentCount - 1].SharesBodyIndent); i++)
             {
+                if (i >= 0 && closedDelimiter && !this.span.IsEmpty && this.span[0] is not (Constants.CrChar or Constants.LfChar))
+                {
+                    // A written closer may be followed by an access, adaptation or another argument on this line.
+                    // Remaining shared header delimiters belong to that outer expression. Resume ordinary tokenization
+                    // and restore their ordinary indentation now that the nested body's grouping has ended.
+                    for (var s = this.indentCount - 1; s >= 0 && this.indentStack[s].SharesBodyIndent; s--)
+                    {
+                        this.indentStack[s] = this.indentStack[s] with { SharesBodyIndent = false };
+                        this.sharedBodyIndentDepth--;
+                    }
+
+                    break;
+                }
+
                 if (this.indentCount > 0)
                 {
                     var entry = this.indentStack[--this.indentCount];
