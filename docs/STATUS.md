@@ -1,5 +1,7 @@
 # Kimigayo Implementation Status
 
+**Result-only implementation Origins (2026-10-08; SPEC §8.8.2, §6.2.4):** full specializations and overrides inherit omitted result-only Origins as the original contract's universal binders. Inherited names remain visible in body annotations, and original relations remain premises. Fixing a binder to `static`, renaming it or returning an unjustified input Loan remains rejected. `ImplementationResultOriginTest` covers edits, public diagnostics, native specialization/virtual dispatch and zero-allocation rebinding.
+
 **Layout recovery (2026-10-08; SPEC §2.2):** leading-dot continuations after outer-aligned closers retain their expression and enclosing body. Delimiters shared by a body header close with that construct, preserving aligned `else` joins and independent following statements. Over-indented grouping content reports indentation without inventing a body. `LayoutRecoveryTest` covers syntax, native execution, CLI/LSP records and zero-allocation pooled tokenization; `SourceEncodingTest` covers the allocation-free Unicode scan. Mismatched-closer and malformed nested-token recovery remain G60.
 
 **Arithmetic Contracts (2026-10-08):** the eleven [standard Contracts](spec/arithmetic-contracts.md) and built-in numeric witnesses are implemented through the common conformance, call, ownership and emission paths.

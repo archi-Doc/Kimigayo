@@ -159,12 +159,9 @@ public sealed partial class Binding
                     }
                 }
 
-                if (inherited is null)
-                {
-                    return false; // A result-only binder has no position to inherit from.
-                }
-
-                binders[definitionOrigins[i].Slot] = inherited;
+                // A result-only binder has no input position. It is still universally quantified by the original
+                // contract: inherit that immutable binder rather than inventing an input dependency or fixing it to static.
+                binders[definitionOrigins[i].Slot] = inherited ?? definitionOrigins[i].Origin;
             }
 
             for (var j = 0; j < written.Count; j++)
@@ -182,6 +179,16 @@ public sealed partial class Binding
             }
 
             var scope = this.scopes[function];
+            if (definitionOrigins.Count > 0)
+            {
+                scope.Origins ??= new(StringComparer.Ordinal);
+                for (var i = 0; i < definitionOrigins.Count; i++)
+                {
+                    // Omission affects spelling only. The original names remain visible to body annotations and clauses.
+                    scope.Origins[definitionOrigins[i].Name] = binders[definitionOrigins[i].Slot]!;
+                }
+            }
+
             var inheritedDeclaration = this.originDeclarations.GetValueOrDefault(function);
             if (originalDeclaration is not null || inheritedDeclaration is not null)
             {
