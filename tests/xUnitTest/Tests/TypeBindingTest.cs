@@ -36,7 +36,7 @@ public class TypeBindingTest
     [InlineData("func f(x: i32, y: ref/i32 during x)", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("func f(x: obj/(ref/i32 during static))", DiagnosticCode.InvalidTypeFormation_Kd)]
     [InlineData("func f(x: i32{slots})", DiagnosticCode.InvalidOriginBinding_Kd)]
-    [InlineData("group G\n    var x: ref/i32 during static", DiagnosticCode.InvalidTypeFormation_Kd)]
+    [InlineData("group G\n    var x: ref/i32 during static", DiagnosticCode.UnsupportedBinding_Kd)]
     [InlineData("struct View {source}\n    let value: ref/i32 during source\nstruct Stored\n    let value: View", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("struct View {source}\n    let value: ref/i32 during source\nfunc f(x: View{v})\n    origin v.wrong == static", DiagnosticCode.InvalidOriginBinding_Kd)]
     [InlineData("struct View {source}\n    let value: ref/i32 during source\nfunc f(x: View{v}, y: View{v})", DiagnosticCode.DuplicateBinding_Kd)]
@@ -80,7 +80,7 @@ public class TypeBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var retained = Parse("struct Box<T>\n    let value: T\ngroup Values\n    var p: Box<ref/i32 during static>");
         Assert.False(retained.Bind().IsComplete);
-        Assert.Contains(retained.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
+        Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, Assert.Single(retained.Binding.Issues).Code);
     }
 
     [Fact]

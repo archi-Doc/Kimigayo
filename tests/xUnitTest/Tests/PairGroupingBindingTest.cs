@@ -84,7 +84,13 @@ public class PairGroupingBindingTest
     {
         var c = Parse($"func f<s/T>(value: {type}) => ()", syntaxError);
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
+        c.Binding.ReportDiagnostics();
+        Assert.Equal(syntaxError ? "OriginBindingSetName_Kd" : "InvalidOriginBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
+        if (syntaxError)
+        {
+            Assert.Null(Function(c, "f").Parameters[0].Type.BoundType);
+        }
+
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 

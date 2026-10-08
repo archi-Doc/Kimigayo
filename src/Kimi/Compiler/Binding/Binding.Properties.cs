@@ -285,7 +285,8 @@ public sealed partial class Binding
             // SPEC 23.3.6.4: an accessor's own declaration Error explains the Property's failed verification; a second record at
             // the Property would restate it. Every other failure is the Property's own problem.
             var explainedByAccessor = proof == ConstraintProof.Error &&
-                (property.Getter.Declaration?.BindingState == BindingState.Invalid || property.Setter.Declaration?.BindingState == BindingState.Invalid);
+                ((property.Getter.Declaration is { } getter && (getter.BindingState == BindingState.Invalid || this.HasUnresolvedPrerequisite(getter))) ||
+                (property.Setter.Declaration is { } setter && (setter.BindingState == BindingState.Invalid || this.HasUnresolvedPrerequisite(setter))));
             if (proof != ConstraintProof.Proven && !explainedByAccessor)
             {
                 this.RequireConstraint(syntax, proof, mode, this.ConformanceDiagnosticCause(property.Symbol.Scope.Owner));
@@ -305,6 +306,19 @@ public sealed partial class Binding
         if (syntax?.BindingState == BindingState.Invalid)
         {
             return ConstraintProof.Error;
+        }
+
+        if (syntax is not null)
+        {
+            // Header failures leave the operation unavailable, not a disproven receiver or conformance.
+            var missing = accessor.Receiver is null ? syntax.ReceiverType : null;
+            missing ??= accessor.Kind == PropertyAccessorKind.Set && accessor.Input is null ? syntax.ValueType : null;
+            missing ??= accessor.Result is null ? syntax.ReturnType : null;
+            if (missing is not null)
+            {
+                this.CompleteDependent(syntax, missing);
+                return ConstraintProof.Error;
+            }
         }
 
         if (InvalidDeclarationContextCause(property.Declaration) is { } context)

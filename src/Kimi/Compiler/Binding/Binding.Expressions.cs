@@ -1024,12 +1024,13 @@ public sealed partial class Binding
             this.AddTypeClauseObligations(declared, occurrence); // SPEC 15.3.3: the Type's clauses at this use.
         }
 
-        if (symbol.Kind == BindingSymbolKind.Local && declared is null && inferred is not null)
+        if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is null && declared is null && inferred is not null)
         {
             declared = this.LocalBorrowType(inferred, variable, variable.InitializerKoto!);
         }
 
-        symbol.Type = declared ?? inferred;
+        // An unavailable written Type cannot be replaced by the initializer's Type.
+        symbol.Type = variable.TypeKoto is null ? declared ?? inferred : declared;
         variable.NameKoto.BoundSymbol = symbol;
         Complete(variable.NameKoto, symbol.Type);
         if (variable is PropertyKoto property)
@@ -1127,7 +1128,28 @@ public sealed partial class Binding
 
         if (symbol.Type is null && symbol.Declaration is VariableKoto variable)
         {
-            this.BindVariable(variable, symbol.Scope);
+            if (variable is PropertyKoto)
+            {
+                // Property and storage Types belong to the header. A use never re-enters accessor bodies.
+                var declaration = variable.BoundSymbol!;
+                if (!declaration.HeaderBound && declaration.Resolving)
+                {
+                    this.Fail(variable, BindingFailure.Cycle, true);
+                }
+                else
+                {
+                    this.BindHeader(declaration);
+                }
+
+                if (symbol.Type is null)
+                {
+                    this.Consulted(variable.TypeKoto ?? variable.InitializerKoto ?? variable);
+                }
+            }
+            else
+            {
+                this.BindVariable(variable, symbol.Scope);
+            }
         }
 
         if (symbol.Kind == BindingSymbolKind.Storage && symbol.Scope.Owner is PropertyAccessorKoto storageAccessor)
@@ -1228,6 +1250,12 @@ public sealed partial class Binding
         {
             // A parameter's Type is bound with its function's header; a use without a Type consulted it.
             this.Consulted(function.Parameters[slot].Type);
+        }
+        else if (type is null && symbol is { Kind: BindingSymbolKind.Parameter, Declaration: PropertyAccessorKoto accessorSyntax })
+        {
+            var accessor = Accessor(accessorSyntax);
+            var annotation = ReferenceEquals(symbol, accessor.SelfSymbol) ? accessorSyntax.ReceiverType : accessorSyntax.ValueType;
+            this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
         }
 
         return Complete(node, type);
