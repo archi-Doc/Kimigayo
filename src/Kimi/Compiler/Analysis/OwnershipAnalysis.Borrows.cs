@@ -132,7 +132,7 @@ public sealed partial class OwnershipAnalysis
     // element, borrowed path, owned static path), chosen from the selection's form; designator outcomes are alternatives, never
     // fallback stages. Only the final Value route evaluates its source, and a Place selection that no route reached fails closed
     // there (PLAN G59 U1). An address-producing use (`@raw`, an address adaptation) observes the borrowed address itself.
-    private int BorrowStruct(Koto source, BoundType type, int reservation = -1, bool address = false)
+    private int BorrowStruct(Koto source, BoundType type, int reservation = -1)
     {
         var unwrapped = this.SelectedPlace(KotoHelper.UnwrapParentheses(source));
         if (ElementAccess.IsRawPlace(unwrapped))
@@ -165,7 +165,7 @@ public sealed partial class OwnershipAnalysis
 
         if (unwrapped is IndexKoto userIndex && this.compilation.Binding.IndexerCall(userIndex, type.Semantics == SemanticsKind.Uniq) is { } indexer)
         {
-            return this.BorrowStruct(indexer, type, reservation, address); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
+            return this.BorrowStruct(indexer, type, reservation); // SPEC 4.6.9: a borrow of receiver[key] selects index or indexUniq.
         }
 
         if (unwrapped is InvocationKoto placeCall && ElementAccess.IsPlaceCall(placeCall))
@@ -184,7 +184,7 @@ public sealed partial class OwnershipAnalysis
         {
             // SPEC 13.5.5.2: a Reborrow or payload borrow lends the referent's capability through the parent
             // reference or handle, which is read but never moved; the borrowed address is the parent's value.
-            return this.BorrowStruct(selected.Left, type, reservation, address);
+            return this.BorrowStruct(selected.Left, type, reservation);
         }
 
         if (unwrapped is BinaryKoto objectPart && !Binding.IsGetterResult(objectPart) && !this.SpecialField(objectPart) &&
@@ -333,10 +333,14 @@ public sealed partial class OwnershipAnalysis
         }
 
         // The Value route: a value expression, including a getter's result or a range selection's Slice, is evaluated once and its
-        // temporary borrowed (SPEC 10.2, 4.6.6). A stored Field, Tuple or element selection that reaches here has no Place route;
-        // reading it would borrow a copy (PLAN G59).
-        if (this.UnroutedSelection(unwrapped) is { } selection && !this.SnapshotAdmitted(selection, type, address))
+        // temporary borrowed (SPEC 10.2, 4.6.6). A stored Field, Tuple or element selection that reaches here has no Place route:
+        // borrowing a temporary read of it would update, expose or lend a copy (SPEC 3.4, 5.4), so it fails closed before any state
+        // is emitted and names the route it lacks (PLAN G59). Only a Reborrow through a read stored reference or handle, which
+        // addresses its referent rather than the selection's slot, reads its selection.
+        if (this.UnroutedSelection(unwrapped) is { } selection && !this.ReborrowsStoredReference(selection, type))
         {
+            this.ReadSelectionInputs(selection);
+            this.UnsupportedRoute(selection);
             return -1;
         }
 
@@ -373,29 +377,11 @@ public sealed partial class OwnershipAnalysis
             !Binding.IsGetterResult(selection) && this.compilation.Binding.PropertyCall(selection, PropertyAccessorKind.Get) is null &&
             !this.SpecialField(selection) ? selection : null;
 
-    // PLAN G59 U1: an exclusive or address-producing borrow of an unrouted selection, or a borrow of a part not proven Copy, would
-    // update, expose or acquire a temporary copy, so it fails closed before any state is emitted and names the route it lacks
-    // (SPEC 3.4, 5.4, 10.2). A shared borrow of a Copy part keeps the snapshot it reads, which the retained root protection hides
-    // from safe code; it is counted until its Place route replaces it (STATUS).
-    private bool SnapshotAdmitted(BinaryKoto selection, BoundType type, bool address)
-    {
-        var part = this.Resolve(selection.BoundType, this.Active);
-        if (part is not null && type.Components.Count == 1 && !ReferenceTypes.StorageMatches(part, this.Resolve(type.Components[0], this.Active)))
-        {
-            return true; // A Reborrow through a read stored reference or handle addresses its referent, not the selection's slot.
-        }
-
-        if (!address && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef && part is not null &&
-            this.compilation.Binding.ProveCopy(part, selection) == ConstraintProof.Proven)
-        {
-            this.body.SnapshotBorrows++;
-            return true;
-        }
-
-        this.ReadSelectionInputs(selection);
-        this.UnsupportedRoute(selection);
-        return false;
-    }
+    // SPEC 10.2, 13.5.5.1: a borrow whose referent is not the selection's own stored Type Reborrows the reference or handle the
+    // selection stores.
+    private bool ReborrowsStoredReference(BinaryKoto selection, BoundType type)
+        => this.Resolve(selection.BoundType, this.Active) is { } part && type.Components.Count == 1 &&
+            !ReferenceTypes.StorageMatches(part, this.Resolve(type.Components[0], this.Active));
 
     // SPEC 23.3.6.4 (PLAN G59): an unsupported Place borrow names the route it lacks, which follows the root: a reference or Slice
     // receiver on the path needs the borrowed path; otherwise a runtime selector needs the owned projection, and a value root the

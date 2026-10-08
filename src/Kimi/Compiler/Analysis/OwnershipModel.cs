@@ -362,10 +362,6 @@ public sealed partial class OwnershipBody
 
     public bool IsConcrete { get; internal set; }
 
-    /// <summary>Gets the shared borrows of a Copy part that still borrow the snapshot read from their Place selection (PLAN G59
-    /// U1): the one transitional route that emission admits, counted until the Place route replaces it.</summary>
-    public int SnapshotBorrows { get; internal set; }
-
     internal int DefaultParameter { get; set; } = -1;
 
     internal int ParameterCount => this.DefaultParameter >= 0 ? this.DefaultParameter : this.Function.Parameters.Count;
@@ -415,7 +411,6 @@ public sealed partial class OwnershipBody
         this.InstanceBinding = instance is null && cases.IsEmpty ? null : instanceBinding;
         this.IsVerified = false;
         this.IsConcrete = function.IsSpecialization || function.GenericArguments.Count == 0;
-        this.SnapshotBorrows = 0;
         this.PlaceStorage.Clear();
         this.OperationStorage.Clear();
         this.DefaultContexts?.Clear();

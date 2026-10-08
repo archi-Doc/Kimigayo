@@ -17,12 +17,17 @@ internal static class ElementAccess
     // SPEC 4.6.6, 4.6.9: an element of a Slice or of a referenced array, including a fixed array reached through a
     // borrowed receiver; no owned root holds it.
     internal static bool IsSharedElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element &&
-        (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType) || ReferenceTypes.IsDictionary(element.Left.BoundType));
+        (element.Left.BoundType?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsArray(AccessType(element.Left)) || ReferenceTypes.IsDynamicArray(element.Left.BoundType) || ReferenceTypes.IsDictionary(element.Left.BoundType) ||
+            (element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(element.Left)));
 
     // SPEC 3.4.1: the referent of an exclusive array reference offers element replacement, without requiring a mutable
     // binding for the reference itself. Shared layers on its path are checked separately by Binding.
-    internal static bool IsExclusiveArrayElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element && AccessType(element.Left, true) is { Semantics: SemanticsKind.Uniq } receiver &&
-        (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver)) && !IsSlicing(source);
+    // An owned Array or fixed array stored below exclusive references only (`b.items[i]` with `b: uniq/Bank`) offers the same, whose
+    // path authority decides it rather than the stored Type (PLAN G59).
+    internal static bool IsExclusiveArrayElement(Koto source) => source is IndexKoto { Right: not RangeKoto } element && !IsSlicing(source) &&
+        ((AccessType(element.Left, true) is { Semantics: SemanticsKind.Uniq } receiver &&
+            (ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDictionary(receiver))) ||
+        (element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray && ReachesThroughBorrow(element.Left) && Binding.PathAuthority(element.Left) == SemanticsKind.Uniq));
 
     // SPEC 7.1.1: a call of a function that publishes a Place. The call expression designates the referent of the
     // reference the callee returns, with that reference's capabilities and Origin; its Type is the stored Type.
@@ -264,10 +269,10 @@ internal static class ElementAccess
             (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
                 ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
 
-    // SPEC 3.4.1, 4.6.9 (PLAN G59): the element of an Array, or of a fixed array at a runtime index, below which a stored Field,
-    // Tuple or literal fixed-array path selects a Place, such as `xs[i]` in `xs[i].inner.name`. The element is borrowed through its
-    // own route and the static path through that borrow. Null for the element itself, a getter boundary or a path with no such
-    // element.
+    // SPEC 3.4.1, 4.6.9 (PLAN G59): the element of an Array, of a fixed array at a runtime index, or of either reached through a
+    // reference, below which a stored Field, Tuple or literal fixed-array path selects a Place, such as `xs[i]` in `xs[i].inner.name`.
+    // The element is borrowed through its own route and the static path through that borrow. Null for the element itself, a getter
+    // boundary or a path with no such element.
     internal static IndexKoto? ElementPathBase(BinaryKoto selection)
     {
         for (var depth = 0; depth < 64; depth++)
@@ -278,8 +283,7 @@ internal static class ElementAccess
                 return null;
             }
 
-            if (parent is IndexKoto element && !IsSlicing(element) &&
-                (element.Left.BoundType?.Kind == BoundTypeKind.Array || (element.Left.BoundType?.Kind == BoundTypeKind.FixedArray && StaticSelector(element) < 0)))
+            if (parent is IndexKoto element && !IsSlicing(element) && HasElementRoute(element))
             {
                 return element;
             }
@@ -289,6 +293,12 @@ internal static class ElementAccess
 
         return null;
     }
+
+    // The receivers whose selected element has its own borrow route: an Array, a Slice, a fixed array at a runtime index, or an Array,
+    // fixed array or Slice reached through a `ref`/`uniq` reference.
+    internal static bool HasElementRoute(IndexKoto element)
+        => element.Left.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Slice || (element.Left.BoundType?.Kind == BoundTypeKind.FixedArray && StaticSelector(element) < 0) ||
+            (AccessType(element.Left) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Array or BoundTypeKind.FixedArray or BoundTypeKind.Slice }] });
 
     // SPEC 4.6.9 (PLAN G59): an owned fixed-array element at a runtime index, or a part below an element (ElementPathBase): a Place
     // that the element's own route borrows, never the owned projection of a static path.

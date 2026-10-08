@@ -102,17 +102,12 @@ internal sealed partial class BodyLowering
             var type = body.Places[operation.Place].Type;
             var output = ValueType(body, id)!;
 
-            // SPEC 3.4, 5.4, 10.2 (PLAN G59 U1): a Place selection is borrowed through its own route. Borrowing the slot of a
-            // temporary read from the same selection borrows a snapshot, admitted only as the counted shared borrow of a Copy part,
-            // never for an exclusive or address-producing use, which would update or expose the copy. A Reborrow through a read
-            // stored reference or handle addresses the referent and is not a snapshot.
-            if (body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary, Source: BinaryKoto snapshot } snapshotPlace &&
+            // SPEC 3.4, 5.4, 10.2 (PLAN G59): a Place selection is borrowed through its own route. Borrowing the slot of a temporary
+            // read from the same selection would update, expose or lend a copy, so it never reaches output. A Reborrow through a read
+            // stored reference or handle addresses the referent and is not such a snapshot.
+            if (body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Temporary, Source: BinaryKoto snapshot } &&
                 ReferenceEquals(KotoHelper.UnwrapParentheses(operation.Source), snapshot) && ElementAccess.IsSyntax(snapshot) && !ElementAccess.IsSlicing(snapshot) &&
-                output.Components.Count == 1 && ReferenceTypes.StorageMatches(type, output.Components[0]) &&
-                (output.Semantics is not (SemanticsKind.Ref or SemanticsKind.ObjRef) || operation.LoanMode != LoanRequirement.Ref ||
-                    snapshotPlace.Acquisition != AcquisitionKind.Copy ||
-                    (operation.Source.Parent is ConversionKoto addressConversion && ReferenceEquals(addressConversion.Left, operation.Source) &&
-                        ElementAccess.ConversionKind(addressConversion, body, id) == ConversionBinding.Address)))
+                output.Components.Count == 1 && ReferenceTypes.StorageMatches(type, output.Components[0]))
             {
                 return Fail("A Place borrow requires its Place route, not a temporary read from the selection.", out failure);
             }

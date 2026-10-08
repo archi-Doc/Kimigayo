@@ -1248,7 +1248,7 @@ public sealed partial class OwnershipAnalysis
                     if (operation == ConversionBinding.Address)
                     {
                         var referenceType = this.Resolve(adaptation.AddressBorrow, this.Active)!;
-                        var adaptedBorrow = this.BorrowStruct(conversion.Left, referenceType, address: true);
+                        var adaptedBorrow = this.BorrowStruct(conversion.Left, referenceType);
                         if (adaptedBorrow < 0)
                         {
                             return -1;
@@ -1298,7 +1298,7 @@ public sealed partial class OwnershipAnalysis
                 {
                     // SPEC 5.4: P@raw checks P as an immediately ending shared borrow and converts the borrowed address. The
                     // pointer carries no Origin, so the Loan ends with the borrow's only use.
-                    var borrowed = this.BorrowStruct(conversion.Left, conversion.Right.BoundType!, address: true);
+                    var borrowed = this.BorrowStruct(conversion.Left, conversion.Right.BoundType!);
                     if (borrowed < 0)
                     {
                         return -1;

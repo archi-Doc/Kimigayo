@@ -42,11 +42,7 @@ public class DynamicArraySharedReadTest
     // through the element's own borrow, never as a borrow of a copy.
     [Fact]
     public void ACopyPartIsLentAtASharedExpectation()
-    {
-        const string Source = Task + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar values: Array<Task> = [Task.init(42)]\nshow(values[0].id)";
-        ScalarEmissionTest.EmitFixture("DynamicArraySharedReadCopyPart", Source, "42\ndrop\n");
-        Assert.Equal(0, MinimalEmissionTest.Analyze(Source).Ownership.Bodies.Sum(static x => x.SnapshotBorrows));
-    }
+        => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadCopyPart", Task + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar values: Array<Task> = [Task.init(42)]\nshow(values[0].id)", "42\ndrop\n");
 
     [Theory]
     [InlineData("func make() -> Array<Task> => [Task.init(42)]\nlet item = make()[0]@ref\nlet id = item.id")]
