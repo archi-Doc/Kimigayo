@@ -15,13 +15,14 @@ public sealed partial class OwnershipBody
     private int loanFlowRoot = -1;
     private int[] loanSlots = [];
     private int[] loanProjectionSlots = [];
+    private int[] loanRetentionSlots = [];
 
     // Element payload only: excludes object headers and hash buckets, whose entry capacity is reported separately.
-    internal long LocalRegionStorageBytes => (4L * (this.loanFlow.Length + this.loanSlots.Length + this.loanProjectionSlots.Length + this.retentionStarts.Length + this.referentTargets.Capacity)) +
-        this.loanQueued.Length + ((long)Unsafe.SizeOf<LoanFlowPart>() * this.loanParts.Capacity) + (8L * this.referentWork.Capacity) +
-        ((long)Unsafe.SizeOf<(int, int, int, BoundType, int, bool)>() * this.retentions.Capacity);
+    internal long LocalRegionStorageBytes => (4L * (this.loanFlow.Length + this.loanSlots.Length + this.loanProjectionSlots.Length + this.loanRetentionSlots.Length + this.retentionStarts.Length + this.referentTargets.Capacity)) +
+        this.loanQueued.Length + this.transferredOrigins.Length + ((long)Unsafe.SizeOf<LoanFlowPart>() * this.loanParts.Capacity) + (8L * this.referentWork.Capacity) +
+        ((long)Unsafe.SizeOf<BorrowRetention>() * this.retentions.Capacity);
 
-    internal int LocalRegionIndexCapacity => this.loanPartIndex.EnsureCapacity(0) + this.referentCache.EnsureCapacity(0) + this.referentVisited.EnsureCapacity(0);
+    internal int LocalRegionIndexCapacity => this.loanPartIndex.EnsureCapacity(0) + this.referentCache.EnsureCapacity(0) + this.referentVisited.EnsureCapacity(0) + (this.callInputContracts?.EnsureCapacity(0) ?? 0);
 
     internal int LocalLoanFlowCapacity => this.loanFlow.Length;
 
@@ -32,10 +33,12 @@ public sealed partial class OwnershipBody
     private void PrepareLoanFlow(int root, int count)
     {
         this.loanFlowRoot = -1;
-        var needed = this.transferredOrigins;
+        var needed = this.transferredOrigins[root];
+        var independentInput = this.IsExclusiveBorrowInput(root);
         for (var p = 0; p < count && !needed; p++)
         {
-            needed = this.Function.CodeContext.Compilation.Binding.HasRegionBounds(this.Places[p].Type);
+            // An adapted value's Type may name another exclusive input. Flow must exclude that invented parent too.
+            needed = (independentInput && this.transferredOrigins[p]) || this.Function.CodeContext.Compilation.Binding.HasRegionBounds(this.Places[p].Type);
         }
 
         if (!needed)
@@ -115,7 +118,7 @@ public sealed partial class OwnershipBody
 
             var holder = part.Place;
             if (this.Places[holder].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result) ||
-                this.HasExplicitDependency(holder) || this.HasStoredBorrowRecord(holder, root))
+                this.HasExplicitDependency(holder))
             {
                 return -2;
             }
@@ -157,6 +160,12 @@ public sealed partial class OwnershipBody
                 var record = this.retentions[r];
                 if (record.Referent == holder && this.TypeKeepsRoot(record.Storage, root))
                 {
+                    var target = this.loanRetentionSlots[r];
+                    if (target >= 0 && !this.LoanPartWithin(slot, target))
+                    {
+                        continue;
+                    }
+
                     var incoming = Source(record.Read, record.Stored);
                     retained = Combine(retained, incoming);
                     writes = true;
@@ -266,10 +275,15 @@ public sealed partial class OwnershipBody
                 for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input &&
                     ReferenceEquals(input.Source, operation.Source); entry--)
                 {
-                    if (input.Place >= 0 && this.NamesResultOrigin(this.Places[holder].Type, this.Places[input.Place].Type, includeBounds: true))
+                    if (input.Place >= 0 && this.NamesResultOrigin(this.Places[holder].Type, this.CallInputType(entry), includeBounds: true))
                     {
                         result = Combine(result, Source(entry, input.Place));
                     }
+                }
+
+                if (operation.Input >= 0 && this.NamesResultOrigin(this.Places[holder].Type, this.Places[operation.Input].Type, includeBounds: true))
+                {
+                    result = Combine(result, Source(id, operation.Input));
                 }
 
                 return result == -1 && this.FixedResultKeepsRoot(this.Places[holder].Type, root) ? id : result;
@@ -397,6 +411,29 @@ public sealed partial class OwnershipBody
             }
 
             this.loanParts[slot] = part with { Remainder = retained };
+        }
+
+        // Reuse the same bounded path proof as overlap checks. Unknown or aliased destinations retain the whole owner.
+        Grow(ref this.loanRetentionSlots, this.retentions.Count);
+        Span<int> selectors = stackalloc int[16];
+        for (var r = 0; r < this.retentions.Count; r++)
+        {
+            var record = this.retentions[r];
+            var pointer = record.Pointer;
+            if (pointer >= 0 && this.Operations[pointer] is { Kind: OwnershipOperationKind.CallEntry, Place: >= 0 } entry)
+            {
+                pointer = this.borrowDefinitions[entry.Place];
+            }
+
+            var depth = 0;
+            var owner = pointer >= 0 ? this.ProjectionPath(pointer, selectors, ref depth) : -1;
+            var slot = owner == record.Referent ? this.loanSlots[owner] : -1;
+            for (var i = depth - 1; i >= 0 && slot >= 0; i--)
+            {
+                slot = this.loanPartIndex.TryGetValue((slot, selectors[i]), out var child) ? child : -1;
+            }
+
+            this.loanRetentionSlots[r] = slot;
         }
     }
 

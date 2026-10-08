@@ -40,3 +40,13 @@ request. Timing has no pass/fail threshold; retain every report, including failu
 ```powershell
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --local-regions > artifacts/benchmarks/local-regions.json
 ```
+
+`--fixed-origin-loans` uses the same phases and fixed measurement conditions for premise-based fixed-Origin fits.
+The unchanged `FixedInputValueCall` is a control. Calls, independent borrowed roots and CFG joins grow separately
+at 4/8/16; the inputs and capacity/allocation checks are shared with `CallableRegionScalingTest`. The region
+index count also includes retained call-input contract entries; byte counts exclude dictionary entry payloads
+and buckets. Origin fitting adds no runtime Loan representation or extra acquisition.
+
+```powershell
+dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --fixed-origin-loans > artifacts/benchmarks/fixed-origin-loans.json
+```

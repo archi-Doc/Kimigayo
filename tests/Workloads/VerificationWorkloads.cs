@@ -70,6 +70,11 @@ internal static class VerificationWorkloads
     // Fixed scaling axes shared by functional/allocation checks and opt-in measurements.
     internal static string CallableRegions(string axis, int count)
     {
+        if (axis.StartsWith("fixed-", StringComparison.Ordinal))
+        {
+            return FixedOriginLoans(axis, count);
+        }
+
         var source = new StringBuilder();
         switch (axis)
         {
@@ -126,6 +131,74 @@ internal static class VerificationWorkloads
                 break;
             default:
                 throw new ArgumentOutOfRangeException(nameof(axis));
+        }
+
+        return source.ToString();
+    }
+
+    internal static string FixedOriginLoans(string axis, int count)
+    {
+        if (axis == "fixed-control")
+        {
+            return FixedInputValueCall;
+        }
+
+        var source = new StringBuilder();
+        if (axis == "fixed-roots")
+        {
+            source.Append("func check(x: ref/i32");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append($", z{i}: uniq/i32");
+            }
+
+            source.AppendLine(") -> i32");
+            for (var i = 0; i < count; i++)
+            {
+                source.AppendLine($"    origin z{i} outlives x");
+            }
+
+            source.AppendLine("    let pass = func (value: ref/i32 during x) -> ref/i32 during x => value");
+            for (var i = 0; i < count; i++)
+            {
+                source.AppendLine($"    let r{i} = pass(z{i}@follow@ref)");
+            }
+
+            source.AppendLine("    var sum = 0");
+            for (var i = 0; i < count; i++)
+            {
+                source.AppendLine($"    sum += r{i}@follow");
+            }
+
+            source.AppendLine("    return sum\nlet x: i32 = 0");
+            for (var i = 0; i < count; i++)
+            {
+                source.AppendLine($"var z{i}: i32 = {i}");
+            }
+
+            source.Append("require check(x@ref");
+            for (var i = 0; i < count; i++)
+            {
+                source.Append($", z{i}@uniq");
+            }
+
+            source.AppendLine($") == {count * (count - 1) / 2} else => $abort(\"roots\")");
+        }
+        else if (axis is "fixed-calls" or "fixed-joins")
+        {
+            source.AppendLine("func check(z: uniq/i32, x: ref/i32, flag: bool) -> i32\n    origin z outlives x\n    let pass = func (value: uniq/i32 during x) -> uniq/i32 during x => value");
+            for (var i = 0; i < count; i++)
+            {
+                var call = axis == "fixed-joins" ? "if flag => pass(z) else => pass(z)" : "pass(z)";
+                source.AppendLine($"    let r{i} = {call}\n    r{i}@follow += 1");
+            }
+
+            source.AppendLine($"    return z@follow\nvar z: i32 = 0\nlet x: i32 = 0\nrequire check(z@uniq, x@ref, true) == {count} else => $abort(\"calls\")");
+            source.AppendLine($"z = 0\nrequire check(z@uniq, x@ref, false) == {count} else => $abort(\"joins\")");
+        }
+        else
+        {
+            throw new ArgumentOutOfRangeException(nameof(axis));
         }
 
         return source.ToString();

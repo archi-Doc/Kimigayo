@@ -203,6 +203,24 @@ public sealed partial class Binding
 
         try
         {
+            // Try explicit edges before transitive search. Otherwise unrelated earlier premises can enumerate
+            // cyclic proof paths before reaching a directly stated relation, even for simple scalar inputs.
+            for (var node = use; node is not null; node = node.Parent)
+            {
+                if ((node is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || IsAssociatedRequirement(node)) &&
+                    this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
+                {
+                    foreach (var relation in declaration.Relations)
+                    {
+                        if ((OriginOutlives(longer, relation.Longer) && OriginOutlives(relation.Shorter, shorter)) ||
+                            (relation.Equality && OriginOutlives(longer, relation.Shorter) && OriginOutlives(relation.Longer, shorter)))
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+
             // A borrow of a complete local Place is usable only while every stored
             // dependency is valid. Ownership verifies that availability at each use.
             // This is a premise of borrowing the Place, not a relation declared by
@@ -352,7 +370,7 @@ public sealed partial class Binding
         {
             // SPEC 8.1.1, 15.6.1: in the admitted borrow cases a pair layer is a borrow of its target within its outer-Origin slot,
             // whose well-formedness makes the target's Origins outlive that slot; in the value cases no Type denotes the slot.
-            if ((this.AdmittedSemantics(whole, this.ConstraintScope(use)) & SemanticsMask.Borrow) != 0 && this.OuterOrigin(type) is { } slot &&
+            if (target.CarriesOrigin && (this.AdmittedSemantics(whole, this.ConstraintScope(use)) & SemanticsMask.Borrow) != 0 && this.OuterOrigin(type) is { } slot &&
                 this.ProvesOriginOutlives(slot, shorter, use) && this.ProvesStoredOriginPremise(target, longer, use))
             {
                 return true;
@@ -364,7 +382,7 @@ public sealed partial class Binding
         for (var i = 0; i < type.Components.Count; i++)
         {
             var inner = type.Components[i];
-            if ((IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer && this.ProvesOriginOutlives(outer, shorter, use))
+            if (inner.CarriesOrigin && (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer && this.ProvesOriginOutlives(outer, shorter, use))
             {
                 if (this.ProvesStoredOriginPremise(inner, longer, use))
                 {

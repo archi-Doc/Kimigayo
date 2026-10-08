@@ -252,121 +252,6 @@ public sealed partial class Binding
         }
     }
 
-    // Whether every Origin of an argument is the parameter's own at that position or static, so the argument needs no relation.
-    private static bool OriginsAsWritten(BoundType actual, BoundType expected, Koto? own = null)
-    {
-        if (!SameOrStatic(actual.Origin, expected.Origin) || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < actual.OriginArguments.Count; i++)
-        {
-            if (!SameOrStatic(actual.OriginArguments[i], expected.OriginArguments[i]))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < actual.Components.Count; i++)
-        {
-            if (!ReferenceEquals(actual.Components[i], expected.Components[i]) && !OriginsAsWritten(actual.Components[i], expected.Components[i], own))
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        bool SameOrStatic(BoundOrigin? actual, BoundOrigin? expected) => ReferenceEquals(actual, expected) || actual?.Kind == OriginKind.Static ||
-            (own is not null && expected is { Kind: OriginKind.Input or OriginKind.Parameter } && ReferenceEquals(expected.Binder, own));
-    }
-
-    // SPEC 15.6.5: whether every position at which a parameter names a fixed Origin of a function enclosing the call, rather than an
-    // Origin of the callee itself, receives that Origin as written or static, so the argument's Loans need no extension to that region.
-    private static bool EnclosingOriginsAsWritten(BoundType actual, BoundType expected, Koto callee, Koto use)
-    {
-        if (!Fits(actual.Origin, expected.Origin, callee, use))
-        {
-            return false;
-        }
-
-        if (actual.Kind != expected.Kind || actual.Components.Count != expected.Components.Count || actual.OriginArguments.Count != expected.OriginArguments.Count)
-        {
-            // An implicit borrow adds the parameter's borrow layer, whose Origin was compared above; any other adapted argument has no
-            // position to compare, so only a parameter without such an Origin needs none.
-            return expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && actual.Kind != BoundTypeKind.Semantics
-                ? EnclosingOriginsAsWritten(actual, expected.Components[0], callee, use)
-                : !Names(expected, callee, use);
-        }
-
-        for (var i = 0; i < expected.OriginArguments.Count; i++)
-        {
-            if (!Fits(actual.OriginArguments[i], expected.OriginArguments[i], callee, use))
-            {
-                return false;
-            }
-        }
-
-        for (var i = 0; i < expected.Components.Count; i++)
-        {
-            if (expected.Kind != BoundTypeKind.Function && !ReferenceEquals(actual.Components[i], expected.Components[i]) &&
-                !EnclosingOriginsAsWritten(actual.Components[i], expected.Components[i], callee, use))
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        static bool Fits(BoundOrigin? actual, BoundOrigin? expected, Koto callee, Koto use)
-            => expected is null || ReferenceEquals(actual, expected) || actual?.Kind == OriginKind.Static || !Atom(expected, callee, use);
-
-        static bool Names(BoundType type, Koto callee, Koto use)
-        {
-            if ((type.Origin is { } origin && Atom(origin, callee, use)) || (type.Kind != BoundTypeKind.Function && AnyComponent(type, callee, use)))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (Atom(type.OriginArguments[i], callee, use))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        static bool AnyComponent(BoundType type, Koto callee, Koto use)
-        {
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (Names(type.Components[i], callee, use))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        static bool Atom(BoundOrigin origin, Koto callee, Koto use)
-        {
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (Atom(origin.Operands[i], callee, use))
-                {
-                    return true;
-                }
-            }
-
-            return FixedOrigin(origin) && !ReferenceEquals(origin.Binder, callee) && FixedInBodyOrigin(origin, use);
-        }
-    }
-
     // A fixed Origin of a named function that encloses the use: its input or a parameter Origin of its signature.
     private static bool FixedInBodyOrigin(BoundOrigin origin, Koto use)
         => IsLocalRegion(origin) || (origin.Kind is OriginKind.Projection or OriginKind.Anchor && origin.Binder is not FunctionKoto) ||
@@ -543,16 +428,9 @@ public sealed partial class Binding
                         : this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }
 
-                if (!OriginsAsWritten(adapted, parameter, ownBinder) && this.FitsTypeAt(adapted, parameter, source))
-                {
-                    // Fixed enclosing Origins still require retention through their complete regions (PLAN G65).
-                    this.Fail(source, BindingFailure.Unsupported);
-                    return Complete(call, null);
-                }
-
                 // ArgumentType includes the already selected expected adaptation. Retain the original syntax
                 // Type as the source identity, as ordinary calls do; ownership applies that adaptation once.
-                operations[i] = new(source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i);
+                operations[i] = new(source, source.BoundType, parameter, kind, literal ? ArgumentAdaptation.Literal : quality, ParameterIndex: i, AdaptedType: adapted);
                 instantiated[i] = adapted;
             }
 

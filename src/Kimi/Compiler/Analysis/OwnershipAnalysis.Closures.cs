@@ -182,7 +182,8 @@ public sealed partial class OwnershipAnalysis
             }
             else
             {
-                this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
+                var entry = this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
+                this.body.RecordCallInput(entry, this.Concrete(plan.Arguments[i - mark].ParameterType));
             }
         }
 

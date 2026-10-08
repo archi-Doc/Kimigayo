@@ -13,6 +13,9 @@ public class CallableRegionScalingTest
         { "candidates", 4 }, { "candidates", 8 }, { "candidates", 16 },
         { "results", 4 }, { "results", 8 }, { "results", 16 },
         { "regions", 4 }, { "regions", 8 }, { "regions", 16 },
+        { "fixed-calls", 4 }, { "fixed-calls", 8 }, { "fixed-calls", 16 },
+        { "fixed-roots", 4 }, { "fixed-roots", 8 }, { "fixed-roots", 16 },
+        { "fixed-joins", 4 }, { "fixed-joins", 8 }, { "fixed-joins", 16 },
     };
 
     [Theory]

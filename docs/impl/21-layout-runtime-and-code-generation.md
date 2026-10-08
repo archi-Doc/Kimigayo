@@ -316,6 +316,8 @@ A CAS retry reuses the observed value and rechecks the representation. The heade
 
 A Place result (§7.1.1) `place ref/T` or `place uniq/T` has exactly the ABI of `ref/T` or `uniq/T` under the same Type binding, generation method and contract. This holds for direct and indirect calls, Callable values, and Contract entries and adapters. It is an ABI equality, not a Type identity.
 
+The fixed-Origin contract handoff of SPEC §15.6.4 preserves compiler-side acquisition and destination dependencies. It changes neither the pointer representation nor the call ABI, and adds no runtime Loan holder, reference count or repeated acquisition.
+
 A zero-sized `V` keeps its logical initialization, Loans and destruction. It uses nonnull aligned substitute storage that stays alive for the required uses; one static substitute per alignment may serve several distinct Places. Pointer equality merges neither those Places nor their logical overlap. Size and stride remain zero, lifetimes are not extended, and substitute bytes justify no positive `dereferenceable` attribute; `noalias` follows the call contract of §21.5.5, not substitute addresses.
 
 An unknown-layout generic `V` still uses one borrow pointer. A separate GenericContext is passed only if operations on `V` need it; transferring the borrow alone needs no `V` metadata. Direct value layouts must be finite. If materializing a required temporary needs unsupported storage, a verified adapter or specialization is used, or the use is diagnosed; it is never silently boxed or made unsized.

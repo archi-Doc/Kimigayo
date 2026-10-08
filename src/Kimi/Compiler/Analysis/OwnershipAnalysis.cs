@@ -1818,7 +1818,12 @@ public sealed partial class OwnershipAnalysis
         {
             if (this.arguments[i] >= 0)
             {
-                this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
+                var entry = this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
+                var offset = i - mark - (plan.Receiver is null ? 0 : 1);
+                var contract = offset < 0 ? plan.ReceiverOperation.ParameterType
+                    : offset < plan.ArgumentOperations.Length ? plan.ArgumentOperations[offset].ParameterType
+                    : plan.DefaultArguments[offset - plan.ArgumentOperations.Length].ParameterType;
+                this.body.RecordCallInput(entry, this.Concrete(contract));
             }
             else
             {

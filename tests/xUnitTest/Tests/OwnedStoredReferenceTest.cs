@@ -93,7 +93,12 @@ public class OwnedStoredReferenceTest
         Assert.Equal(!write, c.Ownership.Result.IsVerified);
         if (write)
         {
-            Assert.Contains(c.Ownership.Issues, static x => x.Code == DiagnosticCode.CallActivationConflict_Kd && x.Source.ToString() == "poke(item.0)");
+            // Both preparations reserve the same stored referent; report their overlap at the second lending point.
+            var issue = Assert.Single(c.Ownership.Issues);
+            Assert.Equal(DiagnosticCode.CallReservationConflict_Kd, issue.Code);
+            Assert.Equal("item.0", issue.Source.ToString());
+            Assert.Equal("poke(item.0)", issue.Input?.Call.ToString());
+            Assert.Equal("change3(item.0, poke(item.0))", issue.ConflictingReservation?.Call.ToString());
         }
     }
 

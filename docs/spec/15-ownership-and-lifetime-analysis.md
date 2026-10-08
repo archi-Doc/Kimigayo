@@ -891,6 +891,23 @@ While the returned `Pair` is live, shared Loans on both `a` and `b` remain activ
 
 Receiver and argument protection begins when the Borrow or Reborrow is formed, in evaluation order. Eligible exclusive borrows start with the call reservation of §15.6.7; other Loans are active immediately. After activation, call protection lasts through the entire call, including callee cleanup, not merely until the callee's last use, and extends for dependent results. Intrinsics and collection methods follow the same rules. These checks supply the call-wide attribute proof of §21.5.5.
 
+**Actual Loans and contract destinations.** Fitting an acquired value to a parameter over a fixed Origin preserves its actual Loans, access paths and parent authority. The instantiated public contract determines which results and writable storage may retain that value. Each such destination receives its possible incoming Loans, including nested stored values and storage reached through a Closure's captures. This rule applies to direct and indirect calls alike, without inspecting a private callee body. A Function Type's signature alone holds no Loan.
+
+Retention starts on the paths that enter the call and follows the values actually carried by each possible destination. A later read inherits the dependencies reaching that storage; an unrelated pre-existing value with the same Origin does not. Complete replacement ends the replaced contents' dependencies, partial replacement preserves the other parts, and copies, moved values and cleanup uses retain their own dependencies. Discarding a result, including a Unit result, does not end a dependency held elsewhere. When no live destination retains a child Loan, the parent resumes the access permitted by §15.6.3. An unproven absence of retention never permits access.
+
+An Origin relation proves lifetime compatibility, not storage identity or a mandatory Loan duration. Equality, equivalent `outlives` premises and an earlier local Type fit cannot create, erase or prolong a Loan merely by changing how the same relation is written. In particular, fitting to a fixed Origin does not keep every acquired Loan active throughout that Origin's entire region.
+
+```kimi
+func use(source: uniq/i32, bound: ref/i32) -> i32
+    origin source outlives bound
+    func pass(value: uniq/i32 during bound) -> uniq/i32 during bound => value
+    let child = pass(source)
+    child@follow = 42
+    return source@follow // The child has no remaining use or other holder.
+```
+
+If `pass` also accepts writable storage whose contract can retain `value`, that storage remains a possible holder independently of `child`. Access through `source` must wait until all conflicting retained dependencies end.
+
 **Static call effects.** Each callable's summary lists the static storage keys (§22.2.4) it may access and its read, shared or exclusive borrow, write, replacement and destruction effects, including those of callees, defaults, lazy initialization and cleanup. The summary is compared with active caller Loans by the normal overlap rules, and a conflict is the Language Error `ComparisonLoanConflict_Kd` at the call. Borrowed results keep Field anchors and dependency paths: borrows of immutable sources may be `static`, whereas borrows of mutable sources keep a finite Origin (§15.6.5) under §11.3.2. Static allocation never permits replacing or destroying a borrowed current value.
 
 Summaries distinguish first-access initialization effects from ordinary accesses. A direct static access in a body has the same first-access initialization effects and is checked against active Loans like a call. A live Loan anchored to a Field proves that the Field has completed initialization, so its initializer need not be counted again; it proves nothing about an unrelated Field that the callee accesses first. If a result may derive from several static Fields, every possible anchor is kept, whatever runtime branch is taken.

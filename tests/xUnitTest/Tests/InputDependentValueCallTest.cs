@@ -107,21 +107,12 @@ public class InputDependentValueCallTest
         ScalarEmissionTest.EmitFixture("FixedInputCall" + name, source, string.Empty);
     }
 
-    // F1 (PLAN G65): a fixed input was taken for a per-call input when its slot number coincided with the parameter's position, so a
-    // local borrow passed for it and the stored result dangled. The relation is now judged at the argument; a fixed Origin of the
-    // calling body other than an enclosing function's input is a chain between body Origins, a located limit at the argument. An argument that fits a fixed-Origin
-    // input only through a premise would need its Loans kept for that Origin's whole region, which ownership does not do yet; it was
-    // accepted and a stashed or returned alias saw later writes (review of 2549bce2), so it is a located limit at the argument. A
-    // nested named function's parameter over an enclosing input is the same limit (review p60, p68; both printed 40).
+    // A fixed input is fitted as written; a finite local cannot satisfy an enclosing fixed Origin.
     [Theory]
     [InlineData(Swap + "    if x@follow > 0\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
     [InlineData("func use(y: i32, x: ref/i32) -> ref/i32 during x\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    if x@follow > y\n        let local: i32 = 5\n        c(local@ref)\n    return c(x)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
     [InlineData("func use(x: ref/i32) -> i32\n    let c = func (n: ref/i32 during x) => n@follow\n    let local: i32 = 5\n    return c(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref")]
     [InlineData("func use() -> i32\n    let x: i32 = 4\n    let r = x@ref\n    let start = r\n    var c = func [var start] (n: ref/i32 during r) -> ref/i32 during r\n        let old = start\n        start = n\n        return old\n    if x > 0\n        let y: i32 = 5\n        c(y@ref)\n    let z = c(r)\n    return z@follow\n", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let y: i32 = 5\n        c(y@ref)")]
-    [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    let c = func (b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = c(z)\n    r@follow = 1\n    return z@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z")]
-    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z@follow@ref")]
-    [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    func helper(b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = helper(z)\n    let view = z@follow@ref\n    r@follow = view@follow + 40\n    return view@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z")]
-    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    func helper(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    var holder: ref/i32 during x = x\n    helper(holder@uniq, z@follow@ref)\n    z@follow = 41\n    return holder@follow\n", nameof(DiagnosticCode.UnsupportedBinding_Kd), "z@follow@ref")]
     public void AFixedInputIsNoPerCallInput(string body, string code, string text)
     {
         var source = body + "public func main() => ()\n";
@@ -129,6 +120,28 @@ public class InputDependentValueCallTest
         Assert.NotEmpty(errors);
         Assert.All(errors, x => Assert.Equal(code, x.Code));
         Assert.Equal(text, errors[0].Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty);
+    }
+
+    // G65: the original fixed-input reproductions now use ordinary retention and conflict diagnostics.
+    [Theory]
+    [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    let c = func (b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = c(z)\n    r@follow = 1\n    return z@follow\n", true)]
+    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    var holder: ref/i32 during x = x\n    var c = func [holder@uniq] (b: ref/i32 during x) -> i32\n        holder@follow = b\n        return 0\n    c(z@follow@ref)\n    return holder@follow\n", true)]
+    [InlineData("func use(x: ref/i32, z: uniq/i32) -> i32\n    origin z outlives x\n    func helper(b: uniq/i32 during x) -> uniq/i32 during x => b\n    let r = helper(z)\n    let view = z@follow@ref\n    r@follow = view@follow + 40\n    return view@follow\n", false)]
+    [InlineData("func use(z: uniq/i32, x: ref/i32) -> i32\n    origin z outlives x\n    func helper(h: uniq/(ref/i32 during x), b: ref/i32 during x) -> i32\n        h@follow = b\n        return 0\n    var holder: ref/i32 during x = x\n    helper(holder@uniq, z@follow@ref)\n    z@follow = 41\n    return holder@follow\n", false)]
+    public void FixedInputsPreserveTheirActualLoans(string body, bool valid)
+    {
+        var source = body + "\npublic func main() => ()";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        if (valid)
+        {
+            Assert.Empty(errors);
+        }
+        else
+        {
+            var error = Assert.Single(errors);
+            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+            Assert.Equal("z", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        }
     }
 
     // SPEC 15.6.4: a value call through a Function Type whose result is written over an input of the enclosing function binds as an

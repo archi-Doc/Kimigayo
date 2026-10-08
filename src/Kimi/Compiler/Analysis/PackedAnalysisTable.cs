@@ -4,7 +4,7 @@ using System.Runtime.CompilerServices;
 
 namespace Kimi.Compiler;
 
-// Dense Boolean and three-state Loan tables retain constant-time indexed access without a byte per cell.
+// Dense Boolean and Loan/authority tables retain constant-time indexed access without a byte per cell.
 internal struct PackedAnalysisTable(int bits)
 {
     private readonly int indexShift = bits == 1 ? 3 : 2;

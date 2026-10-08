@@ -9,6 +9,12 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length > 0 && args[0] == "--fixed-origin-loans")
+        {
+            CompilerPlanMeasurements.Run(fixedOrigins: true);
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--arithmetic-plans")
         {
             CompilerPlanMeasurements.Run(arithmetic: true);

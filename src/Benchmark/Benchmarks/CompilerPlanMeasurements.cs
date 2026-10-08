@@ -18,11 +18,13 @@ internal static class CompilerPlanMeasurements
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false, bool adaptations = false, bool arithmetic = false)
+    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false, bool adaptations = false, bool arithmetic = false, bool fixedOrigins = false)
     {
-        var allPhases = callable || views || regions || properties || inheritance || adaptations || arithmetic;
+        var allPhases = callable || views || regions || properties || inheritance || adaptations || arithmetic || fixedOrigins;
         var results = new List<object>();
-        var workloads = arithmetic ? ArithmeticWorkloads.Names.Select(static name => (name, 0)).ToArray() : adaptations
+        var workloads = fixedOrigins
+            ? new[] { ("fixed-control", 0), ("fixed-calls", 4), ("fixed-calls", 8), ("fixed-calls", 16), ("fixed-roots", 4), ("fixed-roots", 8), ("fixed-roots", 16), ("fixed-joins", 4), ("fixed-joins", 8), ("fixed-joins", 16) }
+            : arithmetic ? ArithmeticWorkloads.Names.Select(static name => (name, 0)).ToArray() : adaptations
             ? new[] { ("adaptation-cases", 1), ("adaptation-cases", 8), ("adaptation-cases", 32) }
             : inheritance
             ? new[] { ("milestone25", 0), ("inheritance-depth", 1), ("inheritance-depth", 8), ("inheritance-depth", 32), ("inheritance-width", 8), ("inheritance-width", 32) }
@@ -32,7 +34,7 @@ internal static class CompilerPlanMeasurements
         foreach (var (name, size) in workloads)
         {
             var stored = name == "stored";
-            var source = arithmetic ? ArithmeticWorkloads.Create(name) : name switch
+            var source = fixedOrigins ? VerificationWorkloads.FixedOriginLoans(name, size) : arithmetic ? ArithmeticWorkloads.Create(name) : name switch
             {
                 "milestone24" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone24.kimi")),
                 "milestone25" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone25.kimi")),
@@ -55,7 +57,7 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
