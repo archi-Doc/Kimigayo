@@ -1,4 +1,8 @@
 [
+  { "Name": "array-type-missing-length", "Source": "let n: [i32]\nlet next = 2\n", "Intended": "a Type where a length belongs fails once; the unavailable array head does not invent further of/element failures",
+    "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "ArrayLength", "At": "i32", "Found": "i32" } ] },
+  { "Name": "array-type-ungrouped-length", "Source": "let n: [-1 of Missing]\n", "Intended": "the compound length needs parentheses and its independent element Type is still checked as a Type",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "CompoundArrayLength", "At": "-1" }, { "Code": "UnresolvedBinding_Kd", "At": "Missing" } ] },
   { "Name": "outer-closer-with-missing-inner", "Source": "let n = ([1)\nlet next = 2\n", "Intended": "a written outer closer supplies only the missing intermediate closer and retains the next declaration",
     "Records": [ { "Code": "MissingSyntax_Kd", "Form": "CloseBracket", "After": "[1", "Related": [{"Role": "opening delimiter", "At": "[", "Length": 1}], "Repairs": [{"Kind": "Repair.InsertToken", "Edits": [{"After": "[1", "Text": "]"}]}] } ] },
   { "Name": "conditional-premise-missing-is", "Source": "contract C\nstruct S<T>\n    Self is C when T is Copy, T\npublic func main() => ()\n", "Intended": "a malformed later premise is retained and cannot weaken the conditional conformance",

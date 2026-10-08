@@ -311,19 +311,32 @@ public static partial class Parser
         }
         else
         {
-            length = ParseArrayLength(ref reader);
+            // Read the complete arithmetic shape once, then require grouping for a compound length. This preserves
+            // 'of' and the independent element Type even when the written length omitted its parentheses.
+            length = ParseArrayLength(ref reader, expression: true);
+            CheckArrayLengthSyntax(ref reader, length);
         }
 
+        DiagnosticKey? cause = null;
+        Koto element;
         if (reader.IsCurrentIdentifier("of"))
         {
             reader.Advance();
         }
+        else if (length is ErrorKoto failed)
+        {
+            // The head supplied no length, so do not guess another interpretation of the remainder or report
+            // 'of'/element failures caused by that guess. Recovery stays inside this bracket pair.
+            reader.SkipListItem();
+            element = new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = failed.Cause };
+            reader.ExpectCloser(TokenKind.CloseBracket, out var end);
+            return new FixedArrayTypeKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, end.End)), length, element);
+        }
         else
         {
-            reader.Expect(SyntaxForm.OfKeyword);
+            cause = reader.Expect(SyntaxForm.OfKeyword);
         }
 
-        Koto element;
         if (reader.AllowArrayElementInference && reader.CurrentTokenKind == TokenKind.Underscore)
         {
             element = new TypeSemanticsKoto(ref reader, reader.Read());
@@ -338,8 +351,20 @@ public static partial class Parser
             reader.AllowArrayElementInference = allowInference;
         }
 
-        reader.ExpectCloser(TokenKind.CloseBracket, out var close);
-        return new FixedArrayTypeKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, Math.Max(element.Span.End, close.End))), length, element);
+        var unclosed = reader.ExpectCloser(TokenKind.CloseBracket, out var close);
+        var array = new FixedArrayTypeKoto(ref reader, SourceSpan.FromBounds(start, Math.Max(start, Math.Max(element.Span.End, close.End))), length, element);
+        RecoverItem(ref reader, array, cause ?? unclosed);
+        return array;
+    }
+
+    // Types and fill literals use the same surface grammar (SPEC 4.2); Binding checks constant eligibility and value.
+    private static void CheckArrayLengthSyntax(ref TokenReader reader, Koto length)
+    {
+        if (length is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or ParenthesizedKoto or ErrorKoto) &&
+            length.CodeContext.RecoveryCause(length) is null)
+        {
+            RecoverItem(ref reader, length, length.Unexpected(SyntaxForm.CompoundArrayLength));
+        }
     }
 
     private static Koto ParseArrayLength(ref TokenReader reader, int precedence = 0, bool expression = false)
@@ -364,17 +389,27 @@ public static partial class Parser
             if (!number.IsInteger)
             {
                 reader.Diagnostic.Add(token.Span, DiagnosticCode.InvalidNumericLiteral_Kd);
+                RecoverItem(ref reader, number, reader.Diagnostic.LastError);
             }
 
             left = number;
         }
-        else
+        else if ((token.Kind.IsIdentifierOrContextualKeyword() && !reader.IsCurrentIdentifier("of")) || token.Kind == TokenKind.ColonColon)
         {
             left = reader.CurrentTokenKind == TokenKind.ColonColon ? ParseRootName(ref reader, false) : ParseName(ref reader);
             while (reader.TryConsume(TokenKind.Dot))
             {
                 var right = ParseName(ref reader);
                 left = new MemberAccessKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, right.Span.End), left, right);
+            }
+        }
+        else
+        {
+            var cause = reader.Expect(SyntaxForm.ArrayLength);
+            left = new ErrorKoto(ref reader, reader.InsertionSpan) { Cause = cause };
+            if (reader.CanRead && !IsExpressionBoundary(ref reader) && !reader.IsCurrentIdentifier("of"))
+            {
+                reader.Advance();
             }
         }
 

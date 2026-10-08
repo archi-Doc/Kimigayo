@@ -4405,11 +4405,7 @@ Separator:
         reader.SkipSeparators();
         if (reader.IsCurrentIdentifier("of"))
         {
-            // SPEC 4.2: compound lengths must be parenthesized. Binding checks the constant grammar.
-            if (first is not (NumberLiteralKoto { IsInteger: true } or IdentifierNameKoto or MemberAccessKoto or ParenthesizedKoto))
-            {
-                first.Unexpected(SyntaxForm.CompoundArrayLength);
-            }
+            CheckArrayLengthSyntax(ref reader, first);
 
             reader.Advance();
             reader.SkipSeparators();

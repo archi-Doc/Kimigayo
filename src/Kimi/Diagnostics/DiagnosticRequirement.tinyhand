@@ -343,6 +343,11 @@
     Phrase="compound length before 'of'"
     Advice="Parenthesize a compound length: [(n + 1) of value] (SPEC 4.2)."
 
+  + Name="Syntax.ArrayLength"
+    Description="an array length is an integer literal, a constant Name or a parenthesized integer expression"
+    Phrase="array length"
+    Advice="Write the length before 'of' and the element Type or value; parenthesize a compound length (SPEC 4.2)."
+
   + Name="Syntax.FunctionParameterList"
     Description="a Function Type has a Function Parameter List"
     Phrase="Function Parameter List before '->'"

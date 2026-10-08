@@ -386,6 +386,13 @@ public sealed partial class Binding
 
     private BoundLength? BindLength(Koto syntax, BindingScope scope)
     {
+        if (IsRecovery(syntax, out _))
+        {
+            this.BindNode(syntax, scope);
+            this.Fail(syntax, BindingFailure.InvalidTypeFormation);
+            return null;
+        }
+
         if (IsArrayHole(syntax))
         {
             this.Consulted(syntax);

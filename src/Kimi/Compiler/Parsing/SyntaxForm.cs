@@ -269,4 +269,7 @@ public enum SyntaxForm : ushort
 
     /// <summary>The 'is' between a Constraint subject and its requirement.</summary>
     IsKeyword,
+
+    /// <summary>An integer literal, constant Name or parenthesized integer expression used as an array length.</summary>
+    ArrayLength,
 }
