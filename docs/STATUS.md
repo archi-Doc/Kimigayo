@@ -1,5 +1,7 @@
 # Kimigayo Implementation Status
 
+**Layout recovery (2026-10-08; SPEC §2.2):** leading-dot continuations after outer-aligned closers retain their expression and enclosing body. Delimiters shared by a body header close with that construct, preserving aligned `else` joins and independent following statements. Over-indented grouping content reports indentation without inventing a body. `LayoutRecoveryTest` covers syntax, native execution, CLI/LSP records and zero-allocation pooled tokenization; `SourceEncodingTest` covers the allocation-free Unicode scan. Mismatched-closer and malformed nested-token recovery remain G60.
+
 **Arithmetic Contracts (2026-10-08):** the eleven [standard Contracts](spec/arithmetic-contracts.md) and built-in numeric witnesses are implemented through the common conformance, call, ownership and emission paths.
 
 - Ordinary, numeric-left and unary operators support Non-Copy structs/enums, distinct or externally borrowed Output, reference layers and generic premises. Provider eligibility, finite structural selection, conditional ambiguity and direction conflicts are checked before Origin/acquisition fitting; expected results never select a provider. Floating-point literal-only fitting is shared with calls, comparisons, branches and aggregates.

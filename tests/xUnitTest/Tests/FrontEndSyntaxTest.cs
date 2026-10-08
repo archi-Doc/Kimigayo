@@ -236,18 +236,4 @@ public class FrontEndSyntaxTest
         AssertValid(restored);
         Assert.Equal(literal, Assert.IsType<FieldKoto>(Assert.Single(restored.GeneratedFunction!.Body!.Items)).InitializerKoto!.ToString());
     }
-
-    private static void VerifyParents(Koto parent)
-    {
-        foreach (var child in parent.ChildNodes)
-        {
-            Assert.Same(parent, child.Parent);
-            if (parent.CodeContext.SourceDocument is not null)
-            {
-                Assert.Same(parent.CodeContext.SourceDocument, child.CodeContext.SourceDocument);
-            }
-
-            VerifyParents(child);
-        }
-    }
 }

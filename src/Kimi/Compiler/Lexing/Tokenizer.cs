@@ -180,7 +180,7 @@ internal ref struct Tokenizer
         var offset = this.position;
         while (offset < this.sourceText.Length)
         {
-            var relative = this.sourceText[offset..].IndexOfAnyInRange('\uD800', '\uDFFF');
+            var relative = IndexOfSurrogate(this.sourceText[offset..]);
             if (relative < 0)
             {
                 break;
@@ -214,6 +214,40 @@ internal ref struct Tokenizer
             IndentSource.Brace => TokenKind.CloseBrace,
             _ => throw new UnreachableException(),
         };
+
+    // IndexOfAnyInRange<char> boxes its bounds before full optimization on the supported runtime. Keep this
+    // source-wide check allocation-free from its first call, with the same vector width as identifier scanning.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static int IndexOfSurrogate(ReadOnlySpan<char> span)
+    {
+        ref var start = ref MemoryMarshal.GetReference(span);
+        var index = 0;
+        if (Vector128.IsHardwareAccelerated)
+        {
+            var last = span.Length - Vector128<ushort>.Count;
+            while (index <= last)
+            {
+                var values = Vector128.LoadUnsafe(ref Unsafe.As<char, ushort>(ref start), (nuint)index);
+                var matches = Vector128.Equals(values & Vector128.Create((ushort)0xF800), Vector128.Create((ushort)0xD800)).ExtractMostSignificantBits();
+                if (matches != 0)
+                {
+                    return index + BitOperations.TrailingZeroCount(matches);
+                }
+
+                index += Vector128<ushort>.Count;
+            }
+        }
+
+        for (; index < span.Length; index++)
+        {
+            if (char.IsSurrogate(span[index]))
+            {
+                return index;
+            }
+        }
+
+        return -1;
+    }
 
     /// <summary>Gets the syntax form of the closing delimiter an open grouping needs.</summary>
     private static SyntaxForm CloserForm(TokenKind closingKind)
@@ -797,6 +831,18 @@ LineContent:
 
         if (indentDelta > 0)
         {
+            if (this.nonBlockDepth > 0 && !this.PreviousLineStartsBody())
+            {
+                // Extra indentation cannot invent an executable body inside a grouping. Keep its content in the
+                // existing delimiter region, whose written closer still closes it at the original baseline.
+                if (unnecessarySpaces == 0)
+                {
+                    this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                }
+
+                goto Loop;
+            }
+
             this.AddToken(new(TokenKind.Separator, this.CurrentRange));
             separatorInserted = true;
 
@@ -821,10 +867,13 @@ LineContent:
             // Otherwise, recover by treating the grouping construct as implicitly closed,
             // remove it from the indentation stack, and report a missing delimiter.
 
-            var hasTrailingContentOnCurrentLine = false;
+            var closedDelimiter = false;
             var indentationMismatch = false;
+            var branchJoin = this.span.StartsWith("else") && (this.span.Length == 4 || TokenHelper.IsSeparator(this.span[4]));
 
-            for (var i = indentDelta; i < 0; i++)
+            // A header delimiter shares the body's baseline, but remains an explicit delimiter. After the body
+            // closes, discharge it too unless an aligned branch joins the construct inside it.
+            for (var i = indentDelta; i < 0 || (!branchJoin && this.indentCount > 0 && this.indentStack[this.indentCount - 1].SharesBodyIndent); i++)
             {
                 if (this.indentCount > 0)
                 {
@@ -848,26 +897,10 @@ LineContent:
                     }
                     else if (this.TryCloseIndentSourceByCurrentToken(indentSource))
                     {
-                        // Content after an outer-indented closing delimiter remains part of
-                        // the same logical line, even when separated from the delimiter by spaces.
-                        //
-                        // Example:
-                        //     foo(
-                        //         a
-                        //     ) + 1
-                        //
-                        // A newline or single-line comment still ends the logical line. Finish
-                        // processing the remaining indentation sources before continuing so that
-                        // enclosing blocks are closed correctly.
+                        // The closer completes part of this logical line. Continue through its newline as well:
+                        // the next effective line may still extend the expression with a leading-dot chain.
                         this.Slice(CountSpaces(this.span));
-
-                        hasTrailingContentOnCurrentLine =
-                            !this.span.IsEmpty &&
-                            this.span[0] != Constants.CrChar &&
-                            this.span[0] != Constants.LfChar &&
-                            !(this.span.Length >= 2 &&
-                                this.span[0] == Constants.SlashChar &&
-                                this.span[1] == Constants.SlashChar);
+                        closedDelimiter = true;
 
                         continue;
                     }
@@ -901,7 +934,7 @@ LineContent:
                 }
             }
 
-            if (hasTrailingContentOnCurrentLine && !indentationMismatch)
+            if (closedDelimiter && !indentationMismatch)
             {
                 goto Loop;
             }

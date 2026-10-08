@@ -9,6 +9,20 @@ namespace XunitTest;
 
 internal static class ParseTestHelper
 {
+    internal static void VerifyParents(Koto parent)
+    {
+        foreach (var child in parent.ChildNodes)
+        {
+            Assert.Same(parent, child.Parent);
+            if (parent.CodeContext.SourceDocument is not null)
+            {
+                Assert.Same(parent.CodeContext.SourceDocument, child.CodeContext.SourceDocument);
+            }
+
+            VerifyParents(child);
+        }
+    }
+
     internal static string Unparse(Kotonoha tree)
     {
         var builder = default(IndentedStringBuilder);
