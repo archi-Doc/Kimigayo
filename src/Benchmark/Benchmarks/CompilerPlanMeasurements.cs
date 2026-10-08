@@ -18,11 +18,13 @@ internal static class CompilerPlanMeasurements
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false, bool adaptations = false, bool arithmetic = false, bool fixedOrigins = false)
+    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false, bool adaptations = false, bool arithmetic = false, bool fixedOrigins = false, bool defaults = false)
     {
-        var allPhases = callable || views || regions || properties || inheritance || adaptations || arithmetic || fixedOrigins;
+        var allPhases = callable || views || regions || properties || inheritance || adaptations || arithmetic || fixedOrigins || defaults;
         var results = new List<object>();
-        var workloads = fixedOrigins
+        var workloads = defaults
+            ? new[] { ("siblings", 4), ("siblings", 8), ("siblings", 16), ("depth", 1), ("depth", 4), ("depth", 8) }
+            : fixedOrigins
             ? new[] { ("fixed-control", 0), ("fixed-calls", 4), ("fixed-calls", 8), ("fixed-calls", 16), ("fixed-roots", 4), ("fixed-roots", 8), ("fixed-roots", 16), ("fixed-joins", 4), ("fixed-joins", 8), ("fixed-joins", 16) }
             : arithmetic ? ArithmeticWorkloads.Names.Select(static name => (name, 0)).ToArray() : adaptations
             ? new[] { ("adaptation-cases", 1), ("adaptation-cases", 8), ("adaptation-cases", 32) }
@@ -34,7 +36,7 @@ internal static class CompilerPlanMeasurements
         foreach (var (name, size) in workloads)
         {
             var stored = name == "stored";
-            var source = fixedOrigins ? VerificationWorkloads.FixedOriginLoans(name, size) : arithmetic ? ArithmeticWorkloads.Create(name) : name switch
+            var source = defaults ? VerificationWorkloads.GenericDefaults(name, size) : fixedOrigins ? VerificationWorkloads.FixedOriginLoans(name, size) : arithmetic ? ArithmeticWorkloads.Create(name) : name switch
             {
                 "milestone24" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone24.kimi")),
                 "milestone25" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone25.kimi")),
@@ -57,7 +59,7 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(defaults ? "generic-defaults.kimi" : fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
@@ -99,7 +101,8 @@ internal static class CompilerPlanMeasurements
                 var regionPayloadBytes = c.Ownership.Bodies.Sum(static body => body.LocalRegionStorageBytes);
                 var regionIndexCapacity = c.Ownership.Bodies.Sum(static body => body.LocalRegionIndexCapacity);
                 var peakRegionCells = c.Ownership.Bodies.Sum(static body => body.PeakLocalLoanCells);
-                results.Add(new { name, size, stored, phase, packedTableBytes, regionPayloadBytes, regionIndexCapacity, peakRegionCells, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
+                var defaultContexts = c.Ownership.Bodies.Sum(static body => body.DefaultContexts?.Count ?? 0);
+                results.Add(new { name, size, stored, phase, packedTableBytes, regionPayloadBytes, regionIndexCapacity, peakRegionCells, defaultContexts, sourceSha256 = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(source))), millisecondsPerIteration = milliseconds, bytesPerSample = bytes });
 
                 void RunOnce()
                 {

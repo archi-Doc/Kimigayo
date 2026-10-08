@@ -129,6 +129,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 | `Benchmark --borrow-storage` | [BorrowStorage.md](../../src/Benchmark/BorrowStorage.md) |
 | `Benchmark --object-plans` | [ObjectPlans.md](../../src/Benchmark/ObjectPlans.md) |
 | `Benchmark --adaptation-plans` | [Adaptations.md](../../src/Benchmark/Adaptations.md) |
+| `Benchmark --generic-defaults` | [GenericDefaults.md](../../src/Benchmark/GenericDefaults.md) |
 | `Benchmark --view-plans` | [Views.md](../../src/Benchmark/Views.md) |
 | `Benchmark --associated-inference` | [AssociatedInference.md](../../src/Benchmark/AssociatedInference.md); shared explicit/inferred declaration workloads, cold/warm costs and retained capacities. |
 | `Benchmark --constructor-inference` | [ConstructorInference.md](../../src/Benchmark/ConstructorInference.md) |

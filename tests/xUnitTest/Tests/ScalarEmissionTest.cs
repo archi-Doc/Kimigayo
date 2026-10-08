@@ -146,14 +146,21 @@ public class ScalarEmissionTest
 
     internal static void WriteFixture(string name, string ir, string stdout, int exit = 0, string? stderr = null, int timeoutMilliseconds = 0)
     {
-        var path = Environment.GetEnvironmentVariable("KIMI_FIXTURE_DIRECTORY") ??
-            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/scalar-fixtures"));
-        Directory.CreateDirectory(path);
+        var path = FixtureDirectory();
         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
         File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);
         File.WriteAllText(Path.Combine(path, name + ".exit"), exit.ToString(System.Globalization.CultureInfo.InvariantCulture));
         File.WriteAllText(Path.Combine(path, name + ".timeout"), timeoutMilliseconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
         var column = name is "OverflowAdd" or "OverflowNeg" ? 5 : 1;
         File.WriteAllText(Path.Combine(path, name + ".stderr"), stderr ?? (exit == 0 ? string.Empty : $"Hello.kimi:2:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"));
+    }
+
+    // The native fixture directory of this run; Verify places it in the run's evidence.
+    internal static string FixtureDirectory()
+    {
+        var path = Environment.GetEnvironmentVariable("KIMI_FIXTURE_DIRECTORY") ??
+            Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../../temp/scalar-fixtures"));
+        Directory.CreateDirectory(path);
+        return path;
     }
 }

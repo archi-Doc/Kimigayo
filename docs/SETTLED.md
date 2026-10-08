@@ -190,3 +190,20 @@
 - **Example:** A push to `dev`, a pull request update, and its merge into `main` can each run the same full test suite.
 - **Proposed fix:** Run `.github/workflows/test.yml` on `dev` pushes, pull requests, or manual dispatch as well as `main` pushes.
 - **Why not applied:** The extra runs add substantial test load. Keep this workflow restricted to pushes to `main`, including merge updates. Do not add `dev`, pull request, or manual triggers. Local verification remains part of the implementation workflow.
+
+## Instance-evaluated generic defaults
+
+- **Problem:** An omitted generic default is checked once at its declaration and evaluated again inline in each caller (§7.2.3, §8.10). Every declared Type, call and acquisition of that inline replica must be interpreted in the replica's own context, or it disagrees with the declaration check.
+- **Example:**
+
+  ```kimi
+  group Helpers
+      public func evaluate<T>(a: T, same: bool = a.equals(a)) -> bool
+          T is Equatable
+          return same
+
+  Console.writeLine("\(Helpers.evaluate(4))")   // The replica's `a.equals` is the call with T = i32
+  ```
+
+- **Proposed fix:** Evaluate generic defaults as instantiated plans or instance evaluator functions, removing the per-operation default stage of interpretation.
+- **Why not applied:** Inline replicas keep the specified evaluation order, prepared-slot protections and cleanup. Each replica operation and Place records one interpretation context whose composed substitution and proof anchor resolve declared information once, and a generated matrix checks that every placement agrees with an ordinary generic body. Reconsider only when a consumer cannot obtain its context from an operation, Place or plan record; one context needs more than one proof environment; a defect needs analysis to be re-run rather than a context selected; or a fixed-condition measurement regresses beyond run-to-run variation that bounded context reuse cannot remove.

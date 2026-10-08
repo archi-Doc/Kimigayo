@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
@@ -19,6 +20,18 @@ public class GenericDefaultTest
     private const string Requirement = "group Helpers\n    public func evaluate<T>(a: T, same: bool = a.equals(a)) -> bool\n        T is Equatable\n        return same\n";
     private const string Pair = "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let pair: (Option<T>, string) = (.Some(T.make()), \"s\")\n";
     private const string GenericCall = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = label work: do\n    let copied = copy(x)\n    exit to work copied\n) -> T\n    T is Copy\n    return y\nrequire f(7) == 7 and f(true) else => $abort(\"call\")";
+
+    private enum ReplicaShape
+    {
+        Body,
+        Default,
+        Nested,
+        Forwarded,
+        Copied,
+        SemanticsBody,
+        SemanticsDefault,
+        Repetition,
+    }
 
     [Theory]
     [InlineData("CopyScalar", "func f<T>(x: T, y: T = x) -> T\n    T is Copy\n    return y\nrequire f(3) == 3 and f(true) else => $abort(\"copy\")")]
@@ -159,6 +172,74 @@ public class GenericDefaultTest
         }
     }
 
+    // SPEC 7.2.3, 8.10: a default is an instantiation of its verified declaration. Each snippet is placed mechanically in an ordinary
+    // generic body and in every default context shape; with an accepted declaration, every cell is accepted with the same result and
+    // destructor order. Owner cells, Default cells and repetitions run natively; the coverage record lists every cell.
+    [Theory]
+    [InlineData("Some")]
+    [InlineData("Bound")]
+    [InlineData("Empty")]
+    [InlineData("Transfer")]
+    [InlineData("Partial")]
+    [InlineData("Guard")]
+    [InlineData("Tuple")]
+    [InlineData("Requirement")]
+    public void ReplicasAgreeWithTheirBody(string name)
+    {
+        var snippet = ReplicaSnippet.Find(name);
+        var declaration = MinimalEmissionTest.Analyze(ReplicaSnippet.Prelude + snippet.Declare(ReplicaShape.Default) + "public func main() => ()");
+        Assert.True(declaration.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(declaration, null));
+        var record = new StringBuilder();
+        var failures = new StringBuilder();
+        foreach (var shape in ReplicaSnippet.Shapes)
+        {
+            foreach (var type in snippet.Types)
+            {
+                record.Append(name).Append('\t').Append(shape).Append('\t').Append(type).Append('\t');
+                if (ReplicaSnippet.Skip(shape, type) is { } reason)
+                {
+                    record.Append("skipped\t").Append(reason).Append('\n');
+                    continue;
+                }
+
+                var source = ReplicaSnippet.Prelude + snippet.Declare(shape) + ReplicaSnippet.Run(shape, type);
+                var native = type == "Box" || shape is ReplicaShape.Default or ReplicaShape.Repetition;
+                using var writer = native ? new StringWriter() : TextWriter.Null;
+                if (Check(source, writer) is { } failure)
+                {
+                    failures.Append(shape).Append(' ').Append(type).Append(": ").Append(failure).Append('\n');
+                    record.Append("failed\n");
+                    continue;
+                }
+
+                if (native)
+                {
+                    ScalarEmissionTest.WriteFixture("GenericDefaultContext" + name + shape + type, writer.ToString()!, snippet.Expected(shape, type));
+                }
+
+                record.Append(native ? "native\n" : "checked\n");
+            }
+        }
+
+        File.WriteAllText(Path.Combine(ScalarEmissionTest.FixtureDirectory(), "GenericDefaultContext" + name + ".matrix.tsv"), record.ToString());
+        Assert.True(failures.Length == 0, failures.ToString());
+
+        // An internal fault is recorded with its cell, so the remaining cells still run.
+        static string? Check(string source, TextWriter writer)
+        {
+            try
+            {
+                var c = MinimalEmissionTest.Analyze(source);
+                string? error = null;
+                return c.Ownership.Result.IsVerified && c.Emission.WriteIr(writer, out error) ? null : MinimalEmissionTest.Describe(c, error);
+            }
+            catch (InvalidOperationException exception)
+            {
+                return exception.Message;
+            }
+        }
+    }
+
     [TestClass(DisableParallelization = true)]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
@@ -174,6 +255,195 @@ public class GenericDefaultTest
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
             Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
             Assert.True(valid);
+        }
+
+        // Replica contexts are reused records: sibling expansions and nested defaults rebuild them without allocation.
+        [Theory]
+        [InlineData("siblings", 8)]
+        [InlineData("depth", 4)]
+        public void WarmDefaultContextsAllocateNothing(string axis, int count)
+        {
+            var c = MinimalEmissionTest.Analyze(Verification.VerificationWorkloads.GenericDefaults(axis, count));
+            Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+            Assert.Equal(axis == "depth" ? 2 * (count + 1) : count, c.Ownership.Bodies.Max(static x => x.DefaultContexts?.Count ?? 0));
+            var valid = true;
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+            Assert.True(valid);
+        }
+    }
+
+    // A default's value: its block lines (relative indentation), the lines it prints, whether it destroys one made Box (`drop 5`)
+    // and its result, the sample's `n` when SampleResult is set.
+    private sealed record ReplicaSnippet(string Name, bool Maker, string Head, string[] Lines, string[] Printed, bool MadeDrop, bool SampleResult, int Result)
+    {
+        internal const string Prelude = "contract Maker\n    func make() -> Self\n    func size(self: ref/Self) -> i32\n" +
+            "struct Box\n    Self is Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Box.init(5)\n    public func size(self: ref/Self) -> i32 => self.n\n    drop => Console.writeLine(\"drop \\(self.n)\")\n" +
+            "struct Pt\n    Self is Copy and Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Pt.init(5)\n    public func size(self: ref/Self) -> i32 => self.n\n" +
+            "struct Quiet\n    Self is Maker\n    public var text: string\n    public var n: i32\n    public init(n: i32)\n        self.text = \"q\"\n        self.n = n\n    public func make() -> Self => Quiet.init(5)\n    public func size(self: ref/Self) -> i32 => self.n\n";
+
+        internal static readonly ReplicaShape[] Shapes = Enum.GetValues<ReplicaShape>();
+
+        private static readonly string[] MakerTypes = ["Box", "Pt", "Quiet"];
+        private static readonly string[] AnyTypes = ["Box", "Pt", "Quiet", "i32", "string"];
+        private static readonly string[] Arms = ["match pending@move", "    .Some(_) => exit to result 1", "    .None => exit to result 0"];
+        private static readonly string[] BoundArms = ["match pending@move", "    .Some(let value) => exit to result 1", "    .None => exit to result 0"];
+        private static readonly ReplicaSnippet[] All =
+        [
+            new("Some", true, "label result: do", ["let pending: Option<T> = .Some(T.make())", .. Arms], [], true, false, 1),
+            new("Bound", true, "label result: do", ["let pending: Option<T> = .Some(T.make())", .. BoundArms], [], true, false, 1),
+            new("Empty", false, "label result: do", ["let pending: Option<T> = .None", .. BoundArms], [], false, false, 0),
+            new("Transfer", true, "label result: do", ["let made = T.make()", "let pending: Option<T> = .Some(made@move)", .. Arms], [], true, false, 1),
+            new("Partial", true, "label result: do", ["let pair: (Option<T>, string) = (.Some(T.make()), \"s\")", "let first = pair.0@move", "Console.writeLine(pair.1)", "exit to result 1"], ["s"], true, false, 1),
+            new("Guard", true, "label result: do", ["let pending: Option<T> = .Some(T.make())", "match pending@move", "    .Some(_) if true => exit to result 1", "    _ => exit to result 0"], [], true, false, 1),
+            new("Tuple", true, "label result: do", ["let pending: Option<(T, i32)> = .Some((T.make(), 2))", "match pending@move", "    .Some((_, let k)) => exit to result k", "    .None => exit to result 0"], [], true, false, 2),
+            new("Requirement", true, "sample.size()", [], [], false, true, 0),
+        ];
+
+        internal string[] Types => this.Maker ? MakerTypes : AnyTypes;
+
+        internal static ReplicaSnippet Find(string name) => Array.Find(All, x => x.Name == name)!;
+
+        internal static string? Skip(ReplicaShape shape, string type) => shape switch
+        {
+            ReplicaShape.Nested when type is "i32" or "string" => "the outer default makes its sample through Maker",
+            ReplicaShape.Copied when type is not ("Pt" or "i32") => "requires Copy evidence",
+            ReplicaShape.Repetition when type == "Box" => "pairs Box with each other Type",
+            _ => null,
+        };
+
+        // The program's statements: each shape calls with a fresh sample `n = 1`; Semantics shapes also lend a held one, and
+        // repetitions pair Box with the Type in both orders.
+        internal static string Run(ReplicaShape shape, string type) => shape switch
+        {
+            ReplicaShape.Nested => Print("outer(" + Value(type, 1) + ")"),
+            ReplicaShape.Forwarded => Print("forward(" + Value(type, 1) + ")"),
+            ReplicaShape.Copied => Print("copied(" + Value(type, 1) + ")"),
+            ReplicaShape.SemanticsBody or ReplicaShape.SemanticsDefault => Print("Helpers.evaluate(" + Value(type, 2) + ")") + "let held = " + Value(type, 1) + "\n" + Print("Helpers.evaluate(held@ref)"),
+            ReplicaShape.Repetition => Print("Helpers.evaluate(Box.init(1)) + Helpers.evaluate(" + Value(type, 2) + ")") + Print("Helpers.evaluate(" + Value(type, 2) + ") + Helpers.evaluate(Box.init(1))"),
+            _ => Print("Helpers.evaluate(" + Value(type, 1) + ")"),
+        };
+
+        // `Helpers.evaluate` with the snippet as its body's value or as its omitted default, then the shape's generic caller.
+        internal string Declare(ReplicaShape shape)
+        {
+            var semantics = shape is ReplicaShape.SemanticsBody or ReplicaShape.SemanticsDefault;
+            var constraints = (semantics ? "        s is owner or ref\n" : string.Empty) + (this.Maker ? "        T is Maker\n" : string.Empty);
+            var text = new StringBuilder("group Helpers\n    public func evaluate").Append(semantics ? "<s/T>(sample: s/T" : "<T>(sample: T");
+            if (shape is ReplicaShape.Body or ReplicaShape.SemanticsBody)
+            {
+                text.Append(") -> i32\n").Append(constraints).Append("        let marker: i32 = ").Append(this.Head).Append('\n');
+                this.Block(text, "            ");
+            }
+            else
+            {
+                text.Append(", marker: i32 = ").Append(this.Head);
+                if (this.Lines.Length == 0)
+                {
+                    text.Append(") -> i32\n");
+                }
+                else
+                {
+                    text.Append('\n');
+                    this.Block(text, "        ");
+                    text.Append("    ) -> i32\n");
+                }
+
+                text.Append(constraints);
+            }
+
+            text.Append("        return marker\n");
+            var forwarded = this.Maker ? "    U is Maker\n" : string.Empty;
+            return (shape switch
+            {
+                ReplicaShape.Nested => text.Append("func outer<V>(value: V, total: i32 = Helpers.evaluate(V.make())) -> i32\n    V is Maker\n    return total\n"),
+                ReplicaShape.Forwarded => text.Append("func forward<U>(value: U) -> i32\n").Append(forwarded).Append("    return Helpers.evaluate(value@move)\n"),
+                ReplicaShape.Copied => text.Append("func copied<U>(value: U) -> i32\n    U is Copy\n").Append(forwarded).Append("    return Helpers.evaluate(value)\n"),
+                _ => text,
+            }).ToString();
+        }
+
+        // The standard output every placement must produce: the snippet's lines and destructions, the sample's destruction where
+        // the callee owns it, then the result.
+        internal string Expected(ReplicaShape shape, string type)
+        {
+            var text = new StringBuilder();
+            switch (shape)
+            {
+                case ReplicaShape.Nested:
+                    this.Output(text, type);
+                    Drop(text, type, 5);
+                    Drop(text, type, 1);
+                    text.Append(this.ResultOf(5)).Append('\n');
+                    break;
+                case ReplicaShape.SemanticsBody or ReplicaShape.SemanticsDefault:
+                    this.Output(text, type);
+                    Drop(text, type, 2);
+                    text.Append(this.ResultOf(2)).Append('\n');
+                    this.Output(text, type);
+                    text.Append(this.ResultOf(1)).Append('\n');
+                    Drop(text, type, 1);
+                    break;
+                case ReplicaShape.Repetition:
+                    this.Output(text, "Box");
+                    Drop(text, "Box", 1);
+                    this.Output(text, type);
+                    Drop(text, type, 2);
+                    text.Append(this.ResultOf(1) + this.ResultOf(2)).Append('\n');
+                    this.Output(text, type);
+                    Drop(text, type, 2);
+                    this.Output(text, "Box");
+                    Drop(text, "Box", 1);
+                    text.Append(this.ResultOf(2) + this.ResultOf(1)).Append('\n');
+                    break;
+                default:
+                    this.Output(text, type);
+                    Drop(text, type, 1);
+                    text.Append(this.ResultOf(1)).Append('\n');
+                    break;
+            }
+
+            return text.ToString();
+        }
+
+        private static string Print(string call) => "Console.writeLine(\"\\(" + call + ")\")\n";
+
+        private static string Value(string type, int n) => type switch
+        {
+            "i32" => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            "string" => "\"s" + n.ToString(System.Globalization.CultureInfo.InvariantCulture) + "\"",
+            _ => type + ".init(" + n.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")",
+        };
+
+        private static void Drop(StringBuilder text, string type, int n)
+        {
+            if (type == "Box")
+            {
+                text.Append("drop ").Append(n).Append('\n');
+            }
+        }
+
+        private int ResultOf(int n) => this.SampleResult ? n : this.Result;
+
+        private void Output(StringBuilder text, string type)
+        {
+            foreach (var line in this.Printed)
+            {
+                text.Append(line).Append('\n');
+            }
+
+            if (this.MadeDrop)
+            {
+                Drop(text, type, 5);
+            }
+        }
+
+        private void Block(StringBuilder text, string indent)
+        {
+            foreach (var line in this.Lines)
+            {
+                text.Append(indent).Append(line).Append('\n');
+            }
         }
     }
 }

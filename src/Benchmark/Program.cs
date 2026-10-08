@@ -69,6 +69,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--generic-defaults")
+        {
+            CompilerPlanMeasurements.Run(defaults: true);
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--local-regions")
         {
             CompilerPlanMeasurements.Run(regions: true);

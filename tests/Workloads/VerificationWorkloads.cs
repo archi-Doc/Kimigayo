@@ -136,6 +136,40 @@ internal static class VerificationWorkloads
         return source.ToString();
     }
 
+    // Generic default contexts (PLAN G82): `siblings` expands one omitted default `count` times in one body, alternating an
+    // owner and a Copy Type; `depth` nests `count` omitted defaults over that one, each making the inner level's sample.
+    internal static string GenericDefaults(string axis, int count)
+    {
+        const string Prelude = "contract Maker\n    func make() -> Self\n" +
+            "struct Box\n    Self is Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Box.init(5)\n    drop => Console.writeLine(\"drop\")\n" +
+            "struct Pt\n    Self is Copy and Maker\n    public var n: i32\n    public init(n: i32) => self.n = n\n    public func make() -> Self => Pt.init(5)\n" +
+            "group Helpers\n    public func evaluate<T>(sample: T, marker: i32 = label result: do\n        let pending: Option<T> = .Some(T.make())\n" +
+            "        match pending@move\n            .Some(let value) => exit to result 1\n            .None => exit to result 0\n    ) -> i32\n        T is Maker\n        return marker\n";
+        var source = new StringBuilder(Prelude);
+        switch (axis)
+        {
+            case "siblings":
+                for (var i = 0; i < count; i++)
+                {
+                    source.AppendLine($"require Helpers.evaluate({(i % 2 == 0 ? "Box" : "Pt")}.init({i})) == 1 else => $abort(\"sibling\")");
+                }
+
+                break;
+            case "depth":
+                for (var level = 1; level <= count; level++)
+                {
+                    source.AppendLine($"func level{level}<T>(sample: T, total: i32 = {(level == 1 ? "Helpers.evaluate" : $"level{level - 1}")}(T.make())) -> i32\n    T is Maker\n    return total");
+                }
+
+                source.AppendLine($"require level{count}(Box.init(1)) == 1 and level{count}(Pt.init(2)) == 1 else => $abort(\"depth\")");
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(axis));
+        }
+
+        return source.ToString();
+    }
+
     internal static string FixedOriginLoans(string axis, int count)
     {
         if (axis == "fixed-control")
