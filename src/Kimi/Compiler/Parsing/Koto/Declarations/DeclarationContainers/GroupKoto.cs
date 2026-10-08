@@ -84,13 +84,14 @@ public sealed class GroupKoto : DeclarationContainerKoto
     /// <summary>Parses SourceDocument root items through the end of the current block.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="state">The root state, shared by directive targets and arms.</param>
+    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
     /// <remarks>
     /// Root directive targets and arms keep the root item grammar, including aliases and <c>rootgroup</c> (SPEC 6.1.1, 19.1).
     /// Excluded syntax is parsed into a detached group and contributes no root item (SPEC 19.5).
     /// </remarks>
-    private void ParseRootItems(ref TokenReader reader, ref RootParseState state)
+    private void ParseRootItems(ref TokenReader reader, ref RootParseState state, bool stopAtCaseGroupBoundary = false)
     {
-        while (TryBeginDeclaration(ref reader))
+        while (TryBeginDeclaration(ref reader, stopAtCaseGroupBoundary))
         {
             if (reader.IsExcluded)
             {
@@ -115,9 +116,16 @@ public sealed class GroupKoto : DeclarationContainerKoto
         if (Parser.IsCompileTimeSwitchStart(ref reader))
         {
             var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNextBody(ref reader, out var selected, out var header))
+            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
             {
-                if (selected)
+                if (invalidItems)
+                {
+                    var owner = this.ExcludedRootOwner(ref reader, ref state);
+                    var start = Parser.BeginInvalidSwitchItems(ref reader);
+                    owner.ParseRootItems(ref reader, ref state, stopAtCaseGroupBoundary: true);
+                    Parser.EndInvalidSwitchItems(ref reader, start);
+                }
+                else if (selected)
                 {
                     reader.Advance();
                     this.ParseRootItems(ref reader, ref state);

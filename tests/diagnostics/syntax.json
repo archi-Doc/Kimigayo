@@ -1,4 +1,6 @@
 [
+  { "Name": "switch-misplaced-item-source-check", "Source": "#switch\n    let missing =\n    #case _\n        ()\nlet wrong: i32 = true\n", "Intended": "a misplaced Case Group item receives its owner's grammar checks but establishes nothing; its missing expression and the next independent mismatch remain visible",
+    "Records": [ { "Code": "InvalidCompileTimeSwitchItem_Kd", "At": "let missing", "Length": 3 }, { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "missing =" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
   { "Name": "stacked-directive-condition-exclusion", "Source": "#if false\n#if missingName\nfunc f() => ()\nConsole.writeLine(\"hi\")\n", "Intended": "a later prefix Condition belongs to the preceding excluded target, while it never excludes its own error",
     "Records": [ { "Code": "UnknownCompileTimeName_Kd", "At": "missingName", "Related": [{"Role": "excludedBy", "At": "false"}] } ] },
   { "Name": "origin-annotation-invalid-target", "Source": "func f(x: [2 of i32]{a}) => ()\nlet wrong: i32 = true\n", "Intended": "an Origin annotation with no legal target establishes no Type and retains the next independent mismatch",

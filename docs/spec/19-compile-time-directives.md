@@ -225,6 +225,8 @@ func store<T>(value: T) -> ()
 
 **Recovery.** Excluded syntax is parsed with the recovery rules of selected syntax and never affects selected syntax: it contributes no merged declaration, root runtime item, Constraint, Origin relation, omission or recovery record, documentation association or Attribute. An invalid Case Group may keep its arms for error recovery, but they remain excluded syntax. An uppercase-initial `#Name` is Attribute syntax, and other lowercase hash forms are errors under §6.5. Attributes in excluded syntax are parsed but not resolved.
 
+Misplaced non-arm items in a Case Group receive source checks using the enclosing owner's item grammar as recovery, including its generic context and source-order placement rules. This recovery stops before the next direct `#case` or the end of the Case Group; a misplaced prefix cannot attach to that arm. These items receive no semantic checks and contribute none of the declarations or records listed above. Misplacement alone does not create an `excludedBy` location.
+
 ```kimi
 #if false and 1
     useFeature()

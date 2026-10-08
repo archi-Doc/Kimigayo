@@ -625,12 +625,13 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
     /// <summary>Consumes declaration trivia and detects the end of the current Declaration Container body.</summary>
     /// <param name="reader">The token reader.</param>
+    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
     /// <returns><see langword="true"/> when another declaration is available.</returns>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    protected static bool TryBeginDeclaration(ref TokenReader reader)
+    protected static bool TryBeginDeclaration(ref TokenReader reader, bool stopAtCaseGroupBoundary = false)
     {
         bool isEnd;
-        while (Parser.ConsumeAttributeAndModifier(ref reader, out isEnd, allowCompileTimeDirectives: true))
+        while (Parser.ConsumeAttributeAndModifier(ref reader, out isEnd, allowCompileTimeDirectives: true, stopAtCaseGroupBoundary))
         {
             Parser.SkipUnavailableDeclaration(ref reader);
         }
@@ -1090,13 +1091,14 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     /// <summary>Parses member declarations through the end of the current block.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="state">The member state of the enclosing body, shared by its directive targets and arms.</param>
+    /// <param name="stopAtCaseGroupBoundary">Whether Case Group recovery must leave its next arm or end unconsumed.</param>
     /// <remarks>
     /// Directive targets and arms are parsed by this same loop (SPEC 19.5): selected syntax goes into this container, and
     /// excluded syntax into a detached container of the same kind, so it registers nothing here but keeps source order.
     /// </remarks>
-    private void ParseMemberItems(ref TokenReader reader, ref MemberParseState state)
+    private void ParseMemberItems(ref TokenReader reader, ref MemberParseState state, bool stopAtCaseGroupBoundary = false)
     {
-        while (TryBeginDeclaration(ref reader))
+        while (TryBeginDeclaration(ref reader, stopAtCaseGroupBoundary))
         {
             if (reader.IsExcluded)
             {
@@ -1121,9 +1123,16 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         if (Parser.IsCompileTimeSwitchStart(ref reader))
         {
             var arms = Parser.CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNextBody(ref reader, out var selected, out var header))
+            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
             {
-                if (selected)
+                if (invalidItems)
+                {
+                    var owner = this.ExcludedOwner(ref reader, ref state);
+                    var start = Parser.BeginInvalidSwitchItems(ref reader);
+                    owner.ParseMemberItems(ref reader, ref state, stopAtCaseGroupBoundary: true);
+                    Parser.EndInvalidSwitchItems(ref reader, start);
+                }
+                else if (selected)
                 {
                     reader.Advance();
                     this.ParseMemberItems(ref reader, ref state);

@@ -1375,11 +1375,13 @@ CloseParameters:
     /// <param name="reader">The token reader.</param>
     /// <param name="isEnd">Whether the declaration sequence has ended.</param>
     /// <param name="allowCompileTimeDirectives">Whether lowercase compile-time directives are accepted.</param>
+    /// <param name="stopAtCaseGroupBoundary">Whether invalid Case Group items must leave the next arm or list end for its owner.</param>
     /// <returns>Whether an unavailable declaration header was recognized and needs recovery.</returns>
     public static bool ConsumeAttributeAndModifier(
         ref TokenReader reader,
         out bool isEnd,
-        bool allowCompileTimeDirectives = false)
+        bool allowCompileTimeDirectives = false,
+        bool stopAtCaseGroupBoundary = false)
     {
         reader.ClearContext();
 
@@ -1388,6 +1390,15 @@ CloseParameters:
         var openSpan = default(SourceSpan);
         while (reader.CanRead)
         {
+            if (stopAtCaseGroupBoundary && (reader.CurrentTokenKind == TokenKind.EndBlock || IsCompileTimeCaseStart(ref reader)))
+            {
+                // A misplaced prefix cannot own an arm. Its placement already failed; do not invent a missing target or
+                // reinterpret this valid arm as an orphan #case while source-checking the preceding invalid segment.
+                reader.ClearContext();
+                isEnd = true;
+                return false;
+            }
+
             if (inspectHeader && allowCompileTimeDirectives && TryConsumeUnavailableModifiers(ref reader, out functionModifiers))
             {
                 isEnd = false;
@@ -2568,6 +2579,11 @@ CloseParameters:
     private static int ParseExecutableBlockItems(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state)
     {
         reader.Advance(); // StartBlock
+        return ParseExecutableItems(ref reader, ref items, ref state);
+    }
+
+    private static int ParseExecutableItems(ref TokenReader reader, ref TemporaryKotoList items, ref ExecutableItemState state, bool stopAtCaseGroupBoundary = false)
+    {
         var hasSourceItem = false;
         while (reader.CanRead)
         {
@@ -2579,6 +2595,11 @@ CloseParameters:
 
             if (reader.CurrentTokenKind == TokenKind.EndBlock)
             {
+                if (stopAtCaseGroupBoundary)
+                {
+                    return reader.PreviousSyntaxEnd;
+                }
+
                 if (!hasSourceItem)
                 {
                     reader.Expect(SyntaxForm.Body);
@@ -2591,7 +2612,7 @@ CloseParameters:
                 return end;
             }
 
-            var unavailableDeclaration = ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true);
+            var unavailableDeclaration = ConsumeAttributeAndModifier(ref reader, out var isEnd, allowCompileTimeDirectives: true, stopAtCaseGroupBoundary);
             if (unavailableDeclaration)
             {
                 hasSourceItem = true;
@@ -2636,9 +2657,15 @@ CloseParameters:
         if (IsCompileTimeSwitchStart(ref reader))
         {
             var arms = CompileTimeSwitchArms.Begin(ref reader);
-            while (arms.TryNextBody(ref reader, out var selected, out var header))
+            while (arms.TryNext(ref reader, out var selected, out var header, out var invalidItems))
             {
-                if (selected)
+                if (invalidItems)
+                {
+                    var start = BeginInvalidSwitchItems(ref reader);
+                    ParseExecutableItems(ref reader, ref items, ref state, stopAtCaseGroupBoundary: true);
+                    EndInvalidSwitchItems(ref reader, start);
+                }
+                else if (selected)
                 {
                     ParseExecutableBlockItems(ref reader, ref items, ref state);
                 }
