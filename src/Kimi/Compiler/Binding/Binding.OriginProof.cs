@@ -196,14 +196,7 @@ public sealed partial class Binding
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
         this.OriginProofMetrics?.Enter(longer, shorter, use, this.originPremiseDepth);
-        this.originPremiseIncomplete = false;
         var proven = this.EntailsOrigin(longer, shorter, use);
-        if (OriginSearchComparison.Active is { } comparison && this.originPremiseDepth == 0 && this.originProofPath.Count == 0)
-        {
-            comparison.RecordEnvironment(this.originPremiseIncomplete, proven);
-            this.CompareOriginSearch(comparison, longer, shorter, use, proven);
-        }
-
         if (version != this.originStateVersion)
         {
             throw new InvalidOperationException($"The Origin proof of `{longer} outlives {shorter}` changed inference or obligation state (PLAN G74).");

@@ -15,10 +15,6 @@ public sealed partial class Binding
     private readonly List<OriginPremiseEnvironment> originPremiseEnvironments = new();
     private int originPremiseDepth;
 
-    // Comparison mode only (Binding.OriginSearch, until PLAN G74 U6): the last environment met an enclosing contract not yet
-    // established.
-    private bool originPremiseIncomplete;
-
     // The retained premise storage between requests (PLAN G74 U5): the environments, their largest node and edge capacity, and
     // whether any of them still references an Origin, a Type, a declaration or syntax.
     internal (int Environments, int Nodes, int Edges, bool Retains) OriginPremiseStorage
@@ -72,7 +68,6 @@ public sealed partial class Binding
             this.ExtractOriginPremises(environment);
             var entailed = closure.Entails(candidate, target);
             this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
-            this.originPremiseIncomplete = environment.Incomplete;
             return entailed;
         }
         finally
@@ -166,18 +161,11 @@ public sealed partial class Binding
 
             // Only declaration contracts are assumptions. A field or local relation being checked must never prove itself.
             if ((node is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto || requirement) &&
-                this.originDeclarations.TryGetValue(node, out var declaration))
+                this.originDeclarations.TryGetValue(node, out var declaration) && declaration.State == 3)
             {
-                if (declaration.State == 3)
+                foreach (var relation in declaration.Relations)
                 {
-                    foreach (var relation in declaration.Relations)
-                    {
-                        this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
-                    }
-                }
-                else if (declaration.State != 0)
-                {
-                    environment.Incomplete = true;
+                    this.AddPremise(environment, relation.Longer, relation.Shorter, relation.Equality, OriginPremiseRule.Declaration);
                 }
             }
         }
@@ -334,8 +322,6 @@ public sealed partial class Binding
 
         internal BindingScope? Scope { get; set; }
 
-        internal bool Incomplete { get; set; }
-
         internal void Clear()
         {
             this.Closure.Clear();
@@ -345,7 +331,6 @@ public sealed partial class Binding
             this.Resolvers.Clear();
             this.Use = null!;
             this.Scope = null;
-            this.Incomplete = false;
         }
     }
 }

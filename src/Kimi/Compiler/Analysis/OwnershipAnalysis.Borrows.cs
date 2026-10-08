@@ -82,7 +82,6 @@ public sealed partial class OwnershipAnalysis
             return default; // Definition conditions and each call's substituted lengths were checked by Binding.
         }
 
-        binding.CompareDischarge(obligation);
         if (obligation.Discharge == OriginDischarge.CallBorrows || binding.IsVerifiedOriginObligation(obligation))
         {
             return default;
