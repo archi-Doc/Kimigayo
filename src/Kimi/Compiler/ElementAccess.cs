@@ -264,9 +264,10 @@ internal static class ElementAccess
             (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
                 ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
 
-    // SPEC 3.4.1, 4.6.9 (PLAN G59): the Array element below which a stored Field, Tuple or literal fixed-array path selects a
-    // Place, such as `xs[i]` in `xs[i].inner.name`. The element is borrowed through its own route and the static path through
-    // that borrow. Null for the element itself, a getter boundary or a path with no such element.
+    // SPEC 3.4.1, 4.6.9 (PLAN G59): the element of an Array, or of a fixed array at a runtime index, below which a stored Field,
+    // Tuple or literal fixed-array path selects a Place, such as `xs[i]` in `xs[i].inner.name`. The element is borrowed through its
+    // own route and the static path through that borrow. Null for the element itself, a getter boundary or a path with no such
+    // element.
     internal static IndexKoto? ElementPathBase(BinaryKoto selection)
     {
         for (var depth = 0; depth < 64; depth++)
@@ -277,7 +278,8 @@ internal static class ElementAccess
                 return null;
             }
 
-            if (parent is IndexKoto element && !IsSlicing(element) && element.Left.BoundType?.Kind == BoundTypeKind.Array)
+            if (parent is IndexKoto element && !IsSlicing(element) &&
+                (element.Left.BoundType?.Kind == BoundTypeKind.Array || (element.Left.BoundType?.Kind == BoundTypeKind.FixedArray && StaticSelector(element) < 0)))
             {
                 return element;
             }
@@ -287,6 +289,15 @@ internal static class ElementAccess
 
         return null;
     }
+
+    // SPEC 4.6.9 (PLAN G59): an owned fixed-array element at a runtime index, or a part below an element (ElementPathBase): a Place
+    // that the element's own route borrows, never the owned projection of a static path.
+    internal static bool IsRuntimeElementPlace(BinaryKoto selection) => IsRuntimeFixedElement(selection) || ElementPathBase(selection) is not null;
+
+    // SPEC 4.6.9: an owned fixed-array element selected at a runtime index, which has no static Move Path.
+    internal static bool IsRuntimeFixedElement(Koto selection)
+        => KotoHelper.UnwrapParentheses(selection) is IndexKoto element && IsSyntax(element) && !IsSlicing(element) && !Binding.IsGetterResult(element) &&
+            element.Left.BoundType?.Kind == BoundTypeKind.FixedArray && StaticSelector(element) < 0;
 
     internal static Koto? BorrowedPathRoot(MemberAccessKoto field)
     {

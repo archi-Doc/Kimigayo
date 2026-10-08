@@ -488,8 +488,9 @@ public sealed partial class Binding
             return;
         }
 
+        // PLAN G59: an owned fixed-array element at a runtime index is compared in place like an element of a borrowed receiver.
         this.CompareInPlace(selection.Left);
-        if (ElementAccess.IsBorrowedReceiver(ElementAccess.AccessType(selection.Left)))
+        if (ElementAccess.IsBorrowedReceiver(ElementAccess.AccessType(selection.Left)) || ElementAccess.IsRuntimeFixedElement(selection))
         {
             this.SharedElement(operand, selection.Left, selection.BoundType);
         }

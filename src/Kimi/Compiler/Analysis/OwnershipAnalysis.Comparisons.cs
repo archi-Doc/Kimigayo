@@ -112,7 +112,9 @@ public sealed partial class OwnershipAnalysis
 
         if (source is BinaryKoto element && ElementAccess.IsSyntax(element))
         {
-            return this.BorrowStringElement(element, call, argument.ParameterType, out _);
+            // PLAN G59: a string selected at a runtime index is lent through its Place route.
+            return ElementAccess.IsRuntimeElementPlace(element) ? this.BorrowStruct(source, argument.ParameterType!)
+                : this.BorrowStringElement(element, call, argument.ParameterType, out _);
         }
 
         if (!ReferenceEquals(stored, BoundType.String))

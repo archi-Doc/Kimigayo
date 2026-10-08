@@ -12,7 +12,8 @@ public class ElementBorrowEmissionTest
     private const string Counter = "struct Counter\n    Self is Copy\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func inc(self: uniq/Self) => self.value += 1\n";
     private const string Bump = "func bump(target: uniq/i32) => target@follow += 1\n";
     private const string Inner = "struct Inner\n    public var name: string\n    public var items: Array<i32>\n    public init(name: string)\n        self.name = name@move\n        self.items = [1]\n    public func show(self) => Console.writeLine(self.name)\n    public func rename(self: uniq/Self) => self.name = \"renamed\"\n";
-    private const string SharedCopyPart = Item + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar ys: [2 of Item] = [Item.init(\"a\", 7), Item.init(\"b\", 8)]\nlet i: isize = 0\nshow(ys[i].n)";
+    private const string Pt = "struct Pt\n    Self is Copy\n    public var n: i32\n    public init(n: i32) => self.n = n\n";
+    private const string SharedCopyPart = Pt + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nfunc first(xs: ref/Array<Pt>) => show(xs[0].n)\nvar ps: Array<Pt> = [Pt.init(7)]\nfirst(ps@ref)";
 
     public static TheoryData<string, string> Fixtures => new()
     {
@@ -95,19 +96,12 @@ public class ElementBorrowEmissionTest
     public void UnconstructedReceiversAreRejected(string source)
         => Reject(Same + source, OwnershipFailure.UninitializedUse);
 
-    [Theory]
-    [InlineData("let a: [1 of string] = [\"first\"]\nvar i: isize = 0\nlet equal = same(a[i], a[0])")]
-    [InlineData("let a: [1 of string] = [\"first\"]\nlet equal = a[0 + 0] == \"first\"")]
-    public void UnsupportedReceiversAndPathsRemainExplicit(string source)
-        => Reject(Same + source, OwnershipFailure.Unsupported);
-
     // SPEC 3.4, 5.4, 10.2: a borrow of a Place without a borrow route is one located Unsupported naming that route, never a
     // borrow, receiver or address of a temporary copy of the part.
     [Theory]
-    [InlineData(Bump + "var ys: [2 of i32] = [41, 5]\nlet i: isize = 0\nbump(ys[i]@uniq)", "ys[i]", "ys[i]", OwnershipFeature.RuntimeElementBorrow)]
-    [InlineData(Item + "var ys: [2 of Item] = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\nlet i: isize = 1\nConsole.writeLine(ys[i].name)", "ys[i].name", "ys[i]", OwnershipFeature.RuntimeElementBorrow)]
-    [InlineData(Item + Bump + "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\nbump(ys[i].n@uniq)", "ys[i].n", "ys[i]", OwnershipFeature.RuntimeElementBorrow)]
     [InlineData(Counter + "func touch(xs: uniq/Array<(Counter, i32)>) => xs[0].0.inc()\nvar ts: Array<(Counter, i32)> =[(Counter.init(41), 0)]\ntouch(ts@uniq)", "xs[0].0", "xs[0]", OwnershipFeature.ReferencedElementBorrow)]
+    [InlineData(Pt + Bump + "func set(xs: uniq/Array<Pt>) => bump(xs[0].n@uniq)\nvar ps: Array<Pt> = [Pt.init(41)]\nset(ps@uniq)", "xs[0].n", "xs[0]", OwnershipFeature.ReferencedElementBorrow)]
+    [InlineData(Pt + "func raw(xs: uniq/Array<Pt>)\n    unsafe\n        let p = xs[0].n@raw\n        *p = 42\nvar ps: Array<Pt> = [Pt.init(41)]\nraw(ps@uniq)", "xs[0].n", "xs[0]", OwnershipFeature.ReferencedElementBorrow)]
     public void UnroutedPlaceBorrowsFailClosed(string source, string selection, string selector, OwnershipFeature feature)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -119,9 +113,14 @@ public class ElementBorrowEmissionTest
         Assert.Empty(writer.ToString());
     }
 
-    // SPEC 3.4.1, 4.6.9, 5.4, 10.2: a stored part below an Array element is borrowed in place, through the element's own borrow:
-    // exclusive borrows, receivers and addresses change the element, and shared borrows read it, with each selector evaluated once.
+    // SPEC 3.4.1, 4.6.9, 5.4, 10.2: an owned fixed-array element at a runtime index, and a stored part below an Array element or such
+    // an element, is borrowed in place through the element's own borrow: exclusive borrows, receivers and addresses change the element,
+    // and shared borrows, arguments and comparisons read it, with each selector evaluated once.
     [Theory]
+    [InlineData("FixedUniq", Bump + "var ys: [2 of i32] = [41, 5]\nlet i: isize = 0\nbump(ys[i]@uniq)\nConsole.writeLine(\"\\(ys[0])\")", "42\n")]
+    [InlineData("FixedPart", Item + Bump + "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\nbump(ys[i].n@uniq)\nConsole.writeLine(\"\\(ys[0].n)\")", "42\n")]
+    [InlineData("FixedName", Item + "var ys: [2 of Item] = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\nlet i: isize = 1\nConsole.writeLine(ys[i].name)\nrequire ys[i].name == \"b\" else => $abort(\"part\")", "b\n")]
+    [InlineData("FixedString", Same + "let a: [2 of string] = [\"first\", \"second\"]\nvar i: isize = 0\nConsole.writeLine(\"\\(same(a[i], a[0]))\")\nrequire a[0 + 1] == \"second\" else => $abort(\"computed\")\nConsole.writeLine(a[i + 1])", "true\nsecond\n")]
     [InlineData("Uniq", Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nConsole.writeLine(\"\\(xs[0].n)\")", "42\n")]
     [InlineData("Raw", Item + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nunsafe\n    let p = xs[0].n@raw\n    *p = 42\nConsole.writeLine(\"\\(xs[0].n)\")", "42\n")]
     [InlineData("CopyReceiver", Counter + "struct Box\n    public var c: Counter\n    public init(c: Counter) => self.c = c\nvar xs: Array<Box> = [Box.init(Counter.init(41))]\nxs[0].c.inc()\nConsole.writeLine(\"\\(xs[0].c.value)\")", "42\n")]
@@ -134,21 +133,32 @@ public class ElementBorrowEmissionTest
     [InlineData("Nested", Bump + "struct Row\n    public var cells: Array<i32>\n    public init(cells: Array<i32>) => self.cells = cells@move\nvar rows: Array<Row> = [Row.init([1, 2]), Row.init([3, 4])]\nlet i: isize = 1\nlet j: isize = 0\nbump(rows[i].cells[j]@uniq)\nConsole.writeLine(\"\\(rows[1].cells[0])\")", "4\n")]
     [InlineData("OwnedPath", Item + Bump + "struct Bank\n    public var items: Array<Item>\n    public init(items: Array<Item>) => self.items = items@move\nvar bank = Bank.init([Item.init(\"a\", 41)])\nbump(bank.items[0].n@uniq)\nConsole.writeLine(\"\\(bank.items[0].n)\")", "42\n")]
     [InlineData("SelectorOnce", Item + Bump + "var calls = 0\nfunc pick(c: uniq/i32) -> isize\n    c@follow += 1\n    return 0\nvar xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[pick(calls@uniq)].n@uniq)\nConsole.writeLine(\"\\(xs[0].n) \\(calls)\")", "42 1\n")]
-    public void PartsOfArrayElementsAreBorrowedInPlace(string name, string source, string stdout)
+    public void SelectedElementPlacesAreBorrowedInPlace(string name, string source, string stdout)
     {
-        ScalarEmissionTest.EmitFixture("ElementBorrowPart" + name, source, stdout);
+        ScalarEmissionTest.EmitFixture("ElementBorrowPlace" + name, source, stdout);
         Assert.Equal(0, MinimalEmissionTest.Analyze(source).Ownership.Bodies.Sum(static x => x.SnapshotBorrows));
     }
 
-    // SPEC 4.6.1: the element's bounds are checked before its part is borrowed.
-    [Fact]
-    public void APartBorrowChecksTheElementBounds()
+    // SPEC 4.6.1: the element's bounds are checked before it or its part is borrowed.
+    [Theory]
+    [InlineData("Dynamic", Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nlet i: isize = 3\nbump(xs[i].n@uniq)\nConsole.writeLine(\"unreachable\")", "xs[i]")]
+    [InlineData("Fixed", Bump + "var ys: [2 of i32] = [41, 5]\nlet i: isize = 3\nbump(ys[i]@uniq)\nConsole.writeLine(\"unreachable\")", "ys[i]")]
+    public void ASelectedElementBorrowChecksItsBounds(string name, string source, string selection)
     {
-        const string Source = Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nlet i: isize = 3\nbump(xs[i].n@uniq)\nConsole.writeLine(\"unreachable\")";
-        var at = Source.IndexOf("xs[i]", StringComparison.Ordinal);
-        var line = Source.AsSpan(0, at).Count('\n') + 1;
-        var column = at - Source.LastIndexOf('\n', at);
-        ScalarEmissionTest.EmitFixture("ElementBorrowPartBounds", Source, string.Empty, 1, $"Hello.kimi:{line}:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+        var at = source.IndexOf(selection, StringComparison.Ordinal);
+        var line = source.AsSpan(0, at).Count('\n') + 1;
+        var column = at - source.LastIndexOf('\n', at);
+        ScalarEmissionTest.EmitFixture("ElementBorrowPlaceBounds" + name, source, string.Empty, 1, $"Hello.kimi:{line}:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
+    }
+
+    // SPEC 3.4.1, 15.1.3: a runtime index proves no initialized element, so a fixed array with a moved element lends none.
+    [Fact]
+    public void ARuntimeSelectionOfAPartiallyMovedFixedArrayIsRejected()
+    {
+        var c = MinimalEmissionTest.Analyze(Item + Bump + "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet taken = ys[1]@move\nlet i: isize = 0\nbump(ys[i].n@uniq)");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Contains(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
     // SPEC 15.6.2, 15.6.3, 15.6.7: a part borrow keeps its Array borrowed while it is live: resizing, clearing, moving or replacing
@@ -185,15 +195,19 @@ public class ElementBorrowEmissionTest
     }
 
     // SPEC 3.4, 10.2: spellings that select the same Place have one meaning: a part through a stepwise element borrow (E1), the same
-    // part of a local struct (E2), and an adapted or explicit shared borrow (E5) agree in outcome and output.
+    // part of a local struct (E2), a runtime and a literal fixed-array index of the same element (E3), and an adapted or explicit shared
+    // borrow (E5) agree in outcome and output.
     [Theory]
+    [InlineData("Selector", "bump(ys[i].n@uniq)\nConsole.writeLine(\"\\(ys[0].n)\")", "bump(ys[0].n@uniq)\nConsole.writeLine(\"\\(ys[0].n)\")", "42\n")]
+    [InlineData("SelectorShared", "show(ys[i].n)\nConsole.writeLine(ys[i].name)", "show(ys[0].n)\nConsole.writeLine(ys[0].name)", "41\na\n")]
     [InlineData("StepUniq", "bump(xs[0].n@uniq)\nConsole.writeLine(\"\\(xs[0].n)\")", "let e = xs[0]@uniq\nbump(e.n@uniq)\nConsole.writeLine(\"\\(xs[0].n)\")", "42\n")]
     [InlineData("StepRetained", "let n = xs[0].n@ref\nxs[0].n = 5\nshow(n)", "let e = xs[0]@ref\nlet n = e.n@ref\nxs[0].n = 5\nshow(n)", null)]
     [InlineData("Storage", "bump(xs[0].n@uniq)\nConsole.writeLine(\"\\(xs[0].n)\")", "var s = Item.init(\"a\", 41)\nbump(s.n@uniq)\nConsole.writeLine(\"\\(s.n)\")", "42\n")]
     [InlineData("Adaptation", "show(xs[0].n)", "show(xs[0].n@ref)", "41\n")]
     public void EquivalentPlaceSpellingsAgree(string family, string first, string second, string? stdout)
     {
-        const string Prefix = Item + Bump + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar xs: Array<Item> = [Item.init(\"a\", 41)]\n";
+        const string Prefix = Item + Bump + "func show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\nvar xs: Array<Item> = [Item.init(\"a\", 41)]\n" +
+            "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\n";
         var outcomes = new[] { first, second }.Select(static use =>
         {
             var c = MinimalEmissionTest.Analyze(Prefix + use);
@@ -212,30 +226,31 @@ public class ElementBorrowEmissionTest
     [Fact]
     public void AnUnroutedBorrowNamesItsRouteAndSelector()
     {
-        var c = MinimalEmissionTest.Analyze(Item + "var ys: [2 of Item] = [Item.init(\"a\", 1), Item.init(\"b\", 2)]\nlet i: isize = 1\nConsole.writeLine(ys[i].name)");
+        var c = MinimalEmissionTest.Analyze(Pt + Bump + "func set(xs: uniq/Array<Pt>) => bump(xs[0].n@uniq)\nvar ps: Array<Pt> = [Pt.init(41)]\nset(ps@uniq)");
         c.Ownership.ReportDiagnostics();
         var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(nameof(Kimi.DiagnosticCode.UnsupportedOwnership_Kd), record.Code);
-        Assert.Equal("ys[i].name", record.Text);
+        Assert.Equal("xs[0].n", record.Text);
         var result = c.Diagnostics.Finalize();
         var published = Assert.Single(result.Diagnostics, static x => x.Code == nameof(Kimi.DiagnosticCode.UnsupportedOwnership_Kd));
-        Assert.Equal([("feature", nameof(OwnershipFeature.RuntimeElementBorrow))], published.Reason!.Select(static x => (x.Name, x.Value)));
-        Assert.Equal(("selector", "runtime-selected element"), (Assert.Single(published.Related!).Role, published.Related![0].Label));
+        Assert.Equal([("feature", nameof(OwnershipFeature.ReferencedElementBorrow))], published.Reason!.Select(static x => (x.Name, x.Value)));
+        Assert.Equal(("selector", "collection reached through a reference"), (Assert.Single(published.Related!).Role, published.Related![0].Label));
     }
 
     // SPEC 23.3.6.4: a rejected selection still reads its root and keys, so their own problems remain; no conflict is derived
     // from the unsupported borrow.
     [Theory]
-    [InlineData("var k: isize\nbump(ys[k].n@uniq)", OwnershipFailure.UninitializedUse)]
-    [InlineData("var ws: [2 of Item]\nbump(ws[i].n@uniq)", OwnershipFailure.UninitializedUse)]
-    [InlineData("let r = ys[0]@ref\nys[0] = Item.init(\"c\", 3)\nConsole.writeLine(r.name)\nbump(ys[i].n@uniq)", OwnershipFailure.ComparisonLoanConflict)]
-    [InlineData("func index() -> isize\n    Console.writeLine(\"index\")\n    return 0\nbump(ys[index()].n@uniq)", null)]
-    [InlineData("func two(a: ref/Item, b: uniq/i32) => ()\ntwo(ys[0]@ref, ys[i].n@uniq)", null)]
+    [InlineData("var k: isize\n    bump(xs[k].n@uniq)", OwnershipFailure.UninitializedUse)]
+    [InlineData("var held: Pt\n    let copied = held\n    bump(xs[0].n@uniq)", OwnershipFailure.UninitializedUse)]
+    [InlineData("let r = xs[0]@ref\n    xs.append(Pt.init(2))\n    show(r@follow.n)\n    bump(xs[0].n@uniq)", OwnershipFailure.ComparisonLoanConflict)]
+    [InlineData("bump(xs[index()].n@uniq)", null)]
+    [InlineData("two(xs[0]@ref, xs[0].n@uniq)", null)]
     public void AnUnroutedBorrowKeepsOnlyIndependentProblems(string use, OwnershipFailure? independent)
     {
-        var c = MinimalEmissionTest.Analyze(Item + Bump + "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\n" + use);
+        var c = MinimalEmissionTest.Analyze(Pt + Bump + "func show(v: i32) => Console.writeLine(\"\\(v)\")\nfunc index() -> isize\n    Console.writeLine(\"index\")\n    return 0\n" +
+            "func two(a: ref/Pt, b: uniq/i32) => ()\nfunc set(xs: uniq/Array<Pt>)\n    " + use + "\nvar ps: Array<Pt> = [Pt.init(41)]\nset(ps@uniq)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(OwnershipFeature.RuntimeElementBorrow, Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported).Feature);
+        Assert.Equal(OwnershipFeature.ReferencedElementBorrow, Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.Unsupported).Feature);
         Assert.Equal(independent is { } failure ? [failure] : [], c.Ownership.Issues.Where(static x => x.Failure != OwnershipFailure.Unsupported).Select(static x => x.Failure));
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
@@ -413,8 +428,9 @@ public class ElementBorrowEmissionTest
     public void WarmRouteClassificationAllocatesNothing()
     {
         var accepted = MinimalEmissionTest.Analyze(SharedCopyPart);
-        var rejected = MinimalEmissionTest.Analyze(Item + Bump + "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\nbump(ys[i].n@uniq)\nConsole.writeLine(ys[i].name)");
-        var parts = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nlet name = xs[0].name@ref\nConsole.writeLine(name)");
+        var rejected = MinimalEmissionTest.Analyze(Pt + Bump + "func set(xs: uniq/Array<Pt>) => bump(xs[0].n@uniq)\nvar ps: Array<Pt> = [Pt.init(41)]\nset(ps@uniq)");
+        var parts = MinimalEmissionTest.Analyze(Item + Bump + "var xs: Array<Item> = [Item.init(\"a\", 41)]\nbump(xs[0].n@uniq)\nlet name = xs[0].name@ref\nConsole.writeLine(name)\n" +
+            "var ys: [2 of Item] = [Item.init(\"a\", 41), Item.init(\"b\", 2)]\nlet i: isize = 0\nbump(ys[i].n@uniq)\nConsole.writeLine(ys[i].name)");
         Assert.True(parts.Emission.WriteIr(TextWriter.Null, out var error), error);
         var success = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() =>

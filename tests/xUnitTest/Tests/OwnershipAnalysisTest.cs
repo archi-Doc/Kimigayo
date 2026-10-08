@@ -54,7 +54,7 @@ public class OwnershipAnalysisTest
     }
 
     [Theory]
-    [InlineData("let fixed: [2 of string] = [\"a\", \"b\"]\nvar i: isize = 0\nConsole.writeLine(fixed[i])")]
+    [InlineData("let moved = (\"first\", \"last\").0")]
     public void UnsupportedOwnershipCannotBecomeVerified(string source)
     {
         var c = Parse(source);
@@ -239,7 +239,7 @@ public class OwnershipAnalysisTest
     [InlineData("let s: string\nConsole.writeLine(s)", false)]
     [InlineData("let s = \"a\"\nConsole.writeLine(s)\nConsole.writeLine(s)", true)]
     [InlineData("let s = \"a\"\nlet taken = s@move\nConsole.writeLine(s)", false)]
-    [InlineData("let fixed: [2 of string] = [\"a\", \"b\"]\nvar i: isize = 0\nConsole.writeLine(fixed[i])", false)]
+    [InlineData("let moved = (\"first\", \"last\").0", false)]
     [InlineData("Console.writeLine(missing)", false)]
     public async Task ProjectBuildRequiresOwnershipVerification(string source, bool expected)
     {

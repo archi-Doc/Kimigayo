@@ -14,6 +14,7 @@ public class ElementBorrowOwnerEmissionTest
     {
         { "Parameter", "func f(a: (string, i32)) -> bool => same(a.0, a.0)\nif f((\"held\", 0)) => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterArray", "func f(a: [2 of string]) -> bool => a[0] < a[1]\nlet a: [2 of string] = [\"first\", \"last\"]\nif f(a@move) => Console.writeLine(\"ok\")", "ok\n" },
+        { "ParameterRuntimeIndex", "func f(a: [1 of string], i: isize) -> bool => same(a[i], \"held\")\nif f([\"held\"], 0) => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterMoveAfter", "func f(a: (string, i32)) -> (string, i32)\n    let equal = same(a.0, a.0)\n    return a@move\nif f((\"held\", 0)).0 == \"held\" => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterNested", "func f(a: (string, (string, i32))) -> bool => same(a.0, a.1.0)\nif f((\"held\", (\"held\", 42))) => Console.writeLine(\"ok\")", "ok\n" },
         { "ParameterDefer", "func f(a: (string, i32))\n    defer\n        if a.0 == \"held\" => Console.writeLine(\"ok\")\nf((\"held\", 0))", "ok\n" },
@@ -41,7 +42,7 @@ public class ElementBorrowOwnerEmissionTest
 
     [Theory]
     [MemberData(nameof(Fixtures))]
-    public void OwnersSupportStaticStringBorrowing(string name, string source, string stdout)
+    public void OwnersSupportStringBorrowing(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("ElementBorrowOwner" + name, Same + Make + source, stdout);
 
     [Theory]
@@ -49,8 +50,7 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData("func take(a: (string, i32)) -> string => \"held\"\nfunc f(a: (string, i32)) -> bool => a.0 == take(a@move)", OwnershipFailure.ComparisonLoanConflict)]
     [InlineData("func f(a: (string, i32)) -> bool\n    let moved = a@move\n    return same(a.0, a.0)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let value = make().0", OwnershipFailure.Unsupported)]
-    [InlineData("func f(a: [1 of string], i: isize) -> bool => same(a[i], \"held\")", OwnershipFailure.Unsupported)]
-    public void BorrowingDoesNotGrantMoveOrDynamicAccess(string source, OwnershipFailure failure)
+    public void BorrowingDoesNotGrantMove(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(Same + Make + source);
         Assert.True(c.Binding.Result.IsComplete);

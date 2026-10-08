@@ -231,10 +231,11 @@ public sealed partial class OwnershipAnalysis
 
         if (unwrapped is IndexKoto index && !ElementAccess.IsSlicing(index) && ((index.Left.BoundType?.Kind == BoundTypeKind.FixedArray && ElementAccess.StaticSelector(index) < 0) ||
             (ElementAccess.AccessType(index.Left) is { Semantics: SemanticsKind.Ref } array && ReferenceTypes.IsArray(array))) &&
-            type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef)
+            (type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef || (type.Semantics == SemanticsKind.Uniq && index.Left.BoundType?.Kind == BoundTypeKind.FixedArray)))
         {
-            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver. A stored
-            // exclusive reference or handle is read as its shared view; any other element is borrowed at its address.
+            // SPEC 4.6.9: the fixed array is a declared reference or an element Place borrowed as the receiver, in the use's mode for
+            // a runtime index into an owned fixed array (PLAN G59). A stored exclusive reference or handle is read as its shared view;
+            // any other element is borrowed at its address.
             if (index.BoundType is { } stored && SharedReadTypes.ReadsStoredPointer(stored, type))
             {
                 if (!ReferenceTypes.IsArray(index.Left.BoundType))
@@ -252,14 +253,14 @@ public sealed partial class OwnershipAnalysis
                 return read;
             }
 
-            if (type.Semantics != SemanticsKind.Ref)
+            if (type.Semantics == SemanticsKind.ObjRef)
             {
                 this.Unsupported(index);
                 return -1;
             }
 
             var receiver = index.Left.BoundType?.Kind == BoundTypeKind.FixedArray
-                ? this.BorrowStruct(index.Left, this.compilation.Binding.Reference(SemanticsKind.Ref, index.Left.BoundType, type.Origin))
+                ? this.BorrowStruct(index.Left, this.compilation.Binding.Reference(type.Semantics, index.Left.BoundType, type.Origin))
                 : this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
             var subscript = this.SelectionKey(index, receiver);
@@ -269,7 +270,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             var projected = this.Place(index, type, OwnershipPlaceKind.Temporary, false);
-            var elementBorrow = this.Emit(OwnershipOperationKind.Borrow, index, receiver, projected, loanMode: LoanRequirement.Ref);
+            var elementBorrow = this.Emit(OwnershipOperationKind.Borrow, index, receiver, projected, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref, reservation: reservation);
             this.SetValue(elementBorrow, OwnershipValueKind.Address, [receiverValue, this.Value(subscript)], constant: receiver);
             return this.RegisterTemporary(projected);
         }

@@ -239,7 +239,7 @@ public class DeferredEmissionTest
     [Fact]
     public void DeferredDiagnosticsAreDeduplicatedBeforePublication()
     {
-        var c = MinimalEmissionTest.Analyze("let fixed: [2 of string] = [\"a\", \"b\"]\nvar i: isize = 0\nvar flag = true\nloop\n    defer => Console.writeLine(fixed[i])\n    if flag => exit\n    continue");
+        var c = MinimalEmissionTest.Analyze("var flag = true\nloop\n    defer\n        let moved = (\"first\", \"last\").0\n    if flag => exit\n    continue");
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.Equal(c.Ownership.Issues.Count, c.Ownership.Issues.Select(x => (x.Source, x.Failure)).Distinct().Count());
         Assert.NotEmpty(c.Ownership.Issues);

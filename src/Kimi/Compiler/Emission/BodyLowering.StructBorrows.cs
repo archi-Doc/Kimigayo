@@ -256,8 +256,10 @@ internal sealed partial class BodyLowering
                 var array = value.Count == 2 ? Input(body, id, 0) : -1;
                 var subscript = value.Count == 2 ? Input(body, id, 1) : -1;
                 var borrowedReceiver = array >= 0 && body.Operations[array].Kind == OwnershipOperationKind.Borrow;
-                if ((uint)array >= (uint)id || (uint)subscript >= (uint)id || type.Semantics != SemanticsKind.Ref || operation.LoanMode != LoanRequirement.Ref ||
-                    !(ReferenceTypes.IsStorage(output) || ReferenceTypes.IsString(output)) || output.Semantics != SemanticsKind.Ref || !ReferenceEquals(output.Components[0], element) ||
+                if ((uint)array >= (uint)id || (uint)subscript >= (uint)id || type.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq) || output.Semantics != type.Semantics ||
+                    operation.LoanMode != (type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref) ||
+                    (type.Semantics == SemanticsKind.Uniq && (!borrowedReceiver || type.Components[0].Kind != BoundTypeKind.FixedArray)) ||
+                    !(ReferenceTypes.IsStorage(output) || ReferenceTypes.IsString(output)) || !ReferenceEquals(output.Components[0], element) ||
                     !ReferenceEquals(body.Resolve(ElementAccess.AccessType(indexed.Left), body.ContextAt(id)), borrowedReceiver ? type.Components[0] : type) || !ReferenceEquals(body.Resolve(indexed.BoundType, body.ContextAt(id)), element) ||
                     (!borrowedReceiver && body.Operations[array].Kind is not (OwnershipOperationKind.Read or OwnershipOperationKind.Produce)) ||
                     (borrowedReceiver ? body.Operations[array].Input : body.Operations[array].Place) != operation.Place ||
