@@ -138,6 +138,9 @@ Diagnostics review clarification (2026-09-30): the frozen `Design/2026-09-29 Dia
 
 - `Changes/2026-10-07 Constructor and General Type Inference.md`: 取り込み済み (2026-10-07). §§1–2.2 are integrated in SPEC §8.1.3 / §10.1 / §10.8 / §10.8.1; §2.3 in §7.3.1 and the pre-filter check of §10.1; §§3.1–3.2 in §6.2.3.2 / §9.6 / §10.8.1; §§3.3–3.4 in §6.2.3.2 / §10.8.1 and their examples; §4 in IMPL §21.3.1.1; §5 in SPEC §23.3.6.5 and dev/DIAGNOSTICS; §§6–7 in dev/PLAN (U0–U6), CODEMAP and the verification/measurement obligations of IMPL §21.3.1.1; §8 is this integration mapping. SPEC.md links the owning sections. The proposal's restriction to editing itself described its drafting stage; this explicit intake supersedes that historical work scope. All contents have a disposition and the unchanged text is frozen and moved from Proposals to Changes. Formal integration does not claim implementation or verification completion; STATUS/PLAN retain that boundary.
 
+### 2026-10-08: Generic default instantiation clarification
+
+- `Proposals/2026-10-08 G82 Generic Default Context Repair Plan.md`: 一部取り込み. §3.4 (the clarification that each evaluation of an omitted default instantiates the verified default and adds no semantic use condition) is integrated in SPEC §7.2.3 as a cross-reference to the existing §8.10 rule; it changes no acceptance. Only §3.4 is frozen. Open: the implementation units U0 and U2–U8 and the §8 model decision, which U8 records in SETTLED.
 ## 2026-10-07 — Virtual Override
 
 - **取り込み済み:** [Virtual Override](Changes/2026-10-07%20Virtual%20Override.md). The whole proposal is frozen and moved unchanged from Proposals to Changes. Integration is complete; compiler implementation and verification are separate and remain in progress (PLAN G81).
