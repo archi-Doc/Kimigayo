@@ -320,6 +320,36 @@ internal ref struct Tokenizer
         return count;
     }
 
+    // Physical prefix length and recovered columns differ for tabs. Scanning and lookahead must agree;
+    // only the physical-line reader reports the forbidden tab, once for the entire indentation.
+    private static int CountIndentation(ReadOnlySpan<char> span, out int columns, out int firstTab)
+    {
+        var count = CountSpaces(span);
+        columns = count;
+        firstTab = -1;
+        if (count < span.Length && span[count] == '\t')
+        {
+            firstTab = count;
+            for (; count < span.Length; count++)
+            {
+                if (span[count] == '\t')
+                {
+                    columns += Constants.IndentationSpaces - (columns % Constants.IndentationSpaces);
+                }
+                else if (span[count] == Constants.SpaceChar)
+                {
+                    columns++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+
+        return count;
+    }
+
     /// <summary>
     /// Reads one logical line: its tokens, the physical lines that continue it inside delimiters, and the layout tokens that the
     /// indentation of the next effective line produces (SPEC 2.2.1). The indentation stack lives for one logical line only; the
@@ -339,7 +369,7 @@ Loop:
             goto EndOfFile;
         }
 
-        if (this.span[0] == Constants.SpaceChar)
+        if (this.span[0] is Constants.SpaceChar or '\t')
         {// If whitespace is present, process it first.
             goto MeasureIndentation;
         }
@@ -736,9 +766,13 @@ MeasureIndentation:
 // Indentation is measured once, at the physical line start.
 // Comments that follow do not change it.
         var indentationStart = this.position;
-        var numberOfSpaces = CountSpaces(this.span);
-        var indentationLength = numberOfSpaces;
-        this.Slice(numberOfSpaces);
+        var indentationLength = CountIndentation(this.span, out var numberOfSpaces, out var firstTab);
+        if (firstTab >= 0)
+        {
+            this.Report(new(indentationStart + firstTab, 1), DiagnosticCode.TabIndentation_Kd);
+        }
+
+        this.Slice(indentationLength);
 
 LineContent:
         if (this.span.Length == 0)
@@ -781,14 +815,22 @@ LineContent:
         var unnecessarySpaces = numberOfSpaces % Constants.IndentationSpaces;
         if (unnecessarySpaces > 0)
         {// Invalid indentation
-            this.Report(new(indentationStart, indentationLength), DiagnosticCode.InvalidIndentation_Kd, Constants.IndentationSpaces);
+            if (firstTab < 0)
+            {
+                this.Report(new(indentationStart, indentationLength), DiagnosticCode.InvalidIndentation_Kd, Constants.IndentationSpaces);
+            }
+
             numberOfSpaces += Constants.IndentationSpaces - unnecessarySpaces;
         }
 
         var indentLevel = (numberOfSpaces / Constants.IndentationSpaces) - this.indentationOffset;
         if (this.tokenCount == 0 && indentLevel > 0)
         {
-            this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+            if (firstTab < 0 && unnecessarySpaces == 0)
+            {
+                this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+            }
+
             indentLevel = 0;
         }
 
@@ -836,7 +878,7 @@ LineContent:
                 // Extra indentation cannot invent an executable body inside a grouping. Keep its content in the
                 // existing delimiter region, whose written closer still closes it at the original baseline. An inner
                 // block has its own grammar, including match arm headers with no body-introducing keyword.
-                if (unnecessarySpaces == 0)
+                if (firstTab < 0 && unnecessarySpaces == 0)
                 {
                     this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
                 }
@@ -849,7 +891,11 @@ LineContent:
 
             if (indentDelta > 1)
             {
-                this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                if (firstTab < 0 && unnecessarySpaces == 0)
+                {
+                    this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                }
+
                 indentDelta = 1;
             }
 
@@ -943,7 +989,11 @@ LineContent:
                 }
                 else
                 {
-                    this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                    if (firstTab < 0 && unnecessarySpaces == 0)
+                    {
+                        this.Report(new(indentationStart, indentationLength), DiagnosticCode.IndentationLevelMismatch_Kd);
+                    }
+
                     indentationMismatch = true;
                     break;
                 }
@@ -1078,7 +1128,7 @@ EndOfFile:
                         if (openingIndent < 0)
                         {
                             var lineStart = this.sourceText[..this.position].LastIndexOfAny(Constants.CrChar, Constants.LfChar) + 1;
-                            openingIndent = CountSpaces(this.sourceText[lineStart..]);
+                            _ = CountIndentation(this.sourceText[lineStart..], out openingIndent, out _);
                         }
 
                         var next = this.NextEffectiveLine(i, out var indent);
@@ -1153,8 +1203,7 @@ EndOfFile:
         while (true)
         {
             i += this.span[i] == Constants.CrChar && i + 1 < this.span.Length && this.span[i + 1] == Constants.LfChar ? 2 : 1;
-            indent = CountSpaces(this.span[i..]);
-            i += indent;
+            i += CountIndentation(this.span[i..], out indent, out _);
             if (i >= this.span.Length)
             {
                 return -1;
@@ -1217,7 +1266,8 @@ EndOfFile:
 
         var last = this.tokens[this.tokenCount - 1].Span.Start;
         var lineStart = this.sourceText[..last].LastIndexOfAny('\r', '\n') + 1;
-        var headerIndent = (CountSpaces(this.sourceText[lineStart..]) / Constants.IndentationSpaces) - this.indentationOffset;
+        _ = CountIndentation(this.sourceText[lineStart..], out var headerColumns, out _);
+        var headerIndent = (headerColumns / Constants.IndentationSpaces) - this.indentationOffset;
         if (indentLevel != headerIndent + 1)
         {
             return;
@@ -1360,15 +1410,15 @@ EndOfFile:
 
         // Scan and validate ordinary names together; Unicode takes the shared slow path.
         var length = ScanAsciiIdentifierLength(span);
-        if (length < span.Length && !TokenHelper.IsSeparator(span[length]))
+        if (length == 0 && span[0] < 128)
         {
-            this.ReadNonAsciiIdentifier(span);
+            this.ReadInvalidCharacter(span);
             return;
         }
 
-        if (length == 0)
+        if (length < span.Length && !TokenHelper.IsSeparator(span[length]))
         {
-            this.ReadInvalidCharacter(span);
+            this.ReadNonAsciiIdentifier(span);
             return;
         }
 
@@ -1412,8 +1462,14 @@ EndOfFile:
 
         var spelling = span[..length];
         var kind = TokenHelper.GetKeywordOrIdentifierKind(spelling);
-        if (!IdentifierHelper.IsValidIdentifier(spelling))
+        if (!IdentifierHelper.IsValidIdentifier(spelling, out var invalidStartLength))
         {
+            if (invalidStartLength != 0)
+            {
+                this.ReadInvalidCharacter(span, invalidStartLength);
+                return;
+            }
+
             this.Report(this.NewRange(length), DiagnosticCode.InvalidIdentifier_Kd, spelling.ToString());
             kind = TokenKind.Invalid;
         }
@@ -1422,10 +1478,10 @@ EndOfFile:
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void ReadInvalidCharacter(ReadOnlySpan<char> span)
+    private void ReadInvalidCharacter(ReadOnlySpan<char> span, int length = 1)
     {
-        this.Report(this.NewRange(1), DiagnosticCode.InvalidCharacter_Kd, span[0]);
-        this.AddTokenAndSlice(TokenKind.Invalid, 1);
+        this.Report(this.NewRange(length), DiagnosticCode.InvalidCharacter_Kd, length == 1 ? span[0] : span[..length].ToString());
+        this.AddTokenAndSlice(TokenKind.Invalid, length);
     }
 
     private void ReadCharLiteral()

@@ -1,4 +1,10 @@
 [
+  { "Name": "tab-indent-keeps-function-body", "Source": "func f() -> i32\n\tlet n = 1\n    return n\nlet wrong: i32 = true", "Intended": "a forbidden indentation tab is the cause; recovered columns retain the function scope and its local reference without hiding an independent mismatch",
+    "Records": [ { "Code": "TabIndentation_Kd", "At": "\t" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "invalid-scalar-token-start", "Source": "let n = 😀\nlet wrong: i32 = true", "Intended": "an invalid token-start scalar is one complete character, not a malformed Name or two UTF-16 errors",
+    "Records": [ { "Code": "InvalidCharacter_Kd", "At": "😀" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "bare-modifier-invalid-indent", "Source": "public\n     func f() => ()\nlet wrong: i32 = true", "Intended": "the missing declaration and malformed space prefix have separate causes; rounding recovery adds no second indentation diagnosis and preserves the following root statement",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "Declaration", "After": "public" }, { "Code": "InvalidIndentation_Kd", "At": "     " }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
   { "Name": "bare-move-optional-suffix", "Source": "let value = 1\nlet result = value@move??\nlet wrong: i32 = true", "Intended": "a bare acquisition names no optional Type; one rejected suffix chain keeps its first question mark as the cause",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "SemanticsShorthandSuffix", "At": "??", "Length": 1 }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
   { "Name": "bare-copy-suffix-independent-operand", "Source": "let result = absent@copy?\nlet wrong: i32 = true", "Intended": "the rejected optional suffix cannot hide an independently missing operand Name or the following Type mismatch",

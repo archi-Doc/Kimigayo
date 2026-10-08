@@ -10,8 +10,9 @@ internal static class UnicodeIdentifierHelper
     internal static bool IsUppercase(ReadOnlySpan<char> text)
         => Rune.DecodeFromUtf16(text, out var rune, out _) == OperationStatus.Done && (GetProperties(rune.Value) & 4096) != 0;
 
-    internal static bool IsValid(ReadOnlySpan<char> text)
+    internal static bool IsValid(ReadOnlySpan<char> text, out int invalidStartLength)
     {
+        invalidStartLength = 0;
         var index = 0;
         var previousClass = 0;
         var needsNormalization = false;
@@ -19,6 +20,7 @@ internal static class UnicodeIdentifierHelper
         {
             if (Rune.DecodeFromUtf16(text[index..], out var rune, out var count) != OperationStatus.Done)
             {
+                invalidStartLength = index == 0 ? 1 : 0;
                 return false;
             }
 
@@ -30,6 +32,7 @@ internal static class UnicodeIdentifierHelper
 
             if ((properties & (index == 0 ? 1 : 2)) == 0 || (properties & 1024) != 0)
             {
+                invalidStartLength = index == 0 && (properties & 1) == 0 ? count : 0;
                 return false;
             }
 

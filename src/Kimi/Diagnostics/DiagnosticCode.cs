@@ -73,6 +73,7 @@ public enum DiagnosticCode
     InvalidSourceEncoding_Kd,
     InvalidIdentifier_Kd,
     InvalidIndentation_Kd,
+    TabIndentation_Kd,
     InvalidNumericLiteral_Kd,
     InvalidUnicodeEscape_Kd,
     InvalidUnicodeScalar_Kd,

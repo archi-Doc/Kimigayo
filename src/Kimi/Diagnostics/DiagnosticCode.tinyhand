@@ -471,6 +471,12 @@
     Message="Invalid indentation. Insert {0} spaces for each indentation level"
     Arguments="spaces:Number"
 
+  + Name="TabIndentation_Kd"
+    Category="Language"
+    Message="Tabs are not permitted in indentation"
+    Label="tab in indentation"
+    Advice="Replace all tabs in this indentation with U+0020 spaces; each level requires four spaces."
+
   + Name="InvalidNumericLiteral_Kd"
     Category="Language"
     Message="Invalid numeric literal"
