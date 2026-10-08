@@ -6,7 +6,7 @@ Implement the target milestone of [docs/dev/PLAN.md](../PLAN.md) with verified, 
 
 - **Plan:** `docs/dev/PLAN.md` (§4 milestone order, §5 completion conditions, §6 next actions, §7 open issues).
 - **Target:** the milestone or track stage (for example `D2a`) named by the request; otherwise the target that PLAN §6 assigns. A paused milestone is not a target until PLAN resumes it.
-- **Diagnostics:** when a unit adds or changes a diagnostic, a check that reports diagnostics, recovery or suppression, or diagnostic publication, follow the Diagnostic Development Workflow of `AGENTS.md` (detail in `docs/dev/DIAGNOSTICS.md` §10).
+- **Diagnostics:** during ordinary implementation, create or update simple diagnostic information following [AGENTS.md](../../../AGENTS.md#diagnostic-development). Apply the full [Diagnostic Development Workflow](../DIAGNOSTIC_WORKFLOW.md) only when the user explicitly requests it or a detailed diagnostic review; diagnostic changes and bug reports alone do not activate it.
 - **Constraints:** follow `AGENTS.md`. Minimize allocations on hot paths and remove unnecessary code, but correctness and progress come first.
 - **Permissions:** commit each verified unit. Milestone Program sources are immutable by default: change one only to re-spell it for a SPEC revision or an authoring correction where the source contradicts its own specification-derived output (recorded in `tests/milestones/README.md`), or with the user's approval. Creating or completing the target milestone's harness (`src/backend/windows-x64/test-milestone<N>.ps1`) is always allowed. Draft files and NativeAOT tests need explicit instruction.
 

@@ -1,6 +1,6 @@
 # Kimigayo Diagnostics
 
-Developer notes for the compiler's diagnostics. SPEC [§23.3.3](../spec/23-compiler-services.md#2333-outcomes-and-acceptance), [§23.3.6](../spec/23-compiler-services.md#2336-diagnostics) and [§23.4.7](../spec/23-compiler-services.md#2347-publication) define the observable behavior; this document records the internal model that realizes it, the rules that keep it consistent, current recovery and recorder rules, and the detail of the [Diagnostic development workflow](../../AGENTS.md#diagnostic-development-workflow). It never overrides the specification.
+Developer notes for the compiler's diagnostics. SPEC [§23.3.3](../spec/23-compiler-services.md#2333-outcomes-and-acceptance), [§23.3.6](../spec/23-compiler-services.md#2336-diagnostics) and [§23.4.7](../spec/23-compiler-services.md#2347-publication) define the observable behavior; this document records the internal model that realizes it, the rules that keep it consistent, current recovery and recorder rules, and a link to the explicitly requested [Diagnostic Development Workflow](DIAGNOSTIC_WORKFLOW.md). It never overrides the specification.
 
 ## 1. Principles
 
@@ -240,15 +240,7 @@ Historical structured-repair, check-JSON and LSP evaluation: [checkpoint record]
 
 ## 10. Diagnostic development workflow (detail)
 
-AGENTS.md lists the required steps. This section gives their detail.
-
-- **Triggers.** A change that adds or modifies a diagnostic, a check that reports diagnostics, recovery or suppression, or diagnostic publication and presentation. Reusing an existing code does not exempt a new reporting path. A reported confusing, missing or misleading diagnostic also starts the cycle.
-- **Capture.** A minimal reproducer or a mutation of a known-valid program (§9.2), with the intended failure and independently written expectations. Confirm that the case reaches the intended check; an unrelated earlier error is no evidence. Add a valid counterpart to catch false positives.
-- **Review.** Code, severity, category, primary range and label, the factual Reason, related locations, Note and Advice. The message explains the problem on its own; essential facts survive limits; established facts are separated from suggested intent, and advice states its conditions. Inspect representative CLI and language-server output for changed user-visible behavior, including how underlines match explanations.
-- **Interactions.** Focused cases for the relevant prerequisites and recovery, independent errors and the input relations (§9.3). The cause stays explained, independent problems stay visible and acceptance does not depend on suppression or presentation. Cover the affected output adapters; a future CSP adapter keeps the same records. Choose cases by the change's impact instead of repeating every test for each diagnostic.
-- **Repair and repeat.** Fix missing evidence, misleading explanations, wrong ranges or unwanted cascades at their source, rerun the affected checks and inspect the revised output. Never weaken expectations to match current output, and never count fewer diagnostics as an improvement. Keep the reproducer and its expectations as regression tests.
-- **Evidence.** Follow the repository verification workflow; measure (§9.4) when a changed path is hot or a milestone completes. Record the reviewed behavior, intended public-output changes, verification results and remaining uncertainty in commits and `artifacts/verify/`.
-- **Completion.** A unit is complete only when its problem is explained accurately and understandably at the right locations, the applicable interaction and output checks pass, and every quality defect observed in the unit is repaired and verified again. Passing tests alone does not establish clarity. Otherwise record the unresolved condition and the next action, without marking the unit complete or claiming support.
+The full workflow is maintained in [DIAGNOSTIC_WORKFLOW.md](DIAGNOSTIC_WORKFLOW.md). Apply it only when the user explicitly requests that workflow or a detailed diagnostic review. Ordinary implementation uses the simple diagnostic guidance in [AGENTS.md](../../AGENTS.md#diagnostic-development); diagnostic changes and bug reports do not automatically start the full workflow. The internal model and diagnostic contracts in this document still apply.
 
 ## 11. Audit findings (D1)
 

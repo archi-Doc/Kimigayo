@@ -45,7 +45,7 @@ The specification and implementation are not set in stone. The specification gui
 - `docs/LIBRARY.md`: public Kimi declarations (Types, Contracts, groups, functions, Properties), each with a brief guarantee. Update in the same commit as declaration additions, removals or changes. The spec is authoritative; `src/Kimi/Library/README.md` covers embedding and implementation policy.
 - `docs/dev/PLAN.md`: current scope, working rules, position, milestone order/completion conditions, next actions and open issues. Keep under 200 lines; exclude deferred items (Appendix D).
 - `docs/STATUS.md`: product-wide implemented capabilities, verified support boundaries and remaining limits. Update only when a support boundary changes; never report planned/unverified work as supported.
-- `docs/dev/DIAGNOSTICS.md`: internal diagnostic model, common rules and workflow details. SPEC §23 governs observable behavior.
+- `docs/dev/DIAGNOSTICS.md`: internal diagnostic model and common rules. `docs/dev/DIAGNOSTIC_WORKFLOW.md` contains the detailed workflow, applied only on explicit user instruction. SPEC §23 governs observable behavior.
 - `docs/dev/PLAN_HISTORY.md`: a few lines per session; detailed evidence belongs in commits and `artifacts/verify/`. Pre-2026-09-22-compaction records: `git show 32324537:PLAN_HISTORY.md`.
 - Pre-alpha spec changes need no language-version bump, breaking-change or migration docs. Update affected chapters, examples and milestone programs in place.
 
@@ -68,17 +68,11 @@ The specification and implementation are not set in stone. The specification gui
 - Separate functional regressions, allocation/reuse regressions (zero allocation, retained capacity, storage bounds), and opt-in performance measurements (timing, throughput, scaling). Tag allocation/reuse tests `Purpose=Allocation`; unmarked tests are functional. Unit includes both by default; narrow focused checks with `-TestPurpose Functional` or `Allocation`. Include related allocation/reuse regressions for hot-path changes. Session always runs both in full.
 - Keep timing-only repetition and measurement reports in `src/Benchmark`, outside normal Verify. Run relevant measurements explicitly for performance changes and at milestone completion. Share regression workload inputs where applicable; keep warm-up/measurement conditions fixed; never relax allocation assertions or warm until a failing measurement passes. Commands/isolation: [docs/dev/VERIFICATION.md](docs/dev/VERIFICATION.md).
 
-# Diagnostic Development Workflow
+# Diagnostic Development
 
-Apply to additions/changes in diagnostics, reporting checks, recovery, suppression, publication or presentation, including new paths reusing existing codes, and reports of confusing, missing or misleading diagnostics. Details: [docs/dev/DIAGNOSTICS.md](docs/dev/DIAGNOSTICS.md) §10.
-
-1. **Capture.** Add a minimal reproducer or known-valid program mutation with the intended failure and independently written public-record expectations. Confirm it reaches the intended check; add a valid counterpart against false positives.
-2. **Review.** Check code, severity/category, primary range/label, factual Reason, related locations, Note and Advice. Decide whether each fix is a repair candidate or Advice; a candidate's verified conditions are only those established from the check's facts, and a candidate with a refuted condition is not offered. The message must stand alone and retain required facts under limits. Inspect representative CLI and language-server output for user-visible changes.
-3. **Exercise interactions.** Add focused cases covering relevant prerequisites, recovery, independent errors, input relations and every affected output adapter. Keep causes explained and independent problems visible; acceptance must never depend on suppression or presentation.
-4. **Repair and repeat.** Fix missing evidence, misleading explanations, wrong ranges and unwanted cascades at their source; rerun and inspect. Never weaken expectations or equate fewer diagnostics with improvement. Retain reproducers/expectations as regressions.
-5. **Verify and record.** Follow the implementation workflow; measure changed hot paths. Record reviewed behavior, intended public-output changes, results and uncertainty in commits and `artifacts/verify/`.
-
-Completion requires accurate, understandable explanations at correct locations, passing interaction/output checks, and repair and reverification of every observed quality defect. Tests alone do not establish clarity. Otherwise, record unresolved conditions and next actions; leave the unit incomplete.
+- During ordinary implementation, create or update only simple diagnostic information: an appropriate code and severity/category, the relevant source location, and a concise factual explanation of the cause. Reuse the existing diagnostic model and follow SPEC §23; do not invent evidence or repair guarantees.
+- Apply the full [Diagnostic Development Workflow](docs/dev/DIAGNOSTIC_WORKFLOW.md) only when the user explicitly requests that workflow or a detailed diagnostic review. A diagnostic change or bug report alone does not activate it. Otherwise, do not expand the unit into diagnostic enrichment, a comprehensive interaction audit or CLI/LSP presentation review.
+- The ordinary implementation and verification requirements still apply. This distinction changes development scope, not required language behavior or diagnostic contracts.
 
 # VS Code Extension (`src/kimi-ext/`)
 
