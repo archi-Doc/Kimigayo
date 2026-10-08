@@ -112,6 +112,8 @@ Cover private-`set` Move rejection; custom-`get` results versus storage borrowin
 
 ## A.6. Literal representation
 
+The string scanner admits up to 128 simultaneously nested interpolations, counting each `\(` once. Exceeding that implementation bound reports a Resource diagnostic at the next opening with the bound, never an unterminated-string Language error. Recovery stops scanning that SourceDocument; earlier checks and other documents remain independent. Ordinary failed nested tokens retain their own lexical kind, opening and consumed extent, including across physical line endings. A missing interpolation `)` uses the ordinary missing-delimiter diagnostic and opening evidence.
+
 Preserve integer magnitudes and exact decimals until fitting. Canonical serialization must preserve the literal kind and the fitted value for every allowed target, and never rounds decimal literals through `f64`. Serialize strings by their values after newline normalization and escape and interpolation processing. LLVM emission and sharing follow §21.5.6.
 
 ## A.7. Cleanup analysis and lowering

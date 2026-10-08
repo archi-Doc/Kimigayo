@@ -1429,7 +1429,7 @@ EndOfFile:
 
     private void ReadStringLiteral()
     {
-        var result = StringLiteralHelper.ScanStringLiteral(this.span, out var doubleQuoteCount, out var stringLiteralLength);
+        var result = StringLiteralHelper.ScanStringLiteral(this.span, out _, out var stringLiteralLength, out var failure);
         if (result == ScanStringLiteralResult.String)
         {// Like every other literal, the token spans the literal as written, delimiters included.
             this.AddTokenAndSlice(TokenKind.StringLiteral, stringLiteralLength);
@@ -1440,8 +1440,33 @@ EndOfFile:
         }
         else
         {// Invalid
-            var opening = this.NewRange(doubleQuoteCount);
-            this.Report(opening, DiagnosticCode.MissingStringLiteralEnd_Kd, new string('"', doubleQuoteCount));
+            var opening = new SourceSpan(this.position + failure.Opening.Start, failure.Opening.Length);
+            switch (failure.Kind)
+            {
+                case StringScanFailureKind.CharEnd:
+                    this.Report(opening, DiagnosticCode.MissingCharLiteralEnd_Kd);
+                    break;
+
+                case StringScanFailureKind.BlockCommentEnd:
+                    this.Report(opening, DiagnosticCode.MissingBlockCommentEnd_Kd);
+                    break;
+
+                case StringScanFailureKind.InterpolationEnd:
+                    this.ReportMissingDelimiter(opening, new(this.position + failure.RecoveryEnd, 0), TokenKind.CloseParenthesis);
+                    // The failed string token rests on its missing interpolation delimiter; its lexical subject is the
+                    // opening, while the public missing-form record correctly points to an insertion position.
+                    this.diagnostics.AddDependentSyntax(opening, "interpolated string token", this.diagnostics.LastError!.Value, this.sourceDocument);
+                    break;
+
+                case StringScanFailureKind.NestingLimit:
+                    this.Report(opening, DiagnosticCode.InterpolationNestingLimit_Kd, StringLiteralHelper.MaximumInterpolationDepth);
+                    break;
+
+                default:
+                    this.Report(opening, DiagnosticCode.MissingStringLiteralEnd_Kd, new string('"', opening.Length));
+                    break;
+            }
+
             this.RecoverLexicalToken(opening, stringLiteralLength);
         }
     }
@@ -1800,13 +1825,18 @@ EndOfFile:
         }
         else
         {
-            // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2), and the closer
-            // inserted there is the repair candidate (SPEC 23.3.6.9).
-            var opened = this.diagnostics.Relate("opening delimiter", new SourceSpan(entry.Position, 1), this.sourceDocument, "opened here");
-            var closer = closingKind.ToText();
-            var repairs = this.sourceDocument is null ? null : new DiagnosticRepairFact[] { new(RepairKind.InsertToken, [closer], [this.diagnostics.Edit(new(range.Start, 0), closer, this.sourceDocument)], RepairConditionSet.None) };
-            this.diagnostics.ReportSyntax(range, DiagnosticCode.MissingSyntax_Kd, CloserForm(closingKind), null, this.sourceDocument, [opened], repairs);
+            this.ReportMissingDelimiter(new SourceSpan(entry.Position, 1), range, closingKind);
         }
+    }
+
+    private void ReportMissingDelimiter(SourceSpan opening, SourceSpan range, TokenKind closingKind)
+    {
+        // The closer is missing at an insertion point; the grouping it closes is related evidence (SPEC 23.3.6.2), and the closer
+        // inserted there is the repair candidate (SPEC 23.3.6.9).
+        var opened = this.diagnostics.Relate("opening delimiter", opening, this.sourceDocument, "opened here");
+        var closer = closingKind.ToText();
+        var repairs = this.sourceDocument is null ? null : new DiagnosticRepairFact[] { new(RepairKind.InsertToken, [closer], [this.diagnostics.Edit(new(range.Start, 0), closer, this.sourceDocument)], RepairConditionSet.None) };
+        this.diagnostics.ReportSyntax(range, DiagnosticCode.MissingSyntax_Kd, CloserForm(closingKind), null, this.sourceDocument, [opened], repairs);
     }
 
     private bool TryCloseIndentSourceByCurrentToken(IndentSource indentSource)

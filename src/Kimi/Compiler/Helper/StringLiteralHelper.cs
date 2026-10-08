@@ -26,11 +26,31 @@ public enum ScanStringLiteralResult : byte
     Interpolation,
 }
 
+internal enum StringScanFailureKind : byte
+{
+    None,
+    StringEnd,
+    CharEnd,
+    BlockCommentEnd,
+    InterpolationEnd,
+    NestingLimit,
+}
+
+// Offsets remain relative to the scanned text until the tokenizer supplies the SourceDocument offset. The consumed range
+// reaches the actual failed token, including on a later physical line, so recovery never tokenizes that text a second time.
+internal readonly record struct StringScanFailure(StringScanFailureKind Kind, SourceSpan Opening, int RecoveryEnd)
+{
+    internal StringScanFailure Offset(int offset)
+        => new(this.Kind, new(this.Opening.Start + offset, this.Opening.Length), this.RecoveryEnd + offset);
+}
+
 /// <summary>
 /// Provides methods for scanning and decoding string literals.
 /// </summary>
 public static class StringLiteralHelper
 {
+    internal const int MaximumInterpolationDepth = 128;
+
     private const char InvalidEscapeFallbackChar = 'k';
     private static readonly SearchValues<char> BackslashOrDoubleQuote = SearchValues.Create("\\\"");
 
@@ -42,28 +62,7 @@ public static class StringLiteralHelper
     /// <param name="stringLiteralLength">The number of characters consumed.</param>
     /// <returns>The scan result.</returns>
     public static ScanStringLiteralResult ScanStringLiteral(ReadOnlySpan<char> text, out int doubleQuoteCount, out int stringLiteralLength)
-    {
-        doubleQuoteCount = CountLeadingDoubleQuotes(text);
-        if (doubleQuoteCount == 0)
-        {
-            stringLiteralLength = 0;
-            return ScanStringLiteralResult.None;
-        }
-        else if (doubleQuoteCount == 1)
-        {
-            return ScanEscapedStringLiteral(text, out stringLiteralLength);
-        }
-        else if (doubleQuoteCount == 2)
-        {
-            doubleQuoteCount = 1;
-            stringLiteralLength = 2;
-            return ScanStringLiteralResult.String;
-        }
-        else
-        {
-            return ScanRawStringLiteral(text, doubleQuoteCount, out stringLiteralLength);
-        }
-    }
+        => ScanStringLiteral(text, out doubleQuoteCount, out stringLiteralLength, out _);
 
     /// <summary>
     /// Decodes a validated string literal.
@@ -151,78 +150,35 @@ public static class StringLiteralHelper
             });
     }
 
+    internal static ScanStringLiteralResult ScanStringLiteral(ReadOnlySpan<char> text, out int doubleQuoteCount, out int stringLiteralLength, out StringScanFailure failure, int depth = 0)
+    {
+        failure = default;
+        doubleQuoteCount = CountLeadingDoubleQuotes(text);
+        if (doubleQuoteCount == 0)
+        {
+            stringLiteralLength = 0;
+            return ScanStringLiteralResult.None;
+        }
+        else if (doubleQuoteCount == 1)
+        {
+            return ScanEscapedStringLiteral(text, out stringLiteralLength, out failure, depth);
+        }
+        else if (doubleQuoteCount == 2)
+        {
+            doubleQuoteCount = 1;
+            stringLiteralLength = 2;
+            return ScanStringLiteralResult.String;
+        }
+        else
+        {
+            return ScanRawStringLiteral(text, doubleQuoteCount, out stringLiteralLength, out failure);
+        }
+    }
+
     // The input starts with the interpolation's opening parenthesis. Quotes and comments
     // are scanned as units, so their parentheses do not affect the nesting depth.
-    internal static int FindInterpolationEnd(ReadOnlySpan<char> text, int depth = 0)
-    {
-        if (depth >= 128)
-        {
-            return -1;
-        }
-
-        var parentheses = 0;
-        for (var i = 0; i < text.Length; i++)
-        {
-            if (text[i] == '(')
-            {
-                parentheses++;
-            }
-            else if (text[i] == ')' && --parentheses == 0)
-            {
-                return i;
-            }
-            else if (text[i] == '"')
-            {
-                var quotes = CountLeadingDoubleQuotes(text[i..]);
-                int length;
-                var result = quotes >= 3
-                    ? ScanRawStringLiteral(text[i..], quotes, out length)
-                    : quotes == 2
-                        ? ScanStringLiteral(text[i..], out _, out length)
-                        : ScanEscapedStringLiteral(text[i..], out length, depth + 1);
-                if (result == ScanStringLiteralResult.Invalid)
-                {
-                    return -1;
-                }
-
-                i += length - 1;
-            }
-            else if (text[i] == '\'')
-            {
-                if (!CharLiteralHelper.Scan(text[i..], out var length))
-                {
-                    return -1;
-                }
-
-                i += length - 1;
-            }
-            else if (text[i] == '/' && i + 1 < text.Length)
-            {
-                if (text[i + 1] == '/')
-                {
-                    var end = text[(i + 2)..].IndexOfAny('\r', '\n');
-                    if (end < 0)
-                    {
-                        return -1;
-                    }
-
-                    i += end + 1;
-                }
-                else if (text[i + 1] == '*')
-                {
-                    var end = text[(i + 2)..].IndexOf("*/");
-                    if (end < 0)
-                    {
-                        return -1;
-                    }
-
-                    i += end + 3;
-                }
-            }
-        }
-
-        return -1;
-    }
+    internal static int FindInterpolationEnd(ReadOnlySpan<char> text)
+        => FindInterpolationEnd(text, 1, out _);
 
     // Input begins immediately after a backslash. Shared by char and escaped string
     // literals; interpolation is deliberately handled only by the string parser.
@@ -262,6 +218,71 @@ public static class StringLiteralHelper
 
         scalar = (uint)value;
         return true;
+    }
+
+    private static int FindInterpolationEnd(ReadOnlySpan<char> text, int depth, out StringScanFailure failure)
+    {
+        failure = default;
+        var parentheses = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (text[i] == '(')
+            {
+                parentheses++;
+            }
+            else if (text[i] == ')' && --parentheses == 0)
+            {
+                return i;
+            }
+            else if (text[i] == '"')
+            {
+                var result = ScanStringLiteral(text[i..], out _, out var length, out failure, depth);
+                if (result == ScanStringLiteralResult.Invalid)
+                {
+                    failure = failure.Offset(i);
+                    return -1;
+                }
+
+                i += length - 1;
+            }
+            else if (text[i] == '\'')
+            {
+                if (!CharLiteralHelper.Scan(text[i..], out var length))
+                {
+                    failure = new(StringScanFailureKind.CharEnd, new(i, 1), i + length);
+                    return -1;
+                }
+
+                i += length - 1;
+            }
+            else if (text[i] == '/' && i + 1 < text.Length)
+            {
+                if (text[i + 1] == '/')
+                {
+                    var end = text[(i + 2)..].IndexOfAny('\r', '\n');
+                    if (end < 0)
+                    {
+                        break; // A line comment reaches EOF; the missing form is the interpolation's ')'.
+                    }
+
+                    i += end + 1;
+                }
+                else if (text[i + 1] == '*')
+                {
+                    var end = text[(i + 2)..].IndexOf("*/");
+                    if (end < 0)
+                    {
+                        failure = new(StringScanFailureKind.BlockCommentEnd, new(i, 2), text.Length);
+                        return -1;
+                    }
+
+                    i += end + 3;
+                }
+            }
+        }
+
+        failure = new(StringScanFailureKind.InterpolationEnd, new(0, 1), text.Length);
+        return -1;
     }
 
     // The length of escaped text decoded: an escape gives its scalar, and a CRLF or CR gives one LF (SPEC 2.9).
@@ -465,8 +486,9 @@ public static class StringLiteralHelper
         return ScanStringLiteralResult.Invalid;
     }
 
-    private static ScanStringLiteralResult ScanEscapedStringLiteral(ReadOnlySpan<char> text, out int stringLiteralLength, int depth = 0)
+    private static ScanStringLiteralResult ScanEscapedStringLiteral(ReadOnlySpan<char> text, out int stringLiteralLength, out StringScanFailure failure, int depth)
     {
+        failure = default;
         var offset = 1;
         var interpolated = false;
         while (offset < text.Length)
@@ -484,26 +506,42 @@ public static class StringLiteralHelper
                 return interpolated ? ScanStringLiteralResult.Interpolation : ScanStringLiteralResult.String;
             }
 
-            var close = FindInterpolationEnd(text[(delimiter + 1)..], depth + 1);
+            if (depth >= MaximumInterpolationDepth)
+            {
+                // Stop scanning this source after exhausting the recursion budget. Continuing would require unbounded
+                // nesting state and cannot establish where this token ends. Other SourceDocuments remain independent.
+                stringLiteralLength = text.Length;
+                failure = new(StringScanFailureKind.NestingLimit, new(delimiter, 2), stringLiteralLength);
+                return ScanStringLiteralResult.Invalid;
+            }
+
+            var close = FindInterpolationEnd(text[(delimiter + 1)..], depth + 1, out failure);
             if (close < 0)
             {
-                break;
+                failure = failure.Offset(delimiter + 1);
+                stringLiteralLength = failure.RecoveryEnd;
+                return ScanStringLiteralResult.Invalid;
             }
 
             interpolated = true;
             offset = delimiter + close + 2;
         }
 
-        return ScanInvalidStringLiteral(text[1..], 1, out stringLiteralLength);
+        var invalid = ScanInvalidStringLiteral(text[1..], 1, out stringLiteralLength);
+        failure = new(StringScanFailureKind.StringEnd, new(0, 1), stringLiteralLength);
+        return invalid;
     }
 
-    private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength)
+    private static ScanStringLiteralResult ScanRawStringLiteral(ReadOnlySpan<char> text, int doubleQuoteCount, out int stringLiteralLength, out StringScanFailure failure)
     {
+        failure = default;
         var span = text.Slice(doubleQuoteCount);
         var delimiterIndex = span.IndexOf(text[..doubleQuoteCount]);
         if (delimiterIndex < 0)
         {
-            return ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
+            var invalid = ScanInvalidStringLiteral(span, doubleQuoteCount, out stringLiteralLength);
+            failure = new(StringScanFailureKind.StringEnd, new(0, doubleQuoteCount), stringLiteralLength);
+            return invalid;
         }
 
         // Treat surplus quotes before the closing delimiter as content.

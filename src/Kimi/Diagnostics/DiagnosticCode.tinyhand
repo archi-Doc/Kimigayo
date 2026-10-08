@@ -826,6 +826,11 @@
     Category="Resource"
     Message="Generic generation exceeds a mandatory resource limit"
 
+  + Name="InterpolationNestingLimit_Kd"
+    Category="Resource"
+    Message="String interpolation nesting exceeds the limit of {0}"
+    Arguments="limit:Number"
+
   + Name="OwnershipStorageLimit_Kd"
     Category="Resource"
     Message="Ownership analysis requires {0} bytes for a storage table; the limit is {1} bytes"

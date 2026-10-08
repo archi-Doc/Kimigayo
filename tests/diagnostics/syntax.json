@@ -1,4 +1,8 @@
 [
+  { "Name": "interpolation-inner-char-unterminated", "Source": "let text = \"\\(\n    'x)\nlet wrong: i32 = true\n", "Intended": "a char that fails on a later interpolation line owns the lexical failure and recovery; the next statement keeps its independent mismatch",
+    "Records": [ { "Code": "MissingCharLiteralEnd_Kd", "At": "'", "Length": 1 }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
+  { "Name": "interpolation-own-closer-missing", "Source": "let text = \"\\(1", "Intended": "a missing interpolation closer is located at the insertion point and relates its own opening; outer string recovery depends on it",
+    "Records": [ { "Code": "MissingSyntax_Kd", "Form": "CloseParenthesis", "After": "1", "Related": [{"Role": "opening delimiter", "At": "(", "Length": 1}], "Repairs": [{"Kind": "Repair.InsertToken", "Edits": [{"After": "1", "Text": ")"}]}] } ] },
   { "Name": "switch-misplaced-item-source-check", "Source": "#switch\n    let missing =\n    #case _\n        ()\nlet wrong: i32 = true\n", "Intended": "a misplaced Case Group item receives its owner's grammar checks but establishes nothing; its missing expression and the next independent mismatch remain visible",
     "Records": [ { "Code": "InvalidCompileTimeSwitchItem_Kd", "At": "let missing", "Length": 3 }, { "Code": "MissingSyntax_Kd", "Form": "Expression", "After": "missing =" }, { "Code": "TypeMismatch_Kd", "At": "true" } ] },
   { "Name": "stacked-directive-condition-exclusion", "Source": "#if false\n#if missingName\nfunc f() => ()\nConsole.writeLine(\"hi\")\n", "Intended": "a later prefix Condition belongs to the preceding excluded target, while it never excludes its own error",
