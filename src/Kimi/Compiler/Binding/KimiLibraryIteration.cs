@@ -34,7 +34,7 @@ public sealed partial class KimiLibrary
             clause.BoundConstraint is not { Contract: { } required } || !ReferenceEquals(required, this.LendingIterator) ||
             entry.BoundSymbol is not { Type: { } result } requirement || entry.Parameters.Count != 1 || !ReferenceEquals(entry.ReturnType?.BoundType, result) ||
             symbol.Contract is not { AssociatedTypes: [var boundFamily], Requirements: [var boundEntry] } ||
-            !ReferenceEquals(boundFamily, family) || boundEntry != new BoundRequirement(requirement, symbol))
+            boundFamily != new BoundRequirement(family, symbol) || boundEntry != new BoundRequirement(requirement, symbol))
         {
             return false;
         }
@@ -60,7 +60,7 @@ public sealed partial class KimiLibrary
         if (symbol.Declaration is not ContractKoto { Bases: [var parent], Members: [SyntaxFormKoto item, EffectBoundKoto effect], ConstraintNodes: [IsKoto refinement] } ||
             !ReferenceEquals(parent.BoundSymbol, this.LendingIterator) || !BoundContractSelf(symbol, out var self) ||
             item.BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } itemSymbol || !ReferenceEquals(itemSymbol.Declaration, item) ||
-            symbol.Contract is not { } contract || !contract.AssociatedTypes.Contains(itemSymbol) ||
+            symbol.Contract is not { } contract || !contract.AssociatedTypes.Contains(new(itemSymbol, symbol)) ||
             contract.EffectBoundStorage is not [{ Bound: EffectBoundKind.PreservesResults } bound] || !ReferenceEquals(bound.Declaration, effect) ||
             this.LendingIterator.Declaration is not ContractKoto { Members: [_, FunctionKoto next] } || !ReferenceEquals(bound.Requirement.Declaration, next) ||
             this.LendingIterator.Declaration is not ContractKoto { Members: [SyntaxFormKoto { BoundSymbol: { } lent }, ..] } || !ReferenceEquals(refinement.BoundSymbol, lent))
@@ -83,7 +83,7 @@ public sealed partial class KimiLibrary
             next.BoundSymbol is not { Schema.Origins: [var stepParameter], Type: { } result } requirement ||
             next.Parameters.Count != 1 || !ReferenceEquals(next.ReturnType?.BoundType, result) ||
             symbol.Contract is not { AssociatedTypes: [var boundFamily], Requirements: [var boundNext] } ||
-            !ReferenceEquals(boundFamily, familySymbol) || boundNext != new BoundRequirement(requirement, symbol))
+            boundFamily != new BoundRequirement(familySymbol, symbol) || boundNext != new BoundRequirement(requirement, symbol))
         {
             return false;
         }

@@ -52,7 +52,7 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         {
             Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(id));
             var contract = c.Library.GetSymbol(id)!.Contract!;
-            Assert.Equal("Output", Assert.Single(contract.AssociatedTypes).Name);
+            Assert.Equal("Output", Assert.Single(contract.AssociatedTypes).Symbol.Name);
             var function = (FunctionKoto)Assert.Single(contract.Requirements).Symbol.Declaration;
             Assert.All(function.Parameters, static x => Assert.Equal(SemanticsKind.Ref, x.Type.BoundType!.Semantics));
             Assert.Equal(id == KimiDeclarationId.Negatable ? 1 : 2, function.Parameters.Count);

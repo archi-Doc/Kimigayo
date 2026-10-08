@@ -6,8 +6,10 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Path, BindingSymbol Associated), AssociatedBinding> associatedBindings = new();
+    private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Associated), AssociatedBinding> associatedBindings = new();
     private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
+    private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
+    private Dictionary<Koto, (BoundRequirement First, BoundRequirement Second, int Count)>? associatedAmbiguities;
 
     // SPEC 8.4: whether a Type is the Self of a Contract, a Type parameter standing for any conforming Type. It is distinct
     // from every reference to the Contract itself, such as the declaring Contract of a projection.
@@ -64,7 +66,21 @@ public sealed partial class Binding
     private BoundType ProjectionContract(BindingSymbol associated, BindingSymbol? reference)
     {
         var supplied = reference ?? associated.Scope.Owner.BoundSymbol!;
-        return this.DeclaringReference(associated, IsBoundContractReference(supplied) ? supplied.Type! : this.SelfType(supplied));
+        return IsBoundContractReference(supplied) ? supplied.Type! : this.SelfType(supplied);
+    }
+
+    // Projection syntax and the effective shape share one identity. A declaration applied to its own slots denotes
+    // that declaration's requirement; every other normalized argument list retains its interned bound reference.
+    private BoundRequirement? AssociatedIdentity(BoundType? projection, BindingSymbol? context = null)
+    {
+        if (projection is not { Kind: BoundTypeKind.AssociatedProjection, Symbol: { } associated, Components: [_, var reference] })
+        {
+            return null;
+        }
+
+        reference = context is null ? reference : this.SubstituteContractReference(reference, context);
+        var declaration = reference.Symbol!;
+        return new(associated, ReferenceEquals(reference, this.SelfType(declaration)) ? declaration : this.BoundContractReference(reference));
     }
 
     private BindingSymbol? FindAssociated(BoundType type, BindingScope scope, string name, BindingSymbol? qualifier, Koto use)
@@ -74,8 +90,10 @@ public sealed partial class Binding
     {
         BindingSymbol? found = null;
         BindingSymbol? foundReference = null;
-        var ambiguous = false;
-        if (qualifier?.Contract is { } qualified)
+        BoundRequirement? alternative = null;
+        this.ambiguousAssociatedMatches?.Clear();
+        var contextualQualifier = qualifier is not null && !IsBoundContractReference(qualifier) && qualifier.Schema is { GenericSlots.Count: > 0 } or { Origins.Count: > 0 };
+        if (qualifier?.Contract is { } qualified && !contextualQualifier)
         {
             Search(qualified);
         }
@@ -83,7 +101,7 @@ public sealed partial class Binding
         {
             if ((type.Symbol?.SelfOf ?? type.Symbol)?.Contract is { } own)
             {
-                Search(own);
+                SearchAvailable(own);
             }
 
             for (var current = scope; current is not null; current = current.Parent)
@@ -97,7 +115,7 @@ public sealed partial class Binding
                 {
                     if (fact.Kind == ConstraintKind.Contract && AssociatedIdentityMatches(fact.Subject, type) && fact.Contract?.Contract is not null)
                     {
-                        Search(this.AppliedAssociatedContract(fact, type).Contract!);
+                        SearchAvailable(this.AppliedAssociatedContract(fact, type).Contract!);
                     }
                 }
             }
@@ -106,44 +124,59 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < list.Count; i++)
                 {
-                    Search(list[i].Contract.Contract!);
+                    SearchAvailable(list[i].Contract.Contract!);
                 }
             }
         }
 
         reference = foundReference;
-        if (ambiguous)
+        if (alternative is { } second)
         {
-            this.Fail(use, BindingFailure.Ambiguous);
+            this.FailExplained(ref this.associatedAmbiguities, use, BindingFailure.Ambiguous, (new(found!, foundReference!), second, this.ambiguousAssociatedMatches!.Count));
             return null;
         }
 
         return found;
 
+        void SearchAvailable(BoundContract shape)
+        {
+            if (!contextualQualifier || ReferenceEquals(shape.Symbol.Declaration, qualifier!.Declaration))
+            {
+                Search(shape);
+            }
+
+            if (contextualQualifier)
+            {
+                for (var i = 0; i < shape.Ancestors.Count; i++)
+                {
+                    if (ReferenceEquals(shape.Ancestors[i].Declaration, qualifier!.Declaration))
+                    {
+                        Search(shape.Ancestors[i].Contract!);
+                    }
+                }
+            }
+        }
+
         void Search(BoundContract shape)
         {
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
-                var associated = shape.AssociatedTypes[i];
+                var identity = shape.AssociatedTypes[i];
+                var associated = identity.Symbol;
                 if (associated.Name == name)
                 {
-                    var owner = associated.Scope.Owner.BoundSymbol!;
-                    var candidate = shape.Symbol;
-                    if (!ReferenceEquals(candidate.Declaration, owner.Declaration))
+                    var candidate = identity.Contract;
+                    if (found is not null && (!ReferenceEquals(found, associated) || !ReferenceEquals(foundReference, candidate)))
                     {
-                        for (var j = 0; j < shape.Ancestors.Count; j++)
-                        {
-                            if (ReferenceEquals(shape.Ancestors[j].Declaration, owner.Declaration))
-                            {
-                                candidate = shape.Ancestors[j];
-                                break;
-                            }
-                        }
+                        alternative ??= identity;
+                        (this.ambiguousAssociatedMatches ??= new()).Add(new(found, foundReference!));
+                        this.ambiguousAssociatedMatches.Add(identity);
                     }
-
-                    ambiguous |= found is not null && (!ReferenceEquals(found, associated) || !ReferenceEquals(foundReference, candidate));
-                    found = associated;
-                    foundReference = candidate;
+                    else
+                    {
+                        found = associated;
+                        foundReference = candidate;
+                    }
                 }
             }
         }
@@ -306,9 +339,10 @@ public sealed partial class Binding
             Complete(member.Left, BoundType.Unit);
         }
 
-        var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause) : null;
+        BindingSymbol? reference = null;
+        var associated = TypeSpelling(name!) is { } spelling ? this.FindAssociated(self, scope, spelling, qualifier, clause, out reference) : null;
         var ambiguous = false;
-        if (associated is null || this.ConformanceByDeclaration(self.Symbol!, qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)
+        if (associated is null || this.ConformanceByDeclaration(self.Symbol!, reference ?? qualifier ?? associated.Scope.Owner.BoundSymbol!, out ambiguous) is not { } conformance || conformance.Paths.Count == 0)
         {
             this.Fail(clause, ambiguous ? BindingFailure.Ambiguous : BindingFailure.InvalidAssociatedType);
             return;
@@ -321,7 +355,7 @@ public sealed partial class Binding
             return;
         }
 
-        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, conformance.Contract)], originArguments: parameters);
+        var projection = this.InternType(BoundTypeKind.AssociatedProjection, associated, SemanticsKind.Owner, [self, this.ProjectionContract(associated, reference)], originArguments: parameters);
         clause.BoundSymbol = associated;
         clause.Left.BoundSymbol = associated;
         name!.BoundSymbol = associated;
@@ -419,30 +453,52 @@ public sealed partial class Binding
             {
                 if (shape.ClauseStorage[i].BoundConstraint is { } constraint)
                 {
-                    Collect(constraint, path);
+                    Collect(constraint, path, shape.Symbol);
                 }
             }
         }
 
-        void Collect(BoundConstraint constraint, BoundConformancePath path)
+        void Collect(BoundConstraint constraint, BoundConformancePath path, BindingSymbol? context = null)
         {
             if (constraint.Kind == ConstraintKind.And)
             {
-                Collect(constraint.Left!, path);
-                Collect(constraint.Right!, path);
+                Collect(constraint.Left!, path, context);
+                Collect(constraint.Right!, path, context);
             }
-            else if (constraint is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.AssociatedProjection, RequiredType: { } required } && this.associatedBindings.TryGetValue((path, constraint.Subject.Symbol!), out var binding) && !binding.Candidates.Contains(required))
+            else if (constraint is { Kind: ConstraintKind.TypeIdentity, RequiredType: { } required } &&
+                this.AssociatedIdentity(constraint.Subject, context) is { } identity && this.associatedBindings.TryGetValue((path, identity), out var binding))
             {
-                binding.Candidates.Add(required);
+                required = context is null ? required : this.SubstituteContractReference(required, context);
+                if (!binding.Candidates.Contains(required))
+                {
+                    binding.Candidates.Add(required);
+                }
             }
         }
     }
 
-    private BoundType? ResolveAssociated(BoundConformancePath path, BindingSymbol associated)
+    private BoundType? ResolveAssociated(BoundConformancePath path, BoundRequirement associated)
     {
         if (path.InheritedFrom is { } source)
         {
-            return this.ResolveAssociated(source, associated) is { } inherited ? this.StoredType(inherited, path.InheritedBase!) : null;
+            BoundType? inheritedResult = null;
+            foreach (var original in source.Contract.Contract!.AssociatedStorage)
+            {
+                if (original.Symbol != associated.Symbol || this.SubstituteRequirementContract(original.Contract, path.InheritedBase!) != associated.Contract)
+                {
+                    continue;
+                }
+
+                if (this.ResolveAssociated(source, original) is not { } inherited || this.StoredType(inherited, path.InheritedBase!) is not { } current ||
+                    (inheritedResult is not null && !ReferenceEquals(inheritedResult, current)))
+                {
+                    return null;
+                }
+
+                inheritedResult = current;
+            }
+
+            return inheritedResult;
         }
 
         // Refinement paths have exactly the root declaration's D + P environment.
@@ -463,7 +519,7 @@ public sealed partial class Binding
         var self = this.SelfType(path.Type);
         BoundType? result = null;
         var valid = binding.Candidates.Count != 0;
-        var complete = this.IsCompleteAssociated(associated);
+        var complete = this.IsCompleteAssociated(associated.Symbol);
         for (var i = 0; i < binding.Candidates.Count; i++)
         {
             var type = this.ContractType(binding.Candidates[i], scope, self);
@@ -482,10 +538,9 @@ public sealed partial class Binding
     {
         for (var current = scope; current is not null; current = current.Parent)
         {
-            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) &&
-                (qualifier is null || ReferenceEquals(this.DeclaringReference(associated, path.Contract.Type ?? qualifier), qualifier)))
+            if (current.ConformancePath is { } path && ReferenceEquals(path.Type, receiver.Symbol) && this.AssociatedInPath(path, receiver, associated, qualifier) is { } selected)
             {
-                return this.ResolveAssociated(path, associated);
+                return this.ResolveAssociated(path, selected);
             }
         }
 
@@ -507,7 +562,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            if (condition == ConstraintProof.Refuted || this.ResolveAssociated(path, associated) is not { } binding)
+            if (condition == ConstraintProof.Refuted || this.AssociatedInPath(path, receiver, associated, qualifier) is not { } selected || this.ResolveAssociated(path, selected) is not { } binding)
             {
                 continue;
             }
@@ -696,25 +751,27 @@ public sealed partial class Binding
         return found;
     }
 
-    // The bound reference, as a Type, of the Contract that declares `associated`, reached from a reference to it or to a
-    // refinement of it (`UniqIndexable<isize>` reaches `Indexable<isize>`).
-    private BoundType DeclaringReference(BindingSymbol associated, BoundType reference)
+    private BoundRequirement? AssociatedInPath(BoundConformancePath path, BoundType receiver, BindingSymbol associated, BoundType? qualifier)
     {
-        var owner = associated.Scope.Owner;
-        if (ReferenceEquals(reference.Symbol?.Declaration, owner) || reference.Symbol?.Contract is not { } shape)
+        BoundRequirement? found = null;
+        foreach (var identity in path.Contract.Contract!.AssociatedStorage)
         {
-            return reference;
-        }
-
-        for (var i = 0; i < shape.Ancestors.Count; i++)
-        {
-            if (ReferenceEquals(shape.Ancestors[i].Declaration, owner) && shape.Ancestors[i].Type is { } ancestor)
+            if (ReferenceEquals(identity.Symbol, associated))
             {
-                return this.StoredType(ancestor, reference) ?? ancestor;
+                var reference = this.ProjectionContract(associated, identity.Contract);
+                if (qualifier is null || ReferenceEquals(reference, qualifier) || ReferenceEquals(this.StoredType(reference, receiver), qualifier))
+                {
+                    if (found is not null)
+                    {
+                        return null;
+                    }
+
+                    found = identity;
+                }
             }
         }
 
-        return reference;
+        return found;
     }
 
     private sealed class AssociatedBinding

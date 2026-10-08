@@ -53,7 +53,7 @@ public class IterationSignatureValidationTest
                 next.ReturnType!.BoundType = next.BoundSymbol.Type = Copy(result, components: [Copy(item, origins: [formation.BoundType!.Origin!])]);
                 break;
             case "result-family":
-                next.ReturnType!.BoundType = next.BoundSymbol.Type = Copy(result, components: [Copy(item, symbol: foreignFamily)]);
+                next.ReturnType!.BoundType = next.BoundSymbol.Type = Copy(result, components: [Copy(item, symbol: foreignFamily.Symbol)]);
                 break;
             case "result-self":
                 next.ReturnType!.BoundType = next.BoundSymbol.Type = Copy(result, components: [Copy(item, components: [BoundType.ISize])]);
@@ -128,7 +128,7 @@ public class IterationSignatureValidationTest
                 receiver.BoundType = id == KimiDeclarationId.IntoIterable ? BoundType.ISize : Copy(original, components: [BoundType.ISize]);
                 break;
             case "result-family":
-                entry.ReturnType!.BoundType = entry.BoundSymbol.Type = Copy(result, symbol: foreignFamily);
+                entry.ReturnType!.BoundType = entry.BoundSymbol.Type = Copy(result, symbol: foreignFamily.Symbol);
                 break;
             case "result-origin":
                 entry.ReturnType!.BoundType = entry.BoundSymbol.Type = Copy(result, origins: [formation!.BoundType!.Origin!]);

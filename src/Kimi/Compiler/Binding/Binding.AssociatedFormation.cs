@@ -50,10 +50,10 @@ public sealed partial class Binding
         return false;
     }
 
-    private BindingScope AssociatedFormationScope(BoundConformancePath path, BindingSymbol? associated, BindingScope scope)
+    private BindingScope AssociatedFormationScope(BoundConformancePath path, BoundRequirement? identity, BindingScope scope)
     {
-        if (associated is not { Kind: BindingSymbolKind.AssociatedType } || this.AssociatedParameters(associated.Declaration).Length == 0 ||
-            !this.associatedBindings.TryGetValue((path.RootPath, associated), out var binding))
+        if (identity is not { Symbol: { Kind: BindingSymbolKind.AssociatedType } associated } selected || this.AssociatedParameters(associated.Declaration).Length == 0 ||
+            !this.associatedBindings.TryGetValue((path.RootPath, selected), out var binding))
         {
             return scope;
         }
@@ -154,21 +154,9 @@ public sealed partial class Binding
         {
             if (enclosing.Owner is StructKoto or EnumKoto or ContractKoto && enclosing.Owner.BoundSymbol is { } self)
             {
-                var owner = associated.Scope.Owner.BoundSymbol!;
-                if (self.Contract is { } shape)
+                if (node is IsKoto clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity)
                 {
-                    for (var i = 0; i < shape.Ancestors.Count; i++)
-                    {
-                        if (ReferenceEquals(shape.Ancestors[i].Declaration, owner.Declaration))
-                        {
-                            formation = this.SubstituteContractReference(formation, shape.Ancestors[i]);
-                            break;
-                        }
-                    }
-                }
-                else if (this.ConformanceByDeclaration(self, owner, out _) is { } conformance)
-                {
-                    formation = this.SubstituteContractReference(formation, conformance.Contract);
+                    formation = this.SubstituteContractReference(formation, identity.Contract);
                 }
 
                 return this.ContractType(formation, scope, this.SelfType(self));

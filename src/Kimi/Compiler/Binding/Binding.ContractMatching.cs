@@ -267,7 +267,7 @@ public sealed partial class Binding
                     return ConstraintProof.Unknown;
                 }
 
-                var clauseScope = this.AssociatedFormationScope(conformance, shape.ClauseStorage[i].BoundSymbol, scope);
+                var clauseScope = this.AssociatedFormationScope(conformance, this.AssociatedIdentity(shape.ClauseStorage[i].Left.BoundType, shape.Symbol), scope);
                 proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
             }
 
@@ -283,9 +283,9 @@ public sealed partial class Binding
                             return Invalid(BindingFailure.InvalidAssociatedType);
                         }
 
-                        if (clause.BoundConstraint is { } constraint && shape.AssociatedStorage.Contains(clause.BoundSymbol!))
+                        if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
                         {
-                            var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                            var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
                             proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                         }
                     }
@@ -294,7 +294,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < container.Members.Count; i++)
             {
-                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && shape.AssociatedStorage.Contains(clause.BoundSymbol!) &&
+                if (container.Members[i] is IsKoto { IsAssociatedConstraint: true, BoundConstraint: { } constraint } clause && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity) &&
                     SpecifiesContract(clause, conformance.Contract))
                 {
                     if (clause.BindingState == BindingState.Invalid)
@@ -302,7 +302,7 @@ public sealed partial class Binding
                         return Invalid(BindingFailure.InvalidAssociatedType);
                     }
 
-                    var clauseScope = this.AssociatedFormationScope(conformance, clause.BoundSymbol, scope);
+                    var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
                     proof = CombineProof(proof, this.ProveConstraint(this.ContractConstraint(constraint, clauseScope, self), clauseScope), true);
                 }
             }

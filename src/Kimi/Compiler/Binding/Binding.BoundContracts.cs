@@ -120,9 +120,11 @@ public sealed partial class Binding
             // Indexable<isize>); an ancestor without Type arguments keeps its declaration identity.
             for (var i = 0; i < original.AssociatedStorage.Count; i++)
             {
-                if (shape.Seen.Add(original.AssociatedStorage[i]))
+                var source = original.AssociatedStorage[i];
+                var associated = new BoundRequirement(source.Symbol, ReferenceEquals(source.Contract, declaration) ? bound : this.SubstituteRequirementContract(source.Contract, reference));
+                if (shape.SeenRequirements.Add(associated))
                 {
-                    shape.AssociatedStorage.Add(original.AssociatedStorage[i]);
+                    shape.AssociatedStorage.Add(associated);
                 }
             }
 

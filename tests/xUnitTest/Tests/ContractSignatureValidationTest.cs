@@ -111,7 +111,7 @@ public class ContractSignatureValidationTest
                 function.BoundSymbol.Type = Copy(result, origin: key.BoundType!.Origin);
                 break;
             case "result-element":
-                function.BoundSymbol.Type = Copy(result, components: [Copy(result.Components[0], symbol: foreignFamily)]);
+                function.BoundSymbol.Type = Copy(result, components: [Copy(result.Components[0], symbol: foreignFamily.Symbol)]);
                 break;
             case "requirement-identity":
                 symbol.Contract!.RequirementStorage[^1] = symbol.Contract.RequirementStorage[^1] with { Symbol = c.Library.GetSymbol(KimiDeclarationId.WriteLine)! };

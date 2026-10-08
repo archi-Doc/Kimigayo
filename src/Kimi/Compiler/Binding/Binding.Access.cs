@@ -166,13 +166,13 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (clause.IsAssociatedConstraint && owner is not ContractKoto && clause.BoundSymbol is { } associated)
+            if (clause.IsAssociatedConstraint && owner is not ContractKoto && this.AssociatedIdentity(clause.Left.BoundType) is { } associated)
             {
                 var type = scope.ConformancePath?.Type ?? owner.BoundSymbol;
                 for (var p = 0; p < this.activeConformancePaths.Count; p++)
                 {
                     var path = this.activeConformancePaths[p];
-                    if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.AssociatedStorage.Contains(associated) ||
+                    if (!ReferenceEquals(path.Type, type) || !path.Contract.Contract!.SeenRequirements.Contains(associated) ||
                         (scope.ConformancePath is { } declaringPath && !ReferenceEquals(path.RootPath, declaringPath.RootPath)))
                     {
                         continue;

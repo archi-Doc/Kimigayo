@@ -93,7 +93,7 @@ public sealed partial class Binding
                 if (block.Items[i] is IsKoto { IsAssociatedConstraint: true } clause)
                 {
                     this.BindAssociatedSpecification(clause, scope, owner.BoundSymbol!);
-                    if (scope.ConformancePath is not { } declaringPath || !declaringPath.RootContract.Contract!.AssociatedStorage.Contains(clause.BoundSymbol!))
+                    if (scope.ConformancePath is not { } declaringPath || this.AssociatedIdentity(clause.Left.BoundType) is not { } identity || !declaringPath.RootContract.Contract!.SeenRequirements.Contains(identity))
                     {
                         this.Fail(clause, BindingFailure.InvalidAssociatedType);
                     }

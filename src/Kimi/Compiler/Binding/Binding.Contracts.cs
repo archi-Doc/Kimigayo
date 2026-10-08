@@ -124,7 +124,7 @@ public sealed partial class Binding
             return direct;
         }
 
-        if (!this.conformancesByType.TryGetValue(type, out var identities))
+        if (IsBoundContractReference(contract) || !this.conformancesByType.TryGetValue(type, out var identities))
         {
             return null;
         }
@@ -168,6 +168,8 @@ public sealed partial class Binding
         this.projectionUses.Clear();
         this.userIterations.Clear();
         this.associatedApplications.Clear();
+        this.associatedAmbiguities?.Clear();
+        this.ambiguousAssociatedMatches?.Clear();
         this.memberSelections.Clear();
         foreach (var group in this.requirementGroups.Values)
         {
@@ -390,7 +392,7 @@ public sealed partial class Binding
 
             for (var j = 0; j < inherited.AssociatedTypes.Count; j++)
             {
-                Add(inherited.AssociatedTypes[j], shape.AssociatedStorage);
+                AddAssociated(inherited.AssociatedTypes[j]);
             }
         }
 
@@ -403,7 +405,7 @@ public sealed partial class Binding
             }
             else if (member is SyntaxFormKoto { Akind: KotoKind.AssociatedType } && member.BoundSymbol is { } associated)
             {
-                Add(associated, shape.AssociatedStorage);
+                AddAssociated(new(associated, shape.Symbol));
                 Complete(member, BoundType.Unit);
             }
             else if (member is not EffectBoundKoto)
@@ -420,7 +422,7 @@ public sealed partial class Binding
             shape.ClauseStorage.Add(clause);
             if (clause.IsAssociatedConstraint && clause.BoundSymbol is { Kind: BindingSymbolKind.AssociatedType } associated)
             {
-                Add(associated, shape.AssociatedStorage);
+                AddAssociated(new(associated, shape.Symbol));
             }
         }
 
@@ -451,6 +453,14 @@ public sealed partial class Binding
             if (shape.SeenRequirements.Add(requirement))
             {
                 shape.RequirementStorage.Add(requirement);
+            }
+        }
+
+        void AddAssociated(BoundRequirement requirement)
+        {
+            if (shape.SeenRequirements.Add(requirement))
+            {
+                shape.AssociatedStorage.Add(requirement);
             }
         }
 

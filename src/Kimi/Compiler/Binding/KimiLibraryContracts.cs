@@ -45,7 +45,7 @@ public sealed partial class KimiLibrary
             parameter.BoundType is not { Kind: BoundTypeKind.Parameter } key || function.BoundSymbol is not { Type: { } result } requirement ||
             (exclusive ? this.GetSymbol(KimiDeclarationId.Indexable) : symbol)?.Declaration is not ContractKoto { Members: [SyntaxFormKoto { BoundSymbol: { Kind: BindingSymbolKind.AssociatedType } element }, ..] } ||
             symbol.Contract is not { } contract || contract.Requirements.Count != (exclusive ? 2 : 1) || contract.Requirements[^1] != new BoundRequirement(requirement, symbol) ||
-            contract.AssociatedTypes is not [var associated] || !ReferenceEquals(associated, element) ||
+            contract.AssociatedTypes is not [var associated] || !ReferenceEquals(associated.Symbol, element) ||
             function.Parameters[0].Type.BoundType is not { } receiver || !OwnInputBorrow(receiver, semantics, function, 0, out var self) ||
             function.Parameters[1].Type.BoundType is not { } borrowedKey || !OwnInputBorrow(borrowedKey, SemanticsKind.Ref, function, 1, out var keyReferent))
         {
@@ -62,10 +62,14 @@ public sealed partial class KimiLibrary
                 reference = ReferenceEquals(contract.Ancestors[i].Declaration, parent) ? contract.Ancestors[i] : reference;
             }
 
-            if (reference?.Type is not { Kind: BoundTypeKind.Constructed, Components: [var parentKey] } || !ReferenceEquals(parentKey, key))
+            if (reference?.Type is not { Kind: BoundTypeKind.Constructed, Components: [var parentKey] } || !ReferenceEquals(parentKey, key) || !ReferenceEquals(associated.Contract, reference))
             {
                 return false;
             }
+        }
+        else if (!ReferenceEquals(associated.Contract, symbol))
+        {
+            return false;
         }
 
         return BoundContractSelf(symbol, out var contractSelf) && ReferenceEquals(self, contractSelf) && ReferenceEquals(keyReferent, key) &&

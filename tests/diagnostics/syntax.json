@@ -1,4 +1,6 @@
 [
+  { "Name": "bound-associated-identity-ambiguity", "Source": "contract C<E>\n    associate Item(a)\ncontract Q: C<i32>, C<i64>\n    associate C.Item(a) is i32\nlet present = 1\n", "Intended": "a bare associated-Type selector cannot choose between distinct bound parents; its diagnostic identifies both references, and exact selectors remain valid",
+    "Records": [ { "Code": "AmbiguousBinding_Kd", "At": "C.Item" } ] },
   { "Name": "bound-requirement-effect-ambiguity", "Source": "contract P<T>\n    func value(self: ref/Self, x: T) -> T\ncontract Q: P<i32>, P<i64>\n    effect P.value confined\nlet present = 1\n", "Intended": "a selector without Type arguments cannot choose between distinct bound ancestors; qualified selectors are checked separately by RequirementIdentityTest",
     "Records": [ { "Code": "InvalidEffectBound_Kd", "At": "effect P.value confined" } ] },
   { "Name": "interpolation-inner-char-unterminated", "Source": "let text = \"\\(\n    'x)\nlet wrong: i32 = true\n", "Intended": "a char that fails on a later interpolation line owns the lexical failure and recovery; the next statement keeps its independent mismatch",

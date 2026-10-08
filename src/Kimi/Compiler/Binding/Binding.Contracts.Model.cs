@@ -25,8 +25,8 @@ public sealed class BoundContract
     /// <summary>Gets the effective function and Property requirement identities.</summary>
     public IReadOnlyList<BoundRequirement> Requirements => this.RequirementStorage;
 
-    /// <summary>Gets the effective associated-Type declaration identities.</summary>
-    public IReadOnlyList<BindingSymbol> AssociatedTypes => this.AssociatedStorage;
+    /// <summary>Gets the effective associated-Type declarations and their bound declaring Contracts.</summary>
+    public IReadOnlyList<BoundRequirement> AssociatedTypes => this.AssociatedStorage;
 
     /// <summary>Gets the effect bounds this Contract itself declares (SPEC 8.4.10.1); each ancestor exposes its own.</summary>
     public IReadOnlyList<BoundEffectBound> EffectBounds => this.EffectBoundStorage;
@@ -35,7 +35,7 @@ public sealed class BoundContract
 
     internal List<BoundRequirement> RequirementStorage { get; } = new();
 
-    internal List<BindingSymbol> AssociatedStorage { get; } = new();
+    internal List<BoundRequirement> AssociatedStorage { get; } = new();
 
     internal List<IsKoto> ClauseStorage { get; } = new();
 
@@ -79,7 +79,7 @@ public readonly record struct BoundWitness(BoundRequirement Identity, BindingSym
 /// <summary>A stable declaration identity. Availability belongs to its evidence paths.</summary>
 public sealed class BoundConformance
 {
-    private static readonly IReadOnlyDictionary<BindingSymbol, BoundType> EmptyAssociated = new Dictionary<BindingSymbol, BoundType>();
+    private static readonly IReadOnlyDictionary<BoundRequirement, BoundType> EmptyAssociated = new Dictionary<BoundRequirement, BoundType>();
 
     internal BoundConformance(BindingSymbol type, BindingSymbol contract)
     {
@@ -98,7 +98,7 @@ public sealed class BoundConformance
     // Legacy access exposes only an unconditional, verified definition mapping.
     public IReadOnlyList<BoundWitness> Witnesses => this.UnconditionalPath?.Witnesses ?? Array.Empty<BoundWitness>();
 
-    public IReadOnlyDictionary<BindingSymbol, BoundType> AssociatedTypes => this.UnconditionalPath?.AssociatedTypes ?? EmptyAssociated;
+    public IReadOnlyDictionary<BoundRequirement, BoundType> AssociatedTypes => this.UnconditionalPath?.AssociatedTypes ?? EmptyAssociated;
 
     public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.UnconditionalPath?.PropertyWitnesses ?? Array.Empty<BoundPropertyWitness>();
 
@@ -162,7 +162,7 @@ public sealed class BoundConformancePath
     public IReadOnlyList<BoundWitness> Witnesses => this.WitnessStorage;
 
     /// <summary>Gets explicit, normalized associated-Type bindings.</summary>
-    public IReadOnlyDictionary<BindingSymbol, BoundType> AssociatedTypes => this.AssociatedStorage;
+    public IReadOnlyDictionary<BoundRequirement, BoundType> AssociatedTypes => this.AssociatedStorage;
 
     /// <summary>Gets the separately verified get/set mappings, valid only while IsVerified is true.</summary>
     public IReadOnlyList<BoundPropertyWitness> PropertyWitnesses => this.PropertyWitnessStorage;
@@ -187,7 +187,7 @@ public sealed class BoundConformancePath
 
     internal Dictionary<(BoundRequirement Requirement, PropertyAccessorKind Kind), BoundPropertyWitness> PropertyWitnessMap { get; } = new();
 
-    internal Dictionary<BindingSymbol, BoundType> AssociatedStorage { get; } = new(ReferenceEqualityComparer.Instance);
+    internal Dictionary<BoundRequirement, BoundType> AssociatedStorage { get; } = new();
 
     internal Koto Use { get; set; } = null!;
 

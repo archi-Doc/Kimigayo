@@ -49,7 +49,7 @@ public sealed partial class KimiLibrary
             declaration.Members[0].BoundSymbol is not { Kind: BindingSymbolKind.AssociatedType } output ||
             function.BoundSymbol is not { Type: { } result } requirement ||
             symbol.Contract is not { Requirements: [var only], AssociatedTypes: [var associated] } ||
-            only != new BoundRequirement(requirement, symbol) || !ReferenceEquals(associated, output) ||
+            only != new BoundRequirement(requirement, symbol) || associated != new BoundRequirement(output, symbol) ||
             result is not { Kind: BoundTypeKind.AssociatedProjection, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0, Components: [var subject, var contract] } ||
             !ReferenceEquals(result.Symbol, output) || !ReferenceEquals(subject, self) || !ReferenceEquals(contract.Symbol, symbol))
         {

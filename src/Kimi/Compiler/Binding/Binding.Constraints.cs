@@ -436,8 +436,11 @@ public sealed partial class Binding
             : semantics ? symbol!.Pair!.WholeType : symbol?.Kind == BindingSymbolKind.SemanticsTarget ? symbol.Type : this.BindType(clause.Left, bindingScope);
         clause.Left.BoundSymbol = symbol ?? clause.Left.BoundSymbol;
         Complete(clause.Left, subject);
+        var failedSubject = subject is null && (clause.BindingFailure != BindingFailure.None || clause.Left.BindingState == BindingState.Invalid);
         var unresolvedSubject = subject is null && scope.Owner is StructKoto or EnumKoto or ContractKoto && this.HasUnresolvedConstraintSyntax(clause.Left, scope);
-        var requirement = this.BindRequirement(clause.Right, unresolvedSubject ? BoundType.Unit : subject, semantics, bindingScope);
+        // A failed selector supplies no subject. Check the independent requirement syntax, then discard the provisional
+        // proposition; its valid Type or Contract must not become another failure merely because the selector failed.
+        var requirement = this.BindRequirement(clause.Right, unresolvedSubject || failedSubject ? BoundType.Unit : subject, semantics, bindingScope);
         if (AssociatedHead(clause) is OriginApplicationKoto && HasUnsupportedAssociatedIdentity(requirement))
         {
             this.Fail(clause, BindingFailure.Unsupported, true);
@@ -484,6 +487,10 @@ public sealed partial class Binding
         {
             var environment = scope.Constraints ??= new();
             this.AddConstraintFact(environment, requirement);
+            if (requirement.Kind == ConstraintKind.Error && clause.BindingFailure != BindingFailure.None)
+            {
+                this.AddPrerequisite(scope.Owner, clause);
+            }
         }
 
         // Self clauses remain implementation obligations, never assumptions.
