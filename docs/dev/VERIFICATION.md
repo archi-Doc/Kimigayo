@@ -131,6 +131,7 @@ Measurement commands and fixed conditions belong to their dedicated documents be
 | `Benchmark --adaptation-plans` | [Adaptations.md](../../src/Benchmark/Adaptations.md) |
 | `Benchmark --generic-defaults` | [GenericDefaults.md](../../src/Benchmark/GenericDefaults.md) |
 | `Benchmark --element-places` | [ElementPlaces.md](../../src/Benchmark/ElementPlaces.md) |
+| `Benchmark --origin-proof` | [OriginProof.md](../../src/Benchmark/OriginProof.md); each case in its own process with a time limit, censored cases recorded. |
 | `Benchmark --view-plans` | [Views.md](../../src/Benchmark/Views.md) |
 | `Benchmark --associated-inference` | [AssociatedInference.md](../../src/Benchmark/AssociatedInference.md); shared explicit/inferred declaration workloads, cold/warm costs and retained capacities. |
 | `Benchmark --constructor-inference` | [ConstructorInference.md](../../src/Benchmark/ConstructorInference.md) |

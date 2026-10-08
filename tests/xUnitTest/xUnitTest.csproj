@@ -20,6 +20,7 @@
     <ProjectReference Include="..\..\src\Kimi\Kimi.csproj" />
     <Compile Include="..\Workloads\AssociatedInferenceWorkloads.cs" Link="Workloads\AssociatedInferenceWorkloads.cs" />
     <Compile Include="..\Workloads\VerificationWorkloads.cs" Link="Workloads\VerificationWorkloads.cs" />
+    <Compile Include="..\Workloads\OriginProofWorkloads.cs" Link="Workloads\OriginProofWorkloads.cs" />
     <Compile Include="..\Workloads\HoverWorkloads.cs" Link="Workloads\HoverWorkloads.cs" />
     <Compile Include="..\Workloads\ConstructorInferenceWorkloads.cs" Link="Workloads\ConstructorInferenceWorkloads.cs" />
     <Compile Include="..\Workloads\AdaptationWorkloads.cs" Link="Workloads\AdaptationWorkloads.cs" />

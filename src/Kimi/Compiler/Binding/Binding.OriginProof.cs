@@ -180,6 +180,7 @@ public sealed partial class Binding
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
+        this.OriginProofMetrics?.Enter(longer, shorter, use, this.originProofPath.Count);
         if (OriginOutlives(longer, shorter))
         {
             return true;
@@ -198,6 +199,7 @@ public sealed partial class Binding
 
         if (!this.originProofPath.Add((longer, shorter)))
         {
+            this.OriginProofMetrics?.Reject();
             return false;
         }
 

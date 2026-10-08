@@ -69,6 +69,18 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--origin-proof")
+        {
+            OriginProofMeasurements.Run();
+            return;
+        }
+
+        if (args.Length == 3 && args[0] == "--origin-proof-case")
+        {
+            OriginProofMeasurements.RunCase(args[1], int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture));
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--element-places")
         {
             CompilerPlanMeasurements.Run(elements: true);
