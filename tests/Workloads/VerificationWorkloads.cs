@@ -170,6 +170,43 @@ internal static class VerificationWorkloads
         return source.ToString();
     }
 
+    // Element Places (PLAN G59): `reads` and `updates` are the value-path controls on an owned Array element's part; `borrows` lends
+    // that part exclusively and shared through the element route; `paths` borrows it below an Array reached through a `uniq` struct
+    // reference. Each axis repeats its statement `count` times.
+    internal static string ElementPlaces(string axis, int count)
+    {
+        const string Prelude = "struct Item\n    public var name: string\n    public var n: i32\n    public init(name: string, n: i32)\n        self.name = name@move\n        self.n = n\n" +
+            "struct Bank\n    public var items: Array<Item>\n    public init(items: Array<Item>) => self.items = items@move\n" +
+            "func bump(target: uniq/i32) => target@follow += 1\nfunc show(v: ref/i32) => Console.writeLine(\"\\(v@follow)\")\n";
+        var source = new StringBuilder(Prelude);
+        if (axis == "paths")
+        {
+            source.AppendLine("func touch(b: uniq/Bank)");
+            for (var i = 0; i < count; i++)
+            {
+                source.AppendLine("    bump(b.items[0].n@uniq)");
+            }
+
+            source.AppendLine("var bank = Bank.init([Item.init(\"a\", 0)])\ntouch(bank@uniq)");
+            source.AppendLine($"require bank.items[0].n == {count} else => $abort(\"paths\")");
+            return source.ToString();
+        }
+
+        source.AppendLine("var xs: Array<Item> = [Item.init(\"a\", 0)]\nvar total = 0");
+        for (var i = 0; i < count; i++)
+        {
+            source.AppendLine(axis switch
+            {
+                "reads" => "total += xs[0].n",
+                "updates" => "xs[0].n += 1",
+                "borrows" => "bump(xs[0].n@uniq)\nshow(xs[0].n)",
+                _ => throw new ArgumentOutOfRangeException(nameof(axis)),
+            });
+        }
+
+        return source.ToString();
+    }
+
     internal static string FixedOriginLoans(string axis, int count)
     {
         if (axis == "fixed-control")

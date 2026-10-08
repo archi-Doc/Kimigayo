@@ -18,11 +18,13 @@ internal static class CompilerPlanMeasurements
     private const int Iterations = 64;
     private const int Samples = 7;
 
-    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false, bool adaptations = false, bool arithmetic = false, bool fixedOrigins = false, bool defaults = false)
+    internal static void Run(bool callable = false, bool views = false, bool regions = false, bool properties = false, bool inheritance = false, bool adaptations = false, bool arithmetic = false, bool fixedOrigins = false, bool defaults = false, bool elements = false)
     {
-        var allPhases = callable || views || regions || properties || inheritance || adaptations || arithmetic || fixedOrigins || defaults;
+        var allPhases = callable || views || regions || properties || inheritance || adaptations || arithmetic || fixedOrigins || defaults || elements;
         var results = new List<object>();
-        var workloads = defaults
+        var workloads = elements
+            ? new[] { ("reads", 4), ("reads", 16), ("updates", 4), ("updates", 16), ("borrows", 4), ("borrows", 16), ("paths", 4), ("paths", 16) }
+            : defaults
             ? new[] { ("siblings", 4), ("siblings", 8), ("siblings", 16), ("depth", 1), ("depth", 4), ("depth", 8) }
             : fixedOrigins
             ? new[] { ("fixed-control", 0), ("fixed-calls", 4), ("fixed-calls", 8), ("fixed-calls", 16), ("fixed-roots", 4), ("fixed-roots", 8), ("fixed-roots", 16), ("fixed-joins", 4), ("fixed-joins", 8), ("fixed-joins", 16) }
@@ -36,7 +38,7 @@ internal static class CompilerPlanMeasurements
         foreach (var (name, size) in workloads)
         {
             var stored = name == "stored";
-            var source = defaults ? VerificationWorkloads.GenericDefaults(name, size) : fixedOrigins ? VerificationWorkloads.FixedOriginLoans(name, size) : arithmetic ? ArithmeticWorkloads.Create(name) : name switch
+            var source = elements ? VerificationWorkloads.ElementPlaces(name, size) : defaults ? VerificationWorkloads.GenericDefaults(name, size) : fixedOrigins ? VerificationWorkloads.FixedOriginLoans(name, size) : arithmetic ? ArithmeticWorkloads.Create(name) : name switch
             {
                 "milestone24" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone24.kimi")),
                 "milestone25" => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone25.kimi")),
@@ -59,7 +61,7 @@ internal static class CompilerPlanMeasurements
                 throw new InvalidOperationException("Compiler workload target must be prepared.");
             }
 
-            c.Kotonoha.AddSource(new SourceDocument(defaults ? "generic-defaults.kimi" : fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
+            c.Kotonoha.AddSource(new SourceDocument(elements ? "element-places.kimi" : defaults ? "generic-defaults.kimi" : fixedOrigins ? "fixed-origin-loans.kimi" : arithmetic ? "arithmetic-plans.kimi" : adaptations ? "adaptation-plans.kimi" : inheritance ? "inheritance.kimi" : properties ? "Milestone24.kimi" : regions ? "local-regions.kimi" : views ? "view-plans.kimi" : callable ? "callable-plans.kimi" : "object-plans.kimi", source));
             if (!c.Bind().IsComplete || !c.Binding.CheckStartup(OutputKind.Application).IsComplete || !c.Ownership.Analyze().IsVerified)
             {
                 throw new InvalidOperationException("Compiler workload must bind and verify.");
