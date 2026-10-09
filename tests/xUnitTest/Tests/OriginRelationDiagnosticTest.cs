@@ -132,6 +132,38 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
+    // SPEC 15.6.1: a pair binder's implicit outer Origin is written by no Origin expression, so Advice over it suggests annotating the
+    // occurrence, an owned or Copied value or an existing borrowed input, never a clause or bound naming it (F19); a Type's binder that
+    // admits a value Semantics is offered no header slot (PLAN G10), and a bound whose meet holds it is not offered either.
+    [Theory]
+    [InlineData("struct Holder<s/T>\n    s is ref or uniq\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", true)]
+    [InlineData("struct Holder<s/T>\n    s is ref or uniq\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n    public func take(self: Self) -> ref/T\n        return self.value@follow@ref\n", true)]
+    [InlineData("func widen<s/T>(x: s/T, q: ref/i32 during a) -> s/T during a\n    s is ref\n    return x@move\n", true)]
+    [InlineData("struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\nstruct View<s/T> {a}\n    s is owner or ref\n    public let b: ref/Box<s/T> during a\n", false)]
+    public void AdviceOverAnImplicitOuterOriginIsWritable(string body, bool annotate)
+    {
+        var errors = DiagnosticCorpus.Check(body + Main).Diagnostics;
+        Assert.NotEmpty(errors);
+        Assert.All(errors, x => Assert.Equal(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), x.Code));
+        var advice = errors[0].Advice!;
+        Assert.DoesNotContain("origin s/T", advice, StringComparison.Ordinal);
+        Assert.DoesNotContain("by s/T", advice, StringComparison.Ordinal);
+        Assert.Contains("return an owned or Copied value, or bound the result by an existing borrowed input", advice, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(annotate, advice.StartsWith("Annotate the occurrence as 's/T during name'", StringComparison.Ordinal));
+    }
+
+    // SPEC 15.6.1: a bound whose meet holds a pair's implicit outer Origin cannot be written, so the clause Advice offers none.
+    [Fact]
+    public void ABoundOverAnImplicitOuterOriginIsNotOffered()
+    {
+        var source = "struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\n" +
+            "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n" + Main;
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(2, errors.Length);
+        Assert.All(errors, static x => Assert.DoesNotContain("s/T and", x.Advice, StringComparison.Ordinal));
+        Assert.Contains(errors, static x => x.Advice == "If b always outlives q, add 'origin b outlives q', which changes the public contract");
+    }
+
     // SPEC 7.6.1, 15.6.1: an anonymous function has no origin clauses, so Advice for its input writes the Origin on that input.
     [Fact]
     public void AnAnonymousInputIsBoundByItsWrittenOrigin()

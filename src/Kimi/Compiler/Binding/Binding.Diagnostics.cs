@@ -186,7 +186,16 @@ public sealed partial class Binding
             return "A Function Type quantifies the Origin of an unnamed borrowed input per call, and no fixed Origin stands for it; write the fixed Origin in that input's Type, as in 'ref/T during x', or accept any borrow there";
         }
 
-        var omitted = longer.Kind == "omitted" && !IsPairOuterOrigin(relation.Longer) ? longer.Text : shorter.Kind == "omitted" && !IsPairOuterOrigin(relation.Shorter) ? shorter.Text : null;
+        // SPEC 15.6.1: a pair binder's implicit outer Origin is written by no Origin expression, so no clause, set or bound names it. The
+        // occurrence is annotated instead, which a binder admitting a value Semantics cannot use until a header slot that only a
+        // conditional pair slot uses is completed (PLAN G10); otherwise an owned or Copied value or an existing borrowed input remains.
+        if ((IsPairOuterOrigin(relation.Longer) ? relation.Longer : IsPairOuterOrigin(relation.Shorter) ? relation.Shorter : null) is { Occurrence: GenericParameterKoto pair })
+        {
+            const string Remaining = "return an owned or Copied value, or bound the result by an existing borrowed input";
+            return AnnotatableOuterOrigin(pair) ? $"Annotate the occurrence as '{pair.SemanticsParameter}/{pair.Identifier} during name' and relate that name, {Remaining}" : char.ToUpperInvariant(Remaining[0]) + Remaining[1..];
+        }
+
+        var omitted = longer.Kind == "omitted" ? longer.Text : shorter.Kind == "omitted" ? shorter.Text : null;
         if (omitted is not null)
         {
             return $"Name the omitted Origin with a set on that Type, as in '{omitted}{{name}}', then relate it by that name";
@@ -195,7 +204,7 @@ public sealed partial class Binding
         // A result bound names the whole meet that the value holds, and only when a signature can name each of its operands: a body-local
         // Origin, such as a Borrow inside the body, never stands in a result Type.
         var inner = relation.Destination is { } type && !ReferenceEquals(type.Origin, relation.Shorter);
-        var bound = source == "fit" && IsResultValue(relation.At) && FixedOrigin(relation.Meet ?? relation.Longer)
+        var bound = source == "fit" && IsResultValue(relation.At) && FixedOrigin(relation.Meet ?? relation.Longer) && !MentionsPairOuterOrigin(relation.Meet ?? relation.Longer)
             ? $", or bound the {(inner ? "inner result" : "result")} by {(relation.Meet is { } meet ? OriginDisplay(meet, null).Text : longer.Text)}" : string.Empty;
         var input = OuterInput(relation.Longer);
         var anonymous = relation.Longer is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } };
@@ -284,6 +293,32 @@ public sealed partial class Binding
 
     // SPEC 8.1.1: the outer Origin `o` of a pair binder, which no Origin expression or set can name.
     private static bool IsPairOuterOrigin(BoundOrigin origin) => origin is { Kind: OriginKind.Parameter, Occurrence: GenericParameterKoto };
+
+    // A bound that names a pair's implicit outer Origin, alone or in a meet, cannot be written (SPEC 15.6.1).
+    private static bool MentionsPairOuterOrigin(BoundOrigin origin)
+    {
+        if (IsPairOuterOrigin(origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (IsPairOuterOrigin(origin.Operands[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 8.1.2, 15.3.6: whether a pair occurrence can be annotated with a named slot: a function's own Origin always, and a Type's header
+    // slot only when its binder admits no value Semantics, since a value case leaves that slot unbound and construction does not complete
+    // it yet (PLAN G10).
+    private static bool AnnotatableOuterOrigin(GenericParameterKoto pair)
+        => pair.BoundSymbol is not { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } whole, Scope: { } scope } || scope.Owner is not DeclarationContainerKoto ||
+            (pair.CodeContext.Compilation.Binding.AdmittedSemantics(whole, scope) & SemanticsMask.Value) == 0;
 
     // SPEC 23.3.6.5: the Type occurrence that an omitted Origin end is related at.
     private static Koto? OmittedAt(BoundOrigin origin)
