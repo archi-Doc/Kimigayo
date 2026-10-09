@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BoundConformancePath Path, BoundAccessor Requirement), BoundAccessor> propertyBridges = new();
+    private readonly Dictionary<(BoundConformancePath Path, BoundAccessor Requirement), (BoundAccessor Bridge, PropertyWitnessKind Kind)> propertyBridges = new();
 
     // Standard operations are verified ordinary function bodies. No member lookup is repeated in an instance.
     private FunctionKoto? PropertyWitnessFunction(BoundConformancePath path, BoundPropertyWitness witness)
@@ -16,14 +16,14 @@ public sealed partial class Binding
             return this.AccessorFunction(witness.Implementation);
         }
 
-        if (witness.BasePath is not null)
-        {
-            return null;
-        }
-
+        // SPEC 11.4.2: an inherited Field is reached from the requirement receiver over the conforming Type by standard projection,
+        // as a direct access is (StructStorage.FindField), so a bridge for a base path has the same body as an own one. An edit that
+        // replaces the requirement, the implementing Property or the operation rebuilds the body; otherwise its Types are refreshed.
         var key = (path, witness.Requirement);
-        if (!this.propertyBridges.TryGetValue(key, out var bridge) || !ReferenceEquals(bridge.Declaration, witness.Requirement.Declaration))
+        if (!this.propertyBridges.TryGetValue(key, out var cached) || !ReferenceEquals(cached.Bridge.Declaration, witness.Requirement.Declaration) ||
+            !ReferenceEquals(cached.Bridge.Property, witness.Implementation.Property) || cached.Kind != witness.Kind)
         {
+            BoundAccessor bridge;
             bridge = new(witness.Implementation.Property, witness.Requirement.Kind)
             {
                 Declaration = witness.Requirement.Declaration,
@@ -73,10 +73,12 @@ public sealed partial class Binding
             }
 
             function.SetPropertyWitnessBody(body, bridge.Result);
-            this.propertyBridges[key] = bridge;
+            this.propertyBridges[key] = (bridge, witness.Kind);
+            return bridge.ExecutionFunction;
         }
         else
         {
+            var bridge = cached.Bridge;
             bridge.Receiver = witness.ReceiverType;
             bridge.Result = witness.ResultType;
             bridge.Input = witness.InputType;
@@ -100,9 +102,8 @@ public sealed partial class Binding
             function.RefreshAccessor();
             function.BoundSymbol!.Type = bridge.Result;
             function.SetPropertyWitnessBody(body, bridge.Result);
+            return function;
         }
-
-        return bridge.ExecutionFunction;
     }
 
     private BoundCall? InstantiatePropertyRequirementCall(BoundCall call, BoundCall outer, BoundCall? destination)
@@ -116,6 +117,9 @@ public sealed partial class Binding
         {
             return null;
         }
+
+        // A standard bridge is a member of the conforming Type itself: its receiver is never projected to a base subobject.
+        var storage = witness.Kind != PropertyWitnessKind.AccessorCall;
 
         var count = witness.Kind == PropertyWitnessKind.AccessorCall ? witness.InputOrigins.Count : call.InputOrigins.Length;
         var inputs = this.originScratch.Rent(count);
@@ -135,8 +139,8 @@ public sealed partial class Binding
             }
 
             var result = destination ?? new BoundCall();
-            result.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
-            return this.ProjectWitnessCall(result, witness.BasePath, declaring) ? result : null;
+            result.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: storage ? self : declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
+            return storage || this.ProjectWitnessCall(result, witness.BasePath, declaring) ? result : null;
         }
         finally
         {

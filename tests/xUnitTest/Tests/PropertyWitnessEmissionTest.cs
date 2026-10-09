@@ -11,6 +11,58 @@ public class PropertyWitnessEmissionTest
     private const string Conditional = "contract C\n    associate E\n    property item: E has get\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is T\n" +
         "    public var item: T\n    public init(item: T) => self.item = item@move\nfunc read<X>(x: ref/X) -> X.E\n    X is C\n    return x.item\n";
 
+    private const string Counted = "contract Counted\n    property count: i32 has get, set\npublic open struct Base\n    public var count: i32 = 1\npublic struct Leaf : Base\n    Self is Counted\n    public init() => ()\n";
+
+    private const string Viewed = "contract Viewed\n    property count: ref/i32\n        get(self: ref/Self) -> ref/i32\npublic open struct Base\n    public var count: i32 = 1\npublic struct Leaf : Base\n    Self is Viewed\n    public init() => ()\n" +
+        "func view<T>(x: ref/T) -> ref/i32\n    T is Viewed\n    return x.count\nvar x = Leaf.init()\nlet r = view(x@ref)\n";
+
+    // SPEC 11.4.2: an inherited standard bridge reaches the Field from the requirement receiver over the conforming Type, as a direct
+    // access does, in every storage kind (it failed generation with "Concrete requirement call lacks a verified implementation mapping").
+    public static TheoryData<string, string, string> InheritedBridges => new()
+    {
+        { "Copy", Counted + "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nlet x = Leaf.init()\nConsole.writeLine(\"\\(read(x@ref))\")", "1\n" },
+        { "Set", Counted + "func write<T>(x: uniq/T) -> ()\n    T is Counted\n    x.count = 5\nvar x = Leaf.init()\nwrite(x@uniq)\nConsole.writeLine(\"\\(x.count)\")", "5\n" },
+        { "Compound", Counted + "func bump<T>(x: uniq/T) -> ()\n    T is Counted\n    x.count += 1\nvar x = Leaf.init()\nbump(x@uniq)\nConsole.writeLine(\"\\(x.count)\")", "2\n" },
+        { "Increment", Counted + "func bump<T>(x: uniq/T) -> ()\n    T is Counted\n    x.count++\nvar x = Leaf.init()\nbump(x@uniq)\nConsole.writeLine(\"\\(x.count)\")", "2\n" },
+        { "Borrow", Viewed + "Console.writeLine(\"\\(r)\")\nx.count = 2\nConsole.writeLine(\"\\(x.count)\")", "1\n2\n" },
+        { "Conformance", "contract Counted\n    property count: i32 has get, set\npublic open struct Base\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\npublic struct Leaf : Base\n    public init() : base() => ()\nfunc read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc write<T>(x: uniq/T) -> ()\n    T is Counted\n    x.count = 5\nvar b = Base.init()\nwrite(b@uniq)\nConsole.writeLine(\"\\(read(b@ref))\")\nvar x = Leaf.init()\nwrite(x@uniq)\nConsole.writeLine(\"\\(read(x@ref))\")", "5\n5\n" },
+        { "GenericBase", "contract Holds\n    associate E\n    property item: ref/E\n        get(self: ref/Self) -> ref/E\npublic open struct Base<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\npublic open struct Middle<V> : Base<V>\n    public init(item: V) : base(item@move) => ()\npublic struct Leaf<U> : Middle<U>\n    Self is Holds\n    associate Holds.E is U\n    public init(item: U) : base(item@move) => ()\nfunc view<X>(x: ref/X) -> ref/X.E\n    X is Holds\n    return x.item\nlet x = Leaf<string>.init(\"hi\")\nConsole.writeLine(view(x@ref))", "hi\n" },
+        { "Conditional", "contract C\n    associate E\n    property item: E has get\npublic open struct Base<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\npublic struct S<U> : Base<U>\n    Self is C when U is Copy\n        associate C.E is U\n    public init(item: U) : base(item@move) => ()\nfunc read<X>(x: ref/X) -> X.E\n    X is C\n    return x.item\nlet s = S<i32>.init(3)\nConsole.writeLine(\"\\(read(s@ref))\")", "3\n" },
+        { "CustomGet", "contract Leveled\n    property level: i32 has get, set\npublic open struct Base\n    public var level: i32 = 1\n        get(self: ref/Self) -> i32 => storage\npublic struct Leaf : Base\n    Self is Leveled\n    public init() => ()\nfunc bump<T>(x: uniq/T) -> ()\n    T is Leveled\n    x.level += 1\nvar x = Leaf.init()\nbump(x@uniq)\nConsole.writeLine(\"\\(x.level)\")", "2\n" },
+        { "OriginField", "contract Points\n    associate E\n    property r: E has get\npublic open struct Base {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\npublic struct Leaf {b}: Base during b\n    Self is Points\n    associate Points.E is ref/i32 during b\n    public init(r: ref/i32 during b) : base(r) => ()\nfunc read<T>(x: ref/T) -> T.E\n    T is Points\n    return x.r\nlet n: i32 = 4\nlet x = Leaf.init(n@ref)\nConsole.writeLine(\"\\(read(x@ref))\")", "4\n" },
+        { "Resource", "public " + OwnershipPropertyEmissionTest.Resource + "contract C\n    property item: ref/Resource\n        get() -> ref/Resource\n        set(value: Resource) -> ()\npublic open struct Base\n    public var item: Resource\n    public init() => self.item = Resource.init(1)\npublic struct Leaf : Base\n    Self is C\n    public init() : base() => ()\nfunc replace<T>(s: uniq/T, value: Resource)\n    T is C\n    s.item = value@move\nvar s = Leaf.init()\nreplace(s@uniq, Resource.init(2))\nrequire s.item.id == 2 else => $abort(\"set\")", "1\n2\n" },
+    };
+
+    [Theory]
+    [MemberData(nameof(InheritedBridges))]
+    public void InheritedStandardBridgesExecute(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("PropertyWitnessInherited" + name, source, stdout);
+
+    // The bridge keeps its borrowed result's Loan, and a conformance whose inherited storage cannot serve the requirement is refuted.
+    [Theory]
+    [InlineData(Viewed + "x.count = 2\nConsole.writeLine(\"\\(r)\")", nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    [InlineData("contract Counted\n    property count: i32 has get, set\npublic open struct Base\n    public let count: i32 = 1\npublic struct Leaf : Base\n    Self is Counted\n    public init() => ()\n", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
+    [InlineData("contract Counted\n    property count: i32 has get\npublic open struct Base\n    var count: i32 = 1\npublic struct Leaf : Base\n    Self is Counted\n    public init() => ()\n", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
+    public void InheritedBridgesKeepTheirChecks(string source, string code)
+        => Assert.Contains(code, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+
+    // SPEC 11.4.2: an inherited bridge is a verified ordinary body that warm passes reuse, also when no call reaches it.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void InheritedBridgeBodiesAreReused()
+    {
+        var c = MinimalEmissionTest.Analyze(Counted + "func bump<T>(x: uniq/T) -> i32\n    T is Counted\n    x.count += 1\n    return x.count\nvar x = Leaf.init()\n_ = bump(x@uniq)");
+        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.True(valid);
+        var uncalled = MinimalEmissionTest.Analyze(Counted + "Console.writeLine(\"unused\")");
+        Assert.True(uncalled.Emission.WriteIr(TextWriter.Null, out error), MinimalEmissionTest.Describe(uncalled, error));
+    }
+
     // SPEC 11.4.2: a bridge is checked and executed under its conformance path's premises, so the Copy that `when T is Copy` grants
     // holds in its body (it was TransferRequired_Kd at `has get`).
     [Fact]
