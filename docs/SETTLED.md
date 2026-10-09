@@ -207,3 +207,31 @@
 
 - **Proposed fix:** Evaluate generic defaults as instantiated plans or instance evaluator functions, removing the per-operation default stage of interpretation.
 - **Why not applied:** Inline replicas keep the specified evaluation order, prepared-slot protections and cleanup. Each replica operation and Place records one interpretation context whose composed substitution and proof anchor resolve declared information once, and a generated matrix checks that every placement agrees with an ordinary generic body. Reconsider only when a consumer cannot obtain its context from an operation, Place or plan record; one context needs more than one proof environment; a defect needs analysis to be re-run rather than a context selected; or a fixed-condition measurement regresses beyond run-to-run variation that bounded context reuse cannot remove.
+
+## Pair-slot premises in every Semantics case
+
+- **Problem:** A pair layer's outer-Origin slot exists only in its binder's admitted cases that have an outer Origin (§8.1.2), so a generic body must judge its relations per case (§15.6.5). One premise set for every case would be simpler.
+- **Example:**
+
+  ```kimi
+  func pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c
+      s is owner or ref
+      return x // Error: a outlives c holds only in the ref case.
+  ```
+
+- **Proposed fix:** Treat the slot's relations, such as `a outlives c` above, as premises in every admitted case.
+- **Why not applied:** It is unsound. In the `owner` case nothing stores `a` in `b`, so the call `pick(b, m@ref)` with a local `m` would return a reference to `m` as one that outlives `c`; through a Function Item value call such a program read a dead local (§8.1.2, §8.10, §15.3.7).
+
+## A borrow-only uniq pair follow bounded by its slot alone
+
+- **Problem:** Following a pair layer under `s is uniq` could take the layer's outer-Origin slot alone as the result's Origin, which is simpler than meeting every borrow the path reaches.
+- **Example:**
+
+  ```kimi
+  func detach<s/T>(b: uniq/Box<s/T during a> during c) -> uniq/T during a
+      s is uniq
+      return b.item@follow@uniq // Error: the result also depends on c.
+  ```
+
+- **Proposed fix:** Give the follow the slot `a` alone.
+- **Why not applied:** The concrete `uniq` follow meets every reaching borrow (§15.5, §15.6.3): `uniq/Box<uniq/i32 during a> during c` cannot return `uniq/i32 during a`, because the result would outlive the exclusive borrow `c` it was reached through. A generic body is never weaker than its concrete case (§8.10).
