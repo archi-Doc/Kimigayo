@@ -246,17 +246,11 @@ internal sealed partial class BodyLowering
             case OwnershipOperationKind.WriteElement:
                 clear = operation.Input;
                 break;
-            case OwnershipOperationKind.UpdateBorrowed:
-                if (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: not CompilerFunctionKind.Swap })
-                {
-                    clear = operation.Input;
-                }
-
-                if (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange })
-                {
-                    initialize = operation.Place;
-                }
-
+            case OwnershipOperationKind.ExchangeBorrowed:
+                initialize = operation.Place;
+                goto case OwnershipOperationKind.ReplaceBorrowed;
+            case OwnershipOperationKind.ReplaceBorrowed:
+                clear = operation.Input;
                 break;
         }
     }

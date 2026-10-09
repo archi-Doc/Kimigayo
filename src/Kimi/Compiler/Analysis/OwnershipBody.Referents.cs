@@ -106,7 +106,7 @@ public sealed partial class OwnershipBody
     private int ReferenceDefinition(int id) => this.Operations[id] switch
     {
         { Kind: OwnershipOperationKind.Write, Place: >= 0 } write => write.Place,
-        { Kind: OwnershipOperationKind.UpdateBorrowed, Place: >= 0 } update => update.Place,
+        { IsWholeUpdate: true, Place: >= 0 } update => update.Place,
         { Kind: OwnershipOperationKind.Consume, Input: >= 0, Acquisition: AcquisitionKind.Move } moved when ReferenceTypes.IsBorrow(this.Places[moved.Input].Type) => moved.Input,
         { Kind: OwnershipOperationKind.Borrow, Input: >= 0 } borrow => borrow.Input,
         { Kind: OwnershipOperationKind.Produce, Place: >= 0 } produce when this.Values[id] is { Kind: OwnershipValueKind.Alias, Count: 1 } => produce.Place,

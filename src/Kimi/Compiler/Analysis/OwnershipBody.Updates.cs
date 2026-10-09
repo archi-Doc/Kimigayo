@@ -22,7 +22,7 @@ public sealed partial class OwnershipBody
         {
             var operation = this.Operations[id];
             var value = this.Values[id];
-            if (operation.Kind is not (OwnershipOperationKind.UpdateBorrowed or OwnershipOperationKind.StorePointer) || value.Count == 0)
+            if ((!operation.IsWholeUpdate && operation.Kind != OwnershipOperationKind.StorePointer) || value.Count == 0)
             {
                 continue;
             }
@@ -36,15 +36,14 @@ public sealed partial class OwnershipBody
 
             var target = this.StoredReferent(pointer, holder);
             var incoming = operation.Kind == OwnershipOperationKind.StorePointer ? operation.Place : operation.Input;
-            var kind = (operation.Source as InvocationKoto)?.BoundCall?.Target.CompilerFunction;
-            var swap = operation.Kind == OwnershipOperationKind.UpdateBorrowed && kind == CompilerFunctionKind.Swap;
+            var swap = operation.Kind == OwnershipOperationKind.SwapBorrowed;
             if (swap)
             {
                 var otherPointer = this.ValueOperands[value.Start + 1];
                 incoming = this.StoredReferent(otherPointer, incoming);
             }
 
-            var result = operation.Kind == OwnershipOperationKind.UpdateBorrowed && kind == CompilerFunctionKind.Exchange ? operation.Place : -1;
+            var result = operation.Kind == OwnershipOperationKind.ExchangeBorrowed ? operation.Place : -1;
             this.contentUpdates.Add(new(id, target, incoming, result, storage, swap));
             this.RegisterContentSlot(target, storage, count);
             if (swap)
@@ -271,7 +270,7 @@ public sealed partial class OwnershipBody
                     return false;
                 }
 
-                if (this.Operations[predecessor].Kind is OwnershipOperationKind.StorePointer or OwnershipOperationKind.UpdateBorrowed &&
+                if ((this.Operations[predecessor].Kind == OwnershipOperationKind.StorePointer || this.Operations[predecessor].IsWholeUpdate) &&
                     this.Values[predecessor] is { Count: > 0 } update && this.ContentOwner(this.ValueOperands[update.Start], -1, throughLoads: false) == holder)
                 {
                     return false; // An in-place write of a stored part can also replace its exclusive capability.

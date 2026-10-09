@@ -315,19 +315,9 @@ internal sealed partial class BodyLowering
             return valid;
         }
 
-        if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+        if (operation.IsWholeUpdate)
         {
             return this.LowerBorrowedUpdate(body, function, constants, projectDirectory, index, out failure);
-        }
-
-        if (operation.Kind == OwnershipOperationKind.UpdateTarget)
-        {
-            failure = null;
-            return operation.Place >= 0 && body.Places[operation.Place].Mutable &&
-                operation.LoanMode == LoanRequirement.Uniq && body.LoanStates[index] >= 0 &&
-                body.ComparisonLoans[body.LoanStates[index]].Read == index &&
-                (!body.IsReachable(index) || (body.GetInputState(index, operation.Place) & PlaceState.MustInit) != 0)
-                ? true : Fail("Whole-value target requires an initialized complete Place and exclusive Loan.", out failure);
         }
 
         if (operation.Kind is OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.CheckReceiverField)

@@ -77,6 +77,30 @@ public class WholeValueTest
     }
 
     [Theory]
+    [InlineData("replace(x, with: 2)", OwnershipOperationKind.ReplaceBorrowed)]
+    [InlineData("exchange(x, with: 2)", OwnershipOperationKind.ExchangeBorrowed)]
+    [InlineData("swap(x, y)", OwnershipOperationKind.SwapBorrowed)]
+    public void UpdatesRetainTheirMeaningAcrossStorageForms(string expression, OwnershipOperationKind expected)
+    {
+        foreach (var borrowed in new[] { false, true })
+        {
+            var source = borrowed ? "func f(x: uniq/i32, y: uniq/i32)\n" : "func f()\n    var x: i32 = 1\n    var y: i32 = 2\n";
+            var call = borrowed ? expression : expression.Replace("(x", "(x@uniq", StringComparison.Ordinal).Replace(", y)", ", y@uniq)", StringComparison.Ordinal);
+            var c = MinimalEmissionTest.Analyze(source + "    _ = Kimi.Intrinsics." + call + "\n");
+            Assert.True(c.Ownership.Result.IsVerified, Describe(c));
+            var body = c.Ownership.Bodies.Single(x => x.Function.Name == "f");
+            var operation = Assert.Single(body.Operations, x => x.IsWholeUpdate);
+            Assert.Equal(expected, operation.Kind);
+            var update = body.OperationStorage.FindIndex(x => x.IsWholeUpdate);
+            var next = Assert.Single(body.Edges, x => x.From == update).To;
+            body.OperationStorage[update] = operation with { Source = body.Function };
+            body.Solve();
+            Assert.Equal(expected == OwnershipOperationKind.SwapBorrowed, (body.GetInputState(next, operation.Input) & PlaceState.MustInit) != 0);
+            Assert.Equal(expected == OwnershipOperationKind.ExchangeBorrowed, (body.GetInputState(next, operation.Place) & PlaceState.MustInit) != 0);
+        }
+    }
+
+    [Theory]
     [InlineData("Scalar", "var x: i32 = 1\nvar y: i32 = 9\nKimi.Intrinsics.replace(x@uniq, with: 2)\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: 3)\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nif old == 2 and x == 9 and y == 3 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("String", "var x = \"old\"\nvar y = \"other\"\nlet old = Kimi.Intrinsics.exchange(x@uniq, with: \"new\")\nKimi.Intrinsics.swap(x@uniq, y@uniq)\nConsole.writeLine(old)\nConsole.writeLine(x)\nConsole.writeLine(y)", "old\nother\nnew\n")]
     [InlineData("ReplaceDestroy", "struct S\n    let value: i32\n    public init(value: i32) => self.value = value\n    drop\n        if self.value == 1 => Console.writeLine(\"drop 1\") else => Console.writeLine(\"drop 2\")\nvar x = S.init(1)\nKimi.Intrinsics.replace(x@uniq, with: S.init(2))\nConsole.writeLine(\"placed\")", "drop 1\nplaced\ndrop 2\n")]

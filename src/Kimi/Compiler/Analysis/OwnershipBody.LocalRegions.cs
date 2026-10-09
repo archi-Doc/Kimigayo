@@ -132,7 +132,7 @@ public sealed partial class OwnershipBody
                     : Combine(State(id, slot), Source(id, operation.Input));
             }
 
-            if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+            if (operation.IsWholeUpdate)
             {
                 foreach (var update in this.contentUpdates)
                 {

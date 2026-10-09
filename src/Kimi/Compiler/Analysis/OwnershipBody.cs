@@ -255,7 +255,9 @@ public sealed partial class OwnershipBody
                 }
 
                 break;
-            case OwnershipOperationKind.UpdateBorrowed:
+            case OwnershipOperationKind.ReplaceBorrowed:
+            case OwnershipOperationKind.ExchangeBorrowed:
+            case OwnershipOperationKind.SwapBorrowed:
                 this.CheckInitialized(operation, (int)this.Values[index].Constant, this.CompleteState((int)this.Values[index].Constant));
                 this.CheckInitialized(operation, operation.Input, this.CompleteState(operation.Input));
                 break;
@@ -417,17 +419,11 @@ public sealed partial class OwnershipBody
                 }
 
                 break;
-            case OwnershipOperationKind.UpdateBorrowed:
-                if (operation.Source is Parsing.InvocationKoto { BoundCall.Target.CompilerFunction: not CompilerFunctionKind.Swap })
-                {
-                    this.Move(operation.Input);
-                }
-
-                if (operation.Source is Parsing.InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Exchange })
-                {
-                    this.Initialize(place);
-                }
-
+            case OwnershipOperationKind.ExchangeBorrowed:
+                this.Initialize(place);
+                goto case OwnershipOperationKind.ReplaceBorrowed;
+            case OwnershipOperationKind.ReplaceBorrowed:
+                this.Move(operation.Input);
                 break;
             case OwnershipOperationKind.Write:
             case OwnershipOperationKind.PayloadPlacement:

@@ -130,7 +130,7 @@ public sealed partial class OwnershipBody
         OwnershipOperationKind.DecomposeCase => OperationFlow.Decomposition,
         OwnershipOperationKind.Call => OperationFlow.Call,
         OwnershipOperationKind.StorePointer or OwnershipOperationKind.WriteElement => OperationFlow.Store,
-        OwnershipOperationKind.UpdateBorrowed => OperationFlow.Update,
+        OwnershipOperationKind.ReplaceBorrowed or OwnershipOperationKind.ExchangeBorrowed or OwnershipOperationKind.SwapBorrowed => OperationFlow.Update,
 
         // Control flow and scope: no value reaches a Place. Declare brings an uninitialized Place into scope and Cleanup
         // destroys one, which holds nothing after; an Unsupported body is rejected.
@@ -1002,7 +1002,7 @@ public sealed partial class OwnershipBody
                 }
             }
 
-            if (operation.Kind == OwnershipOperationKind.UpdateBorrowed)
+            if (operation.IsWholeUpdate)
             {
                 return this.Values[id].Constant == place || operation.Input == place;
             }
@@ -1196,7 +1196,7 @@ public sealed partial class OwnershipBody
     }
 
     private static bool DefinesBorrowHolder(OwnershipOperation operation, int place)
-        => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.UpdateBorrowed) ||
+        => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.ReplaceBorrowed or OwnershipOperationKind.ExchangeBorrowed or OwnershipOperationKind.SwapBorrowed) ||
             (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern) ||
             (operation.Place == place && operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition == AcquisitionKind.Move);
 
@@ -2174,7 +2174,7 @@ public sealed partial class OwnershipBody
     private HolderChange HolderChangeAt(int id, int holder, int root, int count)
     {
         var operation = this.Operations[id];
-        if ((operation.Kind == OwnershipOperationKind.UpdateBorrowed && this.Values[id].Constant == holder) ||
+        if ((operation.IsWholeUpdate && this.Values[id].Constant == holder) ||
             (operation.Kind == OwnershipOperationKind.StoreDictionaryEntry && this.OperationSteps[id] == holder) ||
             (operation.Projection >= 0 && this.Projections[operation.Projection].Root == holder) ||
             (this.Values[id] is { Kind: OwnershipValueKind.Sequence, Constant: var sequence } && this.Sequences[(int)sequence].Receiver == holder))

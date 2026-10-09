@@ -93,16 +93,15 @@ internal sealed partial class BodyLowering
         failure = null;
         var operation = body.Operations[id];
         var value = body.Values[id];
-        if (operation.Source is not InvocationKoto { BoundCall: { } plan } || value.Kind != OwnershipValueKind.BorrowedUpdate || value.Count != 2 ||
-            plan.Target.CompilerFunction is not (CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap) ||
+        if (!operation.IsWholeUpdate || value.Kind != OwnershipValueKind.BorrowedUpdate || value.Count != 2 ||
             (uint)operation.Place >= (uint)body.Places.Count || (uint)operation.Input >= (uint)body.Places.Count ||
             value.Constant < 0 || value.Constant >= body.Places.Count)
         {
             return Fail("Missing complete borrowed update plan.", out failure);
         }
 
-        var swap = plan.Target.CompilerFunction == CompilerFunctionKind.Swap;
-        var exchange = plan.Target.CompilerFunction == CompilerFunctionKind.Exchange;
+        var swap = operation.Kind == OwnershipOperationKind.SwapBorrowed;
+        var exchange = operation.Kind == OwnershipOperationKind.ExchangeBorrowed;
         var first = (int)value.Constant;
         var reference = body.Places[first].Type;
         if (!ReferenceTypes.IsStorage(reference) || (swap && !ReferenceTypes.IsStorage(body.Places[operation.Input].Type)))

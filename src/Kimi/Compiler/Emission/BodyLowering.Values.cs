@@ -110,7 +110,7 @@ internal sealed partial class BodyLowering
                 }
 
                 var producer = body.Operations[input].Kind;
-                if (producer is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Call or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow or OwnershipOperationKind.UpdateBorrowed) && body.Values[input].Kind != OwnershipValueKind.Phi)
+                if (producer is not (OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Produce or OwnershipOperationKind.Call or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow) && !body.Operations[input].IsWholeUpdate && body.Values[input].Kind != OwnershipValueKind.Phi)
                 {
                     return false;
                 }

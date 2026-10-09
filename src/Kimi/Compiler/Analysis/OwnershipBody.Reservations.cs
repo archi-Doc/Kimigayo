@@ -261,9 +261,7 @@ public sealed partial class OwnershipBody
                 if (entry == this.Operations.Count ||
                     (operation.Source is not InvocationKoto ? this.Operations[entry].Kind is not (OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.StoreDictionaryEntry)
                         : !ReferenceEquals(this.Operations[entry].Source, operation.Source) ||
-                        (operation.Source is InvocationKoto { BoundCall.Target.CompilerFunction: CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap }
-                            ? this.Operations[entry].Kind is not (OwnershipOperationKind.Consume or OwnershipOperationKind.Write or OwnershipOperationKind.UpdateBorrowed)
-                            : this.Operations[entry].Kind != OwnershipOperationKind.Call)))
+                        (!this.Operations[entry].IsWholeUpdate && this.Operations[entry].Kind != OwnershipOperationKind.Call)))
                 {
                     return false;
                 }

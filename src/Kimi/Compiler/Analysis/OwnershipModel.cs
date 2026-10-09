@@ -86,7 +86,9 @@ public enum OwnershipOperationKind : byte
     CheckReceiverField,
     WriteBorrowedField,
     UpdateTarget,
-    UpdateBorrowed,
+    ReplaceBorrowed,
+    ExchangeBorrowed,
+    SwapBorrowed,
     TestObserve,
     TestMessage,
     TestAbort,
@@ -212,6 +214,8 @@ public readonly record struct OwnershipOperation(OwnershipOperationKind Kind, Ko
         OwnershipOperationKind.Borrow or OwnershipOperationKind.UpdateTarget => PlaceUseKind.Borrow,
         _ => PlaceUseKind.None,
     };
+
+    internal bool IsWholeUpdate => this.Kind is OwnershipOperationKind.ReplaceBorrowed or OwnershipOperationKind.ExchangeBorrowed or OwnershipOperationKind.SwapBorrowed;
 }
 
 public readonly record struct OwnershipEdge(int From, int To, OwnershipEdgeKind Kind, int Next);

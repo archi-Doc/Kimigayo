@@ -6,6 +6,11 @@ Navigation for compiler changes, not a specification or support matrix. Required
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 
+Current phase contracts and the reorganization ledger are in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md).
+Whole-value updates share `OwnershipAnalysis.Updates.WholeValueUpdate`; the distinct `OwnershipOperationKind`
+`ReplaceBorrowed`/`ExchangeBorrowed`/`SwapBorrowed` entries feed initialization, `OwnershipBody.Updates` and
+`BodyLowering.Updates`. `WholeValueTest` checks storage-form agreement and source-independent initialization.
+
 Paths below are relative to [src/Kimi](../../src/Kimi/).
 
 Tokenizer layout transitions and surrogate scanning are covered by `LayoutRecoveryTest`, `HeaderDelimiterContinuationTest` and `SourceEncodingTest`; literal escape ranges by `StringDiagnosticTest`, shared unterminated-token recovery (`RecoverLexicalToken`) by `LexicalRecoveryTest`, and wrong-kind closers (`PopIndentSource`) by `DelimiterRecoveryTest`.
