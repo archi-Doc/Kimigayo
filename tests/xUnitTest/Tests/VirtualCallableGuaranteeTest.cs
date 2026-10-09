@@ -88,7 +88,6 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         Assert.Equal("UnsatisfiedEffectBound_Kd", shown.Code);
         Assert.Equal("Base.read", shown.Text);
         Assert.Contains("public effect guarantee", shown.Label, StringComparison.Ordinal);
-        Assert.Contains("Declare effect confined on the original virtual slot", shown.Advice, StringComparison.Ordinal);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);

@@ -20,8 +20,6 @@ public enum AcquisitionMode : byte
 
 public sealed partial class Binding
 {
-    private const string ParameterShapeAdvice = "Give the operations different names by SPEC 4.7.1 (sorted/sort, index/indexUniq), or give both parameters one acquisition mode; a rename reaches the callers, so no edit is applied automatically";
-    private const string ParameterShapeUseAdvice = "Qualify the Name with its Container, such as A.f, to select one declaration source";
     private const string ParameterShapeNote = "The overlap comes from a generic slot or a non-constant length: the check unifies the Types without Constraints, enclosing Type arguments or length values";
 
     // SPEC 7.3.1: the conflicting parameters of a later declaration, or of a group gathered at a use, recorded only when the check
@@ -507,7 +505,6 @@ public sealed partial class Binding
                 note: conflict.Conservative ? ParameterShapeNote : null,
                 at: conflict.At,
                 evidence: [Ground(first), key],
-                advice: conflict.AtUse ? conflict.AliasStage ? ParameterShapeUseAdvice : null : ParameterShapeAdvice,
                 related: related,
                 condition: (ushort)k);
         }

@@ -77,7 +77,7 @@ public class Kimigayo
         => text.AsSpan().IndexOfAny('\n', '\r', '\t') < 0 ? text : text.Replace("\r", "\\r", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal).Replace("\t", "\\t", StringComparison.Ordinal);
 
     // SPEC 23.4.7: message and code, the primary location, the underlined excerpt with its label, related locations, then
-    // Note and Advice.
+    // the Note and repair candidates.
     private void Render(CheckDiagnostic diagnostic, DiagnosticSource[] sources, string baseDirectory)
     {
         var source = diagnostic.Source < 0 ? null : sources[diagnostic.Source];
@@ -121,17 +121,12 @@ public class Kimigayo
             this.consoleService.WriteLine($" = {omission}");
         }
 
-        if (diagnostic.Advice is not null || diagnostic.Note is not null || diagnostic.Repairs is { Length: > 0 })
+        if (diagnostic.Note is not null || diagnostic.Repairs is { Length: > 0 })
         {
             this.consoleService.WriteLine();
             if (diagnostic.Note is not null)
             {
                 this.consoleService.WriteLine($"Note: {diagnostic.Note}");
-            }
-
-            if (diagnostic.Advice is not null)
-            {
-                this.consoleService.WriteLine($"Advice: {diagnostic.Advice}");
             }
 
             // SPEC 23.3.6.8, 23.3.6.9: each candidate as its title, one line per edit and its verified and required conditions.

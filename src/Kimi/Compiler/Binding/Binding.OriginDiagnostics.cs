@@ -88,8 +88,7 @@ public sealed partial class Binding
 
     // SPEC 10.6, 15.3.6: a reference slot that only per-call Origins of the fixed expected call signature S would satisfy, at the
     // reference. The Reason names the slot and the parameters of S, the Note shows S, the declaration and the written parameters of S
-    // are related, and the Advice wraps the reference in an anonymous function, whose every call binds the slot, when that call infers
-    // every slot. No candidate is offered.
+    // are related. No candidate is offered.
     private static void ReportPerCallSlot(Koto use, PerCallSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var slot = fact.Declaration.GenericArguments[fact.Slot].Identifier;
@@ -139,70 +138,7 @@ public sealed partial class Binding
                 $"{shownParameters} at each call, and a per-call Origin never becomes part of a bound Type argument (SPEC 10.5, 15.3.6)";
             var evidence = count == 1 ? $"only the {ordinals} parameter's per-call Origin would satisfy Type parameter '{slot}'"
                 : $"only the per-call Origins of the {ordinals} parameters would satisfy Type parameter '{slot}'";
-            if (fact.Moves is not { } moves)
-            {
-                // A slot that only written Type arguments bind would leave the wrapper's call unsolved, so no wrapper is advised.
-                use.Report(requirement, code, note: note, evidence: [evidence], related: related.AsSpan(0, relatedCount).ToArray());
-                return;
-            }
-
-            // The anonymous function takes the declaration's parameters by their names, renaming one that the reference itself names or
-            // that cannot be written, and passes each as the declaration takes it, a by-value parameter that is not Copy with @move. The
-            // call infers the slots, so written Type arguments are dropped; one candidate remains for the name.
-            var callee = KotoHelper.UnwrapParentheses(use) is GenericsKoto { Identifier: { } name } ? name : KotoHelper.UnwrapParentheses(use);
-            var parameters = fact.Declaration.Parameters;
-            var names = new string?[parameters.Count];
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                names[i] = parameters[i].InternalName is { Length: > 0 } written && written != "_" && written != "self" && !Names(callee, written, 0) && Array.IndexOf(names, written, 0, i) < 0
-                    ? written : null;
-            }
-
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                if (names[i] is null)
-                {
-                    var candidate = $"p{i + 1}";
-                    for (var k = 2; Names(callee, candidate, 0) || Array.IndexOf(names, candidate) >= 0; k++)
-                    {
-                        candidate = $"p{i + 1}_{k}";
-                    }
-
-                    names[i] = candidate;
-                }
-            }
-
-            builder.Clear();
-            builder.Append("Wrap the reference in an anonymous function that calls it, so that each call binds ");
-            builder.Append(slot);
-            builder.Append(", as in func (");
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                builder.Append(i == 0 ? string.Empty : ", ");
-                builder.Append(names[i]!);
-            }
-
-            builder.Append(") => ");
-            callee.WriteTo(ref builder);
-            builder.Append('(');
-            for (var i = 0; i < parameters.Count; i++)
-            {
-                builder.Append(i == 0 ? string.Empty : ", ");
-                if (!fact.Declaration.AllowsPositionalArgument(i))
-                {
-                    builder.Append(parameters[i].ExternalName);
-                    builder.Append(": ");
-                }
-
-                builder.Append(names[i]!);
-                if ((moves & (1UL << i)) != 0)
-                {
-                    builder.Append("@move");
-                }
-            }
-
-            builder.Append(')');
-            use.Report(requirement, code, note: note, evidence: [evidence], advice: builder.ToString(), related: related.AsSpan(0, relatedCount).ToArray());
+            use.Report(requirement, code, note: note, evidence: [evidence], related: related.AsSpan(0, relatedCount).ToArray());
         }
         finally
         {
@@ -210,28 +146,6 @@ public sealed partial class Binding
         }
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
-
-        // Whether the reference's syntax names the identifier, which a parameter of that name would shadow.
-        static bool Names(Koto node, string name, int depth)
-        {
-            if (node is IdentifierNameKoto identifier && identifier.IdentifierName == name)
-            {
-                return true;
-            }
-
-            if (depth < 32)
-            {
-                foreach (var child in node.ChildNodes)
-                {
-                    if (Names(child, name, depth + 1))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
     }
 
     // Run only while publishing failures. These checks neither bind new names nor
@@ -315,7 +229,7 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.2: a storage name that no declaration of any role matches is reported once, at the name. The Reason says that own
-    // slots are declared only in the header; the Advice gives both repairs with their consequence for the public API; the header,
+    // slots are declared only in the header; the header,
     // or the Type name without one, is the related location. `during self` is explained by the storage rule of SPEC 11.3 instead.
     private bool ReportUndeclaredStorageOrigin(Koto use, DiagnosticRequirement requirement, DiagnosticCode code)
     {
@@ -327,8 +241,7 @@ public sealed partial class Binding
         if (name == "self")
         {
             const string SelfNote = "A stored value cannot borrow from the value that stores it: self creates no self-borrowing storage contract (SPEC 11.3)";
-            const string SelfAdvice = "Store an owned value, or declare a header slot for the lifetime of the borrowed referent and bind the Field to it";
-            use.Report(requirement, code, note: SelfNote, evidence: ["self is not a storage Origin"], advice: SelfAdvice);
+            use.Report(requirement, code, note: SelfNote, evidence: ["self is not a storage Origin"]);
             return true;
         }
 
@@ -344,13 +257,11 @@ public sealed partial class Binding
 
         var slots = type.OriginNames;
         var header = slots.Count == 0 ? $"{{{name}}}" : $"{{{string.Join(", ", slots)}, {name}}}";
-        var advice = (known.Length == 0 ? string.Empty : $"If an existing Origin was intended ({known}), write its name instead; the slot declaration does not change. ") +
-            $"If a new slot was intended, add {name} to the header, as {type.Name} {header}; this changes the public API, and a member signature that uses {name} as a universal Origin is then bound to the new slot";
         var note = $"{name} is declared neither in the header of {type.Name} nor as a visible enclosing Origin; a Type declares its own Origin slots only in its header (SPEC 15.3.2)";
         var related = slots is OriginNameList { HeaderSpan.Length: > 0 } written
             ? ("header", (Koto)type, written.HeaderSpan, "the Origin header")
             : ("type", type, TypeNameSpan(type), "the Type, which writes no Origin header");
-        use.Report(requirement, code, note: note, evidence: [$"{name} is not a declared Origin slot"], advice: advice, relatedSpans: [related]);
+        use.Report(requirement, code, note: note, evidence: [$"{name} is not a declared Origin slot"], relatedSpans: [related]);
 
         return true;
     }
@@ -375,13 +286,10 @@ public sealed partial class Binding
         }
 
         var note = declared.Length == 0 ? $"{symbol.Name} declares no Origin slot" : $"The Origin slots of {symbol.Name} are {declared}";
-        var advice = declared.Length == 0
-            ? $"Remove the projection, or declare the slot in the header of {symbol.Name}, which changes its public API"
-            : $"Write a declared slot of {symbol.Name}, such as {schema.Origins[0].Name}, instead of {slot.IdentifierName}";
         (string Role, Koto In, SourceSpan Span, string? Label)[]? related = symbol.Declaration is DeclarationContainerKoto declaration
             ? [declaration.OriginNames is OriginNameList { HeaderSpan.Length: > 0 } written ? ("header", declaration, written.HeaderSpan, "the Origin header") : ("type", declaration, TypeNameSpan(declaration), "the Type, which writes no Origin header")]
             : null;
-        node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], advice: advice, relatedSpans: related);
+        node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], relatedSpans: related);
         return true;
     }
 

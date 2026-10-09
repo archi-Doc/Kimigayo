@@ -208,7 +208,7 @@ unsafe
     updateState()
 ```
 
-An operation that requires the permission uses that of the innermost enclosing Unsafe Block, including from a nested Deferred Block. An Unsafe Block whose permission no operation uses is the Language warning `UnnecessaryUnsafeBlock_Kd`, with the `unsafe` keyword as its primary location and the Reason that no operation uses the block's permission. Because the Body is an independent scope (§14.3.1), the Advice suggests removing `unsafe` and keeping the statements only when the Body declares no Name and registers no `defer`; otherwise it states that removal would change the scope of a Name or the time of a destruction or `defer` and does not recommend it. The repair candidate `Repair.RemoveUnsafe` (§23.3.6.9) is offered with `Structure` verified exactly in that case, when the statement is a direct item of an indented body, its `unsafe` line holds no other token or comment and its Body has no multi-line literal; otherwise the Advice alone remains.
+An operation that requires the permission uses that of the innermost enclosing Unsafe Block, including from a nested Deferred Block. An Unsafe Block whose permission no operation uses is the Language warning `UnnecessaryUnsafeBlock_Kd`, with the `unsafe` keyword as its primary location and the Reason that no operation uses the block's permission. Because the Body is an independent scope (§14.3.1), the repair candidate `Repair.RemoveUnsafe` (§23.3.6.9) is offered, with `Structure` verified, only when the Body declares no Name and registers no `defer`, the statement is a direct item of an indented body, its `unsafe` line holds no other token or comment and its Body has no multi-line literal.
 
 ```kimi
 unsafe
@@ -261,7 +261,7 @@ For `return`, `exit` and `yield`, the operand is omitted only when no token foll
 
 A named target and its operand's first token must be separated by whitespace or a same-line block comment (§2.3). `exit to work(x)`, `exit to work.value`, `exit to work[0]` and `exit to work..end` are invalid; `exit to work (x)` and `exit to work/* result */(x)` are valid syntax. Formatting uses one space without removing comments. The separated forms `-1`, `(value)`, `()`, `[1, 2]`, `.Some(1)` and `..end` are operands, never calls, members or indices of the label.
 
-A colon after a complete operand belongs to the enclosing grammar: `[exit to work x: value]` is a Dictionary. A Unit transfer used as a key requires `[exit to work (): value]` or `[(exit to work): value]`; target and Type checks still apply. Advice for a colon at the operand start may describe removing it, with any space the following expression needs, or inserting `()` for a Unit key; the choice is the author's, so neither is a repair candidate (§23.3.6.9), and the Advice cannot claim semantic preservation. Postfix `value to Label` and `value{Label}` are not transfer syntax.
+A colon after a complete operand belongs to the enclosing grammar: `[exit to work x: value]` is a Dictionary. A Unit transfer used as a key requires `[exit to work (): value]` or `[(exit to work): value]`; target and Type checks still apply. For a colon at the operand start, removing it and inserting `()` for a Unit key give different programs; the choice is the author's, so neither is a repair candidate (§23.3.6.9). Postfix `value to Label` and `value{Label}` are not transfer syntax.
 
 ```kimi
 exit to search score(item)
@@ -283,7 +283,7 @@ Transfers have Type Never. Their operands are still checked against their own ta
 | `continue` | Nearest iteration | Named iteration | Function and `defer` |
 | `yield` | Nearest `if` or `match` | Named `if` or `match` | Function and `defer` |
 
-The target is resolved first; then context, operand and Type are checked, and lookup never searches farther outward after a mismatch. Missing or wrong-kind targets are errors. An unlabeled `yield` to a discarded selection is an error even without a value; the diagnostic should suggest naming the intended target. A named `yield` must still fit the target's Target Result Type, which is Unit in Discard Context. This extra check prevents a conditional `yield` from accidentally ending only its nearest inner `if`; it neither alters Type fitting nor makes Discard Context transparent to lookup.
+The target is resolved first; then context, operand and Type are checked, and lookup never searches farther outward after a mismatch. Missing or wrong-kind targets are errors. An unlabeled `yield` to a discarded selection is an error even without a value. A named `yield` must still fit the target's Target Result Type, which is Unit in Discard Context. This extra check prevents a conditional `yield` from accidentally ending only its nearest inner `if`; it neither alters Type fitting nor makes Discard Context transparent to lookup.
 
 A construct acts as a target or barrier only inside its bodies. `unsafe` and `require` create neither. A do expression passes through all transfers except its named `exit`; selections pass `return`/`exit`/`continue`, and iterations pass `yield`. No outward transfer crosses a function or deferred body.
 
@@ -813,7 +813,7 @@ let stopped: i32 = label work: do
 // Expression Type remains i32; Runtime Reachability stops at cleanup, before delivery.
 ```
 
-A warning is issued for `while true`, including a parenthesized `true`, suggesting `loop` for unconditional iteration; the warning does not reject the program. `if false => consume(value)` still has a static Move path for a Non-Copy `value`; resulting use errors should explain this and suggest `#if` when static exclusion was intended. Optimization may remove dead runtime paths but must not change acceptance.
+A warning is issued for `while true`, including a parenthesized `true`, stating that the loop keeps a static false path; the warning does not reject the program. `if false => consume(value)` still has a static Move path for a Non-Copy `value`. Optimization may remove dead runtime paths but must not change acceptance.
 
 ## 14.10. Type refinement
 

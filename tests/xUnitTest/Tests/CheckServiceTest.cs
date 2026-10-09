@@ -94,7 +94,6 @@ public sealed class CheckServiceTest : IDisposable
         Assert.Equal(new SourceSpan(Prefix.Length + start, token.Length), error.Span);
         Assert.Contains(error.Message, console.Output);
         Assert.Contains(error.Label!, console.Output);
-        Assert.Contains("Advice: " + error.Advice, console.Output);
         Assert.Contains($"main.kimi:2:{start + 5}", console.Output);
         File.WriteAllText(this.PathOf("Labels", "main.kimi"), Prefix + valid);
         Assert.True(this.Run(project).Accepted);

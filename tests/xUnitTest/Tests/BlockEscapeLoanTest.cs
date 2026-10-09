@@ -99,8 +99,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string Escaped = "`n` is destroyed here while a live value keeps the Loan of `n@ref`; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
 
-    private const string EscapedAdvice = "Declare `n` in a scope that outlives the value keeping its Loan, or keep an owned value instead of the borrow";
-
     private const string BorrowLabel = "borrow that created the loan";
 
     private const string LoanLabel = "value retaining the conflicting loan";
@@ -169,12 +167,11 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         output.WriteLine(name);
     }
 
-    // SPEC 15.6.5: the destruction states the escape, so the Advice keeps the root alive or the value owned.
+    // SPEC 15.6.5: the plain escape is one record, at the destruction.
     [Fact]
-    public void TheAdviceKeepsTheRootAlive()
+    public void ThePlainEscapeIsOneRecord()
     {
         var record = Assert.Single(DiagnosticCorpus.Check(Plain).Diagnostics);
-        Assert.Equal(EscapedAdvice, record.Advice);
     }
 
     // DIAGNOSTICS.md rule 1: an independent Loan conflict in the same body stays visible beside the escape.
@@ -241,7 +238,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Contains(": " + BorrowLabel, console.Text, StringComparison.Ordinal);
         Assert.Contains(": " + LoanLabel, console.Text, StringComparison.Ordinal);
         Assert.Contains("Note: " + Escaped, console.Text, StringComparison.Ordinal);
-        Assert.Contains("Advice: " + EscapedAdvice, console.Text, StringComparison.Ordinal);
 
         var identity = SourceIdentity.FromPath(checkOutput.Sources[record.Source].Path);
         var plain = Assert.Single(WorkspaceCheck.Place(checkOutput, [identity], identity, false)[identity]);

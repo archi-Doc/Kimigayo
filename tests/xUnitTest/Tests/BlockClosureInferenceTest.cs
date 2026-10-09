@@ -121,7 +121,6 @@ public sealed class BlockClosureInferenceTest
         Assert.Contains(record.Related!, static r => r.Role == "origin");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains("storage that ends with the call", console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {

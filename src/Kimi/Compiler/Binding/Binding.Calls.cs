@@ -1380,7 +1380,7 @@ public sealed partial class Binding
                 {
                     independentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
                     // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
-                    // applies; a successful overload selection publishes no repair advice from rejected alternatives.
+                    // applies; a successful overload selection publishes nothing from rejected alternatives.
                     if (DifferentRangeShapes(actual, type))
                     {
                         operations[i] = new(call.ArgumentNodes[i], actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);

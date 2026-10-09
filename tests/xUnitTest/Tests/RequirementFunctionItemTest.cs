@@ -164,7 +164,6 @@ public class RequirementFunctionItemTest
         var check = DiagnosticCorpus.Check(Program);
         var record = Assert.Single(check.Diagnostics);
         Assert.Equal("AmbiguousBinding_Kd", record.Code);
-        Assert.Equal("Annotate the expected Function Type so that one function is referenced", record.Advice);
         Assert.Contains(record.Related!, r => r.Label!.Contains("i32", StringComparison.Ordinal));
         Assert.Contains(record.Related!, r => r.Label!.Contains("i64", StringComparison.Ordinal));
         var console = new DiagnosticContractTest.DiagnosticConsole();

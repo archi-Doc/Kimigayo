@@ -70,7 +70,6 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
         Assert.All(error.Related!, x => Assert.Contains("callable signature", x.Label, StringComparison.Ordinal));
         Assert.All(error.Related!, x => Assert.DoesNotContain("…", x.Label, StringComparison.Ordinal));
         Assert.Contains("Results do not rank candidates", error.Note, StringComparison.Ordinal);
-        Assert.Contains("Type annotation", error.Advice, StringComparison.Ordinal);
         Assert.Null(error.Repairs);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);

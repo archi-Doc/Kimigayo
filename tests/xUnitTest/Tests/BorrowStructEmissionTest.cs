@@ -64,7 +64,6 @@ public class BorrowStructEmissionTest
         Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), DiagnosticCategory.Language, at), (record.Code, record.Category, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
         Assert.StartsWith(note, record.Note, StringComparison.Ordinal);
         Assert.Equal(note.Contains("Field", StringComparison.Ordinal) ? "no initializer" : null, record.Related?.SingleOrDefault()?.Label);
-        Assert.Equal(at.StartsWith("Dictionary", StringComparison.Ordinal) ? "Write [:] for an empty Dictionary" : null, record.Advice);
     }
 
     [Theory]

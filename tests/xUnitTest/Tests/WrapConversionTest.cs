@@ -122,6 +122,5 @@ public class WrapConversionTest
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(nameof(Kimi.DiagnosticCode.InvalidWrapConversion_Kd), error.Code);
         Assert.Equal("f@wrap<u32>", error.Text);
-        Assert.Contains("@bits<U>", error.Advice);
     }
 }

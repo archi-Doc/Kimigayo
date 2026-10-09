@@ -37,10 +37,10 @@ public class ReferenceDiagnosticTest
     private const string RunTail = "let n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 3 else => $abort(\"run\")";
 
     [Theory]
-    [InlineData(Box + "let s = Box.size", "Box", "only the construction target itself can infer its own slots", "Box<...>.size")]
-    [InlineData(Box + "let b: Box = Box<i32>.init(4)", "Box", "declares 1 Type parameter, and 0 Type arguments are written", "one Type argument for each of T")]
-    [InlineData(Box + "let b: Box<i32, bool> = Box<i32>.init(4)", "Box<i32, bool>", "declares 1 Type parameter, and 2 Type arguments are written", "one Type argument for each of T")]
-    public void AContainerWithoutItsTypeArgumentsCannotFormAType(string source, string text, string note, string advice)
+    [InlineData(Box + "let s = Box.size", "Box", "only the construction target itself can infer its own slots")]
+    [InlineData(Box + "let b: Box = Box<i32>.init(4)", "Box", "declares 1 Type parameter, and 0 Type arguments are written")]
+    [InlineData(Box + "let b: Box<i32, bool> = Box<i32>.init(4)", "Box<i32, bool>", "declares 1 Type parameter, and 2 Type arguments are written")]
+    public void AContainerWithoutItsTypeArgumentsCannotFormAType(string source, string text, string note)
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -50,7 +50,6 @@ public class ReferenceDiagnosticTest
         Assert.Equal(nameof(DiagnosticCode.InvalidTypeFormation_Kd), error.Code);
         Assert.Equal(text, error.Text);
         Assert.Contains(note, error.Note, StringComparison.Ordinal);
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);
@@ -141,7 +140,7 @@ public class ReferenceDiagnosticTest
         var output = DiagnosticCorpus.Check(source);
         var error = Assert.Single(output.Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        Assert.Equal((DiagnosticCategory.Unsupported, null, null, null), (error.Category, error.Note, error.Advice, error.Related));
+        Assert.Equal((DiagnosticCategory.Unsupported, null, null), (error.Category, error.Note, error.Related));
     }
 
     // The limit leaves independent problems of the call visible: an unresolved argument keeps its own record, a missing member is
@@ -187,9 +186,8 @@ public class ReferenceDiagnosticTest
     }
 
     // SPEC 15.3.1, 23.3.6.4: `{x}` on a qualifier introduces a new set name and never applies the visible set x, so each reuse is one
-    // DuplicateBinding_Kd at the set with the first declaration related and Advice that writes a new set related on the declaration. The
-    // call and the reference that rest on the failed qualifier report nothing more; they were NoApplicableOverload_Kd and
-    // Unsupported_Kd.
+    // DuplicateBinding_Kd at the set with the first declaration related. The call and the reference that rest on the failed qualifier
+    // report nothing more; they were NoApplicableOverload_Kd and Unsupported_Kd.
     [Fact]
     public void AReusedSetOnAQualifierIsOnlyTheDuplicate()
     {
@@ -202,15 +200,13 @@ public class ReferenceDiagnosticTest
             Assert.Equal((nameof(DiagnosticCode.DuplicateBinding_Kd), "Holder{x}"), (error.Code, error.Span is { } span ? Source.Substring(span.Start, span.Length) : string.Empty));
             Assert.Equal("'x' is declared again", error.Label);
             Assert.Equal("A binding set introduces a new set name and never applies an existing Origin or set (SPEC 15.3.1); x is already declared in this scope", error.Note);
-            Assert.Equal("Write a new set name and relate it on the declaration, as in (Holder{x2}).peek followed by origin x2.a == x.a", error.Advice);
             var related = Assert.Single(error.Related!);
             Assert.Equal(("declaration", first), (related.Role, related.Span!.Value.Start));
         }
     }
 
-    // SPEC 15.3.3, 15.4.4: outside a local initializer, such as in a return statement, no declaration holds the qualifier, so the Advice
-    // writes the new set in a local declaration and relates it there; it said to relate it on the declaration, which a return statement
-    // does not have. Following it leaves no diagnostic.
+    // SPEC 15.3.3, 15.4.4: outside a local initializer, such as in a return statement, no declaration holds the qualifier, so the reuse
+    // relates only the first declaration; a new set written in a local declaration and related there leaves no diagnostic.
     [Fact]
     public void AReusedSetOutsideADeclarationIsRelatedOnANewLocal()
     {
@@ -219,14 +215,13 @@ public class ReferenceDiagnosticTest
         const string Source = Head + "    return (Holder{x}).peek(h)\n" + Tail;
         var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.DuplicateBinding_Kd), Source.LastIndexOf("Holder{x}", StringComparison.Ordinal)), (error.Code, error.Span!.Value.Start));
-        Assert.Equal("Write a new set name in a local declaration and relate it there, as in let v = (Holder{x2}).peek(...) followed by origin x2.a == x.a", error.Advice);
         Assert.Equal(("declaration", "first declaration", Source.IndexOf("Holder{x}", StringComparison.Ordinal)), (Assert.Single(error.Related!).Role, error.Related![0].Label, error.Related![0].Span!.Value.Start));
         Assert.Empty(DiagnosticCorpus.Check(Head + "    let v = (Holder{x2}).peek(h)\n        origin x2.a == x.a\n    return v\n" + Tail).Diagnostics);
     }
 
     // SPEC 15.3.1, 15.3.2: a set that reuses the name of a container's own slot relates that slot's header declaration, which it did not,
     // and the use of the name beside it resolves to the slot instead of failing again at the set (an InvalidOriginBinding_Kd cascade). The
-    // Advice offers the one-slot `during` form and a new related set, and both forms leave no diagnostic.
+    // one-slot `during` form and a new related set both leave no diagnostic.
     [Fact]
     public void AReusedSlotNameRelatesTheSlot()
     {
@@ -236,7 +231,6 @@ public class ReferenceDiagnosticTest
         var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.DuplicateBinding_Kd), "Holder{a}"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span!.Value.Length)));
         Assert.Equal("'a' is declared again", error.Label);
-        Assert.Equal("Apply the existing Origin with the one-slot form Holder during a, or write a new set name and relate it on the declaration, as in Holder{a2} followed by origin a2.a == a", error.Advice);
         var related = Assert.Single(error.Related!);
         Assert.Equal(("declaration", "Origin slot", new SourceSpan(Source.IndexOf("{a}", StringComparison.Ordinal) + 1, 1)), (related.Role, related.Label, related.Span!.Value));
         Assert.Empty(DiagnosticCorpus.Check(Head + "    public func make(value: ref/i32 during a) -> Holder during a => Holder.init(value)\n" + Tail).Diagnostics);
@@ -286,7 +280,7 @@ public class ReferenceDiagnosticTest
         Assert.Empty(record.Repairs ?? []);
     }
 
-    // SPEC 15.3.3: the forms the Field Advice writes run, on an instance Field and a group's Field, related to static and to the
+    // SPEC 15.3.3: a set related on a Field's declaration runs, on an instance Field and a group's Field, related to static and to the
     // container's slot, and so does a local declaration in an anonymous function's body inside a Field initializer.
     [Fact]
     public void AQualifierSlotRelatedOnAFieldRuns()
@@ -298,28 +292,25 @@ public class ReferenceDiagnosticTest
         ScalarEmissionTest.EmitFixture("OriginQualifierStored", Helpers + Stored + Slot + Static + Body, string.Empty);
     }
 
-    // SPEC 15.3.1, 15.3.3: a reused set in a stored Field's initializer is related on the Field's declaration, and following that Advice
-    // leaves no diagnostic; in a parameter default it gets no Advice. Both offered a local declaration, which neither position can hold.
-    // A call that lends its argument at the slot gets none in a Field either: following the Field form left NoApplicableOverload_Kd.
-    // Each relates the container's slot it reuses.
+    // SPEC 15.3.1, 15.3.3: a reused set in a stored Field's initializer or a parameter default is one DuplicateBinding_Kd that relates
+    // the container's slot it reuses, and a new set related on the Field's declaration leaves no diagnostic.
     [Fact]
-    public void AReusedSetOutsideABodyGetsOnlyAdviceItsPositionHolds()
+    public void AReusedSetOutsideABodyRelatesTheReusedSlot()
     {
         const string Head = "struct S {x}\n    public let item: ref/i32 during x\n";
         const string Init = "\n    public init(item: ref/i32 during x) => self.item = item\n";
         const string Tail = "let n = 3\nlet s = S.init(n@ref)\nrequire s.item@follow == 3 else => $abort(\"s\")";
         var slot = new SourceSpan(Helpers.Length + Head.IndexOf("{x}", StringComparison.Ordinal) + 1, 1);
-        foreach (var (member, advice) in new[]
+        foreach (var member in new[]
         {
-            ("    public var v: i32 = (Holder{x}).zero()\n", "Write a new set name and relate it on the declaration, as in (Holder{x2}).zero followed by origin x2.a == x"),
-            ("    public var v: i32 = (Holder{x}).twice(5@ref)\n", (string?)null),
-            ("\n    public func get(self: ref/Self, k: i32 = (Holder{x}).zero()) -> i32 => k\n", (string?)null),
+            "    public var v: i32 = (Holder{x}).zero()\n",
+            "    public var v: i32 = (Holder{x}).twice(5@ref)\n",
+            "\n    public func get(self: ref/Self, k: i32 = (Holder{x}).zero()) -> i32 => k\n",
         })
         {
             var source = Helpers + Head + (member[0] == '\n' ? Init + member : member + Init) + Tail;
             var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
             Assert.Equal((nameof(DiagnosticCode.DuplicateBinding_Kd), new SourceSpan(source.IndexOf("Holder{x}", StringComparison.Ordinal), 9)), (error.Code, error.Span!.Value));
-            Assert.Equal(advice, error.Advice);
             var related = Assert.Single(error.Related!);
             Assert.Equal(("declaration", "Origin slot", slot), (related.Role, related.Label, related.Span!.Value));
         }
@@ -328,7 +319,7 @@ public class ReferenceDiagnosticTest
     }
 
     // SPEC 15.3.3: the Field forms that relate a set run for a member whose parameters omit the slot, related to static and to the
-    // container's slot, written as the open-slot, the set-named and the reused-set Advice gives them.
+    // container's slot.
     [Fact]
     public void AFieldQualifierWhoseParametersOmitTheSlotRuns()
     {
@@ -371,39 +362,34 @@ public class ReferenceDiagnosticTest
         Assert.Equal((code, source.IndexOf(at, StringComparison.Ordinal)), (output[1].Code, output[1].Span!.Value.Start));
         var written = source.Replace("Holder{x} = h\n        origin x.", "Holder{x2} = h\n        origin x2.", StringComparison.Ordinal);
         var alone = Assert.Single(DiagnosticCorpus.Check(written).Diagnostics);
-        Assert.Equal((code, written.IndexOf(at, StringComparison.Ordinal), output[1].Advice), (alone.Code, alone.Span!.Value.Start, alone.Advice));
+        Assert.Equal((code, written.IndexOf(at, StringComparison.Ordinal)), (alone.Code, alone.Span!.Value.Start));
     }
 
-    // SPEC 15.3.1, 15.3.3: a reused set gets Advice only where a clause can relate the new set: a local declaration's annotation (also
-    // inside a tuple), a stored Field's Type, a named function's parameter or result Type, a Contract requirement's and an enum Case's
-    // payload. Inside another Type the one-slot form is grouped, (Holder during x), since ref/Holder during x binds the borrow. An
-    // anonymous function's signature, a Function Type, an expression's Type argument and a computed Property hold no such clause, so
-    // they get none; each offered relating the set on the declaration, which no position accepted.
+    // SPEC 15.3.1: a reused set is one DuplicateBinding_Kd at the set in every position that writes one, relating the first declaration.
     [Theory]
-    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let f = func (g: ref/Holder{x}) -> i32 => g.peek()\n    return f(h)\n" + RunTail, "Holder{x}) -> i32 =>", null)]
-    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let f = func () -> Holder{x} => Holder.init(h.item)\n    return f().peek()\n" + RunTail, "Holder{x} =>", null)]
-    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet a1: ref/Holder{w} = h@ref\nlet f = func (g: ref/Holder{w}) -> i32 => g.peek()\nrequire f(h@ref) == 3 else => $abort(\"w\")", "Holder{w}) -> i32", null)]
-    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let f: (ref/Holder{x}) -> i32 = func (g) => g.peek()\n    return f(h)\n" + RunTail, "Holder{x}) -> i32 =", null)]
-    [InlineData(Holder + "func size<T>() -> i32 => 3\nfunc run(h: ref/Holder{x}) -> i32\n    let v = size<Holder{x}>()\n    return v\n" + RunTail, "Holder{x}>", null)]
-    [InlineData(Holder + Slotted + "    public computed p: Holder{x}\n        get(self: ref/Self) -> Holder during x => Holder.init(self.item)\n\n    public func get(self: ref/Self) -> i32 => 3\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}\n", null)]
-    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let k: ref/Holder{x} = h\n    return k.peek()\n" + RunTail, "Holder{x} = h", "Write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x.a")]
-    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let t: (ref/Holder{x}, i32) = (h, 1)\n    return t.0.peek()\n" + RunTail, "Holder{x}, i32", "Write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x.a")]
-    [InlineData(Holder + Slotted + "    public func get(self: ref/Self) -> i32\n        let j = Holder.init(self.item)\n        let k: ref/Holder{x} = j@ref\n        return k.peek()\nlet n = 3\nlet s = S.init(n@ref)\nrequire s.get() == 3 else => $abort(\"s\")", "Holder{x} = j", "Apply the existing Origin with the one-slot form (Holder during x), or write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x")]
-    [InlineData(Holder + Slotted + "    public func get(self: ref/Self, h: ref/Holder{x}) -> i32 => h.peek()\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}) -> i32 => h", "Apply the existing Origin with the one-slot form (Holder during x), or write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x")]
-    [InlineData(Holder + Slotted + "    public func make(self: ref/Self) -> Holder{x} => Holder.init(self.item)\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x} =>", "Apply the existing Origin with the one-slot form Holder during x, or write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x")]
-    [InlineData(Holder + "struct W {x}\n    public let item: ref/i32 during x\n    public let h: Holder{x}\n\n    public init(item: ref/i32 during x) => self.item = item\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}\n", "Apply the existing Origin with the one-slot form Holder during x, or write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x")]
-    [InlineData(Holder + "enum E {x}\n    Has(Holder{x})\n    Empty\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x})", "Apply the existing Origin with the one-slot form Holder during x, or write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x")]
-    [InlineData(Holder + "contract Peeks\n    func get(self: ref/Self, h: ref/Holder{x}, g: ref/Holder{x}) -> i32\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}) -> i32\n", "Write a new set name and relate it on the declaration, as in Holder{x2} followed by origin x2.a == x.a")]
-    public void AReusedSetGetsAdviceOnlyWhereAClauseRelatesIt(string source, string set, string? advice)
+    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let f = func (g: ref/Holder{x}) -> i32 => g.peek()\n    return f(h)\n" + RunTail, "Holder{x}) -> i32 =>")]
+    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let f = func () -> Holder{x} => Holder.init(h.item)\n    return f().peek()\n" + RunTail, "Holder{x} =>")]
+    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet a1: ref/Holder{w} = h@ref\nlet f = func (g: ref/Holder{w}) -> i32 => g.peek()\nrequire f(h@ref) == 3 else => $abort(\"w\")", "Holder{w}) -> i32")]
+    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let f: (ref/Holder{x}) -> i32 = func (g) => g.peek()\n    return f(h)\n" + RunTail, "Holder{x}) -> i32 =")]
+    [InlineData(Holder + "func size<T>() -> i32 => 3\nfunc run(h: ref/Holder{x}) -> i32\n    let v = size<Holder{x}>()\n    return v\n" + RunTail, "Holder{x}>")]
+    [InlineData(Holder + Slotted + "    public computed p: Holder{x}\n        get(self: ref/Self) -> Holder during x => Holder.init(self.item)\n\n    public func get(self: ref/Self) -> i32 => 3\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}\n")]
+    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let k: ref/Holder{x} = h\n    return k.peek()\n" + RunTail, "Holder{x} = h")]
+    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let t: (ref/Holder{x}, i32) = (h, 1)\n    return t.0.peek()\n" + RunTail, "Holder{x}, i32")]
+    [InlineData(Holder + Slotted + "    public func get(self: ref/Self) -> i32\n        let j = Holder.init(self.item)\n        let k: ref/Holder{x} = j@ref\n        return k.peek()\nlet n = 3\nlet s = S.init(n@ref)\nrequire s.get() == 3 else => $abort(\"s\")", "Holder{x} = j")]
+    [InlineData(Holder + Slotted + "    public func get(self: ref/Self, h: ref/Holder{x}) -> i32 => h.peek()\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}) -> i32 => h")]
+    [InlineData(Holder + Slotted + "    public func make(self: ref/Self) -> Holder{x} => Holder.init(self.item)\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x} =>")]
+    [InlineData(Holder + "struct W {x}\n    public let item: ref/i32 during x\n    public let h: Holder{x}\n\n    public init(item: ref/i32 during x) => self.item = item\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}\n")]
+    [InlineData(Holder + "enum E {x}\n    Has(Holder{x})\n    Empty\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x})")]
+    [InlineData(Holder + "contract Peeks\n    func get(self: ref/Self, h: ref/Holder{x}, g: ref/Holder{x}) -> i32\nlet n = 3\nrequire n == 3 else => $abort(\"n\")", "Holder{x}) -> i32\n")]
+    public void AReusedSetIsADuplicateInEveryPosition(string source, string set)
     {
         var start = source.IndexOf(set, StringComparison.Ordinal);
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, x => x.Code == nameof(DiagnosticCode.DuplicateBinding_Kd) && x.Span!.Value.Start == start);
-        Assert.Equal(advice, error.Advice);
         Assert.Equal("declaration", Assert.Single(error.Related!).Role);
     }
 
-    // The forms the reused-set Advice writes check clean in each position that offers it, and the grouped and Case forms run (native
-    // fixture OriginSetRepeatForms).
+    // A new set related to the reused one checks clean in each position, and the grouped and Case forms run (native fixture
+    // OriginSetRepeatForms).
     [Theory]
     [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let k: ref/Holder{x2} = h\n        origin x2.a == x.a\n    return k.peek()\n" + RunTail)]
     [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let t: (ref/Holder{x2}, i32) = (h, 1)\n        origin x2.a == x.a\n    return t.0.peek()\n" + RunTail)]
@@ -412,7 +398,7 @@ public class ReferenceDiagnosticTest
     [InlineData(Holder + Slotted + "    public func get(self: ref/Self, h: ref/Holder{x2}) -> i32\n        origin x2.a == x\n        return h.peek()\nlet n = 3\nrequire n == 3 else => $abort(\"n\")")]
     [InlineData(Holder + Slotted + "    public func make(self: ref/Self) -> Holder{x2}\n        origin x2.a == x\n        return Holder.init(self.item)\nlet n = 3\nrequire n == 3 else => $abort(\"n\")")]
     [InlineData(Holder + "contract Peeks\n    func get(self: ref/Self, h: ref/Holder{x}, g: ref/Holder{x2}) -> i32\n        origin x2.a == x.a\nlet n = 3\nrequire n == 3 else => $abort(\"n\")")]
-    public void TheReusedSetAdviceFormsCheckClean(string source)
+    public void ANewRelatedSetChecksCleanInEveryPosition(string source)
     {
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
@@ -440,7 +426,7 @@ public class ReferenceDiagnosticTest
     public void ARelatedOrLentQualifierSlotRuns(string name, string source)
         => ScalarEmissionTest.EmitFixture("OriginQualifier" + name, source, string.Empty);
 
-    // The written forms the generic and Slice Advice names run: a receiver call, a Slice set related to the value's slot, generic Type,
+    // The written generic and Slice forms run: a receiver call, a Slice set related to the value's slot, generic Type,
     // generic member and nested sets related to a parameter's Origin, a borrow named by a local, and static.
     [Fact]
     public void ARelatedGenericOrSliceQualifierSlotRuns()

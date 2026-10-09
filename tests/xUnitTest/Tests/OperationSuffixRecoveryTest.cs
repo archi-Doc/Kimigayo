@@ -107,7 +107,6 @@ public class OperationSuffixRecoveryTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(source.IndexOf("absent", StringComparison.Ordinal), 6), result.Diagnostics[0].Span);
         var record = result.Diagnostics[1];
         Assert.Equal(new SourceSpan(source.IndexOf('?', StringComparison.Ordinal), 1), record.Span);
-        Assert.Contains("Bare @move and @copy take no Type suffix", record.Advice);
         Assert.Empty(record.Repairs ?? []);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);

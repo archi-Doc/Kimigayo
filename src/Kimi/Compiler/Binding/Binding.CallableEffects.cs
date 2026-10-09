@@ -88,19 +88,11 @@ public sealed partial class Binding
         var related = violation.Node is { } effect
             ? new (string Role, Koto At, string? Label)[] { ("bound", violation.Clause, "the bounded Callable Constraint"), (virtualSlot ? "declaration" : "effect", effect, virtualSlot ? "original virtual slot" : "the violating effect") }
             : [("bound", (Koto)violation.Clause, (string?)"the bounded Callable Constraint")];
-        var advice = violation.Kind switch
-        {
-            EffectViolation.MissingCallablePremise => "Declare the required effect bound on the enclosing Callable premise",
-            EffectViolation.ErasedCallable => "Keep the concrete Function Item or Closure Type when passing the callable; conversion to a common Function Type erases its effect guarantees",
-            EffectViolation.UnboundedVirtual => "Declare effect confined on the original virtual slot and verify every implementation; a body's incidental effects and same-object result exclusions supply no unbound Callable guarantee",
-            _ => "Pass mutable state as an argument or capture; remove an editable bound only if its body can be verified without that guarantee",
-        };
         use.Report(
             requirement,
             DiagnosticCode.UnsatisfiedEffectBound_Kd,
             evidence: [$"{spelling}: {cause}"],
             note: "Effect bounds are checked after selection; a failed bound never selects another overload",
-            advice: advice,
             related: related);
         return true;
     }
@@ -170,7 +162,6 @@ public sealed partial class Binding
             DiagnosticCode.IncompatibleContractImplementation_Kd,
             evidence: [$"the implementation requires {spelling}, but the premises of requirement {failure.Requirement.Name} do not declare it"],
             note: "An implementation must be callable under its requirement's declared premises",
-            advice: $"Remove {spelling} from the implementation's Callable Constraint and verify its body without that guarantee, or declare it in the requirement's Callable premise",
             related: [("bound", failure.Clause, "the implementation's bounded Callable Constraint"), ("requirement", failure.Requirement, "the requirement whose premises lack the bound")]);
         return true;
     }

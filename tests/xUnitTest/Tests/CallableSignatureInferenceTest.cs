@@ -172,7 +172,6 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal("candidate", Assert.Single(error.Related!).Role);
         Assert.Contains("known call signature is () -> i32", error.Note, StringComparison.Ordinal);
         Assert.Contains("requires () -> bool", error.Note, StringComparison.Ordinal);
-        Assert.Null(error.Advice);
         Assert.Null(error.Repairs);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
@@ -349,7 +348,6 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         Assert.Equal((nameof(DiagnosticCode.MissingOriginBinding_Kd), call, $"only a per-call Origin of {argument} would satisfy T"), (error.Code, Text(source, error.Span), error.Label));
         var related = Assert.Single(error.Related!);
         Assert.Equal(("argument", argument), (related.Role, Text(source, related.Span)));
-        Assert.Contains("does not borrow its input", error.Advice, StringComparison.Ordinal);
     }
 
     // SPEC 10.8, 10.6: a header that omits its result supplies no evidence for T, which only the waiting body could fix; that is the
@@ -362,7 +360,6 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make(func (n: ref/i32) => n)"), (error.Code, error.Text));
-        Assert.Equal("Write the anonymous function's result Type", error.Advice);
     }
 
     // SPEC 15.3.6: other Constraints still decide applicability, so a slot that the stand-in fails another Constraint for stays

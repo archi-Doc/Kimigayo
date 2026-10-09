@@ -99,7 +99,7 @@ public sealed partial class Binding
             if (node.DiagnosticCollection is { } target)
             {
                 var related = target.Relate("declaration", DuplicateSpan(first), first.CodeContext.SourceDocument, "first declaration");
-                target.Report(requirement.Partition, node.KeyOf(requirement), DuplicateSpan(node), DiagnosticCode.DuplicateBinding_Kd, null, null, null, null, null, node.CodeContext.SourceDocument, [name], [related]);
+                target.Report(requirement.Partition, node.KeyOf(requirement), DuplicateSpan(node), DiagnosticCode.DuplicateBinding_Kd, null, null, null, null, node.CodeContext.SourceDocument, [name], [related]);
             }
         }
     }

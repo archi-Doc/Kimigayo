@@ -289,7 +289,7 @@ public sealed class PublishDiagnosticsParams
 /// <param name="Severity">The severity.</param>
 /// <param name="Code">The code.</param>
 /// <param name="Source">The source, <c>kimigayo</c>.</param>
-/// <param name="Message">The message with its label, Note, Advice and the text of unsent related locations.</param>
+/// <param name="Message">The message with its label, Note and the text of unsent related locations.</param>
 /// <param name="RelatedInformation">The related locations sent as locations, when the client declares support.</param>
 public sealed record LspDiagnostic(SourceRange Range, int Severity, string Code, string Source, string Message, LspRelatedInformation[]? RelatedInformation = null)
 {

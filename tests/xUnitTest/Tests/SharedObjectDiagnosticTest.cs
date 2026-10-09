@@ -63,7 +63,6 @@ public class SharedObjectDiagnosticTest(ITestOutputHelper output)
         Assert.Contains(mode + "/Item", error.Note, StringComparison.Ordinal);
         Assert.Contains("uniq/Item", error.Note, StringComparison.Ordinal);
         Assert.Contains("shared payload access only", error.Note, StringComparison.Ordinal);
-        Assert.Null(error.Advice);
         this.CheckOutputs(result);
     }
 
@@ -73,18 +72,15 @@ public class SharedObjectDiagnosticTest(ITestOutputHelper output)
         var result = Report("func run(value: obj/i32) => Kimi.Intrinsics.clone(value@ref)");
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal("NoApplicableOverload_Kd", error.Code);
-        Assert.Contains("rc or arc", error.Advice, StringComparison.Ordinal);
-        Assert.Contains("obj ownership cannot be duplicated", error.Advice, StringComparison.Ordinal);
         Assert.Null(error.Repairs);
         this.CheckOutputs(result);
     }
 
     [Fact]
-    public void UserCloneNamesDoNotAcquireIntrinsicAdvice()
+    public void UserCloneNamesReportAnOrdinaryOverloadFailure()
     {
         var error = Assert.Single(Report("func clone(value: ref/i32) => ()\nfunc run(value: obj/i32) => clone(value@ref)").Diagnostics);
         Assert.Equal("NoApplicableOverload_Kd", error.Code);
-        Assert.Null(error.Advice);
     }
 
     [Fact]
@@ -138,14 +134,12 @@ public class SharedObjectDiagnosticTest(ITestOutputHelper output)
         var error = Assert.Single(result.Diagnostics);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains(error.Note ?? error.Advice!, console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(Path.GetFullPath("shared-object-diagnostic.kimi"));
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
             Assert.Equal(error.Display!.Range, sent.Range);
-            Assert.Contains(error.Note ?? error.Advice!, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }

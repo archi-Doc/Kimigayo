@@ -31,21 +31,20 @@ public class CallOriginRelationTest(ITestOutputHelper output)
     private const string Fresh = "func pair(a: uniq/(ref/i32 during o), b: uniq/(ref/i32 during o)) -> () => ()\n\nfunc caller(x: ref/i32, y: ref/i32, p: uniq/(ref/i32 during x), q: uniq/(ref/i32 during y)) -> ()\n    pair(p, q)\n";
 
     [Theory]
-    [InlineData(NeedsStatic + "func caller(p: ref/i32) -> i32 => needsStatic(p)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven", null, "Bind p to static where it is introduced, as in 'p: ref/i32 during static'")]
-    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local", "requires the borrow local outlives static, which is false", "local", Refuted)]
-    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives static, which is false", "local@ref", Refuted)]
-    [InlineData(NeedsStatic + "func caller() -> i32 => needsStatic(5)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "5", "requires the borrow 5 outlives static, which is false", "5", Refuted)]
-    [InlineData(NeedsStatic + "func make() -> i32 => 4\nfunc caller() -> i32 => needsStatic(make())\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "make()", "requires the borrow make() outlives static, which is false", "make()", Refuted)]
-    [InlineData("func takePair(x: (ref/i32 during static, i32)) -> i32 => 1\nfunc caller(p: ref/i32) -> i32 => takePair((p, 1))\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "(p, 1)", "requires p outlives static, which is not proven", null, "Bind p to static where it is introduced")]
-    [InlineData("func store(x: ref/i32, target: uniq/Array<ref/i32 during x>) -> ()\n    let local: i32 = 1\n    target@follow.append(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives x, which is false", "local@ref", Refuted)]
-    public void AnArgumentRelationIsJudgedAfterSelection(string body, string code, string text, string label, string? origin, string advice)
+    [InlineData(NeedsStatic + "func caller(p: ref/i32) -> i32 => needsStatic(p)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p", "requires p outlives static, which is not proven", null)]
+    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local", "requires the borrow local outlives static, which is false", "local")]
+    [InlineData(NeedsStatic + "func caller() -> i32\n    let local = 3\n    return needsStatic(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives static, which is false", "local@ref")]
+    [InlineData(NeedsStatic + "func caller() -> i32 => needsStatic(5)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "5", "requires the borrow 5 outlives static, which is false", "5")]
+    [InlineData(NeedsStatic + "func make() -> i32 => 4\nfunc caller() -> i32 => needsStatic(make())\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "make()", "requires the borrow make() outlives static, which is false", "make()")]
+    [InlineData("func takePair(x: (ref/i32 during static, i32)) -> i32 => 1\nfunc caller(p: ref/i32) -> i32 => takePair((p, 1))\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "(p, 1)", "requires p outlives static, which is not proven", null)]
+    [InlineData("func store(x: ref/i32, target: uniq/Array<ref/i32 during x>) -> ()\n    let local: i32 = 1\n    target@follow.append(local@ref)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives x, which is false", "local@ref")]
+    public void AnArgumentRelationIsJudgedAfterSelection(string body, string code, string text, string label, string? origin)
     {
         var source = body + Main;
         var check = DiagnosticCorpus.Check(source);
         var error = Assert.Single(check.Diagnostics);
         Assert.Equal((code, text, label), (error.Code, Text(source, error.Span), error.Label));
         Assert.Equal(code == nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd) ? DiagnosticCategory.Language : DiagnosticCategory.Proof, error.Category);
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
         var reason = error.Reason!;
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], reason.Select(static x => x.Name));
         Assert.Equal(("outlives", "fit"), (reason[0].Value, reason[3].Value));

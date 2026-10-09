@@ -82,7 +82,6 @@ public class DiagnosticPrecisionTest
         var error = Assert.Single(PublishedErrors(MinimalEmissionTest.Analyze(source)));
         Assert.Equal(text, error.Text);
         Assert.Equal(label, error.Label);
-        Assert.Equal(error.Code == nameof(Kimi.DiagnosticCode.InvalidAssignment_Kd), error.Advice == "Declare the binding with var to assign it again");
     }
 
     // SPEC 23.3.6.2: a failed selection counts and relates the candidates it considered.

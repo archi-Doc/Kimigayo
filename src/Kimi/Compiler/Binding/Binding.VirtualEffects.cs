@@ -31,7 +31,6 @@ public sealed partial class Binding
             at: violation.Site,
             evidence: [$"{spelling}: {EffectCause(violation.Kind)}"],
             note: "Every original and override must satisfy the slot's public bounds, including unused declarations; effects that cannot be classified cannot prove the guarantee",
-            advice: "Use authority from the inputs and avoid accesses to Loans earlier results may retain. Change a public bound only on the original declaration, after checking its callers",
             related: related);
     }
 

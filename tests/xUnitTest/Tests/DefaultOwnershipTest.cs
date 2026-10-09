@@ -73,19 +73,18 @@ public class DefaultOwnershipTest
     }
 
     // SPEC 7.2.3, 13.5.3: an explicit transfer moves even a Copy prepared argument, and a default closure's `@move` capture entry is
-    // the default's own Move. Each is one DefaultArgumentMove_Kd, at the operand or at the entry, with no unsupported execution beside
-    // it; the Advice copies a Copy argument and never proposes a borrow capture, which a default's result cannot retain.
+    // the default's own Move. Each is one DefaultArgumentMove_Kd, at the operand or at the entry, with no unsupported execution beside it.
     [Theory]
-    [InlineData("func f(x: i32, y: i32 = x@move) -> i32 => x + y\n", "x", "Copy the prepared argument instead, as in x or x@copy")]
-    [InlineData("func f(x: (i32, i32), y: i32 = x.0@move) -> i32 => y\n", "x.0", "Copy the prepared argument instead, as in x.0 or x.0@copy")]
-    [InlineData("func f<T>(x: T, y: T = x@move) -> T\n    T is Copy\n    return y\n", "x", "Copy the prepared argument instead, as in x or x@copy")]
-    [InlineData("func runC(offset: i32, action: (i32) -> i32 = func [offset@move] (x) => x + offset) -> i32 => action(1)\n", "offset@move", "Capture a Copy of the prepared argument instead, as in [offset]")]
-    [InlineData("func runG(text: string, action: () -> () = func [text@move] () => ()) -> () => action()\n", "text@move", "A default closure can neither move nor borrow a preceding argument that is not Copy; build an independent value inside the default and capture that")]
-    public void CopyTransfersOfPreparedSlotsAreDefaultMoves(string declaration, string text, string advice)
+    [InlineData("func f(x: i32, y: i32 = x@move) -> i32 => x + y\n", "x")]
+    [InlineData("func f(x: (i32, i32), y: i32 = x.0@move) -> i32 => y\n", "x.0")]
+    [InlineData("func f<T>(x: T, y: T = x@move) -> T\n    T is Copy\n    return y\n", "x")]
+    [InlineData("func runC(offset: i32, action: (i32) -> i32 = func [offset@move] (x) => x + offset) -> i32 => action(1)\n", "offset@move")]
+    [InlineData("func runG(text: string, action: () -> () = func [text@move] () => ()) -> () => action()\n", "text@move")]
+    public void CopyTransfersOfPreparedSlotsAreDefaultMoves(string declaration, string text)
     {
         var source = declaration + "public func main() => ()\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.DefaultArgumentMove_Kd), text, advice), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty, error.Advice));
+        Assert.Equal((nameof(DiagnosticCode.DefaultArgumentMove_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
     }
 
     [Theory]

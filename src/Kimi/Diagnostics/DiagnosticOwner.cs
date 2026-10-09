@@ -322,9 +322,9 @@ public sealed class DiagnosticOwner
         if (list.Problems.TryGetValue((fact.Key, fact.Code), out var index))
         {
             var existing = list.Facts[index];
-            // A Note or Advice that one report supplies merges; two different ones conflict like different facts.
+            // A Note that one report supplies merges; two different ones conflict like different facts.
             if (existing.Source != fact.Source || existing.Start != fact.Start || existing.Length != fact.Length ||
-                !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) || Conflicts(existing.Advice, fact.Advice) ||
+                !Equals(existing.First, fact.First) || !Equals(existing.Second, fact.Second) || Conflicts(existing.Note, fact.Note) ||
                 (existing.Evidence is { } recorded && fact.Evidence is { } reported && !recorded.SequenceEqual(reported)) ||
                 (existing.Repairs is { } recordedRepairs && fact.Repairs is { } reportedRepairs && !DiagnosticRepairFact.SameAs(recordedRepairs, reportedRepairs)))
             {
@@ -334,7 +334,6 @@ public sealed class DiagnosticOwner
             list.Facts[index] = existing with
             {
                 Note = existing.Note ?? fact.Note,
-                Advice = existing.Advice ?? fact.Advice,
                 Evidence = existing.Evidence ?? fact.Evidence,
                 Related = fact.Related is { } related ? OrderRelated(Union(existing.Related, related)) : existing.Related,
                 DerivedFrom = fact.DerivedFrom is { } derived ? Union(existing.DerivedFrom, derived) : existing.DerivedFrom,
@@ -996,7 +995,6 @@ public sealed class DiagnosticOwner
             Reason = reason,
             Related = related,
             Note = fact.Note is { } note ? DiagnosticText.Bound(note, DiagnosticLimits.NoteLength).Text : entry.Note,
-            Advice = fact.Advice ?? entry.Advice,
             Omissions = omissions?.ToArray(),
             Display = display,
             Repairs = candidates,

@@ -37,12 +37,11 @@ public sealed class PlacedExclusiveReferenceTest
     }
 
     [Fact]
-    public void TheConflictNamesThePlacementAndAdvisesTheOrder()
+    public void TheConflictNamesThePlacement()
     {
         var result = DiagnosticCorpus.Check(Run + "    var entries = [1: c@move, 2: b@move]\n    entries[2]@follow = 42\n    entries[1]@follow = 7\npublic func main()\n    var value = 0\n    run(value@uniq)\n");
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.PlacementActivationConflict_Kd), record.Code);
         Assert.Contains("is acquired exclusively where the literal places it", record.Note, StringComparison.Ordinal);
-        Assert.StartsWith("End the use of the Reborrow child", record.Advice, StringComparison.Ordinal);
     }
 }

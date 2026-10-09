@@ -15,7 +15,7 @@ public sealed partial class Binding
     // SPEC 10.6: the last reference slot that only per-call Origins of S would satisfy, as (Type parameter, parameters of S as bits,
     // whether S's own positions bind every slot, so that a wrapper's call infers them), and why the last candidate's slots did not bind
     // from S, with the slot when one is known; BindFunctionReference clears both before it checks a candidate and reads them for a single one.
-    private (int Slot, ulong Parameters, bool Inferable)? perCallReferenceSlot;
+    private (int Slot, ulong Parameters)? perCallReferenceSlot;
 
     private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
 
@@ -418,7 +418,7 @@ public sealed partial class Binding
         var stride = required.Components[0].Components.Count + 1;
         var operations = this.argumentOperationScratch.Rent(count * stride);
         BindingSymbol selected;
-        (int Slot, ulong Parameters, bool Inferable)? perCall = null;
+        (int Slot, ulong Parameters)? perCall = null;
         (int Slot, ReferenceSlotFailure Failure) slotFailure = default;
         try
         {
@@ -487,11 +487,8 @@ public sealed partial class Binding
 
                 if (perCall is { } slot)
                 {
-                    // SPEC 10.6, 15.3.6: the one candidate's slot is left unsolved by a per-call Origin of S. The advised wrapper exists
-                    // only when its call infers every slot from S's positions, and it passes each by-value parameter of S that is not
-                    // proven Copy with @move, since a bare Place never moves (SPEC 3.5, 10.1).
-                    var moves = slot.Inferable ? this.MovedReferenceInputs(required, use) : null;
-                    return this.FailExplained(ref this.perCallSlots, use, BindingFailure.MissingOrigin, new PerCallSlotFact((FunctionKoto)symbol.Declaration, slot.Slot, slot.Parameters, required, moves));
+                    // SPEC 10.6, 15.3.6: the one candidate's slot is left unsolved by a per-call Origin of S.
+                    return this.FailExplained(ref this.perCallSlots, use, BindingFailure.MissingOrigin, new PerCallSlotFact((FunctionKoto)symbol.Declaration, slot.Slot, slot.Parameters, required));
                 }
 
                 if (slotFailure.Failure != ReferenceSlotFailure.None && symbol.Declaration is FunctionKoto { GenericArguments.Count: > 0 } generic)
@@ -812,35 +809,12 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 3.5, 10.1: the parameters of S, as bits, that an anonymous function calling the reference passes with @move: a by-value
-    // parameter not proven Copy, since a bare Place never moves; null when S has more parameters than the bits hold.
-    private ulong? MovedReferenceInputs(BoundType required, Koto use)
-    {
-        var inputs = required.Components[0].Components;
-        if (inputs.Count > 64)
-        {
-            return null;
-        }
-
-        var moves = 0UL;
-        for (var i = 0; i < inputs.Count; i++)
-        {
-            if (inputs[i].Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && this.ProveCopy(inputs[i], use) != ConstraintProof.Proven)
-            {
-                moves |= 1UL << i;
-            }
-        }
-
-        return moves;
-    }
-
     // SPEC 10.6, 15.3.6: the slot that only per-call Origins of S would satisfy. The slots are bound as a call of the reference would bind
     // them: from the parameters of S, meeting the Origins that two parameters give one slot, and a slot that no parameter binds from the
     // result of S. Some slot then holds per-call Origins of S and no other input Origin, a written Type argument differs from that binding
     // only in Origins it omits, the Constraints are Proven and the substituted signature fits S. A fixed Origin cannot satisfy that slot,
-    // since a per-call Origin never becomes part of a bound argument, while an anonymous function that calls the reference binds it; that
-    // call infers the slots only when S's positions bind each of them, not a written Type argument alone (`Inferable`).
-    private (int Slot, ulong Parameters, bool Inferable)? PerCallReferenceSlot(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, GenericsKoto? explicitReference, BoundType? container)
+    // since a per-call Origin never becomes part of a bound argument.
+    private (int Slot, ulong Parameters)? PerCallReferenceSlot(Koto use, BindingSymbol symbol, FunctionKoto function, BoundType required, BindingScope scope, GenericsKoto? explicitReference, BoundType? container)
     {
         var count = function.GenericArguments.Count;
         var binder = FunctionTypeBinder(required);
@@ -868,15 +842,13 @@ public sealed partial class Binding
                 return null;
             }
 
-            (int Slot, ulong Parameters, bool Inferable)? slot = null;
-            var inferable = true;
+            (int Slot, ulong Parameters)? slot = null;
             var parameters = required.Components[0];
             for (var i = 0; i < count; i++)
             {
                 if (function.GenericArguments[i] is LengthParameterKoto)
                 {
                     var writtenLength = explicitReference is null ? null : this.BindLength(explicitReference.TypeArguments[i], scope);
-                    inferable &= lengths[i] is not null || resultLengths[i] is not null;
                     if ((lengths[i] ??= resultLengths[i] ?? writtenLength) is not { } argumentLength ||
                         (explicitReference is not null && !ReferenceEquals(writtenLength, argumentLength)))
                     {
@@ -887,7 +859,6 @@ public sealed partial class Binding
                 }
 
                 var written = explicitReference?.TypeArguments[i].BoundType;
-                inferable &= arguments[i] is not null || fromResult[i] is not null;
                 if ((arguments[i] ??= fromResult[i] ?? written) is not { } argument ||
                     (explicitReference is not null && (written is null || !SameExceptOmittedOrigins(written, argument, 0))))
                 {
@@ -904,12 +875,12 @@ public sealed partial class Binding
 
                 if (perCall != 0 && slot is null)
                 {
-                    slot = (i, perCall, false);
+                    slot = (i, perCall);
                 }
             }
 
             return slot is { } found && this.ReferenceArgumentProof(function, arguments, scope, container, lengths) == ConstraintProof.Proven &&
-                this.FunctionReferenceFits(use, symbol, function, required, scope, boundArguments: arguments, presolved: true, boundLengths: lengths) ? (found.Slot, found.Parameters, inferable) : null;
+                this.FunctionReferenceFits(use, symbol, function, required, scope, boundArguments: arguments, presolved: true, boundLengths: lengths) ? (found.Slot, found.Parameters) : null;
         }
         finally
         {

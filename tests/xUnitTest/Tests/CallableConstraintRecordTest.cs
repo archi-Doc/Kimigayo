@@ -17,18 +17,16 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
 {
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> ref/i32>\n    let r = f()\n    return r@follow\n";
 
-    private const string ParameterAdvice = "Pass an implementation whose 1st parameter accepts any borrow, as an input written without an Origin does";
-
     private const string ApplyInput = "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let r = f(x)\n    return r@follow\n";
 
     [Theory]
-    [InlineData("EnvironmentResult", Apply + "public func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    let v = apply(f@ref)\n", "f@ref", "the result", "closure", "call receiver", "static", "hidden environment receiver (SPEC 8.6)", "Return a borrow that outlives static and that the closure's environment does not own, such as a borrow of static storage")]
-    [InlineData("CapturedBorrow", Apply + "public func main() -> ()\n    let n = 7\n    let view = n@ref\n    let f = func [view] () => view\n    let v = apply(f@ref)\n", "f@ref", "the result", "borrow", "n", "static", "judged from the premises alone", "Pass an implementation whose result outlives static, such as a borrow of static storage")]
-    [InlineData("EnvironmentOverInput", ApplyInput + "public func main() -> ()\n    let n = 7\n    let f = func [n] (x: ref/i32) => n@ref\n    let m = 1\n    let v = apply(f@ref, m@ref)\n", "f@ref", "the result", "closure", "call receiver", "ref/i32", "hidden environment receiver (SPEC 8.6)", "Return a borrow that outlives the omitted Origin of ref/i32 and that the closure's environment does not own, such as a borrow of its input")]
-    [InlineData("FixedInput", "func callIt<F>(f: uniq/F, x: ref/i32) -> i32\n    F is Callable<uniq, (ref/i32) -> ref/i32>\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    return callIt(c@uniq, x)\npublic func main() -> ()\n    let a: i32 = 3\n    Console.writeLine(\"\\(use(a@ref))\")\n", "c@uniq", "the 1st parameter", "omitted", "ref/i32", "x", "judged from the premises alone", ParameterAdvice)]
-    [InlineData("FixedParameter", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", "pick", "the 1st parameter", "omitted", "ref/i32", "static", "judged from the premises alone", ParameterAdvice)]
-    [InlineData("FixedResult", "func callIt<F>(f: ref/F, y: ref/i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let r = f(y)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let c = func (n: ref/i32) -> ref/i32 during x => x\n    let local: i32 = 4\n    return callIt(c@ref, local@ref)\npublic func main() -> ()\n    let a: i32 = 3\n    Console.writeLine(\"\\(use(a@ref))\")\n", "c@ref", "the result", "expression", "x", "ref/i32", "judged from the premises alone", "Pass an implementation whose result outlives the omitted Origin of ref/i32, such as a borrow of its input")]
-    public void AnOriginOnlyCallableFailureIsTheConstraintRecord(string name, string source, string at, string member, string longerKind, string longer, string shorter, string note, string advice)
+    [InlineData("EnvironmentResult", Apply + "public func main() -> ()\n    let n = 7\n    let f = func [n] () => n@ref\n    let v = apply(f@ref)\n", "f@ref", "the result", "closure", "call receiver", "static", "hidden environment receiver (SPEC 8.6)")]
+    [InlineData("CapturedBorrow", Apply + "public func main() -> ()\n    let n = 7\n    let view = n@ref\n    let f = func [view] () => view\n    let v = apply(f@ref)\n", "f@ref", "the result", "borrow", "n", "static", "judged from the premises alone")]
+    [InlineData("EnvironmentOverInput", ApplyInput + "public func main() -> ()\n    let n = 7\n    let f = func [n] (x: ref/i32) => n@ref\n    let m = 1\n    let v = apply(f@ref, m@ref)\n", "f@ref", "the result", "closure", "call receiver", "ref/i32", "hidden environment receiver (SPEC 8.6)")]
+    [InlineData("FixedInput", "func callIt<F>(f: uniq/F, x: ref/i32) -> i32\n    F is Callable<uniq, (ref/i32) -> ref/i32>\n    let r = f(x)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let start: ref/i32 = x\n    var c = func [var start] (n: ref/i32 during x) -> ref/i32 during x\n        let old = start\n        start = n\n        return old\n    return callIt(c@uniq, x)\npublic func main() -> ()\n    let a: i32 = 3\n    Console.writeLine(\"\\(use(a@ref))\")\n", "c@uniq", "the 1st parameter", "omitted", "ref/i32", "x", "judged from the premises alone")]
+    [InlineData("FixedParameter", "func apply<F>(f: ref/F, x: ref/i32) -> i32\n    F is Callable<(ref/i32) -> i32>\n    return f(x)\nfunc pick(x: ref/i32 during static) -> i32 => x@follow\npublic func main() -> ()\n    let m = 1\n    let v = apply(pick, m@ref)\n", "pick", "the 1st parameter", "omitted", "ref/i32", "static", "judged from the premises alone")]
+    [InlineData("FixedResult", "func callIt<F>(f: ref/F, y: ref/i32) -> i32\n    F is Callable<(ref/i32) -> ref/i32>\n    let r = f(y)\n    return r@follow\nfunc use(x: ref/i32) -> i32\n    let c = func (n: ref/i32) -> ref/i32 during x => x\n    let local: i32 = 4\n    return callIt(c@ref, local@ref)\npublic func main() -> ()\n    let a: i32 = 3\n    Console.writeLine(\"\\(use(a@ref))\")\n", "c@ref", "the result", "expression", "x", "ref/i32", "judged from the premises alone")]
+    public void AnOriginOnlyCallableFailureIsTheConstraintRecord(string name, string source, string at, string member, string longerKind, string longer, string shorter, string note)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         output.WriteLine($"{name}: {error.Note}");
@@ -44,8 +42,7 @@ public class CallableConstraintRecordTest(ITestOutputHelper output)
         Assert.Contains(error.Related!, static x => x.Role == "origin");
         Assert.Contains(note, error.Note, StringComparison.Ordinal);
 
-        // SPEC 8.6: a Callable signature writes no `during`, so the Advice names only an implementation that fits.
-        Assert.Equal(advice, error.Advice);
+        // SPEC 8.6: a Callable signature writes no `during`, so no repair candidate is offered.
         Assert.Null(error.Repairs);
     }
 

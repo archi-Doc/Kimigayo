@@ -123,7 +123,6 @@ public class ApplicabilityChainRegressionTest
         var error = Assert.Single(rejected.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnprovenOriginContract_Kd), error.Code);
         Assert.Equal("the result requires x == y, which is not proven", error.Label);
-        Assert.Equal("Use equal Origin bindings at the compared positions, or convert an implementation whose bindings match the required Type", error.Advice);
         Assert.True(DiagnosticCorpus.Check(Source.Replace("during y", "during x", StringComparison.Ordinal)).Accepted);
     }
 

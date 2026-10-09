@@ -297,7 +297,7 @@ public sealed partial class Binding
         }
         else if (type.IsWrappingInteger || type.Symbol?.Declaration is StructKoto { ConstructorAvailability: ConstructorAvailability.CompilerManaged })
         {
-            node.Report(requirement, code, note: $"{name} is a Kimi Type whose representation the compiler manages; it has only the constructors its declaration declares (SPEC 22.1)", advice: type.Symbol?.LibraryDeclaration == KimiDeclarationId.Dictionary ? "Write [:] for an empty Dictionary" : null);
+            node.Report(requirement, code, note: $"{name} is a Kimi Type whose representation the compiler manages; it has only the constructors its declaration declares (SPEC 22.1)");
         }
         else
         {

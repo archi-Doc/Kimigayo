@@ -28,9 +28,9 @@ public class CaptureDiagnosticTest
     // SPEC 7.6.2: a capture name that a later entry, or a parameter, repeats is one DuplicateBinding_Kd at the later name, with the
     // entry it repeats related; it was located at the whole closure. A later call of the closure rests on it.
     [Theory]
-    [InlineData("let x: i32 = 1\nlet f = func [x] (x: i32) => x\nrequire f(2) == 2 else => $abort(\"f\")", "func [x] (", "The capture entry x and the parameter x would both declare x in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.6.2)", "Rename the parameter, or remove the capture entry x if the body needs only the argument")]
-    [InlineData("let x: i32 = 1\nlet g = func [x, x] () => x\nrequire g() == 1 else => $abort(\"g\")", "func [x, ", "The capture list names x twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.6.2)", "Remove the repeated entry x")]
-    public void ARepeatedCaptureNameIsLocatedAtTheLaterName(string source, string later, string note, string advice)
+    [InlineData("let x: i32 = 1\nlet f = func [x] (x: i32) => x\nrequire f(2) == 2 else => $abort(\"f\")", "func [x] (", "The capture entry x and the parameter x would both declare x in the anonymous function's body; a parameter cannot repeat a capture name (SPEC 7.6.2)")]
+    [InlineData("let x: i32 = 1\nlet g = func [x, x] () => x\nrequire g() == 1 else => $abort(\"g\")", "func [x, ", "The capture list names x twice; each entry declares its own environment binding, so a name is captured once (SPEC 7.6.2)")]
+    public void ARepeatedCaptureNameIsLocatedAtTheLaterName(string source, string later, string note)
     {
         var output = DiagnosticCorpus.Check(source);
         var error = Assert.Single(output.Diagnostics);
@@ -38,7 +38,6 @@ public class CaptureDiagnosticTest
         Assert.Equal(new SourceSpan(source.IndexOf(later, StringComparison.Ordinal) + later.Length, 1), error.Span);
         Assert.Equal("'x' is declared again", error.Label);
         Assert.Equal(note, error.Note);
-        Assert.Equal(advice, error.Advice);
         var related = Assert.Single(error.Related!);
         Assert.Equal(("declaration", "capture entry", source.IndexOf("func [", StringComparison.Ordinal) + 6), (related.Role, related.Label, related.Span!.Value.Start));
     }
@@ -161,19 +160,18 @@ public class CaptureDiagnosticTest
     }
 
     // SPEC 7.6.3, 8.6: a closure argument whose minimum call receiver its Callable Constraint does not permit names both receivers in
-    // the rejected candidate's label and the Note of NoApplicableOverload_Kd, with Advice that names the parameter form; before, the
+    // the rejected candidate's label and the Note of NoApplicableOverload_Kd; before, the
     // record named only the count.
     [Theory]
-    [InlineData(Apply + "let text = \"abc\"\nvar take = func [text@move] () => text@move\nConsole.writeLine(apply(take@uniq))", "apply(take@uniq)", "apply: closure requires owner; Callable requires uniq", "The closure argument of f needs a Consuming call, and the Callable Constraint of F permits Shared and Exclusive calls only (SPEC 7.6.3, 8.6)", "Declare f as F by value, with F is Callable<owner, ...>, and pass the closure with @move, or change the closure so that a Shared or Exclusive call suffices")]
-    [InlineData(Run + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", "run: closure requires uniq; Callable requires ref", "The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.6.3, 8.6)", "Declare f as uniq/F, with F is Callable<uniq, ...>, and pass the closure with @uniq, or change the closure so that a Shared call suffices")]
-    public void AClosureReceiverMismatchNamesBothReceivers(string source, string text, string label, string note, string advice)
+    [InlineData(Apply + "let text = \"abc\"\nvar take = func [text@move] () => text@move\nConsole.writeLine(apply(take@uniq))", "apply(take@uniq)", "apply: closure requires owner; Callable requires uniq", "The closure argument of f needs a Consuming call, and the Callable Constraint of F permits Shared and Exclusive calls only (SPEC 7.6.3, 8.6)")]
+    [InlineData(Run + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", "run: closure requires uniq; Callable requires ref", "The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.6.3, 8.6)")]
+    public void AClosureReceiverMismatchNamesBothReceivers(string source, string text, string label, string note)
     {
         var output = DiagnosticCorpus.Check(source);
         var error = Assert.Single(output.Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), text), (error.Code, source.Substring(error.Span!.Value.Start, error.Span!.Value.Length)));
         Assert.Equal(label, Assert.Single(error.Related!).Label);
         Assert.Equal($"{label}. {note}", error.Note);
-        Assert.Equal(advice, error.Advice);
     }
 
     // The receivers are named only for a candidate that applies once the closure's receiver is permitted. A candidate that fails for
@@ -181,17 +179,16 @@ public class CaptureDiagnosticTest
     // signature's (the receiver Note displaced it). A common Function parameter has no Callable Constraint (its conversion condition is
     // SPEC 7.6.4), so no Callable receiver is claimed for it (it named one).
     [Theory]
-    [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", new[] { "run: closure requires uniq; Callable requires ref", "run" }, "run: closure requires uniq; Callable requires ref. The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.6.3, 8.6)", "Declare f as uniq/F, with F is Callable<uniq, ...>, and pass the closure with @uniq, or change the closure so that a Shared call suffices")]
-    [InlineData("func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref, true))\")", "run(count@ref, true)", new[] { "run" }, null, null)]
-    [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Text + "Console.writeLine(\"\\(run(text@ref))\")", "run(text@ref)", new[] { "run: callable signature is () -> string; requires () -> i32", "run: callable signature is () -> string; requires () -> i32" }, "The argument's known call signature is () -> string; the candidate requires () -> i32 from the supplied Type evidence", null)]
-    public void AClosureReceiverIsNamedOnlyWhereItIsTheFailure(string source, string text, string[] labels, string? note, string? advice)
+    [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref))\")", "run(count@ref)", new[] { "run: closure requires uniq; Callable requires ref", "run" }, "run: closure requires uniq; Callable requires ref. The closure argument of f needs an Exclusive call, and the Callable Constraint of F permits Shared calls only (SPEC 7.6.3, 8.6)")]
+    [InlineData("func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Count + "Console.writeLine(\"\\(run(count@ref, true))\")", "run(count@ref, true)", new[] { "run" }, null)]
+    [InlineData(Run + "func run<F>(f: ref/F, n: i32) -> i32\n    F is Callable<() -> i32>\n    return f() + n\n" + Text + "Console.writeLine(\"\\(run(text@ref))\")", "run(text@ref)", new[] { "run: callable signature is () -> string; requires () -> i32", "run: callable signature is () -> string; requires () -> i32" }, "The argument's known call signature is () -> string; the candidate requires () -> i32 from the supplied Type evidence")]
+    public void AClosureReceiverIsNamedOnlyWhereItIsTheFailure(string source, string text, string[] labels, string? note)
     {
         var output = DiagnosticCorpus.Check(source);
         var error = Assert.Single(output.Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), text), (error.Code, source.Substring(error.Span!.Value.Start, error.Span!.Value.Length)));
         Assert.Equal(labels, error.Related!.Select(static x => x.Label).ToArray());
         Assert.Equal(note, error.Note);
-        Assert.Equal(advice, error.Advice);
     }
 
     // SPEC 10.5, 7.6.4: erasure receiver conditions are checked at the argument after selection, without a Callable Constraint.

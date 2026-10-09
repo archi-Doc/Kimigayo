@@ -4,7 +4,7 @@ namespace Kimi.Compiler.Parsing;
 
 /// <summary>
 /// A form of syntax the parser can expect at a position or find where it is not permitted (docs/dev/DIAGNOSTICS.md §4.4).
-/// Each value is a requirement of the Syntax partition, <c>Syntax.&lt;Form&gt;</c>, whose phrase and advice come from
+/// Each value is a requirement of the Syntax partition, <c>Syntax.&lt;Form&gt;</c>, whose phrase comes from
 /// <c>DiagnosticRequirement.tinyhand</c>; a reporting site chooses a value and never writes text.
 /// </summary>
 public enum SyntaxForm : ushort

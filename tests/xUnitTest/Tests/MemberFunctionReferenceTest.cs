@@ -46,7 +46,6 @@ public class MemberFunctionReferenceTest
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(DiagnosticCode.BoundMethodValue_Kd), error.Code);
         Assert.Equal("counter.peek", error.Text);
-        Assert.Contains("Counter.peek", error.Advice, StringComparison.Ordinal);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);

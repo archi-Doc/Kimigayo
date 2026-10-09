@@ -5,7 +5,6 @@
     Category="Language"
     Message="The primary diagnostic message"
     Label="A short label describing the relevant code"
-    Advice="Conditional repair advice; no edit is inferred from it"
     Note="Additional information about the diagnostic"
 
   + Name="QualificationRequired_Kd"
@@ -25,79 +24,66 @@
     Category="Language"
     Message="A borrow Origin annotation requires safe-borrow Semantics"
     Label="this Semantics cannot carry a borrow Origin"
-    Advice="If the annotation belongs to an inner borrow, group that inner Type with its annotation; for example, raw/(ref/T during a)."
 
   + Name="BorrowOriginTarget_Kd"
     Category="Language"
     Message="This Origin annotation has no syntactic target"
     Label="no annotation target outside this grouping or Type"
-    Advice="If the annotation belongs to a borrow inside parentheses, write it inside those parentheses. An annotation can target only the first explicit Semantics or a directly written named Type with one Origin slot."
 
   + Name="BorrowOriginBindingSet_Kd"
     Category="Language"
     Message="A named Type cannot combine a binding set with a single-slot Origin annotation"
     Label="this Type already has a binding set"
-    Advice="If the binding set is needed, relate its slot in an attached origin clause; otherwise use only the single-slot 'during' form."
 
   + Name="BorrowOriginSuffixOrder_Kd"
     Category="Language"
     Message="An optional suffix cannot follow an Origin annotation in the same Type"
     Label="optional suffix follows the annotation"
-    Advice="To make the annotated Type optional, place '?' before 'during', or group the complete annotated Type before '?'."
 
   + Name="DuplicateBorrowOrigin_Kd"
     Category="Language"
     Message="Only one Origin annotation is permitted in the same Type"
     Label="another Origin annotation is already present"
-    Advice="Use one annotation for this Type; if both Origins are required, write their intersection in parentheses after one 'during'."
 
   + Name="BorrowOriginIntersection_Kd"
     Category="Language"
     Message="An Origin intersection after 'during' requires parentheses"
     Label="intersection is outside parentheses"
-    Advice="If these Origins form the annotation, group them as 'during (a and b)'."
 
   + Name="OriginRelationOperator_Kd"
     Category="Language"
     Message="An Origin relation requires '==' or 'outlives' between its operands"
     Label="expected an Origin relation operator here"
-    Advice="Use '==' to require equal Origins, or 'outlives' to require that the left Origin outlive the right one."
 
   + Name="AttachedOriginRelation_Kd"
     Category="Language"
     Message="This declaration-attached block admits only Origin relation clauses"
     Label="expected 'origin' followed by a relation"
-    Advice="If this is an Origin contract, write an 'origin' clause; place ordinary statements in an executable body."
 
   + Name="CallableOriginList_Kd"
     Category="Language"
     Message="A callable declaration has no Origin parameter list"
     Label="Origin list is not permitted on this callable"
-    Advice="If the callable needs quantified Origins, introduce their names in permitted signature borrow annotations."
 
   + Name="OriginSchemaRelation_Kd"
     Category="Language"
     Message="An Origin schema header contains names, not relation clauses"
     Label="relation is not permitted in the schema header"
-    Advice="If a relation between these Origins is required, write an 'origin' clause under the declaration."
 
   + Name="OriginBindingSetName_Kd"
     Category="Language"
     Message="A Type binding-set suffix contains one new set Name, not Origin values, lists or mappings"
     Label="expected one binding-set Name in braces"
-    Advice="If this Type needs a named binding set, write {name} and relate its slots in attached 'origin' clauses. Use 'during (a and b)' for a borrow Origin intersection."
 
   + Name="OriginBindingSetTarget_Kd"
     Category="Language"
     Message="An Origin binding set must attach directly to a named Type"
     Label="this Type form cannot carry a binding-set suffix"
-    Advice="If a named Type inside this Type needs a binding set, attach the braces directly to that name. For a borrow Origin, use 'Semantics/Type during Origin'."
 
   + Name="LegacyBorrowOrigin_Kd"
     Category="Language"
     Message="A Semantics prefix cannot carry an Origin annotation in braces"
     Label="borrow Origin belongs after the complete Type"
-    Advice="For a borrow annotation, write 'Semantics/Type during Origin'; in an adaptation, let the operation infer the borrow Origin."
 
   + Name="HiddenNamedAlias_Kd"
     Severity="Warning"
@@ -293,7 +279,6 @@
     Category="Language"
     Message="Unknown compile-time environment Name '{0}'"
     Arguments="name:Text"
-    Advice="Use a built-in Compilation value or configure a Project setting before parsing"
 
   + Name="UnsupportedLanguageVersion_Kd"
     Category="Input"
@@ -304,32 +289,27 @@
     Category="Language"
     Message="Comparison operators cannot be chained without parentheses"
     Label="This comparison requires explicit grouping"
-    Advice="Use parentheses for a nested comparison, or combine separate comparisons with and"
 
   + Name="LabelTargetExpected_Kd"
     Category="Language"
     Message="A label must directly precede if, match, for, while, loop, or do on the same physical line"
     Label="Expected a labelable construct here"
-    Advice="Place one label before the construct keyword; a label cannot target another label, parentheses, a statement, or a declaration"
 
   + Name="TransferTargetExpected_Kd"
     Category="Language"
     Message="A named transfer requires one target Name after to on the same physical line"
     Label="Expected the target Name here"
-    Advice="Write to followed by the intended enclosing label Name on this line"
 
   + Name="TransferOperandExpected_Kd"
     Category="Language"
     Message="The token {0} cannot start a transfer value and is not a value-omission boundary"
     Arguments="token:Text"
     Label="Expected a value expression, found {0}"
-    Advice="If a following expression is the transfer value, remove the invalid token and separate a named target from that expression; if an outer colon is intended after a Unit transfer, write () before it"
 
   + Name="TransferOperandSeparation_Kd"
     Category="Language"
     Message="A named transfer's target Name and value must be separated by whitespace or a same-line block comment"
     Label="The value starts immediately after the target Name"
-    Advice="Insert a space before the value; calls, member access, and indexing cannot extend a target Name"
 
   + Name="BlockStatementInExpression_Kd"
     Category="Language"
@@ -338,7 +318,6 @@
   + Name="SemicolonNotAllowed_Kd"
     Category="Language"
     Message="Semicolons are not allowed"
-    Advice="Remove the semicolon, or use a newline to separate syntax items"
 
   + Name="CompileTimeCaseFallbackMustBeLast_Kd"
     Category="Language"
@@ -384,41 +363,35 @@
     Category="Language"
     Message="A comma cannot appear immediately before or after an argument-name boundary"
     Label="comma is adjacent to the '!' boundary"
-    Advice="Remove this comma if '!' separates the positional and named parameter sections"
 
   + Name="DuplicateArgumentBoundary_Kd"
     Category="Language"
     Message="A parameter list may contain only one argument-name boundary"
     Label="additional '!' boundary"
-    Advice="Keep one '!' before the first parameter that requires its external name; separate subsequent parameters with commas"
 
   + Name="ArgumentBoundaryContext_Kd"
     Category="Language"
     Message="Anonymous function and specialization parameter lists cannot declare an argument-name boundary"
     Label="'!' is not permitted in this parameter list"
-    Advice="Remove the boundary; anonymous functions take positional arguments and specializations inherit the original name contract"
 
   + Name="ParameterNameMarker_Kd"
     Category="Language"
     Message="A parameter name cannot have a '?' suffix"
     Label="invalid parameter-name suffix"
-    Advice="Use an '= expression' default to permit omission, or an '!' boundary before the named parameter section"
 
   + Name="EmptyNamedParameterSection_Kd"
     Category="Language"
     Message="An argument-name boundary must be followed by at least one ordinary parameter"
     Label="named section has no ordinary parameter"
-    Advice="Remove the '!' boundary or add an ordinary parameter after it; a receiver does not count"
 
   + Name="DuplicateExternalParameterName_Kd"
     Category="Language"
     Arguments="name:Text"
     Message="The external parameter name '{0}' is already used in this parameter list"
     Label="external name is repeated"
-    Advice="Rename one external name to make all names in this parameter list distinct; use 'external => internal: T' if its local binding should stay unchanged"
 
-// Syntax forms (docs/dev/DIAGNOSTICS.md §4.4): the expected or misplaced form is a Syntax requirement whose phrase and
-// advice come from DiagnosticRequirement.tinyhand, so these three codes explain every form the parser knows.
+// Syntax forms (docs/dev/DIAGNOSTICS.md §4.4): the expected or misplaced form is a Syntax requirement whose phrase
+// comes from DiagnosticRequirement.tinyhand, so these three codes explain every form the parser knows.
 
   + Name="ExpectedSyntax_Kd"
     Category="Language"
@@ -468,7 +441,6 @@
     Category="Language"
     Message="'{0}' is not a valid identifier"
     Arguments="identifier:Text"
-    Advice="Use an NFC name with valid identifier characters and no Unicode Format (Cf) characters"
 
   + Name="InvalidIndentation_Kd"
     Category="Language"
@@ -479,7 +451,6 @@
     Category="Language"
     Message="Tabs are not permitted in indentation"
     Label="tab in indentation"
-    Advice="Replace all tabs in this indentation with U+0020 spaces; each level requires four spaces."
 
   + Name="InvalidNumericLiteral_Kd"
     Category="Language"
@@ -504,7 +475,6 @@
   + Name="CodeAfterMultilineComment_Kd"
     Category="Language"
     Message="Code cannot follow a multiline block comment's closing delimiter on the same physical line"
-    Advice="Move the code to the next line and use ordinary indentation"
 
   + Name="MissingStringLiteralEnd_Kd"
     Category="Language"
@@ -512,7 +482,6 @@
     Arguments="expected:Text"
     Label="string starts here"
     Note="Closing brackets inside the string do not close the surrounding expression."
-    Advice="Close the string before any code that follows it."
 
   + Name="MultipleAccessibilityModifiers_Kd"
     Category="Language"
@@ -525,7 +494,6 @@
   + Name="TopLevelKeywordAfterCode_Kd"
     Category="Language"
     Message="Top-level keywords such as 'alias' must appear before any other code"
-    Advice="Move this top-level keyword before all other code"
 
   + Name="TypeMismatch_Kd"
     Category="Language"
@@ -538,7 +506,6 @@
     Message="try requires an owned Kimi Option or Result operand"
     Evidence="operand:Type"
     Label="found {0}"
-    Advice="Use explicit Type arguments or an annotated intermediate when inference is incomplete; calls and member selection bind before try"
 
   + Name="InvalidNoInit_Kd"
     Category="Language"
@@ -674,7 +641,6 @@
   + Name="StaticMovePathRequired_Kd"
     Category="Language"
     Message="An element is moved only through a static Move Path: an integer-literal index within an owned fixed array"
-    Advice="Borrow the element with @ref or @uniq, or exchange it with Kimi.Intrinsics.replace"
 
   + Name="ExclusiveBorrowRequired_Kd"
     Category="Language"
@@ -733,24 +699,20 @@
   + Name="InvalidWrapConversion_Kd"
     Category="Language"
     Message="@wrap<U> converts an integer or wrapping integer value to an integer or wrapping integer Type U only"
-    Advice="Write @U for a range-checked numeric conversion, or @bits<U> to reinterpret the bits of a floating-point value"
 
   + Name="InvalidBitConversion_Kd"
     Category="Language"
     Message="@bits<U> reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of the same width: f32 with a 32-bit Type, f64 with a 64-bit Type, never isize or usize"
-    Advice="Write @wrap<U> between integer Types, @U for a numeric conversion, and a fixed-width integer Type in place of isize or usize"
 
   + Name="GenericBitConversion_Kd"
     Category="Language"
     Message="@bits<U> needs its operand and target Types fixed; the width of a Type parameter is unknown in the definition"
-    Advice="Convert where the Types are concrete, or pass the bits through a fixed-width integer parameter"
 
   + Name="ProtectedPlacement_Kd"
     Category="Language"
     Message="protected, protected internal and private protected apply only to members of a struct, including Containers declared directly in it, and to their accessors; this declaration belongs to {0}"
     Arguments="container:Text"
     Label="protected outside a struct"
-    Advice="Use public, internal or private, or declare it as a member of a struct"
 
   + Name="MissingSpecializationTarget_Kd"
     Category="Language"
@@ -779,7 +741,6 @@
     Category="Language"
     Message="An exclusive reference placed into this value is acquired exclusively, as a call argument is, and conflicts with a Loan on its referent that remains live, such as its own Reborrow child"
     Evidence="case:Text"
-    Advice="End the use of the Reborrow child before the parent reference is placed, or place only one of them"
 
   + Name="CallEffectConflict_Kd"
     Category="Language"
@@ -813,7 +774,6 @@
   + Name="OuterCloserInBody_Kd"
     Category="Language"
     Message="An outer closing delimiter cannot close an indented body on the same line"
-    Advice="Dedent on the next effective line before writing the closing delimiter"
 
   + Name="GenerationFailed_Kd"
     Category="Internal"
@@ -839,14 +799,11 @@
     Category="Resource"
     Message="The Semantics cases of this definition exceed the implementation bound: {0} cases, where at most {1} are analyzed"
     Arguments="cases:Number,limit:Number"
-    Advice="Declare fewer Semantics bindings in one scope, or admit fewer Semantics in each"
 
   + Name="ForBindingLimit_Kd"
     Category="Resource"
     Message="A for header declares at most 64 bindings"
     Label="binding beyond the 64th"
-    Advice="Iterate over fewer Tuple elements per for header, or bind the Tuple to one Name and read its elements in the body."
-    Advice="If this body contains independent work, move that work into smaller functions. This limit does not make the source invalid under the language rules."
 
   + Name="ProjectPreparationFailed_Kd"
     Category="Input"
@@ -885,7 +842,6 @@
     Arguments="kind:Text"
     Evidence="length:Number"
     Label="the fixed length is {1}"
-    Advice="Correct the literal position or range; a try operation returns None on resolution failure, while an aborting operation Aborts when executed"
 
   + Name="IncompatibleSerializedSource_Kd"
     Category="Input"
@@ -908,7 +864,6 @@
   + Name="UnlabeledYieldTarget_Kd"
     Category="Language"
     Message="An unlabeled yield cannot target a discarded selection"
-    Advice="Name the intended target"
 
   + Name="RequireFallthrough_Kd"
     Category="Language"
@@ -973,7 +928,6 @@
   + Name="UnsafeBlockRequired_Kd"
     Category="Language"
     Message="This operation requires an Unsafe Block"
-    Advice="Write the operation inside an Unsafe Block; unsafe func does not grant permission to its body"
 
   + Name="UnnecessaryUnsafeBlock_Kd"
     Severity="Warning"
@@ -985,51 +939,43 @@
     Severity="Warning"
     Category="Language"
     Message="A while true loop retains a static false path"
-    Advice="Use loop for unconditional iteration"
 
   + Name="DiscardedTail_Kd"
     Severity="Warning"
     Category="Language"
     Message="Unit was inferred from this discarded tail"
-    Advice="Use yield, return, a named exit, or a single-item body to supply the value"
 
   + Name="DiscardedResult_Kd"
     Severity="Warning"
     Category="Language"
     Message="The Result is discarded"
-    Advice="Propagate and use success (or write _ = try ...), handle it with match, or write _ = ... to ignore errors too"
 
   + Name="UnusedTrySuccess_Kd"
     Severity="Warning"
     Category="Language"
     Message="The extracted try success value is unused"
-    Advice="Use it or write _ = try ..."
 
   + Name="DiscardedValue_Kd"
     Severity="Warning"
     Category="Language"
     Message="This effect-free value is discarded"
-    Advice="Use its value or add the intended return type"
 
   + Name="OwningWriteArgument_Kd"
     Severity="Warning"
     Category="Language"
     Message="This argument creates an owning string before writing"
-    Advice="Use $tryWrite(writer, literal) to write directly and skip later expressions after failure"
 
   + Name="InvalidTryReturn_Kd"
     Category="Language"
     Message="The failure path of try cannot return to the enclosing result"
     Evidence="operand:Type,result:Type"
     Label="{0} cannot return to {1}"
-    Advice="Use a compatible Option or Result return Type, and wrap normal success values explicitly where needed"
 
   + Name="TryPayloadMismatch_Kd"
     Category="Language"
     Message="The normal value of try does not fit this use"
     Evidence="payload:Type"
     Label="the payload is {0}"
-    Advice="At an Option or Result return, consider .Some(try ...) or .Ok(try ...) with an appropriate return annotation, then recheck Type inference, ownership and cleanup"
 
   + Name="UnboundTypeArgument_Kd"
     Category="Language"
@@ -1042,7 +988,6 @@
     Message="A method named through a value without a call forms no bound-method value; a function value never binds a receiver"
     Evidence="method:Text"
     Label="'{0}' is named through a value"
-    Advice="Reference the method through its Type, as in Counter.peek, and pass the receiver as an argument, or write an anonymous function that calls the method"
 
   + Name="UnsatisfiedOriginRelation_Kd"
     Category="Language"
@@ -1109,7 +1054,6 @@
     Message="The override's containing condition is not proven by its inherited contract"
     Evidence="condition:Text"
     Label="{0}"
-    Advice="Use a containing condition established by the original slot and derived Type; the override's own block cannot prove it"
 
   + Name="InvalidBaseCall_Kd"
     Category="Language"

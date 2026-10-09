@@ -236,14 +236,11 @@ public sealed partial class Binding
             ConstructionCheck.AcquisitionCorrelation => "The group contract is checked before applicability filtering; independent inputs and fixed bindings do not establish the required shared acquisition (SPEC 7.3.1)",
             _ => "The original constructor group, including inference-rejected candidates, no longer has the same unique Best Candidate when the construction Type is fixed (SPEC 10.8.1)",
         };
-        var advice = fact.Construction is { } construction && !ContainsUnspellableType(construction)
-            ? "Write the complete construction Type explicitly, then recheck the call; this is advice, not a verified repair"
-            : "Provide independent typed inputs or a written call signature that establishes one call contract, then recheck the call";
         object[] evidence = correlation
             ? fact.LeftBinding is { } left && fact.RightBinding is { } right
                 ? [CallOwnSlots(fact.Selected)[fact.Slot].Identifier, DiagnosticTypeName(left), DiagnosticTypeName(right)]
                 : [CallOwnSlots(fact.Selected)[fact.Slot].Identifier]
             : [DiagnosticTypeName(fact.Construction!)];
-        node.Report(requirement, code, evidence: evidence, related: related, note: note, advice: advice);
+        node.Report(requirement, code, evidence: evidence, related: related, note: note);
     }
 }

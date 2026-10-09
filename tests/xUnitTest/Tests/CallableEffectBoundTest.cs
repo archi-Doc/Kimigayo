@@ -76,7 +76,6 @@ public class CallableEffectBoundTest
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal("UnsatisfiedEffectBound_Kd", error.Code);
         Assert.Contains("erasure", error.Label);
-        Assert.Contains("Keep the concrete Function Item or Closure Type", error.Advice);
     }
 
     [Theory]
@@ -148,7 +147,6 @@ public class CallableEffectBoundTest
             var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
             Assert.Equal("CallEffectConflict_Kd", diagnostic.Code);
             Assert.Contains("Callable Constraint", diagnostic.Message);
-            Assert.Contains("preserves results", diagnostic.Advice);
             Assert.Equal(["call", "loan"], diagnostic.Related!.Select(static r => r.Role));
         }
     }

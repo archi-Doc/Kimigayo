@@ -206,7 +206,6 @@ public class AssociatedInferenceTest
         Assert.Contains(error.Reason!, static x => x.Name == "reason" && x.Value.Contains("outside the conformance scope", StringComparison.Ordinal));
         Assert.Contains(error.Related!, static x => x.Role == "result");
         Assert.Contains(error.Related!, static x => x.Role == "binder");
-        Assert.Contains("associate C.Item is Type", error.Advice);
         Assert.Empty(error.Repairs ?? []);
         Assert.Contains("outside the conformance scope", System.Text.Json.JsonSerializer.Serialize(result));
         var console = new DiagnosticContractTest.DiagnosticConsole();

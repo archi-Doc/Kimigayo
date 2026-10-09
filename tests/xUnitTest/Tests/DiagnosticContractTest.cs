@@ -23,8 +23,8 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var target = owner.GetOrAddCollection("main").For(new("main.kimi", "abc"));
         var cause = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Startup);
         var use = new DiagnosticKey(null, 0, 2, 1, DiagnosticRequirement.Startup);
-        void Direct() => target.Report(DiagnosticPartition.Startup, cause, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
-        void Unresolved() => target.Report(DiagnosticPartition.Startup, cause, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [DiagnosticKey.Unresolved], null);
+        void Direct() => target.Report(DiagnosticPartition.Startup, cause, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null);
+        void Unresolved() => target.Report(DiagnosticPartition.Startup, cause, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, [DiagnosticKey.Unresolved], null);
         if (reverse)
         {
             Unresolved();
@@ -36,7 +36,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
             Unresolved();
         }
 
-        target.Report(DiagnosticPartition.Startup, use, new(2, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [cause], null);
+        target.Report(DiagnosticPartition.Startup, use, new(2, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, [cause], null);
         var result = owner.Finalize(rejected: true);
         Assert.Equal(["MissingStartupBody_Kd", "PrerequisiteUnavailable_Kd", "PrerequisiteUnavailable_Kd"], result.Diagnostics.Select(static x => x.Code));
         Assert.Equal(new SourceSpan(2, 1), result.Diagnostics[^1].Span);
@@ -95,8 +95,8 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var owner = new DiagnosticOwner();
         var target = owner.GetOrAddCollection("main").For(new("main.kimi", "abc"));
         var key = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Startup);
-        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null);
-        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [key], null);
+        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null);
+        target.Report(DiagnosticPartition.Startup, key, new(0, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, [key], null);
         Assert.Equal(2, owner.Finalize(rejected: true).Diagnostics.Length);
     }
 
@@ -119,7 +119,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
             foreach (var i in reverse ? Enumerable.Range(0, 10).Reverse() : Enumerable.Range(0, 10))
             {
                 var location = target.Relate("candidate", new(0, 1), documents[i], $"candidate {i}");
-                target.Report(DiagnosticPartition.Binding, key, new(0, 1), DiagnosticCode.NoApplicableOverload_Kd, null, null, null, null, null, null, [10], [location, location]);
+                target.Report(DiagnosticPartition.Binding, key, new(0, 1), DiagnosticCode.NoApplicableOverload_Kd, null, null, null, null, null, [10], [location, location]);
             }
 
             var result = owner.Finalize(rejected: true);
@@ -142,8 +142,8 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var use = new DiagnosticKey(null, 0, 2, 1, DiagnosticRequirement.Startup);
         DiagnosticKey[] prerequisites = [DiagnosticKey.Unresolved];
         DiagnosticRelatedFact[] related = [target.Relate("declaration", new(1, 1), document, "original")];
-        target.Report(DiagnosticPartition.Startup, cause, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, null, related: related);
-        target.Report(DiagnosticPartition.Startup, use, new(2, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, null);
+        target.Report(DiagnosticPartition.Startup, cause, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null, related: related);
+        target.Report(DiagnosticPartition.Startup, use, new(2, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, prerequisites, null);
         prerequisites[0] = cause;
         related[0] = target.Relate("declaration", new(2, 1), document, "changed");
         var result = owner.Finalize(rejected: true);
@@ -206,7 +206,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var owner = new DiagnosticOwner();
         var target = owner.GetOrAddCollection("main").For(new("main.kimi", "x"));
         var key = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Syntax);
-        target.Report(DiagnosticPartition.Syntax, key, new(0, 1), DiagnosticCode.InvalidIndentation_Kd, 4, null, null, null, [], null);
+        target.Report(DiagnosticPartition.Syntax, key, new(0, 1), DiagnosticCode.InvalidIndentation_Kd, 4, null, null, [], null);
         var record = Assert.Single(owner.Finalize(rejected: true).Diagnostics);
         Assert.Equal(new DiagnosticValue("spaces", DiagnosticValueKind.Number, "4"), Assert.Single(record.Reason!));
         Assert.Null(record.Related);
@@ -220,7 +220,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var cause = new DiagnosticKey(null, 0, 0, 1, DiagnosticRequirement.Syntax);
         var use = new DiagnosticKey(null, 0, 2, 1, DiagnosticRequirement.Startup);
         target.Add(new(0, 1), DiagnosticCode.DeclarationOrderWarning_Kd);
-        target.Report(DiagnosticPartition.Startup, use, new(2, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [cause], null);
+        target.Report(DiagnosticPartition.Startup, use, new(2, 1), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, [cause], null);
         Assert.Equal(2, owner.Finalize(rejected: true).Diagnostics.Length);
         target.Add(new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd);
         Assert.DoesNotContain(owner.Finalize(rejected: true).Diagnostics, static x => x.Code == nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
@@ -264,8 +264,8 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var target = c.Kotonoha.DiagnosticCollection.For(document);
         c.Diagnostics.AddInput(document, c.Kotonoha);
         var key = target.KeyOf(document, new(0, 3), document, DiagnosticRequirement.Binding(BindingFailure.NoApplicableCandidate));
-        target.Report(DiagnosticPartition.Binding, key, new(0, 3), DiagnosticCode.NoApplicableOverload_Kd, null, null, null, null, null, document, [2], [target.Relate("candidate", new(10, 6), document, "second candidate")]);
-        target.Report(DiagnosticPartition.Binding, key, new(0, 3), DiagnosticCode.NoApplicableOverload_Kd, null, null, null, null, null, document, [2], [target.Relate("candidate", new(4, 5), document, "first candidate")]);
+        target.Report(DiagnosticPartition.Binding, key, new(0, 3), DiagnosticCode.NoApplicableOverload_Kd, null, null, null, null, document, [2], [target.Relate("candidate", new(10, 6), document, "second candidate")]);
+        target.Report(DiagnosticPartition.Binding, key, new(0, 3), DiagnosticCode.NoApplicableOverload_Kd, null, null, null, null, document, [2], [target.Relate("candidate", new(4, 5), document, "first candidate")]);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
@@ -311,7 +311,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
             new(RepairKind.ReplaceToken, ["b", "c"], [target.Edit(new(8, 1), "c")], RepairConditionSet.None),
             new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(26, 0), "ve"), target.Edit(new(26, 0), "@mo")], RepairConditionSet.Take, RepairConditionSet.UsageLegality),
         ];
-        target.Report(DiagnosticPartition.Ownership, key, new(18, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs: repairs);
+        target.Report(DiagnosticPartition.Ownership, key, new(18, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs: repairs);
 
         var record = Assert.Single(owner.Finalize().Diagnostics);
         var candidates = record.Repairs!;
@@ -348,7 +348,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
             repairs.Add(new(RepairKind.InsertToken, ["c"], [target.Edit(new(i + 1, 0), "c")], RepairConditionSet.None));
         }
 
-        target.Report(DiagnosticPartition.Syntax, key, new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd, null, null, null, null, null, document, repairs: repairs.ToArray());
+        target.Report(DiagnosticPartition.Syntax, key, new(0, 1), DiagnosticCode.IndentationLevelMismatch_Kd, null, null, null, null, document, repairs: repairs.ToArray());
         var record = Assert.Single(owner.Finalize().Diagnostics);
         Assert.Equal(DiagnosticLimits.Repairs, record.Repairs!.Length);
         Assert.All(record.Repairs, static x => Assert.Equal("c", Assert.Single(x.Edits).Text));
@@ -386,21 +386,21 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
             };
             if (shape == "derived")
             {
-                target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [DiagnosticKey.Unresolved], document, repairs: repairs);
+                target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, [DiagnosticKey.Unresolved], document, repairs: repairs);
                 return;
             }
 
-            target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs: repairs);
+            target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs: repairs);
             if (shape == "conflict")
             {
                 repairs[0] = repairs[0] with { Verified = RepairConditionSet.None, Required = RepairConditionSet.Take | RepairConditionSet.UsageLegality };
-                target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, null, document, repairs: repairs);
+                target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs: repairs);
             }
         });
         Assert.Equal(fault, exception.Fault);
     }
 
-    // SPEC 23.3.6.8: a command renders each candidate after the Advice with its title, one line per edit and its conditions.
+    // SPEC 23.3.6.8: a command renders each candidate after the Note with its title, one line per edit and its conditions.
     [Fact]
     public void TheCommandRendersRepairCandidates()
     {
@@ -408,9 +408,9 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var document = new SourceDocument("main.kimi", "if a&&b => fire()\nconsume(resource)\n");
         var target = owner.GetOrAddCollection("main").For(document);
         var key = new DiagnosticKey(null, 0, 26, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
-        target.Report(DiagnosticPartition.Ownership, key, new(26, 8), DiagnosticCode.TransferRequired_Kd, null, null, "resource is a let binding of a Non-Copy Type", null, null, document, repairs:
+        target.Report(DiagnosticPartition.Ownership, key, new(26, 8), DiagnosticCode.TransferRequired_Kd, null, null, "resource is a let binding of a Non-Copy Type", null, document, repairs:
             [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(34, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
-        target.Report(DiagnosticPartition.Syntax, new(null, 0, 4, 2, DiagnosticRequirement.Syntax), new(4, 2), DiagnosticCode.IndentationLevelMismatch_Kd, null, null, null, null, null, document, repairs:
+        target.Report(DiagnosticPartition.Syntax, new(null, 0, 4, 2, DiagnosticRequirement.Syntax), new(4, 2), DiagnosticCode.IndentationLevelMismatch_Kd, null, null, null, null, document, repairs:
             [new(RepairKind.ReplaceToken, ["&&", "and"], [target.Edit(new(4, 2), " and ")], RepairConditionSet.None)]);
         var console = new DiagnosticConsole();
         new Kimigayo(console).Render(owner.Finalize(), string.Empty);

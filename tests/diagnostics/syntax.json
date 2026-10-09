@@ -468,7 +468,7 @@
     "Records": [] },
   { "Name": "and-symbol-adjacent", "Source": "public func main()\n    let a = true\n    let b = a&&a\n", "Intended": "'&&' written without spaces; the replacement separates 'and' from the adjacent Names",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "AmpersandAmpersand", "At": "&&", "Repairs": [ { "Kind": "Repair.ReplaceToken", "Edits": [ { "At": "&&", "Text": " and " } ] } ] } ] },
-  { "Name": "from-origin-keyword", "Source": "func f(x: ref/i32 from a) => ()\npublic func main() => ()\n", "Intended": "the former annotation keyword 'from' where 'during' belongs; the candidate replaces it and the Advice does not repeat it",
+  { "Name": "from-origin-keyword", "Source": "func f(x: ref/i32 from a) => ()\npublic func main() => ()\n", "Intended": "the former annotation keyword 'from' where 'during' belongs; the candidate replaces it",
     "Records": [ { "Code": "BorrowOriginKeyword_Kd", "At": "from", "Repairs": [ { "Kind": "Repair.ReplaceToken", "Edits": [ { "At": "from", "Text": "during" } ] } ] } ] },
   { "Name": "adjacent-comparison-before-dedent", "Source": "func f(a: i32, b: i32, c: i32, d: i32) -> bool\n    if a<b\n        return true\n    return c > d\npublic func main()\n    var x = f(1, 2, 3, 4)\n", "Intended": "an adjacent '<' whose only later '>' stands on a line that ends the header is a comparison, not Type arguments",
     "Records": [] },

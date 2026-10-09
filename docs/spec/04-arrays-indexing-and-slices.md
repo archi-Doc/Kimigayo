@@ -228,7 +228,7 @@ These names are not keywords; `::Kimi.End`, for example, disambiguates a hidden 
 
 **Diagnostic Type display.** Diagnostics and hover displays qualify these Kimi Types when a user declaration hides their normal alias, for example `Kimi.Start`. A Type mismatch shows the structural differences between the actual and expected Types, including the range shape and boundary Type arguments, elides their Origin bindings (§23.3.6.5), and identifies the expression that does not fit (§23.3.6). A difference only in Origins is not a Type mismatch (§3.8).
 
-When a function call rejects a range because its shape differs from a parameter's concrete range Type, its diagnostic identifies the compared argument and candidate parameter Types. Advice is conditional on the function's required capability: a function that only resolves a range for slicing can accept `R is PositionRange`; enumeration requires the appropriate `Iterable`, `UniqIterable` or `IntoIterable` entry and its Item constraints; boundary access requires the appropriate concrete range Type. A function's intent is not inferred from its name or a rejected call alone. The changed body must be verified before offering an automatic repair (§23.5).
+When a function call rejects a range because its shape differs from a parameter's concrete range Type, its diagnostic identifies the compared argument and candidate parameter Types. A function's intent is not inferred from its name or a rejected call alone.
 
 **Length metadata.** Fixed arrays, Array, Slice and UniqSlice provide public read-only `length: isize` and `indices: ResolvedRange`; Array, Slice and UniqSlice also provide `isEmpty: bool`. The receiver is evaluated once and requires ordinary initialization, completeness and access legality. A known fixed length does not remove receiver effects or checks.
 
@@ -413,7 +413,7 @@ public struct Range<S, E>     // ClosedRange<S, E> has the same form.
 | `ResolvedRange` | None | `RangeIterator<isize>` | Those of the `Range<isize, isize>` with the same boundaries |
 
 - **Conformance.** Each range conforms to `Iterable`, `UniqIterable` and `IntoIterable` under its condition by conditional conformance (§8.4.8); `E is S` is a Type-identity requirement (§8.3). A range with an omitted boundary or a `FromEnd<T>` boundary, or with two different integer Types, does not satisfy the condition and is not iterable.
-- **Rejection diagnostics.** The explanation names the entry selected by the Subject mode and the boundary Types that prevent iteration. For `FromEnd`, `Start` or `End` boundaries, Advice suggests resolving against a sequence length, such as `r.resolve(values.length)`. For different integer boundary Types, it suggests explicit conversion to the same integer Type. These suggestions do not silently resolve a range or change its Type, and an automatic repair is offered only when the changed body is verified (§23.5).
+- **Rejection diagnostics.** The diagnostic names the entry selected by the Subject mode and the boundary Types that prevent iteration.
 - **Entries.** An entry copies the boundaries and keeps no Storage, Origin or Loan of the source. The borrowing entries' `IteratorType(source)` is the same Type for every `source`. An entry initiates Abort when `start > end`; a reversed range is neither empty nor descending.
 - **Values.** Values are produced from `start` upward in unit steps. `ClosedRangeIterator<T>` produces `end` last and never computes past it, including at the maximum of `T`. Reassigning a `for var` binding does not change the sequence. Acquisition, borrowing and cleanup follow §14.6.2.
 - **Iterators.** `RangeIterator<T>` and `ClosedRangeIterator<T>` are Owned, Non-Copy Iterators whose `Item` is `T`; `next(self: uniq/Self)` returns `Option<T>`. They stay exhausted after `None` and satisfy the [Iterator effect bound](22-core-execution-and-foreign-functions.md#22124-iterator-independence). They have no public constructor and no entry conformance; enumerate an iterator value through `Kimi.Iteration.owning` or `borrowing` (§22.1.2.3). Their representation is unspecified.
@@ -904,7 +904,7 @@ Both collections expose read-only `capacity: isize` through shared access: the m
 | `reserve(additional: isize) -> ()` | Requires a nonnegative `additional`; computes the checked `R = body-entry length + additional`, aborting on failure. Ensures `capacity >= R` without shrinking. If `R <= capacity`, internal placement is preserved too; zero is always a no-op. |
 | `shrinkToFit() -> ()` | Attempts `length <= new capacity <= old capacity`. Neither an exact fit nor returning memory to the OS is guaranteed. |
 
-`reserve` accepts a positional argument, but examples and diagnostics should explain its **additional** meaning. There is no `reserveCapacity` API taking a total.
+`reserve` accepts a positional argument, but examples should show its **additional** meaning. There is no `reserveCapacity` API taking a total.
 
 No internal allocation is permitted for addition within capacity, `reserve` with sufficient capacity, empty construction, lookup, existing-value replacement, `pop`/`remove`/`clear`, or absence and duplicate rejection. This covers same-capacity reallocation, scratch storage and Dictionary auxiliary storage. Churn from deletion and re-addition must reuse existing storage. Arguments, equality and destructors keep their own effects.
 

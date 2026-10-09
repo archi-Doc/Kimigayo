@@ -244,7 +244,7 @@ match counter@uniq                  // Exclusive Subject.
     _ => ()
 ```
 
-**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected as soon as its Pattern succeeds; a guarded arm also requires a true guard whose cleanup completed (§14.8.3). `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. On a shared or exclusive path, a `var` binding is therefore a reassignable reference. Assigning a value of its referent Type to it is an error whose diagnostic names the Subject mode and suggests `@follow` for an exclusive referent, or a ByValue Subject such as `E@copy` or `E@move` for a local value. Binding the whole of a borrowed Subject binds a reference to the original Place, never to the internal reference slot; for a Subject that Reborrows a stored `ref/E` or `uniq/E`, that Place is the referent, bound as `ref/E` or `uniq/E`. Binding the whole of an owned Subject transfers it.
+**Bindings.** Patterns select Places; once an arm is selected, its body locals are initialized left to right from the selected Places. An unguarded arm is selected as soon as its Pattern succeeds; a guarded arm also requires a true guard whose cleanup completed (§14.8.3). `let` and `var` decide only whether the new local may be reassigned; `var` grants no access to the original Place. On a shared or exclusive path, a `var` binding is therefore a reassignable reference. Assigning a value of its referent Type to it is an error whose diagnostic names the Subject mode. Binding the whole of a borrowed Subject binds a reference to the original Place, never to the internal reference slot; for a Subject that Reborrows a stored `ref/E` or `uniq/E`, that Place is the referent, bound as `ref/E` or `uniq/E`. Binding the whole of an owned Subject transfers it.
 
 | Selected Place | Value bound |
 | --- | --- |
@@ -419,7 +419,7 @@ Structs and enums declare their own Origin slots in a header after the generic p
 | Absent | None. Inherited dependencies and the dependencies of complete Types remain; omission does not mean Owned. |
 | `{source}` or `{left, right}` | Exactly the listed slots. |
 
-Empty braces are a syntax error; a Type without own slots omits the header, and the Advice suggests removing the braces.
+Empty braces are a syntax error; a Type without own slots omits the header.
 
 Slot names are declared only in the header, so the name, count and order of a Type's own slots are read from its header and, for a nested Type, the headers that enclose it. A name written in storage (an instance Field, an enum payload or a base) resolves to a declared slot or to a visible enclosing Origin under the lookup of §15.3.4, including its role-conflict, wrong-role and no-hiding rules; it never becomes a new slot. The operands of `origin` clauses attached to Fields and payloads reference existing names as before.
 
@@ -487,15 +487,14 @@ A complete Type has an established contract, including its Origin bindings and q
 
 **Diagnostics.** Each problem is reported once, at its cause:
 
-- **Undeclared storage Origin.** A name in storage that matches no declaration of any role is `MissingOriginBinding_Kd`, the code that reports an unresolved name in a local annotation. The primary location is the name; no record for the same cause is added at the Type name or the whole Field. The Reason states that the name is declared neither in the Type's header nor as a visible enclosing Origin, and that own slots are declared only in the header. The related location is the header, or the Type name when there is none. The Advice gives two conditional repairs: if an existing slot or enclosing Origin was intended, replace the name, which leaves the slot declaration unchanged; if a new slot was intended, add the name to the header, which changes the public API and rebinds any member signature that uses the same spelling as a universal Origin (§15.3.4).
+- **Undeclared storage Origin.** A name in storage that matches no declaration of any role is `MissingOriginBinding_Kd`, the code that reports an unresolved name in a local annotation. The primary location is the name; no record for the same cause is added at the Type name or the whole Field. The Reason states that the name is declared neither in the Type's header nor as a visible enclosing Origin, and that own slots are declared only in the header. The related location is the header, or the Type name when there is none.
 - **Other roles.** A name that matches a declaration of another role, such as a Field-local set used as a scalar or a misspelled set projection, keeps the role error of §15.3.1 and §15.3.4. `during self` in storage is not an undeclared name; it is reported under the rule that `self` creates no self-borrowing storage contract (§11.3).
-- **Absent slots at uses.** A projection of a slot that the Type does not declare, such as after a slot is renamed or removed, is reported once per projection at the slot name, with the header as the related location, a Note listing the declared slots and Advice suggesting a declared name. Problems derived from it, such as an unbound result slot or an Origin relation (§15.6.1) between identically spelled Types that cannot be judged, are not reported as independent problems (§23.3.6.4).
+- **Absent slots at uses.** A projection of a slot that the Type does not declare, such as after a slot is renamed or removed, is reported once per projection at the slot name, with the header as the related location and a Note listing the declared slots. Problems derived from it, such as an unbound result slot or an Origin relation (§15.6.1) between identically spelled Types that cannot be judged, are not reported as independent problems (§23.3.6.4).
 
 ```kimi
 public struct View<T> {source}
     private let data: ref/T during buffer
     // Error: buffer is not declared (at buffer; related location {source}).
-    // Advice: for the existing slot, write source; for a new slot, add buffer to the header (a public API change).
 
 public struct Renamed<T> {buffer}          // Renamed from source.
     private let data: ref/T during buffer
@@ -672,7 +671,7 @@ func inner<T>(items: ref/Array<View<T>{v}>) -> View<T>{r}
 
 Conditional direct-borrow inputs are evaluated under every admitted Semantics condition. Elision never adds an implicit Owned constraint or weakens fixed dependencies to succeed. An Origin-compatible result still requires valid Type formation and actual Loan authority.
 
-For `func f<T>(x: ref/T? during a) -> ref/T`, `x` is an Option rather than a direct borrowed input, so the shared result defaults to `static`; dependence on `a` requires an explicit result `during a`. If this default causes a result fitting or lifetime error, the diagnostic explains the omitted-input boundary and suggests visible explicit Origins without choosing among multiple candidates. A function correctly returning `static` needs no warning.
+For `func f<T>(x: ref/T? during a) -> ref/T`, `x` is an Option rather than a direct borrowed input, so the shared result defaults to `static`; dependence on `a` requires an explicit result `during a`. If this default causes a result fitting or lifetime error, the diagnostic explains the omitted-input boundary. A function correctly returning `static` needs no warning.
 
 ### 15.4.4. Locals and independent Type expressions
 
@@ -810,7 +809,7 @@ The Origin part of a comparison of whole contracts is judged under §15.3.7 once
 - **Location.** The primary location is the expression that supplies the longer Origin in the relation that introduced the shorter end, such as the value that does not fit or the argument that supplies the longer side of a substituted relation. At a call, a fresh Origin (§15.6.4) that an equality, at an invariant position or from a substituted `==` clause, makes equal to a fixed Origin is that Origin (§15.3.6); when equalities make it equal to several fixed Origins, it is the one supplied first, taking arguments in order and then clauses, and each later equality relates its own fixed Origin to that one. The argument whose fit then meets it is the value that does not fit, and the argument or clause that made the equality is a related location with the role `relation`. Without such an expression, it is the syntax that requires the relation: a clause or a Type occurrence. The well-formedness of an instantiated parameter Type (§15.6.4 step 3) is located at its argument. When a borrow of a temporary must outlive a fixed Origin, as when that borrow is returned, the record that §10.2 requires, naming the expired temporary and the use, is this record, with the temporary shown as a `borrow` end (§23.3.6.5); a later use within the body is the Loan conflict at the temporary's destruction (§15.6.5).
 - **Order.** Records at one primary location are ordered by relation source (the outer borrow layer, then the Semantics target, then slots in header order, then Type arguments in order, applied recursively), then by the source position of the longer end (§23.3.6.6).
 - **No cascade.** A failed relation adds no constraint to later region inference; Loan, destruction and result checks proceed without it, so it causes no Loan conflict or result mismatch of its own. Conflicts caused by other uses remain independent problems. A relation that cannot be judged because a prerequisite failed is a derived problem (§23.3.6.4), as after an absent slot (§15.3.2). A failed Origin relation is never such a prerequisite: every chain is judged from the contract's premises alone, and the well-formedness and clauses that the body must establish, such as those of a local's Type (§15.3.3), are obligations, never premises. A failed well-formedness of a destination Type and a failed fit into that Type are therefore independent problems. At a call, however, an argument whose fit fails is no instance of its parameter Type, so the well-formedness of that instantiated Type is not judged at that argument.
-- **Advice.** Advice is conditional prose, never a repair candidate, because an Origin repair needs a choice the facts do not settle (§23.3.6.9). For an Unknown relation whose ends are universal Origins, their projections or a meet of them, it suggests adding `origin longer outlives shorter` with both ends as displayed, which changes the public contract, or bounding the result by the longer end; a meet at the shorter end, such as `(a and b)`, stays whole, since §15.3.6 decomposes it into neither atomic requirements nor a disjunction. When the shorter end is `static`, it suggests binding the longer end to `static` where that Origin is introduced, such as `x: ref/i32 during static`, instead of `origin x outlives static`, which proves only that equality (§15.2.3); it makes no such suggestion when the longer end's Loan requirement is `uniq`, since such an Origin cannot be bound to `static` (§15.2.3). When an end is a Closure's call receiver, which no clause or annotation names (§15.8.2), it instead suggests omitting the result annotation, so that the inferred result keeps the receiver dependency, returning a Copied or owned value, or, for a Reborrow through a captured exclusive reference, capturing a shared reference (§7.6.2). When an end is a pair binder's implicit outer Origin (§8.1.1), which no Origin expression writes, it instead suggests annotating that occurrence as `s/T during name`, returning an owned or Copied value, or bounding the result by an existing borrowed input. For an end displayed as `omitted`, it first suggests naming a set on that Type occurrence (§15.3.1); for an implicitly introduced name, it also shows similar visible names. When the shorter end is a result Origin completed by §15.4.3, a Note explains the omitted-input boundary that §15.4.3 requires. A Refuted relation is not repaired by an annotation: for a body-local Origin, the Advice suggests moving an owned value or borrowing from an input; for mutable static storage, direct access, an input-bounded result, a scoped callback or immutable static storage (§11.3.2, §15.9).
+- **Note.** When the shorter end is a result Origin completed by §15.4.3, a Note explains the omitted-input boundary that §15.4.3 requires.
 
 ### 15.6.2. Place overlap and conflicts
 
@@ -985,7 +984,6 @@ struct Holder {a}
 
 func pick(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p
     return p.item@ref // Error: p.a is not proven to outlive q (UnprovenOriginRelation_Kd, Proof).
-    // Advice: add origin p.a outlives q, which changes the contract, or bound the inner result by p.a.
 
 func pickRelated(p: ref/Holder, q: ref/i32) -> ref/(ref/i32 during q) during p
     origin p.a outlives q
@@ -1057,7 +1055,7 @@ let item = inventory.newest()               // inventory stays exclusively borro
 inspect(item)
 ```
 
-Diagnostics distinguish the reservation, the activation and the conflicting use or retained Loan. A Loan conflict at an implicit lending point carries a note naming the acquisition, such as "`tasks` implicitly borrowed exclusively as the receiver of `append`"; a result that retains the Loan is shown as well, and when two implicit acquisitions overlap, both lending points are shown. A diagnostic suggests a separate local only when the dependencies of the value it would hold allow the call.
+Diagnostics distinguish the reservation, the activation and the conflicting use or retained Loan. A Loan conflict at an implicit lending point carries a note naming the acquisition, such as "`tasks` implicitly borrowed exclusively as the receiver of `append`"; a result that retains the Loan is shown as well, and when two implicit acquisitions overlap, both lending points are shown.
 
 <a id="157-initialization-preserving-exchange"></a>
 

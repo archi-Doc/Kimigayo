@@ -39,7 +39,6 @@ public class ConstructorInferenceDiagnosticTest
         Assert.Equal(2, record.Related!.Length);
         Assert.Empty(record.Repairs ?? []);
         Assert.NotNull(record.Note);
-        Assert.NotNull(record.Advice);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(code, console.Text, StringComparison.Ordinal);

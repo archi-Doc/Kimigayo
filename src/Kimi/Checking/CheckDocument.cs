@@ -8,9 +8,9 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Checking;
 
-/// <summary>The JSON document that <c>kimi check --Format json</c> writes (SPEC 23.3.6.8), version <c>kimi.check/1</c>: one check unit's
+/// <summary>The JSON document that <c>kimi check --Format json</c> writes (SPEC 23.3.6.8), version <c>kimi.check/2</c>: one check unit's
 /// outcome, acceptance, source table with the hashes of the inputs that were read, and diagnostic records with their repair candidates.</summary>
-/// <param name="Schema">The schema name and version, <c>kimi.check/1</c>.</param>
+/// <param name="Schema">The schema name and version, <c>kimi.check/2</c>.</param>
 /// <param name="Compiler">The compiler build identity.</param>
 /// <param name="Unit">The check unit.</param>
 /// <param name="Outcome">The outcome.</param>
@@ -21,7 +21,7 @@ namespace Kimi.Checking;
 public sealed record CheckDocument(string Schema, string Compiler, CheckUnitDescription Unit, CheckOutcome Outcome, bool Accepted, TestPresence TestPresence, CheckSourceEntry[] Sources, CheckDiagnostic[] Diagnostics)
 {
     /// <summary>The schema name and version of the document.</summary>
-    public const string SchemaName = "kimi.check/1";
+    public const string SchemaName = "kimi.check/2";
 
     public bool Equals(CheckDocument? other)
         => other is not null && this.Schema == other.Schema && this.Compiler == other.Compiler && this.Unit == other.Unit && this.Outcome == other.Outcome &&

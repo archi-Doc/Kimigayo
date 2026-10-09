@@ -106,7 +106,6 @@ public class WrappingIntegerTest
         Assert.Equal(nameof(Kimi.DiagnosticCode.TypeMismatch_Kd), error.Code);
         Assert.Equal($"expected {expected}, found {actual}", error.Label);
         Assert.Equal(Binding.WrappingConversionNote, error.Note);
-        Assert.Equal(Binding.WrappingConversionAdvice, error.Advice);
     }
 
     [Theory]

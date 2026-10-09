@@ -68,17 +68,14 @@ public class DefaultAccessTest
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(code, record.Code);
         Assert.Equal("preceding prepared parameter", Assert.Single(record.Related!).Label);
-        Assert.NotNull(record.Advice);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(record.Message, console.Text, StringComparison.Ordinal);
-        Assert.Contains(record.Advice, console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
             Assert.Equal((record.Display!.Range, record.Code), (sent.Range, sent.Code));
-            Assert.Contains(record.Advice, sent.Message, StringComparison.Ordinal);
         }
     }
 

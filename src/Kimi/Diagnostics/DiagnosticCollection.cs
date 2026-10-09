@@ -60,10 +60,9 @@ public sealed class DiagnosticCollection
     /// <param name="obj2">The second message argument.</param>
     /// <param name="sourceDocument">The source the span belongs to; the target's document by default.</param>
     /// <param name="note">A Note formed from the facts.</param>
-    /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
-    public bool Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, string? advice = null)
-        => this.AddSyntax(range, code, obj, obj2, sourceDocument, note, advice);
+    public bool Add(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null)
+        => this.AddSyntax(range, code, obj, obj2, sourceDocument, note);
 
     // SPEC 23.3.6.7: a report that breaks its code's definition is a compiler defect, never a diagnostic of the source.
     internal static DiagnosticEntry Validate(SourceSpan range, DiagnosticCode code, object? first, object? second, SourceDocument? document, DiagnosticKey[]? derivedFrom)
@@ -131,11 +130,10 @@ public sealed class DiagnosticCollection
     /// <param name="obj2">The second message argument.</param>
     /// <param name="sourceDocument">The source; the target's document by default.</param>
     /// <param name="note">A Note formed from the facts.</param>
-    /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="related">Locations obtained through <see cref="Relate"/>.</param>
     /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>.</param>
     /// <returns>Whether the report is an Error.</returns>
-    internal bool AddSyntax(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, string? advice = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
+    internal bool AddSyntax(SourceSpan range, DiagnosticCode code, object? obj = null, object? obj2 = null, SourceDocument? sourceDocument = null, string? note = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
         sourceDocument ??= this.Document;
         var source = this.SourceOf(sourceDocument);
@@ -144,7 +142,7 @@ public sealed class DiagnosticCollection
         // A syntax problem is its token, code and expectation: two expectations at one token are two problems.
         var context = obj is null ? null : obj2 is null ? obj.ToString() : string.Concat(obj.ToString(), "\u001f", obj2.ToString());
         var key = new DiagnosticKey(null, source, range.Start, length, DiagnosticRequirement.Syntax, 0, context);
-        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, advice, null, sourceDocument, related: related, repairs: repairs);
+        var isError = this.Report(DiagnosticPartition.Syntax, key, range, code, obj, obj2, note, null, sourceDocument, related: related, repairs: repairs);
         if (isError)
         {
             this.LastError = key;
@@ -154,7 +152,7 @@ public sealed class DiagnosticCollection
     }
 
     /// <summary>Records that a form of syntax is expected, missing or not permitted at a span (docs/dev/DIAGNOSTICS.md §4.4). The
-    /// form is the requirement of the check; its phrase and advice come from the requirement table, so the recorder supplies no
+    /// form is the requirement of the check; its phrase comes from the requirement table, so the recorder supplies no
     /// text beyond the token it found. The report becomes <see cref="LastError"/>, which the parser's recovery rests on.</summary>
     /// <param name="range">The found token, the insertion point of the missing form, or the misplaced syntax.</param>
     /// <param name="code"><c>ExpectedSyntax_Kd</c>, <c>MissingSyntax_Kd</c> or <c>MisplacedSyntax_Kd</c>.</param>
@@ -169,7 +167,7 @@ public sealed class DiagnosticCollection
         document ??= this.Document;
         var requirement = DiagnosticRequirement.SyntaxOf(form);
         var key = new DiagnosticKey(null, this.SourceOf(document), range.Start, document is null ? -1 : range.Length, requirement);
-        this.Report(DiagnosticPartition.Syntax, key, range, code, requirement, found, null, DiagnosticRequirements.AdviceOf(requirement), null, document, related: related, repairs: repairs);
+        this.Report(DiagnosticPartition.Syntax, key, range, code, requirement, found, null, null, document, related: related, repairs: repairs);
         this.LastError = key;
         return key;
     }
@@ -182,7 +180,7 @@ public sealed class DiagnosticCollection
     internal void AddDependentSyntax(SourceSpan range, string condition, DiagnosticKey cause, SourceDocument document)
     {
         var key = new DiagnosticKey(null, this.SourceOf(document), range.Start, range.Length, DiagnosticRequirement.Syntax, 0, condition);
-        this.Report(DiagnosticPartition.Syntax, key, range, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, [cause], document);
+        this.Report(DiagnosticPartition.Syntax, key, range, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, [cause], document);
         this.LastError = key;
     }
 
@@ -223,14 +221,13 @@ public sealed class DiagnosticCollection
     /// <param name="first">The first message argument.</param>
     /// <param name="second">The second message argument.</param>
     /// <param name="note">A Note formed from the facts.</param>
-    /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="derivedFrom">The unmet prerequisites.</param>
     /// <param name="document">The source the span belongs to; the target's document by default.</param>
     /// <param name="evidence">The code's evidence facts, all of them in catalog order, or <see langword="null"/> for none.</param>
     /// <param name="related">Locations related to the problem, located by <see cref="Relate"/>.</param>
     /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>; <see langword="null"/> or empty for none.</param>
     /// <returns><see langword="true"/> when the report is an Error.</returns>
-    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, string? advice, DiagnosticKey[]? derivedFrom, SourceDocument? document, object?[]? evidence = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
+    internal bool Report(DiagnosticPartition partition, in DiagnosticKey key, SourceSpan range, DiagnosticCode code, object? first, object? second, string? note, DiagnosticKey[]? derivedFrom, SourceDocument? document, object?[]? evidence = null, DiagnosticRelatedFact[]? related = null, DiagnosticRepairFact[]? repairs = null)
     {
         document ??= this.Document;
         var entry = Validate(range, code, first, second, document, derivedFrom);
@@ -255,7 +252,7 @@ public sealed class DiagnosticCollection
         var causes = derivedFrom is { Length: > 0 } ? derivedFrom.Distinct().ToArray() : null;
         var capturedRelated = related is null ? null : DiagnosticOwner.OrderRelated(related.Distinct().ToArray());
         var candidates = repairs is { Length: > 0 } ? ValidateRepairs(entry, repairs, causes is not null) : null;
-        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, advice, causes, DiagnosticOwner.Capture(evidence), capturedRelated, candidates), isError);
+        this.Owner.Record(partition, module, new(code, key, source, range.Start, length, DiagnosticOwner.Capture(first), DiagnosticOwner.Capture(second), note, causes, DiagnosticOwner.Capture(evidence), capturedRelated, candidates), isError);
         return isError;
     }
 

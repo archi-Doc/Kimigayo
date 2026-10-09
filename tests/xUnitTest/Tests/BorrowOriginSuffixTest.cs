@@ -155,7 +155,7 @@ public class BorrowOriginSuffixTest
     }
 
     [Theory]
-    [InlineData("func f(x: ref/i32) -> ref/i32\n    during x\n    return x", "same line", "Type's line")]
+    [InlineData("func f(x: ref/i32) -> ref/i32\n    during x\n    return x", "own line", "own line")]
     [InlineData("func f(x: ref/i32 during a and b) => ()", "parentheses", "parentheses")]
     [InlineData("func f(x: ref/i32 from a) => ()", "during", "during")]
     [InlineData("func f<T>(x: ref/i32 during a)\n    T is Box<ref/i32 during a and b>\n    ()", "parentheses in Type arguments", "parentheses")]

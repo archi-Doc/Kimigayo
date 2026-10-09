@@ -322,11 +322,6 @@ public sealed partial class Binding
             note += "; " + instanceContext;
         }
 
-        var editable = item is not null && !ReferenceEquals(item.CodeContext.Kotonoha, this.Library.Kotonoha);
-        var advice = (bound == EffectBoundKind.Confined
-            ? "Keep the state in a Field of self or pass it as a parameter, so the implementation uses only authority from its inputs"
-            : "Avoid accesses that may reach a Loan the result keeps, or return only results of the same requirement on one value reached through a Field path of self") +
-            (editable ? $". If no caller relies on the guarantee, {contract} may instead declare no bound, which affects the callers that do" : string.Empty);
         var source = label is not null && violation.DelegationNode is { } delegationNode && !ReferenceEquals(delegationNode, violation.Site) ? delegationNode : null;
         var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + (source is null ? 0 : 1) + 1 + (item is null ? 0 : 1) + (instanceSite is null ? 0 : 1);
         var related = new (string Role, Koto At, string? Label)[count];
@@ -352,7 +347,7 @@ public sealed partial class Binding
             related[next] = ("instantiation", instanceSite, "the call requesting this instance");
         }
 
-        use.Report(requirement, code, note: note, at: violation.Site, evidence: [$"{effect}, which {spelling} excludes"], advice: advice, related: related);
+        use.Report(requirement, code, note: note, at: violation.Site, evidence: [$"{effect}, which {spelling} excludes"], related: related);
         return true;
     }
 
@@ -720,24 +715,24 @@ public sealed partial class Binding
         var name = (rejection.Requirement as FunctionKoto)?.Name ?? effect.Name?.ToString();
         var spelling = EffectBoundKoto.Spelling(effect.Bound);
         var earlierOwner = rejection.Earlier is { } previous ? DeclaringContract(previous)?.BoundSymbol?.Name ?? (previous.Parent as FunctionKoto)?.Name : null;
-        var (cause, note, advice) = rejection.Kind switch
+        var (cause, note) = rejection.Kind switch
         {
-            EffectRejection.SpecificationInRequirement => ("an effect specification in a requirement", "An effect specification names an inherited requirement and is a Contract item; a requirement's own bound is an effect clause", $"Write effect {spelling} to bound {name} itself"),
-            EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds", "Indent the clause under its requirement, or name an inherited requirement as effect Contract.name"),
-            EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound", null),
-            EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list", null),
-            EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions", null),
-            EffectRejection.CallableDuplicate => ($"the Callable Constraint already declares {spelling}", "Each effect bound kind appears once in one Callable Constraint", "Remove the repeated effect item"),
-            EffectRejection.CallableReceiver => ("preserves results requires a ref or uniq Callable receiver", "An owner call consumes its acquired callable and accepts no preserves results bound", null),
-            EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector", null),
-            EffectRejection.NotReference => ($"{selector} is not a reference to {rejection.Symbol!.Name}", $"The Type arguments of {selector} do not form a reference to {rejection.Symbol!.Name}", null),
-            EffectRejection.OwnContract => ($"{selector} is this Contract", "A Contract bounds its own requirement with an effect clause in that requirement's Constraint region", "Write the bound as an effect clause in the Constraint region of the requirement"),
-            EffectRejection.NotAncestor => ($"{selector} is not an ancestor of {rejection.Symbol!.Name}", "An effect specification bounds a requirement that the Contract inherits", null),
-            EffectRejection.AmbiguousAncestor => ($"{selector} names {rejection.Count} ancestors", $"The Contract refines {rejection.Count} references of {rejection.Symbol!.Name}", $"Give the Type arguments of the intended reference, as ({rejection.Symbol!.Name}<...>).name"),
-            EffectRejection.NoRequirement => ($"{rejection.Symbol!.Name} has no function requirement {name}", null, null),
-            EffectRejection.OverloadedRequirement => ($"{name} names {rejection.Count} function requirements of {rejection.Symbol!.Name}", "An effect specification bounds exactly one function requirement", null),
-            EffectRejection.Duplicate => ($"{name} already has {spelling}", $"{earlierOwner} already declares {spelling} for {name}; each declaration supplies a bound once, though a Contract may restate a bound of an ancestor", "Remove the repeated effect item"),
-            EffectRejection.NoBorrowedReceiver => ($"{name} has no borrowed receiver", "preserves results needs a borrowed receiver: ref/Self, uniq/Self, objref/Self or objuniq/Self", null),
+            EffectRejection.SpecificationInRequirement => ("an effect specification in a requirement", "An effect specification names an inherited requirement and is a Contract item; a requirement's own bound is an effect clause"),
+            EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds"),
+            EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound"),
+            EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
+            EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions"),
+            EffectRejection.CallableDuplicate => ($"the Callable Constraint already declares {spelling}", "Each effect bound kind appears once in one Callable Constraint"),
+            EffectRejection.CallableReceiver => ("preserves results requires a ref or uniq Callable receiver", "An owner call consumes its acquired callable and accepts no preserves results bound"),
+            EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector"),
+            EffectRejection.NotReference => ($"{selector} is not a reference to {rejection.Symbol!.Name}", $"The Type arguments of {selector} do not form a reference to {rejection.Symbol!.Name}"),
+            EffectRejection.OwnContract => ($"{selector} is this Contract", "A Contract bounds its own requirement with an effect clause in that requirement's Constraint region"),
+            EffectRejection.NotAncestor => ($"{selector} is not an ancestor of {rejection.Symbol!.Name}", "An effect specification bounds a requirement that the Contract inherits"),
+            EffectRejection.AmbiguousAncestor => ($"{selector} names {rejection.Count} ancestors", $"The Contract refines {rejection.Count} references of {rejection.Symbol!.Name}"),
+            EffectRejection.NoRequirement => ($"{rejection.Symbol!.Name} has no function requirement {name}", null),
+            EffectRejection.OverloadedRequirement => ($"{name} names {rejection.Count} function requirements of {rejection.Symbol!.Name}", "An effect specification bounds exactly one function requirement"),
+            EffectRejection.Duplicate => ($"{name} already has {spelling}", $"{earlierOwner} already declares {spelling} for {name}; each declaration supplies a bound once, though a Contract may restate a bound of an ancestor"),
+            EffectRejection.NoBorrowedReceiver => ($"{name} has no borrowed receiver", "preserves results needs a borrowed receiver: ref/Self, uniq/Self, objref/Self or objuniq/Self"),
             _ => DependentResult(rejection),
         };
 
@@ -752,17 +747,17 @@ public sealed partial class Binding
             related![^1] = ("bound", earlier, "the bound declared earlier");
         }
 
-        effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd, note: note, evidence: [cause], advice: advice, related: related);
+        effect.Report(requirement, DiagnosticCode.InvalidEffectBound_Kd, note: note, evidence: [cause], related: related);
 
         // The dependent part, and its path: a receiver input atom is what an omitted Origin becomes, so it is explained as the
         // omission (SPEC 15.4.3). No repair is offered, because the dependency is the meaning of the API.
-        static (string Cause, string? Note, string? Advice) DependentResult(in EffectBoundRejection rejection)
+        static (string Cause, string? Note) DependentResult(in EffectBoundRejection rejection)
         {
             var shown = DiagnosticTypeName(rejection.Part!);
             var note = rejection.Atom is null or { Kind: OriginKind.Input }
                 ? $"The omitted Origin of {shown} defaults to the meet of every direct borrowed input, the receiver included (SPEC 15.4.3); the result is {DiagnosticTypeName(rejection.Result!)}"
                 : $"{shown} names the receiver's Origin {rejection.Atom.Name}; the result is {DiagnosticTypeName(rejection.Result!)} under the premises of the declaring Contract";
-            return ($"{shown} may depend on the receiver borrow", note, null);
+            return ($"{shown} may depend on the receiver borrow", note);
         }
 
         static string EffectOwner(EffectBoundKoto effect)

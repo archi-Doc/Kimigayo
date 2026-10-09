@@ -70,7 +70,7 @@ One check entry serves `kimi check`, test preparation and the server. For each u
 2. **Dependency content.** The *same-input comparison* of dependency nodes reached by several paths (§18.4.1), then lock validation (§18.5), both in command order.
 3. **Front end.** Parsing, Binding and its diagnostics, startup checks, ownership analysis with control-flow diagnostics, and acceptance across all source modules.
 
-Every preparation failure becomes a diagnostic with a Blocked outcome. A command keeps its compilation for emission and tests without binding again; emission, native builds and test execution lie outside the entry. Machine-applicable edits are never inferred from `Advice` or `Note` prose: a record offers them only as repair candidates (§23.3.6.9).
+Every preparation failure becomes a diagnostic with a Blocked outcome. A command keeps its compilation for emission and tests without binding again; emission, native builds and test execution lie outside the entry. A record offers machine-applicable edits only as repair candidates (§23.3.6.9).
 
 ### 23.3.3. Outcomes and acceptance
 
@@ -138,8 +138,8 @@ Each diagnostic code has one severity and one **category**:
 | `Internal` | A compiler defect. |
 
 - A code accepts no free text. Its message, label and Reason come from its typed facts. A difference within one requirement is a Reason value; a different requirement or category is a different code, except for `Unsupported_Kd` below, and wording alone never adds a code.
-- A form this specification permits but the implementation does not support is reported with the single code `Unsupported_Kd` (Error, `Unsupported`), never with a `Language` code, such as a conservative conflict. Its record holds the code and the primary location only: no Reason, Note, Advice, related location or repair candidate. The first phase that cannot handle the form reports it once, and the parts that depend on it produce no records.
-- Established facts are stated in the Reason; suggested intent is a repair candidate with its conditions (§23.3.6.9), or Advice, which states its conditions in prose. A `Proof` failure is never described as a false condition, and no edit or guarantee is inferred from Note or Advice prose.
+- A form this specification permits but the implementation does not support is reported with the single code `Unsupported_Kd` (Error, `Unsupported`), never with a `Language` code, such as a conservative conflict. Its record holds the code and the primary location only: no Reason, Note, related location or repair candidate. The first phase that cannot handle the form reports it once, and the parts that depend on it produce no records.
+- Established facts are stated in the Reason and related locations; a fix is recorded only as a repair candidate with its conditions (§23.3.6.9), and a fix that needs a choice the facts do not settle is not recorded. A `Proof` failure is never described as a false condition, and no edit or guarantee is inferred from a Note.
 
 #### 23.3.6.2. Records
 
@@ -152,7 +152,7 @@ A **diagnostic record** holds only the fields that have a basis:
 | Primary location, label | The smallest range that shows the subject of the failed condition, and a short description of that range. |
 | Reason | The code's small typed facts. Numbers, enumeration values and Booleans are exact; Types, Constraints and long names are bounded display values with an elision mark. |
 | Related | Locations with roles, such as a declaration, an earlier Move or an opening delimiter, each optionally labeled. |
-| Note, Advice | Further explanation; conditional repair advice. |
+| Note | Further explanation. |
 | Repairs | Repair candidates (§23.3.6.9): alternative structured edits that resolve the problem, each with its verified and required conditions. |
 | Omissions | The parts that limits summarized or omitted, with counts when known. |
 | Display data | Lines and columns, a bounded source excerpt and the alternative text of related locations. Never used for semantic decisions. |
@@ -213,7 +213,7 @@ The Reason of an Origin relation record (`UnsatisfiedOriginRelation_Kd` or `Unpr
 
 **Construction and inference.** Reports distinguish Type-name/role/access ambiguity, missing slot evidence, structural or Semantics conflicts, invalid acquisition-shape declarations, unproved call correlations, changed selection or prohibited additional contexts in the fixed-binding constructor check (§10.8.1), ordinary applicability/Constraint failures, and post-selection Origin/Loan/acquisition failures. Resource exhaustion is distinct from all of these. Name the supplying arguments, candidate declarations and unresolved slots where relevant; independent errors remain visible when another check lacks prerequisites. CLI, JSON, LSP and semantic inspection use the same committed construction Type, declaration, acquisition plan and evidence.
 
-An explicit-Type-argument repair may use only established complete bindings, snapshot identity and verified selection conditions under §23.3.6.9. Never insert guessed Types. When explicit arguments would remain ambiguous, or a concrete Type cannot be spelled, give Advice without promising a working edit; a named generic helper may supply an explicit construction Type. Inference itself introduces no new repair kind or condition.
+Inference offers no repair candidate: the catalog of §23.3.6.9 has no kind that inserts Type arguments, and inference introduces no new kind or condition.
 
 #### 23.3.6.6. Order and equality
 
@@ -227,12 +227,12 @@ The following violate the diagnostic contract and make the result Faulted (§23.
 
 Every output converts finalized records; none decides meaning again or binds again.
 
-- **Commands** render a result once it is finalized, in its order: the message and code, the primary location as `path:line:column`, the bounded excerpt with the primary span underlined and labeled, related locations, omissions, Note and Advice, then each repair candidate (§23.3.6.9) as `Repair: <title>`, one line ` = path:line:column: insert '<text>'` (or `replace '<old>' with '<text>'`, or `delete '<old>'`) per edit, and ` = verified: <conditions>; requires: <phrases>`. A later phase, such as emission, renders its own result. The order in which inputs are consumed and later work starts is unchanged. `kimi test` writes diagnostics to standard error, so its standard output stays machine-readable.
+- **Commands** render a result once it is finalized, in its order: the message and code, the primary location as `path:line:column`, the bounded excerpt with the primary span underlined and labeled, related locations, omissions, the Note, then each repair candidate (§23.3.6.9) as `Repair: <title>`, one line ` = path:line:column: insert '<text>'` (or `replace '<old>' with '<text>'`, or `delete '<old>'`) per edit, and ` = verified: <conditions>; requires: <phrases>`. A later phase, such as emission, renders its own result. The order in which inputs are consumed and later work starts is unchanged. `kimi test` writes diagnostics to standard error, so its standard output stays machine-readable.
 - **JSON.** `kimi check <project> --Format json` checks one check unit through the shared check entry (§23.3.2) and writes its output to standard output as one JSON document; everything else goes to standard error, and the exit code is unchanged. `--Format text`, the default, is the rendering above. The document is:
 
 ```text
 CheckOutput := {
-  schema:       "kimi.check/1"
+  schema:       "kimi.check/2"
   compiler:     the compiler build identity
   unit:         { project, target, mode: "Product" | "Test", debug }
   outcome:      "Completed" | "Blocked" | "Faulted"
@@ -243,7 +243,7 @@ CheckOutput := {
 }
 ```
 
-  Field names are camelCase, enumerations are strings, spans are `{ start, length }` in UTF-16 code units, and ranges are zero-based lines and characters. The schema of version 1 is [`docs/spec/schemas/check-output.schema.json`](schemas/check-output.schema.json); a change of the document's shape is a new version. The entry is shared, so the document holds the records the language server publishes for the same inputs.
+  Field names are camelCase, enumerations are strings, spans are `{ start, length }` in UTF-16 code units, and ranges are zero-based lines and characters. The schema of version 2 is [`docs/spec/schemas/check-output.schema.json`](schemas/check-output.schema.json); a change of the document's shape is a new version. The entry is shared, so the document holds the records the language server publishes for the same inputs.
 - **Language server:** §23.4.7 and §23.4.8. The server renders nothing, and its standard output carries only protocol frames.
 
 #### 23.3.6.9. Repair candidates
@@ -273,7 +273,7 @@ The conditions relevant to a candidate are fixed by its diagnostic and kind (the
 
 **Edits.** An edit replaces or inserts syntax and supplies the separators its boundary needs: inserted or replaced text is a complete token or item and never merges with an adjacent identifier (`a&&b` becomes `a and b`). A deletion at a line start removes only indentation that exists, and no edit touches an empty line, a line break or the inside of a multi-line literal. The edits of one candidate do not overlap, are ordered by position, and two insertions at one point are one edit; they are applied together, and their text is never shortened or elided. Edits reach recorded inputs only, never `compiler://` or generated sources.
 
-**Offering.** A candidate is offered only when its effect follows from the check's facts; a repair that needs a choice the facts do not settle is Advice. A derived record (`PrerequisiteUnavailable_Kd`) carries no candidates. A record with candidates does not repeat their edits in its Advice: the Advice states the conditions a candidate cannot express and the alternatives, including a repair that was not offered because a condition was refuted. Every output shows the same candidates.
+**Offering.** A candidate is offered only when its effect follows from the check's facts; a repair that needs a choice the facts do not settle is not offered. A derived record (`PrerequisiteUnavailable_Kd`) carries no candidates. Every output shows the same candidates.
 
 **Catalog.** The kinds, the diagnostics that offer them and the relevant conditions:
 
@@ -290,7 +290,7 @@ The conditions relevant to a candidate are fixed by its diagnostic and kind (the
 | `QualificationRequired_Kd` (§9.4) | `Repair.Qualify`: a qualifier before the Name: `self.`, `Self.` or `C.` for the searched Container `C`, or `::P.` for a declaration of a later stage | `Selection`: verified for a Field or Property that is not called, verified or refuted by Type name selection for a Type, required otherwise; `UsageLegality`: required for a value, not relevant for a Type | `self.`: the found declarations include an instance member, and a `self` visible in the same Function Boundary has Effective Core `C`; a construction receiver qualifies only in the constructor body and for an own stored Property (§6.2.3.4). `Self.`: they include a non-instance declaration and `Self` denotes `C`; otherwise `C.` when `C` has no generic parameters or Origin header and the Qualifier `C` selects `C` at the use. `::P.`: the diagnostic exploration of the later stages finds eligible non-instance declarations in a Container reached from the Compilation root by a path `P` without Type or Origin arguments whose every segment is accessible at the use (`::` alone at the project root) |
 | `TaskArgumentMismatch_Kd` with the Reason `missing` (§24.5) | `Repair.PassTask`: `task;` right after the `(` of the argument list, followed by one space when an argument follows on the same line (`bar(task;)`, `foo(task; x)`); for an unresolved leading `task` argument, `task;` replaces `task` and its comma | `UsageLegality`: required, because the repaired call is a task call that §24.3 compares; `Selection` is not relevant, because the task argument binds no parameter | The innermost function that contains the call, anonymous functions included, has a task slot, and the call is not directly in a default expression or in the body of a Deferred Block that the function registers (§24.2.2) |
 
-A Receiver Expression that cannot be acquired (§7.3), a colon at a transfer operand (§14.5.1), the Origin repairs of §15.3.2, §15.4.3 and §15.6.1 and `DiscardedValue_Kd` (§17.4.2) need a choice or a Loan verification, so they carry no candidates; their Advice describes the repair.
+A Receiver Expression that cannot be acquired (§7.3), a colon at a transfer operand (§14.5.1), the Origin failures of §15.3.2, §15.4.3 and §15.6.1 and `DiscardedValue_Kd` (§17.4.2) need a choice or a Loan verification to fix, so they carry no candidates.
 
 Callable effect-bound declarations, selected-binding failures (UnsatisfiedEffectBound_Kd, Language, Ownership phase), input and static Loan conflicts, and the typed hover showing all contributing premises follow §8.4.10.7. Effects never choose an overload; proof failure and selected-use effect failure remain distinct records.
 
@@ -366,7 +366,7 @@ Example: with the default quiet period, edits at 0, 90 and 180 ms start one work
 - **Display placement.** A record without a range is shown at the start of its file. A record whose source is missing, `compiler://` or generated without an input record is shown at the start of the unit's project file, or of the implicit source, and its text names the original location. The record keeps its original location.
 - **Updates.** A URI is reconsidered when a contribution to it changes (a result is adopted or a unit retires) or when a contributor is released from a hold, and at no other time.
 - **Condition.** A URI is sent only when all its contributors have valid results. A pending unit keeps its last result, so its URIs keep the last sent diagnostics until it runs again. A Blocked result is not pending, so a failure replaces earlier diagnostics. A required unit without a result is not yet a contributor; its diagnostics can only extend a current set.
-- **Diagnostic.** Each diagnostic has a range, severity, code, `source: "kimigayo"` and message. The message is the record's message followed, on separate lines, by its label, the alternative text of related locations not sent as `relatedInformation`, omissions, and `note:` and `advice:` text. Related locations with a sendable range are sent as `relatedInformation` when the client declares `textDocument.publishDiagnostics.relatedInformation` at `initialize`; otherwise, and for every other related location, their alternative text is placed in the message.
+- **Diagnostic.** Each diagnostic has a range, severity, code, `source: "kimigayo"` and message. The message is the record's message followed, on separate lines, by its label, the alternative text of related locations not sent as `relatedInformation`, omissions, and the `note:` text. Related locations with a sendable range are sent as `relatedInformation` when the client declares `textDocument.publishDiagnostics.relatedInformation` at `initialize`; otherwise, and for every other related location, their alternative text is placed in the message.
 - **Payload.** `textDocument/publishDiagnostics` carries a complete replacement: the contributors' diagnostics for the URI, ordered by display range, then contributor (project identity, unit kind, target), then result order. Diagnostics with equal sent values from different contributors merge, keeping the largest count that one contributor sends; distinct problems of one result never merge. The notification carries the document version when the document is open. Version handling is optional for clients, so correctness never depends on it.
 - **Suppression.** A URI never sent counts as sent empty. A non-empty payload equal to the last send, with the same version, is not sent again, and an empty payload is sent only after a non-empty one.
 - Changes of an outcome are logged with `window/logMessage`, never shown with `window/showMessage`.

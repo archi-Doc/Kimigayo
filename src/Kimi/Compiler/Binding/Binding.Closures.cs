@@ -229,7 +229,6 @@ public sealed partial class Binding
                 code,
                 note: note,
                 evidence: [name],
-                advice: repeat.Parameter ? $"Rename the parameter, or remove the capture entry {name} if the body needs only the argument" : $"Remove the repeated entry {name}",
                 span: repeat.Later,
                 relatedSpans: [("declaration", function, repeat.Earlier, "capture entry")],
                 condition: (ushort)i);
@@ -764,10 +763,6 @@ public sealed partial class Binding
 
                 var memberBorrow = memberOperation.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow or ArgumentOperationKind.PayloadProjection;
                 // A Copy payload Field read lends the captured handle; it does not consume that handle (SPEC 3.4.1).
-                var fieldRead = ObjectTypes.HandleMode(use.BoundType) is not null && use.Parent is MemberAccessKoto field &&
-                    ReferenceEquals(field.Left, use) && field.BoundSymbol?.Property?.IsStored == true &&
-                    field.BoundType is { } fieldType && binding.ProveCopy(fieldType, this.function) == ConstraintProof.Proven && !this.UsesReferentExclusively(field);
-                var exclusiveReference = use.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
                 if ((use.Parent is BinaryKoto assignment && assignment.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals && ReferenceEquals(assignment.Left, use)) ||
                     use.Parent is UnaryKoto { Akind: KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement } ||
                     (receiver && called!.ReceiverKind == SemanticsKind.Uniq) || (memberBorrow && memberOperation.ParameterType?.Semantics == SemanticsKind.Uniq) ||

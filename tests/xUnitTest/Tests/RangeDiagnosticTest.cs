@@ -14,13 +14,13 @@ namespace XunitTest;
 public class RangeDiagnosticTest(ITestOutputHelper output)
 {
     [Theory]
-    [InlineData("for i in 1..^1 => ()", "1..^1", "IntoIterable", "Kimi.Range<i32, Kimi.FromEnd<i32>>", "resolve(values.length)")]
-    [InlineData("for i in ..3 => ()", "..3", "IntoIterable", "Kimi.Range<Kimi.Start, i32>", "resolve(values.length)")]
-    [InlineData("for i in 1@i32..3@i64 => ()", "1@i32..3@i64", "IntoIterable", "Kimi.Range<i32, i64>", "same integer Type")]
-    [InlineData("let r = ..=3\nfor i in r => ()", "r", "Iterable", "Kimi.ClosedRange<Kimi.Start, i32>", "resolve(values.length)")]
-    [InlineData("var r = 1..^1\nfor i in r@uniq => ()", "r@uniq", "UniqIterable", "Kimi.Range<i32, Kimi.FromEnd<i32>>", "resolve(values.length)")]
-    [InlineData("let r = 1@i32..=3@i64\nfor i in r@move => ()", "r@move", "IntoIterable", "Kimi.ClosedRange<i32, i64>", "same integer Type")]
-    public void NonIterableRangesExplainTheSelectedEntryAndRepair(string source, string text, string entry, string type, string repair)
+    [InlineData("for i in 1..^1 => ()", "1..^1", "IntoIterable", "Kimi.Range<i32, Kimi.FromEnd<i32>>")]
+    [InlineData("for i in ..3 => ()", "..3", "IntoIterable", "Kimi.Range<Kimi.Start, i32>")]
+    [InlineData("for i in 1@i32..3@i64 => ()", "1@i32..3@i64", "IntoIterable", "Kimi.Range<i32, i64>")]
+    [InlineData("let r = ..=3\nfor i in r => ()", "r", "Iterable", "Kimi.ClosedRange<Kimi.Start, i32>")]
+    [InlineData("var r = 1..^1\nfor i in r@uniq => ()", "r@uniq", "UniqIterable", "Kimi.Range<i32, Kimi.FromEnd<i32>>")]
+    [InlineData("let r = 1@i32..=3@i64\nfor i in r@move => ()", "r@move", "IntoIterable", "Kimi.ClosedRange<i32, i64>")]
+    public void NonIterableRangesExplainTheSelectedEntryAndRepair(string source, string text, string entry, string type)
     {
         var c = Analyze(source);
         var error = Assert.Single(Errors(c));
@@ -29,7 +29,6 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.Contains(type, error.Label, StringComparison.Ordinal);
         Assert.Contains(entry, error.Label, StringComparison.Ordinal);
         Assert.Contains("both boundaries", error.Note, StringComparison.Ordinal);
-        Assert.Contains(repair, error.Advice, StringComparison.Ordinal);
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
         Assert.Contains(record.Reason!, x => x.Name == "entry" && x.Value == entry);
@@ -39,16 +38,15 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     // SPEC 4.6.3.4, 8.3: boundary Types not proven to be one integer Type in a generic context are reported once, at the
     // Subject, with the requirement and a conditional repair.
     [Theory]
-    [InlineData("func f<A, B>(p: A, q: B)\n    A is PrimitiveInteger\n    B is PrimitiveInteger\n    for x in p..q => ()", "p..q", "require A is PrimitiveInteger and B is A")]
-    [InlineData("func f<P>(p: P, q: P)\n    P is Position\n    for x in p..q => ()", "p..q", "require P is PrimitiveInteger")]
-    public void UnprovenRangeIterationIsExplainedOnce(string source, string text, string repair)
+    [InlineData("func f<A, B>(p: A, q: B)\n    A is PrimitiveInteger\n    B is PrimitiveInteger\n    for x in p..q => ()", "p..q")]
+    [InlineData("func f<P>(p: P, q: P)\n    P is Position\n    for x in p..q => ()", "p..q")]
+    public void UnprovenRangeIterationIsExplainedOnce(string source, string text)
     {
         var c = Analyze(source);
         var error = Assert.Single(Errors(c));
         Assert.Equal(nameof(DiagnosticCode.UnprovenConstraint_Kd), error.Code);
         Assert.Equal(text, error.Text);
         Assert.Contains("one integer Type", error.Note, StringComparison.Ordinal);
-        Assert.Contains(repair, error.Advice, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -88,27 +86,14 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
     [InlineData("func take<T>(r: Range<T, T>)\n    T is PrimitiveInteger\n    ()\ntake(1..=3)")]
     [InlineData("func take(n: i32 ! r: Range<i32, i32>) => ()\ntake(0, r: 1..=3)")]
     [InlineData("func take(r: Range<i32, i32>) => ()\nlet r = 1..=3\ntake(r)")]
-    public void ShapeAdviceNamesConditionalCapabilitiesAndTheRejectedSignature(string source)
+    public void ShapeMismatchNamesTheRejectedSignature(string source)
     {
         var c = Analyze(source);
         var error = Assert.Single(Errors(c));
         Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), error.Code);
-        Assert.Contains("R is PositionRange", error.Advice, StringComparison.Ordinal);
-        Assert.Contains("Iterable, UniqIterable or IntoIterable", error.Advice, StringComparison.Ordinal);
-        Assert.Contains("Item constraints", error.Advice, StringComparison.Ordinal);
-        Assert.Contains("concrete range Type", error.Advice, StringComparison.Ordinal);
-        Assert.Contains("Verify the function body", error.Advice, StringComparison.Ordinal);
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Contains(record.Related!, x => x.Label!.Contains("argument has Kimi.ClosedRange<i32, i32>", StringComparison.Ordinal));
     }
-
-    [Theory]
-    [InlineData("func take(r: Range<i32, i32>) => ()\nfunc take(r: ClosedRange<i32, i32>) => ()\ntake(1..=3)")]
-    [InlineData("struct Range\nstruct ClosedRange\nfunc take(r: Range) => ()\nfunc f(r: ClosedRange) => take(r)")]
-    [InlineData("func take(! r: Range<i32, i32>) => ()\ntake(wrong: 1..=3)")]
-    [InlineData("func take(r: Range<i32, i32>, n: i32) => ()\ntake(1..=3)")]
-    public void AdviceDoesNotGuessFromNamesOrUncomparedArguments(string source)
-        => Assert.All(Errors(Analyze(source)), static x => Assert.Null(x.Advice));
 
     [Theory]
     [InlineData("for i in 1..^1 => ()", "UnsatisfiedConstraint_Kd")]
@@ -125,20 +110,10 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(code, record.Code);
-        if (code == nameof(DiagnosticCode.PositionAlwaysFails_Kd))
-        {
-            Assert.Contains("a try operation returns None", record.Advice, StringComparison.Ordinal);
-        }
-
         var console = new DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains(record.Code, console.Text, StringComparison.Ordinal);
         Assert.Contains(record.Label ?? record.Message, console.Text, StringComparison.Ordinal);
-        if (record.Advice is { } advice)
-        {
-            Assert.Contains(advice, console.Text, StringComparison.Ordinal);
-        }
-
         var identity = SourceIdentity.FromPath(path);
         var check = new CheckOutput(CheckOutcome.Completed, c.Binding.Result.IsComplete, TestPresence.No, result);
         foreach (var related in new[] { false, true })
@@ -147,11 +122,6 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
             Assert.Equal(record.Display!.Range, sent.Range);
             Assert.Equal(record.Code, sent.Code);
             Assert.Contains(record.Label ?? record.Message, sent.Message, StringComparison.Ordinal);
-            if (record.Advice is { } fix)
-            {
-                Assert.Contains(fix, sent.Message, StringComparison.Ordinal);
-            }
-
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
 
@@ -169,7 +139,6 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(first, Assert.Single(Errors(c)));
         var moved = Assert.Single(Errors(Analyze("\n" + source + "\nlet wrong: i32 = true")), static x => x.Code == nameof(DiagnosticCode.UnsatisfiedConstraint_Kd));
         Assert.Equal(first.Label, moved.Label);
-        Assert.Equal(first.Advice, moved.Advice);
         Assert.Equal(first.Note, moved.Note);
         Assert.Equal(first.Span.Start + 1, moved.Span.Start);
     }
@@ -208,7 +177,6 @@ public class RangeDiagnosticTest(ITestOutputHelper output)
         var error = Assert.Single(Errors(c));
         Assert.Contains("Kimi.ClosedRange<i32, i32>", error.Note, StringComparison.Ordinal);
         Assert.Contains("Kimi.Range<i32, i32>", error.Note, StringComparison.Ordinal);
-        Assert.Contains("R is PositionRange", error.Advice, StringComparison.Ordinal);
         var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(8, record.Related!.Length);
         Assert.Contains(record.Omissions!, static x => x.Part == "related locations" && x.Count == 2);

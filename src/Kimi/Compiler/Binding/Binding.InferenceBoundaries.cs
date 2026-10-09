@@ -6,14 +6,11 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // SPEC 10.6, 10.8: the inference-boundary record of a selected call: the declaration, the first unsolved slot, the waiting argument whose
-// fixed expected call signature holds it, and the Note and Advice formed from the evidence the call lacks.
-internal readonly record struct UnboundSlotFact(FunctionKoto Declaration, string Slot, Koto? Argument, string Note, string Advice);
+// fixed expected call signature holds it, and the Note formed from the evidence the call lacks.
+internal readonly record struct UnboundSlotFact(FunctionKoto Declaration, string Slot, Koto? Argument, string Note);
 
 public sealed partial class Binding
 {
-    // SPEC 10.5, 10.6: the Advice of a function reference that no fixed expected call signature or explicit Type argument binds.
-    private const string UnboundReferenceAdvice = "Write explicit Type arguments, as in identity<i32>, or annotate the expected Function Type, as in let f: (i32) -> i32 = identity";
-
     private const string UnboundReferenceNote = "A function reference without a fixed expected call signature binds its Type parameters only from explicit Type arguments (SPEC 10.5)";
 
     private Dictionary<Koto, UnboundSlotFact>? unboundSlots;
@@ -102,7 +99,7 @@ public sealed partial class Binding
         (string Role, Koto At, string? Label)[] related = fact.Argument is { } argument
             ? [("declaration", fact.Declaration, null), ("argument", argument, null)]
             : [("declaration", fact.Declaration, null)];
-        node.Report(requirement, code, evidence: [fact.Slot], related: related, note: fact.Note, advice: fact.Advice);
+        node.Report(requirement, code, evidence: [fact.Slot], related: related, note: fact.Note);
     }
 
     // The fixed expected call signature of a parameter (SPEC 10.5): the Callable signature of its F, `ref/F` or `uniq/F`, or its common
@@ -261,8 +258,6 @@ public sealed partial class Binding
                 clauses.Add($"give an argument a Type that binds {name}, such as through a local whose Type is written");
             }
 
-            var advice = string.Join(", or ", clauses);
-            advice = char.ToUpperInvariant(advice[0]) + advice[1..];
             var others = new List<string>();
             for (var g = first + 1; g < CallOwnSlots(selected).Count; g++)
             {
@@ -276,7 +271,7 @@ public sealed partial class Binding
             var note = waiting is not null
                 ? $"No explicit Type argument or evidence binds {name}; it appears in the fixed expected call signature of a waiting argument, which is never evidence for an outer slot{also} (SPEC 10.5, 10.8)"
                 : $"No explicit Type argument or evidence binds {name}{also} (SPEC 10.8)";
-            return this.FailExplained(ref this.unboundSlots, call, BindingFailure.UnboundTypeArgument, new UnboundSlotFact(selected, name, waiting, note, advice), true);
+            return this.FailExplained(ref this.unboundSlots, call, BindingFailure.UnboundTypeArgument, new UnboundSlotFact(selected, name, waiting, note), true);
 
             // Explicit Type arguments are a complete list (SPEC 8.1): every slot must be writable, so a slot that a waiting argument binds or
             // that holds a Closure or Function Item Type leaves none to write.

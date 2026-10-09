@@ -81,7 +81,6 @@ public class ArrayTypeRecoveryTest(ITestOutputHelper output)
         Assert.Equal(["MisplacedSyntax_Kd", "UnresolvedBinding_Kd", "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains("Parenthesize", console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })

@@ -51,7 +51,7 @@ public sealed class ProtectedPlacementTest(ITestOutputHelper output)
         => Assert.Empty(DiagnosticCorpus.Check(declarations + "public func main() => ()\n").Diagnostics);
 
     [Fact]
-    public void CliAndLspCarryTheContainerAndAdvice()
+    public void CliAndLspCarryTheContainer()
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = MinimalEmissionTest.Analyze("group Tools\n    protected func f() => ()", path);
@@ -64,7 +64,6 @@ public sealed class ProtectedPlacementTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("belongs to group Tools : ProtectedPlacement_Kd", console.Text, StringComparison.Ordinal);
         Assert.Contains("protected outside a struct", console.Text, StringComparison.Ordinal);
-        Assert.Contains("Use public, internal or private, or declare it as a member of a struct", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("InaccessibleBinding", console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);

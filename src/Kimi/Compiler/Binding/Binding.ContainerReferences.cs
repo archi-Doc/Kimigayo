@@ -8,18 +8,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // Where a node lies, for the written forms an Advice may offer there (SPEC 15.3.3): a body, whose statements may declare locals
-    // (the top-level runtime body and an anonymous function's body included, also inside a Field initializer); a stored Field's
-    // initializer, whose declaration takes origin clauses; an expression of a function header, a parameter default or base
-    // initializer, which holds no local declaration and whose sets no supported clause relates; or a declaration header's Types.
-    private enum AdviceSite : byte
-    {
-        Body,
-        StoredInitializer,
-        HeaderExpression,
-        Header,
-    }
-
     // A container keeps its own slots first, followed by its parent's effective slots.
     // Slot symbols retain their original binder and ordinal; spelling is not identity.
     internal static int ContainerSlot(Koto binder, BindingSymbol parameter)
@@ -70,110 +58,6 @@ public sealed partial class Binding
         }
 
         return null;
-    }
-
-    // SPEC 15.3.3: a local declaration with an initializer holds the expression, so origin clauses can be written under it.
-    private static bool InLocalInitializer(Koto node)
-    {
-        for (var current = node; current.Parent is { } parent; current = parent)
-        {
-            if (parent is VariableKoto variable)
-            {
-                return variable is not PropertyKoto && variable.InitializerKoto is not null && ReferenceEquals(variable.InitializerKoto, current);
-            }
-
-            if (parent is FunctionKoto or PropertyAccessorKoto or DeclarationContainerKoto)
-            {
-                return false;
-            }
-        }
-
-        return false;
-    }
-
-    private static AdviceSite SiteOf(Koto node)
-    {
-        for (var current = node; current.Parent is { } parent; current = parent)
-        {
-            switch (parent)
-            {
-                case PropertyAccessorKoto accessor:
-                    return ReferenceEquals(accessor.Body, current) ? AdviceSite.Body : AdviceSite.Header;
-                case FunctionKoto function:
-                    if (ReferenceEquals(function.Body, current) || ReferenceEquals(function.ExpressionBody, current))
-                    {
-                        // An anonymous function written in a parameter default is not supported (Unsupported_Kd).
-                        return function.IsAnonymous && SiteOf(function) == AdviceSite.HeaderExpression ? AdviceSite.HeaderExpression : AdviceSite.Body;
-                    }
-
-                    if (ReferenceEquals(function.BaseInitializer, current))
-                    {
-                        return AdviceSite.HeaderExpression;
-                    }
-
-                    for (var i = 0; i < function.Parameters.Count; i++)
-                    {
-                        if (ReferenceEquals(function.Parameters[i].DefaultValue, current))
-                        {
-                            return AdviceSite.HeaderExpression;
-                        }
-                    }
-
-                    return AdviceSite.Header;
-                case PropertyKoto property:
-                    return ReferenceEquals(property.InitializerKoto, current) ? AdviceSite.StoredInitializer : AdviceSite.Header;
-                case DeclarationContainerKoto:
-                    return AdviceSite.Header;
-            }
-        }
-
-        return AdviceSite.Header;
-    }
-
-    // SPEC 15.3.3, 15.3.4: the declaration whose origin clauses relate a binding set written in its own Type: a local declaration's
-    // annotation, a stored Field's Type, a named function's parameter or result Type (a Contract requirement's too) and an enum
-    // Case's payload. A set inside a Function Type is quantified per call, and an anonymous function's or an accessor's signature, a
-    // computed Property's Type and an expression's Type argument or adaptation hold no clause that relates the set, so none is found
-    // there. Whole: the set's Type is the whole Type of its position, so a during written in its place needs no grouping.
-    private static bool RelatesOnDeclaration(TypeSemanticsKoto annotation, out bool whole)
-    {
-        Koto current = annotation;
-        for (var parent = annotation.Parent; parent is not null; current = parent, parent = parent.Parent)
-        {
-            whole = ReferenceEquals(current, annotation);
-            switch (parent)
-            {
-                case FunctionTypeKoto or PropertyAccessorKoto or DeclarationContainerKoto or AliasKoto:
-                    return false;
-                case FieldKoto local:
-                    return ReferenceEquals(local.TypeKoto, current);
-                case PropertyKoto property:
-                    return property.DeclarationKind is PropertyDeclarationKind.Let or PropertyDeclarationKind.Var && ReferenceEquals(property.TypeKoto, current);
-                case FunctionKoto function:
-                    if (function.IsAnonymous)
-                    {
-                        return false;
-                    }
-
-                    for (var i = 0; i < function.Parameters.Count; i++)
-                    {
-                        if (ReferenceEquals(function.Parameters[i].Type, current))
-                        {
-                            return true;
-                        }
-                    }
-
-                    return ReferenceEquals(function.ReturnType, current);
-            }
-
-            if (parent.Akind == KotoKind.EnumCase)
-            {
-                return true;
-            }
-        }
-
-        whole = false;
-        return false;
     }
 
     // A Slice keeps its one slot as the Type's own Origin (Binding.TypeOrigins); every other container keeps its slots as Origin
@@ -308,105 +192,23 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 15.3.3: a stored Field's initializer has no value whose Origin is a slot of a call's expression qualifier (no receiver, and
-    // static storage is not lent there), so a set related on the Field repairs the call only when no parameter of any candidate of
-    // the called member names a slot of that Type. A parameter Type that did not bind names it, conservatively.
-    private bool ParametersNameSlots(BindingSymbol? type, string member)
-    {
-        if (type?.Schema is not { } schema || !this.scopes.TryGetValue(type.Declaration, out var members) || !members.Values.TryGetValue(member, out var called))
-        {
-            return true;
-        }
-
-        for (var candidate = called; candidate is not null; candidate = candidate.Next)
-        {
-            if (candidate.Declaration is not FunctionKoto function)
-            {
-                return true;
-            }
-
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                if (function.Parameters[i].Type.BoundType is not { } parameter)
-                {
-                    return true;
-                }
-
-                for (var s = 0; s < schema.Origins.Count; s++)
-                {
-                    if (NamesOrigin(parameter, schema.Origins[s].Origin))
-                    {
-                        return true;
-                    }
-                }
-            }
-        }
-
-        return false;
-    }
-
     // SPEC 15.3.1: a binding set introduces a new set name and never applies an existing Origin or set. The later set is the location
-    // and the first declaration of the name is related. The Advice writes a new set related where origin clauses can be written: on
-    // the declaration that holds the set (a local, a stored Field, a named function or an enum Case, RelatesOnDeclaration), or, for
-    // an expression qualifier elsewhere in a body, on a new local declaration (SPEC 15.3.3, 15.4.4); a parameter default or base
-    // initializer gets none (AdviceSite), nor does any other position. A one-slot Type in a Type position may instead apply the
-    // existing Origin with during (SPEC 15.3.1).
+    // and the first declaration of the name is related.
     private void ReportDuplicateBindingSet(TypeSemanticsKoto annotation, string name, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var earlier = this.EarlierBindingName(annotation, name);
-        var type = annotation.Type?.BoundType?.Symbol ?? annotation.BoundType?.Symbol;
-        var slots = type?.Schema?.Origins;
-        var slot = slots is { Count: > 0 } ? slots[0].Name : null;
-        var scope = this.NameScope(annotation);
-        var fresh = this.FreshName(name, annotation, scope);
-        var typeText = annotation.Type?.ToString() ?? annotation.Identifier;
-        var written = $"{typeText}{{{fresh}}}";
-        var qualifier = annotation.Parent is ParenthesizedTypeKoto grouped && grouped.Parent is MemberAccessKoto { Right: IdentifierNameKoto called } member && ReferenceEquals(member.Left, grouped)
-            ? (Member: called.IdentifierName, Call: member.Parent is InvocationKoto { ArgumentNodes.Count: > 0 } ? "(...)" : "()")
-            : default;
-        var relatedTo = earlier?.Set is { } first && ReferenceEquals(first.Type?.BoundType?.Symbol ?? first.BoundType?.Symbol, type) ? $"{name}.{slot}"
-            : earlier?.Scalar == true ? name : null;
-        var relation = slot is not null && relatedTo is not null ? $" followed by origin {fresh}.{slot} == {relatedTo}" : null;
-        var site = SiteOf(annotation);
-        string? advice = null;
-        if (qualifier.Member is not null && site == AdviceSite.Body && !InLocalInitializer(annotation))
-        {
-            var local = this.FreshName("v", annotation, scope);
-            advice = relation is not null
-                ? $"Write a new set name in a local declaration and relate it there, as in let {local} = ({written}).{qualifier.Member}{qualifier.Call}{relation}"
-                : $"Write a new set name in a local declaration, as in let {local} = ({written}).{qualifier.Member}{qualifier.Call}, and relate each of its slots in an origin clause there";
-        }
-        else if (qualifier.Member is not null
-            ? site == AdviceSite.Body || (site == AdviceSite.StoredInitializer && !this.ParametersNameSlots(type, qualifier.Member))
-            : site != AdviceSite.HeaderExpression && RelatesOnDeclaration(annotation, out _))
-        {
-            // A parameter default or base initializer holds no local declaration, and a function clause over a set written there is
-            // not supported; a Field's initializer has no value at a slot that the called member's parameters name; and the other
-            // positions hold no clause that relates the set (RelatesOnDeclaration). No written form relates a new set there.
-            written = qualifier.Member is null ? written : $"({written}).{qualifier.Member}";
-            advice = relation is not null
-                ? $"Write a new set name and relate it on the declaration, as in {written}{relation}"
-                : $"Write a new set name, as in {written}, and relate each of its slots in an origin clause on the declaration";
-            if (qualifier.Member is null && earlier?.Scalar == true && slots is { Count: 1 })
-            {
-                // Inside another Type, such as ref/Holder{a}, the one-slot form is grouped so that during binds the slot, not the borrow.
-                var form = RelatesOnDeclaration(annotation, out var whole) && whole ? $"{typeText} during {name}" : $"({typeText} during {name})";
-                advice = $"Apply the existing Origin with the one-slot form {form}, or {char.ToLowerInvariant(advice[0])}{advice[1..]}";
-            }
-        }
-
         var note = $"A binding set introduces a new set name and never applies an existing Origin or set (SPEC 15.3.1); {name} is already declared in this scope";
         if (earlier is not { } declaration)
         {
-            annotation.Report(requirement, code, note: note, evidence: [name], advice: advice);
+            annotation.Report(requirement, code, note: note, evidence: [name]);
         }
         else if (declaration.Span is { } span)
         {
-            annotation.Report(requirement, code, note: note, evidence: [name], advice: advice, relatedSpans: [("declaration", declaration.At, span, "Origin slot")]);
+            annotation.Report(requirement, code, note: note, evidence: [name], relatedSpans: [("declaration", declaration.At, span, "Origin slot")]);
         }
         else
         {
-            annotation.Report(requirement, code, note: note, evidence: [name], advice: advice, related: [("declaration", declaration.At, "first declaration")]);
+            annotation.Report(requirement, code, note: note, evidence: [name], related: [("declaration", declaration.At, "first declaration")]);
         }
     }
 
@@ -429,27 +231,6 @@ public sealed partial class Binding
         }
 
         return null;
-    }
-
-    // A name for an Advice example that no visible value, Origin or binding set declares: the stem, then the stem with 2, 3 and so on.
-    private string FreshName(string stem, Koto at, BindingScope? scope)
-    {
-        var owner = OriginOwner(at);
-        for (var n = 1; ; n++)
-        {
-            var name = n == 1 ? stem : stem + n.ToString(CultureInfo.InvariantCulture);
-            var taken = owner is not null && this.originDeclarations.GetValueOrDefault(owner)?.Sets.ContainsKey(name) == true;
-            for (var current = scope; current is not null && !taken; current = current.Parent)
-            {
-                taken = current.Values.ContainsKey(name) || current.Origins?.ContainsKey(name) == true || current.OriginSets?.ContainsKey(name) == true ||
-                    this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets.ContainsKey(name) == true;
-            }
-
-            if (!taken)
-            {
-                return name;
-            }
-        }
     }
 
     // The first declaration, in source order, of a name that a binding set reuses: a set of the same declaration or of an enclosing

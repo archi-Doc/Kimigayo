@@ -612,13 +612,12 @@ public abstract class Koto
     /// <param name="note">A Note formed from the facts.</param>
     /// <param name="at">The smallest syntax that shows the failed condition, when it is not this node; this node stays the subject.</param>
     /// <param name="evidence">The code's evidence facts, all of them or none.</param>
-    /// <param name="advice">Conditional advice formed from the facts.</param>
     /// <param name="related">Syntax related to the problem, with its role and label.</param>
     /// <param name="condition">The condition within the requirement that distinguishes independent problems of this node, such as its arguments.</param>
     /// <param name="span">The part of the located syntax that has no node of its own, such as one capture entry; the location's document is kept.</param>
     /// <param name="relatedSpans">Related syntax without a node of its own, such as an Origin header, in the document of the given node.</param>
     /// <param name="repairs">The repair candidates the report offers (SPEC 23.3.6.9), with edits located by <see cref="Edit"/>.</param>
-    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, string? advice = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
+    internal void Report(DiagnosticRequirement requirement, DiagnosticCode code, object? first = null, object? second = null, string? note = null, Koto? at = null, object?[]? evidence = null, (string Role, Koto At, string? Label)[]? related = null, ushort condition = 0, SourceSpan? span = null, (string Role, Koto In, SourceSpan Span, string? Label)[]? relatedSpans = null, DiagnosticRepairFact[]? repairs = null)
     {
         if (this.DiagnosticCollection is not { } collection)
         {
@@ -643,7 +642,7 @@ public abstract class Koto
         }
 
         // A span narrows the location within the located node's document, such as one capture entry of a closure.
-        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, advice, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
+        collection.Report(requirement.Partition, this.KeyOf(requirement, condition), span ?? (at ?? this).Span, code, first, second, note, null, (at ?? this).CodeContext.SourceDocument, evidence, locations, repairs);
     }
 
     /// <summary>Locates one edit of a repair candidate in this node's document (SPEC 23.3.6.9).</summary>
@@ -657,7 +656,7 @@ public abstract class Koto
     /// <param name="requirement">The requirement left undecided.</param>
     /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
     internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)
-        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, null, prerequisites, this.CodeContext.SourceDocument);
+        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, prerequisites, this.CodeContext.SourceDocument);
 
     /// <summary>Reports that this node is a form of syntax not permitted where it stands (docs/dev/DIAGNOSTICS.md §4.4). The caller
     /// records the node as a recovery when its later checks depend on the misplaced syntax; independent checks stay direct.</summary>

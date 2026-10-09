@@ -36,7 +36,7 @@ public class GenericFunctionReferenceTest
     [InlineData("GenericBody", Identity + "func twice<U>(value: U) -> U\n    U is Copy\n    U is Owned\n    let f: (U) -> U = identity\n    return f(f(value))\nrequire twice(7) == 7 else => $abort(\"body\")", "")]
     [InlineData("NonCopyInstance", Identity + "let f: (string) -> string = identity\nlet text = f(\"text\")\nConsole.writeLine(text)", "text\n")]
     [InlineData("Constrained", "func pair<T>(value: T) -> (T, T)\n    T is Copy\n    return (value, value)\nlet f: (i32) -> (i32, i32) = pair\nlet p = f(4)\nrequire p.0 + p.1 == 8 else => $abort(\"constrained\")", "")]
-    // SPEC 10.6: the repair that the per-call slot record advises; each call of the anonymous function binds T.
+    // SPEC 10.6: a per-call slot's reference wrapped in an anonymous function runs; each call of the anonymous function binds T.
     [InlineData("PerCallWrapped", "struct Node\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n" + Identity + "let h: (ref/Node) -> ref/Node = func (value) => identity(value)\nlet n = Node.init(v: 4)\nrequire h(n@ref).v == 4 else => $abort(\"wrapped\")", "")]
     [InlineData("PerCallWrappedCallable", "func apply<F>(action: ref/F, x: ref/i32) -> ref/i32 during x\n    F is Callable<(ref/i32) -> ref/i32>\n    return action(x)\n" + Identity + "let x: i32 = 5\nrequire apply(func (value) => identity(value), x@ref)@follow == 5 else => $abort(\"callable\")", "")]
     [InlineData("PerCallWrappedNamed", "func both<T>(first: T ! count => second: i32) -> T => first@move\nlet g: (ref/i32, i32) -> ref/i32 = func (first, second) => both(first, count: second)\nlet n: i32 = 6\nrequire g(n@ref, 1)@follow == 6 else => $abort(\"named\")", "")]
@@ -89,27 +89,26 @@ public class GenericFunctionReferenceTest
     }
 
     // SPEC 10.6, 15.3.6: a slot that only a per-call Origin of the fixed expected call signature would satisfy is one
-    // MissingOriginBinding_Kd at the reference, showing the slot and that parameter, with Advice to wrap the reference.
+    // MissingOriginBinding_Kd at the reference, showing the slot and that parameter.
     [Theory]
-    [InlineData("Initializer", "struct Node\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n" + Identity + "let h: (ref/Node) -> ref/Node = identity", "identity", "1st", "ref/Node", "func (value) => identity(value)")]
-    [InlineData("Return", Identity + "func make() -> (ref/i32) -> ref/i32\n    return identity", "identity", "1st", "ref/i32", "func (value) => identity(value)")]
-    [InlineData("Callable", "func apply<F>(action: ref/F, x: ref/i32) -> ref/i32 during x\n    F is Callable<(ref/i32) -> ref/i32>\n    return action(x)\n" + Identity + "let x: i32 = 5\nlet r = apply(identity, x@ref)", "identity", "1st", "ref/i32", "func (value) => identity(value)")]
-    [InlineData("Assignment", "func first<T>(v: ref/T) -> ref/T => v\n" + Identity + "var g: (ref/i32) -> ref/i32 = first\ng = identity", "identity", "1st", "ref/i32", "func (value) => identity(value)")]
-    [InlineData("SecondParameter", "func second<T>(count: i32, value: T) -> T => value@move\nlet s: (i32, uniq/i32) -> uniq/i32 = second", "second", "2nd", "uniq/i32", "func (count, value) => second(count, value)")]
-    [InlineData("Named", "func both<T>(first: T ! count => second: i32) -> T => first@move\nlet g: (ref/i32, i32) -> ref/i32 = both", "both", "1st", "ref/i32", "func (first, second) => both(first, count: second)")]
+    [InlineData("Initializer", "struct Node\n    public let v: i32\n    public init(v: i32)\n        self.v = v\n" + Identity + "let h: (ref/Node) -> ref/Node = identity", "identity", "1st", "ref/Node")]
+    [InlineData("Return", Identity + "func make() -> (ref/i32) -> ref/i32\n    return identity", "identity", "1st", "ref/i32")]
+    [InlineData("Callable", "func apply<F>(action: ref/F, x: ref/i32) -> ref/i32 during x\n    F is Callable<(ref/i32) -> ref/i32>\n    return action(x)\n" + Identity + "let x: i32 = 5\nlet r = apply(identity, x@ref)", "identity", "1st", "ref/i32")]
+    [InlineData("Assignment", "func first<T>(v: ref/T) -> ref/T => v\n" + Identity + "var g: (ref/i32) -> ref/i32 = first\ng = identity", "identity", "1st", "ref/i32")]
+    [InlineData("SecondParameter", "func second<T>(count: i32, value: T) -> T => value@move\nlet s: (i32, uniq/i32) -> uniq/i32 = second", "second", "2nd", "uniq/i32")]
+    [InlineData("Named", "func both<T>(first: T ! count => second: i32) -> T => first@move\nlet g: (ref/i32, i32) -> ref/i32 = both", "both", "1st", "ref/i32")]
     // The elided result of S is the meet of both inputs, which the slot bound from the 1st parameter fits.
-    [InlineData("TwoInputs", FirstOf + "let f: (ref/i32, ref/i32) -> ref/i32 = firstOf", "firstOf", "1st", "ref/i32", "func (a, b) => firstOf(a, b)")]
-    [InlineData("Member", Counter + "let f: (ref/Counter, ref/i32) -> ref/i32 = Counter.pick", "Counter.pick", "2nd", "ref/i32", "func (p1, other) => Counter.pick(p1, other)")]
-    [InlineData("CallableTwoInputs", ApplyTwo + FirstOf + "let x: i32 = 5\nlet r = apply(firstOf, x@ref, x@ref)", "firstOf", "1st", "ref/i32", "func (a, b) => firstOf(a, b)")]
-    // A written Type argument's omitted Origin is solved by local inference, which only the per-call Origin would satisfy; the advised
-    // call infers T, so the wrapper drops the written arguments.
-    [InlineData("Explicit", Identity + "let f: (ref/i32) -> ref/i32 = identity<ref/i32>", "identity<ref/i32>", "1st", "ref/i32", "func (value) => identity(value)")]
+    [InlineData("TwoInputs", FirstOf + "let f: (ref/i32, ref/i32) -> ref/i32 = firstOf", "firstOf", "1st", "ref/i32")]
+    [InlineData("Member", Counter + "let f: (ref/Counter, ref/i32) -> ref/i32 = Counter.pick", "Counter.pick", "2nd", "ref/i32")]
+    [InlineData("CallableTwoInputs", ApplyTwo + FirstOf + "let x: i32 = 5\nlet r = apply(firstOf, x@ref, x@ref)", "firstOf", "1st", "ref/i32")]
+    // A written Type argument's omitted Origin is solved by local inference, which only the per-call Origin would satisfy.
+    [InlineData("Explicit", Identity + "let f: (ref/i32) -> ref/i32 = identity<ref/i32>", "identity<ref/i32>", "1st", "ref/i32")]
     // A parameter named like the reference would shadow it inside the wrapper, so it is renamed.
-    [InlineData("Shadowed", "func identity<T>(identity: T) -> T => identity@move\nlet h: (ref/i32) -> ref/i32 = identity", "identity", "1st", "ref/i32", "func (p1) => identity(p1)")]
+    [InlineData("Shadowed", "func identity<T>(identity: T) -> T => identity@move\nlet h: (ref/i32) -> ref/i32 = identity", "identity", "1st", "ref/i32")]
     // A bare Place never moves (SPEC 3.5), so the wrapper passes a by-value parameter of S that is not Copy, an owned self too, with @move.
-    [InlineData("Moved", Tagged + "let f: (ref/i32, string) -> ref/i32 = tagged", "tagged", "1st", "ref/i32", "func (a, s) => tagged(a, s@move)")]
-    [InlineData("OwnedSelf", OwnedBox + "let f: (Box, ref/i32) -> ref/i32 = Box.pick", "Box.pick", "2nd", "ref/i32", "func (p1, other) => Box.pick(p1@move, other)")]
-    public void APerCallOriginLeavesTheReferenceSlotUnsolved(string name, string source, string reference, string ordinal, string parameter, string wrapper)
+    [InlineData("Moved", Tagged + "let f: (ref/i32, string) -> ref/i32 = tagged", "tagged", "1st", "ref/i32")]
+    [InlineData("OwnedSelf", OwnedBox + "let f: (Box, ref/i32) -> ref/i32 = Box.pick", "Box.pick", "2nd", "ref/i32")]
+    public void APerCallOriginLeavesTheReferenceSlotUnsolved(string name, string source, string reference, string ordinal, string parameter)
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -122,7 +121,6 @@ public class GenericFunctionReferenceTest
         Assert.Equal(reference, error.Text);
         Assert.Equal($"only the {ordinal} parameter's per-call Origin would satisfy Type parameter 'T'", error.Label);
         Assert.Contains($"its {ordinal} parameter {parameter} at each call", error.Note, StringComparison.Ordinal);
-        Assert.EndsWith($"so that each call binds T, as in {wrapper}", error.Advice, StringComparison.Ordinal);
         Assert.Null(error.Repairs);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
@@ -141,7 +139,6 @@ public class GenericFunctionReferenceTest
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("MissingOriginBinding_Kd", console.Text, StringComparison.Ordinal);
         Assert.Contains("only the 1st parameter's per-call Origin would satisfy Type parameter 'T'", console.Text, StringComparison.Ordinal);
-        Assert.Contains("func (value) => identity(value)", console.Text, StringComparison.Ordinal);
         var identity = Kimi.Checking.SourceIdentity.FromPath(path);
         foreach (var capability in new[] { false, true })
         {
@@ -154,10 +151,10 @@ public class GenericFunctionReferenceTest
     // SPEC 10.6, 15.3.6: a slot that only the meet of several parameters' per-call Origins would satisfy names them all and relates each
     // written parameter of S. The Callable form was accepted with that meet in the bound argument before (2026-10-05).
     [Theory]
-    [InlineData("Meet", Pick + "let f: (ref/i32, ref/i32) -> ref/i32 = pick", "pick", "func (a, b) => pick(a, b)")]
-    [InlineData("ResultOnly", ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = g", "g", "func (a, b) => g(a, b)")]
-    [InlineData("CallableResultOnly", ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(g, x@ref, x@ref)", "g", "func (a, b) => g(a, b)")]
-    public void PerCallOriginsOfSeveralParametersAreNamedTogether(string name, string source, string reference, string wrapper)
+    [InlineData("Meet", Pick + "let f: (ref/i32, ref/i32) -> ref/i32 = pick", "pick")]
+    [InlineData("ResultOnly", ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = g", "g")]
+    [InlineData("CallableResultOnly", ApplyTwo + ResultOnly + "let x: i32 = 5\nlet r = apply(g, x@ref, x@ref)", "g")]
+    public void PerCallOriginsOfSeveralParametersAreNamedTogether(string name, string source, string reference)
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
@@ -168,7 +165,6 @@ public class GenericFunctionReferenceTest
         Assert.Equal(reference, error.Text);
         Assert.Equal("only the per-call Origins of the 1st and 2nd parameters would satisfy Type parameter 'T'", error.Label);
         Assert.Contains("binds the Origins of its 1st parameter ref/i32 and 2nd parameter ref/i32 at each call", error.Note, StringComparison.Ordinal);
-        Assert.EndsWith($"so that each call binds T, as in {wrapper}", error.Advice, StringComparison.Ordinal);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var record = Assert.Single(c.Diagnostics.Finalize(rejected: true).Diagnostics, x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(DiagnosticCategory.Language, record.Category);
@@ -219,12 +215,11 @@ public class GenericFunctionReferenceTest
         Assert.Contains("define", CompilationTestHelper.WriteIr(proven), StringComparison.Ordinal); // Generation accepts what check accepts.
     }
 
-    // SPEC 10.6: the Advice names the wrapper only where its call infers every slot; a slot that only a written Type argument binds
-    // (`M`) would stay unbound in `tag(a)`, and a written `ref/i32` with an omitted Origin is not inferred at a call, so no wrapper is
-    // advised. The same written arguments at a signature without per-call Origins are a value (ExplicitTypeArgumentsSelectTheReference,
-    // Phantom).
+    // SPEC 10.6: a reference whose written Type arguments are `ref/i32` with an omitted Origin and `i64` for a slot (`M`) that only a
+    // written argument binds is one MissingOriginBinding_Kd with no repair candidate. The same written arguments at a signature without
+    // per-call Origins are a value (ExplicitTypeArgumentsSelectTheReference, Phantom).
     [Fact]
-    public void AWrapperIsAdvisedOnlyWhereItsCallInfersEverySlot()
+    public void APerCallSlotOfAnExplicitReferenceIsReportedAtTheReference()
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = MinimalEmissionTest.Analyze("func tag<T, M>(a: T) -> T => a@move\nlet f: (ref/i32) -> ref/i32 = tag<ref/i32, i64>", path);
@@ -235,7 +230,6 @@ public class GenericFunctionReferenceTest
         Assert.Equal("tag<ref/i32, i64>", error.Text);
         Assert.Equal("only the 1st parameter's per-call Origin would satisfy Type parameter 'T'", error.Label);
         Assert.Contains("its 1st parameter ref/i32 at each call", error.Note, StringComparison.Ordinal);
-        Assert.Null(error.Advice);
         Assert.Null(error.Repairs);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
@@ -245,10 +239,9 @@ public class GenericFunctionReferenceTest
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("only the 1st parameter's per-call Origin would satisfy Type parameter 'T'", console.Text, StringComparison.Ordinal);
-        Assert.DoesNotContain("Advice:", console.Text, StringComparison.Ordinal);
     }
 
-    // SPEC 10.8: two spellings of one Function Type bind one slot, and a result-only per-call slot is wrapped as advised.
+    // SPEC 10.8: two spellings of one Function Type bind one slot, and a result-only per-call slot wrapped in an anonymous function is accepted.
     [Theory]
     [InlineData("func keep<T>(f: T) -> T => f@move\nlet m: ((ref/i32) -> ref/i32) -> (ref/i32) -> ref/i32 = keep")]
     [InlineData(ResultOnly + "let h: (ref/i32, ref/i32) -> ref/i32 = func (a, b) => g(a, b)")]
@@ -300,7 +293,6 @@ public class GenericFunctionReferenceTest
         Assert.Equal(nameof(DiagnosticCode.AmbiguousBinding_Kd), error.Code);
         Assert.Equal("show", error.Text);
         Assert.Contains("without a fixed expected call signature", error.Note, StringComparison.Ordinal);
-        Assert.Contains("explicit Type arguments", error.Advice, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -316,7 +308,6 @@ public class GenericFunctionReferenceTest
         Assert.Equal(nameof(DiagnosticCode.UnboundTypeArgument_Kd), error.Code);
         Assert.True(error.Text is "identity" or "(identity)", error.Text);
         Assert.Contains("'T'", error.Label, StringComparison.Ordinal);
-        Assert.Contains("identity<i32>", error.Advice, StringComparison.Ordinal);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);

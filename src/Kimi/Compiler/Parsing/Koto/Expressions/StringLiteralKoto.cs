@@ -81,8 +81,5 @@ public sealed class StringLiteralKoto : ExpressionKoto
         }
     }
 
-    /// <summary>Gets a value indicating whether the literal is a raw string, whose content keeps its delimiters and has no escapes.</summary>
-    internal bool IsRaw => this.rawLiteral.Length > 0 && this.rawLiteral[0] == '"';
-
     internal void WriteContentTo(ref IndentedStringBuilder builder) => builder.AppendVerbatim(this.rawLiteral);
 }

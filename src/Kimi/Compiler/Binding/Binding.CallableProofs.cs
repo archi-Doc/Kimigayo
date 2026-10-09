@@ -15,7 +15,7 @@ public sealed partial class Binding
 
     // SPEC 8.6, 8.7, 15.6.1, 23.3.6.5: the Reason names the Type bound to F, the clause, the failing member and the relation with both ends
     // as Origin displays; the clause is related as `constraint`, an omitted end at its Type occurrence and a closure's call receiver at
-    // the anonymous function's header. Advice only describes a repair.
+    // the anonymous function's header.
     private static void ReportCallableConstraint(Koto node, CallableConstraintFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var contract = fact.Contract;
@@ -44,10 +44,6 @@ public sealed partial class Binding
         var evidence = new object?[] { DiagnosticTypeName(fact.Subject), DiagnosticText.Bound(clause).Text, contract.Member, contract.Equality ? "==" : "outlives", longer, shorter };
         var relation = $"{contract.Member} requires {Phrase(longer)} {(contract.Equality ? "==" : "outlives")} {Phrase(shorter)}";
 
-        // SPEC 8.6: a Callable signature writes `during` on none of its parameters and not on its result, so the Advice never suggests
-        // annotating it; it names only an implementation that fits, whose result keeps the Type the signature requires.
-        var example = contract.Shorter.Kind == OriginKind.Static ? ", such as a borrow of static storage"
-            : contract.Shorter is { Kind: OriginKind.Input } && shorter.Kind == "omitted" ? ", such as a borrow of its input" : string.Empty;
         if (receiver is not null)
         {
             // SPEC 8.6: a Callable result cannot borrow the hidden environment receiver of the closure.
@@ -59,25 +55,16 @@ public sealed partial class Binding
                 evidence: evidence,
                 related: [.. related],
                 relatedSpans: [("origin", receiver, header, null)],
-                advice: $"Return a borrow that outlives {Phrase(shorter)} and that the closure's environment does not own{example}",
                 at: fact.At);
             return;
         }
 
-        // SPEC 15.3.7: an Item's condition is proven from the Callable signature; writing the input that supplies its longer end over the
-        // shorter one proves it.
-        var condition = contract.Member == "the result's well-formedness" || contract.Member.StartsWith("the clause '", StringComparison.Ordinal);
-        var without = contract.Member == "the result's well-formedness" ? "whose result Type needs no such relation" : "without that clause";
-        var advice = condition ? $"Pass an implementation {without}"
-            : contract.Member != "the result" ? $"Pass an implementation whose {contract.Member[4..]} accepts any borrow, as an input written without an Origin does"
-            : $"Pass an implementation whose result outlives {Phrase(shorter)}{example}";
         node.Report(
             requirement,
             code,
             note: $"{clause} compares whole contracts and is not proven: {relation}; its Origin part is judged from the premises alone (SPEC 8.6, 10.7, 15.6.1)",
             evidence: evidence,
             related: [.. related],
-            advice: advice,
             at: fact.At);
 
         static string Phrase(DiagnosticOrigin origin) => origin.Kind switch

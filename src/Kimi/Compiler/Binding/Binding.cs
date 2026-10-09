@@ -269,9 +269,6 @@ public sealed partial class Binding
     private static string PermittedCallsText(SemanticsKind receiver)
         => receiver switch { SemanticsKind.Ref => "Shared calls only", SemanticsKind.Uniq => "Shared and Exclusive calls only", _ => "every call" };
 
-    private static string SufficientCallText(SemanticsKind receiver)
-        => receiver switch { SemanticsKind.Ref => "a Shared call", SemanticsKind.Uniq => "a Shared or Exclusive call", _ => "any call" };
-
     private static bool SignatureSlotEquals(BindingSymbol? a, BindingSymbol? b, Koto aBinder, Koto bBinder)
         => ReferenceEquals(a, b) || (a is not null && b is not null && ReferenceEquals(a.Scope.Owner, aBinder) && ReferenceEquals(b.Scope.Owner, bBinder) && a.Slot == b.Slot);
 
@@ -666,8 +663,7 @@ public sealed partial class Binding
                 requirement,
                 issue.Code,
                 evidence: [reason],
-                related: [("context", fact.Related, fact.Problem is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation")],
-                advice: "Supply consistent initializer evidence or write the missing length or element Type explicitly; a dynamic Array's runtime length is not fixed-array evidence");
+                related: [("context", fact.Related, fact.Problem is ArrayInferenceProblem.Element or ArrayInferenceProblem.Length ? "initializer supplying the evidence" : "fixed-array annotation")]);
         }
         else if (issue.Code == DiagnosticCode.NonExhaustiveMatch_Kd)
         {
@@ -692,8 +688,7 @@ public sealed partial class Binding
             issue.Node.Report(
                 requirement,
                 issue.Code,
-                note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type",
-                advice: "Name the borrow whose dependency the Field keeps, as in Loan<ref/T during source>");
+                note: "Loan<T> keeps the dependency of a borrow value, so T must be a complete ref, uniq, objref or objuniq borrow Type");
         }
         else if (issue.Code == DiagnosticCode.NotObjectPayload_Kd)
         {
@@ -714,8 +709,7 @@ public sealed partial class Binding
                 at: head is OriginApplicationKoto application ? application.Type : head,
                 evidence: [associated.Count],
                 related: [("candidate", associated.First.Symbol.Declaration, first), ("candidate", associated.Second.Symbol.Declaration, second)],
-                note: $"{first} and {second} are distinct associated-Type identities; the declaring Contract's bindings are part of each identity (SPEC 8.4.2-3)",
-                advice: "Qualify the associated Type with the intended bound Contract reference, including its Type arguments");
+                note: $"{first} and {second} are distinct associated-Type identities; the declaring Contract's bindings are part of each identity (SPEC 8.4.2-3)");
         }
         else if (issue.Code is DiagnosticCode.NoApplicableOverload_Kd or DiagnosticCode.AmbiguousBinding_Kd && this.rejectedCandidates?.TryGetValue(issue.Node, out var rejected) == true)
         {
@@ -728,7 +722,6 @@ public sealed partial class Binding
             var candidates = new (string Role, Koto At, string? Label)[relatedCount];
             var nextConstraint = rejected.Length;
             string? shapeNote = issue.Code == DiagnosticCode.AmbiguousBinding_Kd ? "No candidate is better than every other remaining candidate under the argument, parameter Type, generic and default ranking rules. Anonymous bodies, captures and waiting function references do not select an overload" : null;
-            string? advice = null;
             var referenceHasGenericCandidate = false;
             for (var c = 0; c < rejected.Length; c++)
             {
@@ -737,7 +730,6 @@ public sealed partial class Binding
                 if (candidate.ReferenceSignature && issue.Code == DiagnosticCode.AmbiguousBinding_Kd)
                 {
                     shapeNote = "No function reference candidate is better than every other fitting candidate under the parameter Type and generic ranking rules. Results do not rank candidates";
-                    advice = "Write explicit Type arguments or a Type annotation that uniquely selects the intended function reference";
                 }
 
                 if (candidate.UnfixedReference)
@@ -745,9 +737,6 @@ public sealed partial class Binding
                     // SPEC 10.5: without a fixed expected call signature, an overload set is not a value.
                     shapeNote = "A function reference without a fixed expected call signature is a value only when exactly one candidate remains and its Type parameters are bound";
                     referenceHasGenericCandidate |= candidate.Function.GenericArguments.Count != 0;
-                    advice = !referenceHasGenericCandidate
-                        ? "Annotate the expected Function Type so that one function is referenced"
-                        : "Annotate the expected Function Type, or write explicit Type arguments, so that one function is referenced";
                     candidates[c] = ("candidate", candidate.Function, candidate.Actual is { } signature ? $"{label}: callable signature {DiagnosticText.Bound(DiagnosticTypeName(signature), 48).Text}" : label);
                     continue;
                 }
@@ -770,15 +759,13 @@ public sealed partial class Binding
                     (uint)candidate.ReceiverParameter < (uint)candidate.Function.Parameters.Count)
                 {
                     // SPEC 7.6.3, 8.6: the closure argument's minimum call receiver is the candidate's only refuted condition
-                    // (TryCandidate), so the Advice names the parameter form and Callable receiver that admit it.
+                    // (TryCandidate).
                     var parameter = candidate.Function.Parameters[candidate.ReceiverParameter];
                     var pattern = parameter.Type.BoundType;
                     var slot = (pattern is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? pattern.Components[0] : pattern)?.Symbol?.Name ?? "F";
                     var needed = closureReceiver.ToString().ToLowerInvariant();
                     label = $"{candidate.Function.Name}: closure requires {needed}; Callable requires {callableReceiver.ToString().ToLowerInvariant()}";
                     shapeNote ??= $"{label}. The closure argument of {parameter.InternalName} needs {CallReceiverText(closureReceiver)}, and the Callable Constraint of {slot} permits {PermittedCallsText(callableReceiver)} (SPEC 7.6.3, 8.6)";
-                    var form = closureReceiver == SemanticsKind.Uniq ? $"uniq/{slot}, with {slot} is Callable<uniq, ...>, and pass the closure with @uniq" : $"{slot} by value, with {slot} is Callable<owner, ...>, and pass the closure with @move";
-                    advice ??= $"Declare {parameter.InternalName} as {form}, or change the closure so that {SufficientCallText(callableReceiver)} suffices";
                 }
 
                 if (candidate.Actual is { } actual && candidate.Expected is { } expected)
@@ -793,13 +780,8 @@ public sealed partial class Binding
                         : candidate.CallableSignature ? $"The argument's known call signature is {shownActual.Text}; the candidate requires {shownExpected.Text} from the supplied Type evidence"
                         : candidate.SharedReceiver ? $"{SharedObjectAuthorityNote}. Receiver: {DiagnosticText.Bound(DiagnosticTypeName(actual), 48).Text}; required: {DiagnosticText.Bound(DiagnosticTypeName(expected), 48).Text}"
                         : $"The range argument has {shownActual.Text}; a candidate parameter requires {shownExpected.Text}";
-                    if (!candidate.SharedReceiver && !candidate.CallableSignature)
-                    {
-                        advice ??= RangeShapeAdvice;
-                    }
                 }
 
-                advice ??= candidate.ObjectClone ? StrongCloneAdvice : null;
                 if (candidate.ConstraintFailure is { } condition)
                 {
                     var subject = ClauseSubject(condition.Constraint) is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
@@ -811,7 +793,6 @@ public sealed partial class Binding
 
                     label = conditionNote;
                     shapeNote ??= conditionNote;
-                    advice ??= "Provide arguments that satisfy the declaration's required constraint";
                     candidates[nextConstraint++] = ("constraint", condition.Clause, conditionNote);
                 }
 
@@ -821,7 +802,7 @@ public sealed partial class Binding
             // A synthesized formatting write spans its whole literal; its failure is located at the value it writes, so the
             // writes of one literal are distinct problems at distinct locations (SPEC 23.3.6.2, 23.3.6.6).
             var at = issue.Node is InvocationKoto { Method: FormattingKoto or GenericsKoto { Identifier: FormattingKoto }, ArgumentNodes: [_, var value] } ? value : null;
-            issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, advice: advice, at: at);
+            issue.Node.Report(requirement, issue.Code, evidence: [rejected.Length], related: candidates, note: shapeNote, at: at);
         }
         else if (this.callInferenceFailures?.TryGetValue(issue.Node, out var callInference) == true)
         {
@@ -837,8 +818,7 @@ public sealed partial class Binding
             // SPEC 10.5: the generic parameter that no expected call signature or explicit argument binds.
             var lengths = ItemTypeArgumentCount(generic) != generic.GenericArguments.Count;
             var note = lengths ? "A function reference without a fixed expected call signature binds its Type and length parameters only from a complete explicit argument list (SPEC 10.5)" : UnboundReferenceNote;
-            var advice = lengths ? "Write every Type and length argument in declaration order, or annotate a Function Type whose signature binds every parameter" : UnboundReferenceAdvice;
-            issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: note, advice: advice);
+            issue.Node.Report(requirement, issue.Code, evidence: [generic.GenericArguments[0].Identifier], related: [("declaration", generic, null)], note: note);
         }
         else if (issue.Code == DiagnosticCode.BoundMethodValue_Kd && KotoHelper.UnwrapParentheses(issue.Node) is { BoundSymbol.Declaration: FunctionKoto method })
         {
@@ -910,8 +890,7 @@ public sealed partial class Binding
                 requirement,
                 issue.Code,
                 evidence: [$"neither {OriginDisplay(principal.First, issue.Node)} nor {OriginDisplay(principal.Second, issue.Node)} is proven to outlive the other lower bound"],
-                related: [("relation", principal.Clause, "lower bound of the inferred Origin")],
-                advice: "Write an explicit Origin annotation, or provide a premise proving which lower bound outlives the others");
+                related: [("relation", principal.Clause, "lower bound of the inferred Origin")]);
         }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
         {
@@ -920,7 +899,7 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallOrigins?.TryGetValue(issue.Node, out var perCallOrigin) == true)
         {
             // SPEC 15.3.6, 10.8: only the argument's own per-call Origin would satisfy the slot; the argument is related.
-            issue.Node.Report(requirement, issue.Code, evidence: [perCallOrigin.Reason], related: [("argument", perCallOrigin.Argument, null)], advice: PerCallOriginAdvice);
+            issue.Node.Report(requirement, issue.Code, evidence: [perCallOrigin.Reason], related: [("argument", perCallOrigin.Argument, null)]);
         }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.ReportUndeclaredStorageOrigin(issue.Node, requirement, issue.Code))
         {
@@ -983,9 +962,8 @@ public sealed partial class Binding
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
             // A default at a generic parameter Type is checked for every binding (SPEC 7.2.3).
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected);
-            string? defaultAdvice = null;
-            var defaultNote = wrappingConversion || conversion is not null ? null : this.GenericDefaultNote(issue.Node, mismatch.Actual, mismatch.Expected, out defaultAdvice);
-            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? defaultNote ?? this.BorrowOriginHint(issue.Node), advice: wrappingConversion ? WrappingConversionAdvice : defaultAdvice, at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            var defaultNote = wrappingConversion || conversion is not null ? null : this.GenericDefaultNote(issue.Node, mismatch.Actual, mismatch.Expected);
+            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? defaultNote ?? this.BorrowOriginHint(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.referenceConstraints?.TryGetValue(issue.Node, out var reference) == true)
         {
@@ -1009,20 +987,14 @@ public sealed partial class Binding
         else if (issue.Code == DiagnosticCode.UnsatisfiedConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var rangeFailure) == true)
         {
             var subject = rangeFailure.Subject;
-            var integers = subject.Components[0].IsInteger && subject.Components[1].IsInteger;
-            var advice = integers ? "Explicitly convert both boundaries to the same integer Type before constructing the range" :
-                "To enumerate positions in a sequence, resolve the range against its length first, for example r.resolve(values.length)";
-            issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", advice: advice, evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
+            issue.Node.Report(requirement, issue.Code, note: "Range iteration requires both boundaries to have the same integer Type", evidence: [DiagnosticTypeName(subject), rangeFailure.Entry.Name, DiagnosticTypeName(subject.Components[0]), DiagnosticTypeName(subject.Components[1])]);
         }
         else if (issue.Code == DiagnosticCode.UnprovenConstraint_Kd && this.rangeIterationFailures?.TryGetValue(issue.Node, out var unproven) == true)
         {
             // SPEC 4.6.3.4: the boundary Types are not known to be one integer Type in this generic context.
             var start = DiagnosticTypeName(unproven.Subject.Components[0]);
             var end = DiagnosticTypeName(unproven.Subject.Components[1]);
-            var repair = ReferenceEquals(unproven.Subject.Components[0], unproven.Subject.Components[1])
-                ? $"If the boundaries are meant to be integers, require {start} is PrimitiveInteger"
-                : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
-            issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
+            issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type");
         }
         else if (issue.Code is DiagnosticCode.UnresolvedBinding_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.constructorAbsences?.TryGetValue(issue.Node, out var absent) == true)
         {

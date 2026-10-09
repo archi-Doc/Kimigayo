@@ -17,9 +17,6 @@ public sealed record ControlFlowIssue(Koto Node, DiagnosticCode Code, object? Ar
     /// <summary>Gets the part of the node that is the primary location, when it is not the whole node.</summary>
     public SourceSpan? Span { get; init; }
 
-    /// <summary>Gets Advice formed from the facts.</summary>
-    public string? Advice { get; init; }
-
     /// <summary>Gets the message formatted from the catalog.</summary>
     public string Message => DiagnosticEntries.TryGet(this.Code, out var entry) ? entry.FormatMessage(this.Argument, this.Argument2) : this.Code.ToString();
 
@@ -198,7 +195,7 @@ public sealed class ControlFlowAnalysis
             }
             else
             {
-                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument, issue.Argument2, issue.Note, evidence: issue.Evidence, advice: issue.Advice, related: issue.Related);
+                issue.Node.Report(DiagnosticRequirement.ControlFlow, issue.Code, issue.Argument, issue.Argument2, issue.Note, evidence: issue.Evidence, related: issue.Related);
             }
         }
 
@@ -207,7 +204,7 @@ public sealed class ControlFlowAnalysis
             if ((!ReadsBinding(warning.Code) || warning.Node.CodeContext.Compilation.Binding.FailureCauses(warning.Node) is null) &&
                 this.GuessedBy(warning) is null)
             {
-                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2, advice: warning.Advice, span: warning.Span, repairs: warning.Repairs);
+                warning.Node.Report(DiagnosticRequirement.ControlFlow, warning.Code, warning.Argument, warning.Argument2, span: warning.Span, repairs: warning.Repairs);
             }
         }
     }
@@ -425,8 +422,7 @@ public sealed class ControlFlowAnalysis
 
     // SPEC 17.4.3, 23.3.6.9: a discarded Result or try success value that is a direct item of an indented body offers `_ = ` before it
     // and, for a Result whose error Type the enclosing function's failure return target takes (SPEC 17.2.4), `_ = try ` as well;
-    // `_ =` puts the expression in Value Context (SPEC 14.2.4) and changes no scope, so no condition is relevant. The Advice then
-    // states the alternatives the candidates cannot express; elsewhere the catalog's Advice describes every repair.
+    // `_ =` puts the expression in Value Context (SPEC 14.2.4) and changes no scope, so no condition is relevant.
     private void WarnDiscard(Koto node, DiagnosticCode code, int priority)
     {
         node = KotoHelper.UnwrapParentheses(node);
@@ -436,7 +432,6 @@ public sealed class ControlFlowAnalysis
         }
 
         DiagnosticRepairFact[]? repairs = null;
-        string? advice = null;
         if (node.Parent is CodeBlockKoto { IsExpressionBody: false })
         {
             var start = new SourceSpan(node.Span.Start, 0);
@@ -444,10 +439,9 @@ public sealed class ControlFlowAnalysis
             repairs = code == DiagnosticCode.DiscardedResult_Kd && FailureTargetFits(node)
                 ? [new(RepairKind.PropagateFailure, null, [node.Edit(start, "_ = try ")], RepairConditionSet.None), discard]
                 : [discard];
-            advice = code == DiagnosticCode.DiscardedResult_Kd ? "Handle the Result with match, or use its success value" : "Use the extracted value";
         }
 
-        this.warnings.Add(new(node, code) { Priority = priority, Advice = advice, Repairs = repairs });
+        this.warnings.Add(new(node, code) { Priority = priority, Repairs = repairs });
     }
 
     private void Warn(Koto node, DiagnosticCode code, int priority = 4, Koto? completionRoot = null)
@@ -1201,7 +1195,7 @@ public sealed class ControlFlowAnalysis
 
     // SPEC 14.3.3, 23.3.6.9: the warning is at the unsafe keyword. Removing the block keeps the statements' meaning only when its Body,
     // an independent scope (SPEC 14.3.1), declares no Name and registers no defer (Structure); a statement of an indented body whose
-    // lines allow the edit then offers Repair.RemoveUnsafe, and otherwise the Advice says what would change or what is left to the author.
+    // lines allow the edit then offers Repair.RemoveUnsafe.
     private void WarnUnnecessaryUnsafe(UnsafeBlockKoto block)
     {
         if (!this.warningNodes.Add(block))
@@ -1218,26 +1212,13 @@ public sealed class ControlFlowAnalysis
             }
         }
 
-        string? advice = null;
         DiagnosticRepairFact[]? repairs = null;
-        if (scoped)
-        {
-            advice = "Removing 'unsafe' would merge its Body's declarations or defer registrations into the enclosing scope, changing where Names are visible or when values are destroyed and defer bodies run; keep the block or restructure the code deliberately";
-        }
-        else if (block.Parent is not CodeBlockKoto { IsExpressionBody: false })
-        {
-            advice = "The Body declares no Name and registers no defer, but the block is not a statement of an indented body, so removing 'unsafe' may change what the enclosing expression evaluates to; keep the block or rewrite the enclosing expression";
-        }
-        else if (RemoveUnsafeEdits(block) is { } edits)
+        if (!scoped && block.Parent is CodeBlockKoto { IsExpressionBody: false } && RemoveUnsafeEdits(block) is { } edits)
         {
             repairs = [new(RepairKind.RemoveUnsafe, null, edits, RepairConditionSet.Structure)];
         }
-        else
-        {
-            advice = "Remove 'unsafe' and keep the statements; the Body declares no Name and registers no defer, so their meaning does not change";
-        }
 
-        this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Advice = advice, Repairs = repairs });
+        this.warnings.Add(new(block, DiagnosticCode.UnnecessaryUnsafeBlock_Kd) { Span = new(block.Span.Start, Constants.UnsafeKeyword.Length), Repairs = repairs });
     }
 
     private void VisitDeclarations(DeclarationContainerKoto container)
@@ -1829,10 +1810,10 @@ public sealed class ControlFlowAnalysis
             {
                 // SPEC 15.6.1: a result whose structural part fits fails only an Origin relation, never as an incompatible Type.
                 var code = Binding.OriginRelationCode(relation);
-                var (evidence, advice, related) = Binding.OriginRelationFacts(relation, "fit");
+                var (evidence, related) = Binding.OriginRelationFacts(relation, "fit");
                 if (this.reported.Add((source.Node, code)))
                 {
-                    this.issues.Add(new(source.Node, code) { Evidence = evidence, Advice = advice, Related = related });
+                    this.issues.Add(new(source.Node, code) { Evidence = evidence, Related = related });
                 }
             }
             else

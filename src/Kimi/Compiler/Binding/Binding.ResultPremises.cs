@@ -301,7 +301,7 @@ public sealed partial class Binding
                 if (!InstanceOutlives(longer, shorter, instance, this, use, 0) ||
                     (relation.Equality && !InstanceOutlives(shorter, longer, instance, this, use, 0)))
                 {
-                    return this.ConditionFact(at, $"the clause '{relation.Syntax}'", longer, shorter, relation.Equality, expected, instance, use);
+                    return this.ConditionFact(at, $"the clause '{relation.Syntax}'", longer, shorter, relation.Equality, instance, use);
                 }
             }
         }
@@ -318,7 +318,7 @@ public sealed partial class Binding
         {
             var result = function.BoundSymbol!.Type!;
             return !this.VisitWellFormedPremises(result, actual.Components[1], null, new(function, use, WellFormedAction.Instance)) && this.failedResultPremise is { } failed
-                ? this.ConditionFact(at, "the result's well-formedness", failed.Longer, failed.Shorter, false, expected, instance, use) : null;
+                ? this.ConditionFact(at, "the result's well-formedness", failed.Longer, failed.Shorter, false, instance, use) : null;
         }
         finally
         {
@@ -327,7 +327,7 @@ public sealed partial class Binding
         }
     }
 
-    private OriginContractFact ConditionFact(Koto at, string member, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundType expected, in CallableInstance instance, Koto use)
+    private OriginContractFact ConditionFact(Koto at, string member, BoundOrigin longer, BoundOrigin shorter, bool equality, in CallableInstance instance, Koto use)
     {
         if (!equality && longer.Kind == OriginKind.Intersection)
         {
@@ -343,20 +343,7 @@ public sealed partial class Binding
 
         var a = this.Instantiated(longer, instance);
         var b = this.Instantiated(shorter, instance);
-        string? input = null;
-        var inputs = expected.Components[0];
-        for (var i = 0; i < inputs.Components.Count && !equality && !instance.IsRequiredSlot(b); i++)
-        {
-            if (ReferenceEquals(inputs.Components[i].Origin, a) && inputs.Components[i] is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq })
-            {
-                input = $"the {Ordinal(i + 1)} parameter";
-                break;
-            }
-        }
-
-        return new(at, member, a, b, equality, input);
-
-        static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
+        return new(at, member, a, b, equality);
     }
 
     // An Origin as the comparison sees it: every per-call input of the implementation replaced by the required input at its position.

@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://kimigayo.dev/schemas/check-output.schema.json",
-  "title": "kimi check output (kimi.check/1)",
+  "title": "kimi check output (kimi.check/2)",
   "description": "The JSON document that `kimi check <project> --Format json` writes (SPEC 23.3.6.8): one check unit's outcome, acceptance, source table and diagnostic records with their repair candidates (SPEC 23.3.6.2, 23.3.6.9).",
   "type": "object",
   "required": ["schema", "compiler", "unit", "outcome", "accepted", "testPresence", "sources", "diagnostics"],
   "additionalProperties": false,
   "properties": {
-    "schema": { "const": "kimi.check/1" },
+    "schema": { "const": "kimi.check/2" },
     "compiler": { "type": "string", "description": "The compiler build identity." },
     "unit": {
       "type": "object",
@@ -159,7 +159,6 @@
         "reason": { "type": "array", "items": { "$ref": "#/$defs/value" } },
         "related": { "type": "array", "items": { "$ref": "#/$defs/related" } },
         "note": { "type": "string" },
-        "advice": { "type": "string" },
         "omissions": { "type": "array", "items": { "$ref": "#/$defs/omission" } },
         "display": { "$ref": "#/$defs/display" },
         "repairs": { "type": "array", "items": { "$ref": "#/$defs/repair" } }

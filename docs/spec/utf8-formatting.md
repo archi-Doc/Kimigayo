@@ -231,7 +231,7 @@ Built-in formatting checks status, computes the exact encoded byte length, reser
 
 For a finite nonzero float, choose the decimal representation with the fewest significant digits that rounds to the original value in its original width using nearest-even rounding. Among equal-length candidates choose the closest to the exact value, then an even final significant digit to break a tie. `f32` uses its own rounding interval. Let `e` be the normalized decimal exponent: use fixed notation for `-4 <= e < 16`, scientific notation otherwise. Omit unnecessary fractional trailing zeros and decimal points. Use `.`, lowercase `e`, no exponent `+` and no leading exponent zeros. Special values are `0`, `-0`, `Infinity`, `-Infinity` and `NaN`; NaN sign and payload are ignored.
 
-Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly, and diagnostics suggest an explicit payload follow `@follow` (§13.5.5.1) where applicable. Tuples, arrays and user Types have no automatic conformance. The position and range Types conform through their Kimi implementations (§4.6.2–§4.6.4), so `"\(1..^1)"` produces `1..^1`.
+Borrow Types do not forward conformance; the argument adaptation of §5.2 selects the referent Type. Object handles, object borrows and pointers do not format implicitly. Tuples, arrays and user Types have no automatic conformance. The position and range Types conform through their Kimi implementations (§4.6.2–§4.6.4), so `"\(1..^1)"` produces `1..^1`.
 
 ## 5. Interpolation and internal adapters
 
@@ -281,7 +281,7 @@ let message = "My number is \(self.number)"
 
 `$tryWrite(writer, literal)` is a Composition Root operation, not a Function value. Its result is `Result<(), BufferFull>` and it creates no combined string.
 
-The first operand is acquired as `uniq/Utf8Writer`. It is an operand, not a Receiver Expression (§7.3), so a bare owned Place is rejected, whatever its access path, with a suggestion to use `@uniq`, while a borrow value is Reborrowed normally. The second operand must syntactically be an ordinary or raw string literal, with or without substitutions; use `write` for an arbitrary string value.
+The first operand is acquired as `uniq/Utf8Writer`. It is an operand, not a Receiver Expression (§7.3), so a bare owned Place is rejected with `ExclusiveBorrowRequired_Kd`, whatever its access path, and its `@uniq` repair candidate follows §23.3.6.9, while a borrow value is Reborrowed normally. The second operand must syntactically be an ordinary or raw string literal, with or without substitutions; use `write` for an arbitrary string value.
 
 Evaluate the first operand once and activate its exclusive borrow immediately, before any embedded expression; call borrow reservations (§15.6.7) do not apply. Write segments and values left to right using the adaptation of §5.2. At the first failure, stop without evaluating later expressions; an adapter that has already failed at entry skips all expressions. Every expression's Types, conformance and control-transfer targets are still checked statically. Embedded expressions cannot read the borrowed adapter or its source. Preserve the original temporary scopes and the targets of `return`, `exit` and `yield`. Drop uncommitted Windows and keep committed output.
 
@@ -295,7 +295,7 @@ struct Point
         return $tryWrite(writer, "(\(self.x), \(self.y))")
 ```
 
-Passing an interpolated literal directly to `Utf8Writer.write` first completes ordinary owning interpolation. Warn and suggest `$tryWrite` without changing the meaning; this warning is independent of the Result-discard diagnostic priority (§17.4).
+Passing an interpolated literal directly to `Utf8Writer.write` first completes ordinary owning interpolation. A warning states this without changing the meaning; it is independent of the Result-discard diagnostic priority (§17.4).
 
 ## 6. Optimization and output
 

@@ -87,7 +87,7 @@ public class CallableOriginForwardingTest
     }
 
     // SPEC 23.3.6.5: a per-call Origin of the required Function Type has no name; it is displayed as omitted at its input Type occurrence,
-    // which is related, and Advice never offers an Origin set on that borrowed input.
+    // which is related.
     [Fact]
     public void AnUnnamedPerCallInputIsDisplayedAsOmitted()
     {

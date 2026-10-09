@@ -657,9 +657,8 @@ internal enum ReferenceSlotFailure : byte
 }
 
 // SPEC 15.6.1, 23.3.6.5: the member of a conversion whose Origin part fails, with its relation; both ends are rigid symbols of the
-// comparison, never a call-time Origin of the implementation. For an implementation condition (a clause or a result premise), `Input`
-// names the required input that a repair can write over the shorter end.
-internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, string? Input = null, FunctionKoto? Required = null);
+// comparison, never a call-time Origin of the implementation.
+internal readonly record struct OriginContractFact(Koto At, string Member, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, FunctionKoto? Required = null);
 
 // SPEC 15.2.3, 23.3.6.5: the Owned failure of a common Function conversion: the converted value, the member of its OwnedOrigins through
 // which a non-static Origin enters (a capture name or a bound Type argument) with its Type, that Origin when one is displayable, the
@@ -669,8 +668,8 @@ internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, 
 
 // SPEC 15.6.1: one failed chain of an Origin relation at the value that supplies its longer end. `Clause` is the relation clause of a
 // declared relation (source `declared`, related with the role `relation`); null for a fit. When that value's Origin is a meet, `Longer`
-// is its failing operand and `Meet` the whole meet, which a result bound must name. At a selected call, `Substituted` marks a callee's
+// is its failing operand. At a selected call, `Substituted` marks a callee's
 // clause in `Clause` that is judged at the caller's input, where the caller's premises cannot remove it, and `FixedBy` is the input
 // whose equality made a fresh Origin of the call equal to a fixed one, related with the role `relation` (SPEC 15.6.1, Location).
 // `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
-internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, BoundOrigin? Meet = null, bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);
+internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);

@@ -14,8 +14,6 @@ namespace XunitTest;
 // the operands of one Type are never reported as a mismatch of that Type with itself (SPEC 23.3.6).
 public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
 {
-    private const string Bits64 = "If the bit pattern is meant, reinterpret each f64 operand with @bits<u64> before applying {0}; @bits<f64> turns resulting bits back into an f64";
-
     [Fact]
     public void FloatRemainderIsRejectedAtBindingWithItsTypeAndOperator()
     {
@@ -32,35 +30,33 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(["operand", "operator"], error.Reason!.Select(static x => x.Name));
         Assert.Equal(["f64", "%="], error.Reason!.Select(static x => x.Value));
         Assert.Null(error.Note);
-        Assert.Null(error.Advice);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Empty(c.Ownership.Issues);
     }
 
     // Every integer-only operator and form on a floating-point operand: plain, compound, prefix and postfix, through a reference
-    // parameter and a Tuple element, with a literal-only operation, and whatever the other operand is. The operator in the
-    // Advice is the one applied to the bits, without the assignment of a compound form.
+    // parameter and a Tuple element, with a literal-only operation, and whatever the other operand is.
     [Theory]
-    [InlineData("let v = 1.5 % 2.0", "f64", "%", "1.5 % 2.0", null)]
-    [InlineData("let v = 1.0 & 2.0", "f64", "&", "1.0 & 2.0", "&")]
-    [InlineData("let x: f32 = 1.0\nlet v = x | x", "f32", "|", "x | x", "|")]
-    [InlineData("let x = 1.0\nlet v = x ^ x", "f64", "^", "x ^ x", "^")]
-    [InlineData("let x = 1.0\nlet v = x << 1", "f64", "<<", "x << 1", "<<")]
-    [InlineData("let x: f32 = 1.0\nlet v = x >> 2", "f32", ">>", "x >> 2", ">>")]
-    [InlineData("var x = 1.0\nx &= 2.0", "f64", "&=", "x &= 2.0", "&")]
-    [InlineData("var x = 1.0\nx |= 2.0", "f64", "|=", "x |= 2.0", "|")]
-    [InlineData("var x = 1.0\nx ^= 2.0", "f64", "^=", "x ^= 2.0", "^")]
-    [InlineData("var x = 1.0\nx <<= 1", "f64", "<<=", "x <<= 1", "<<")]
-    [InlineData("var x = 1.0\nx >>= 1", "f64", ">>=", "x >>= 1", ">>")]
-    [InlineData("var x = 1.0\nx++", "f64", "++", "x++", null)]
-    [InlineData("var x = 1.0\nx--", "f64", "--", "x--", null)]
-    [InlineData("var x: f32 = 1.0\n++x", "f32", "++", "++x", null)]
-    [InlineData("var x = 1.0\n--x", "f64", "--", "--x", null)]
-    [InlineData("let x = 1.0\nlet n: i32 = 2\nlet v = x % n", "f64", "%", "x % n", null)]
-    [InlineData("var t = (1, 2.0)\nt.1 %= 2.0", "f64", "%=", "t.1 %= 2.0", null)]
-    [InlineData("func rem(r: ref/f64) -> f64 => r % 2.0\npublic func main() => ()", "f64", "%", "r % 2.0", null)]
-    [InlineData("func f() -> f64\n    return 1.0\n    1.0 & 2.0\npublic func main() => ()", "f64", "&", "1.0 & 2.0", "&")]
-    public void EveryIntegerOnlyOperatorOnAFloatNamesItsTypeAndOperator(string source, string type, string op, string text, string? bits)
+    [InlineData("let v = 1.5 % 2.0", "f64", "%", "1.5 % 2.0")]
+    [InlineData("let v = 1.0 & 2.0", "f64", "&", "1.0 & 2.0")]
+    [InlineData("let x: f32 = 1.0\nlet v = x | x", "f32", "|", "x | x")]
+    [InlineData("let x = 1.0\nlet v = x ^ x", "f64", "^", "x ^ x")]
+    [InlineData("let x = 1.0\nlet v = x << 1", "f64", "<<", "x << 1")]
+    [InlineData("let x: f32 = 1.0\nlet v = x >> 2", "f32", ">>", "x >> 2")]
+    [InlineData("var x = 1.0\nx &= 2.0", "f64", "&=", "x &= 2.0")]
+    [InlineData("var x = 1.0\nx |= 2.0", "f64", "|=", "x |= 2.0")]
+    [InlineData("var x = 1.0\nx ^= 2.0", "f64", "^=", "x ^= 2.0")]
+    [InlineData("var x = 1.0\nx <<= 1", "f64", "<<=", "x <<= 1")]
+    [InlineData("var x = 1.0\nx >>= 1", "f64", ">>=", "x >>= 1")]
+    [InlineData("var x = 1.0\nx++", "f64", "++", "x++")]
+    [InlineData("var x = 1.0\nx--", "f64", "--", "x--")]
+    [InlineData("var x: f32 = 1.0\n++x", "f32", "++", "++x")]
+    [InlineData("var x = 1.0\n--x", "f64", "--", "--x")]
+    [InlineData("let x = 1.0\nlet n: i32 = 2\nlet v = x % n", "f64", "%", "x % n")]
+    [InlineData("var t = (1, 2.0)\nt.1 %= 2.0", "f64", "%=", "t.1 %= 2.0")]
+    [InlineData("func rem(r: ref/f64) -> f64 => r % 2.0\npublic func main() => ()", "f64", "%", "r % 2.0")]
+    [InlineData("func f() -> f64\n    return 1.0\n    1.0 & 2.0\npublic func main() => ()", "f64", "&", "1.0 & 2.0")]
+    public void EveryIntegerOnlyOperatorOnAFloatNamesItsTypeAndOperator(string source, string type, string op, string text)
     {
         var error = Assert.Single(Errors(Analyze(source)));
         Assert.Equal(nameof(DiagnosticCode.NonIntegerOperand_Kd), error.Code);
@@ -68,10 +64,9 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal($"{type} has no {op}", error.Label);
         Assert.Equal(text, error.Text);
         Assert.Null(error.Note);
-        Assert.Equal(bits is null ? null : type == "f64" ? string.Format(Bits64, bits) : $"If the bit pattern is meant, reinterpret each f32 operand with @bits<u32> before applying {bits}; @bits<f32> turns resulting bits back into an f32", error.Advice);
     }
 
-    // A shift count is located at the count; only a wrapping count has a repair of its own.
+    // A shift count is located at the count; only a wrapping count has a Note of its own.
     [Theory]
     [InlineData("let x: i32 = 1\nlet v = x << 1.0", "f64", "<<", "1.0")]
     [InlineData("let x: i32 = 1\nlet c: f32 = 1.0\nlet v = x >> c", "f32", ">>", "c")]
@@ -86,20 +81,18 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal($"{type} is not an integer Type", error.Label);
         Assert.Equal(text, error.Text);
         Assert.Null(error.Note);
-        Assert.Null(error.Advice);
     }
 
     [Theory]
-    [InlineData("func f(x: i32, w: Wrapping<i32>) -> i32 => x << w\npublic func main() => ()", "Wrapping<i32>", "i32")]
-    [InlineData("func f(x: Wrapping<u8>, w: Wrapping<u16>) -> Wrapping<u8> => x >> w\npublic func main() => ()", "Wrapping<u16>", "u16")]
-    public void AWrappingCountIsToldToLeaveWrappingThroughItsArgument(string source, string type, string integer)
+    [InlineData("func f(x: i32, w: Wrapping<i32>) -> i32 => x << w\npublic func main() => ()", "Wrapping<i32>")]
+    [InlineData("func f(x: Wrapping<u8>, w: Wrapping<u16>) -> Wrapping<u8> => x >> w\npublic func main() => ()", "Wrapping<u16>")]
+    public void AWrappingCountIsNeverAShiftCount(string source, string type)
     {
         var error = Assert.Single(Errors(Analyze(source)));
         Assert.Equal(nameof(DiagnosticCode.InvalidShiftCount_Kd), error.Code);
         Assert.Equal($"{type} is not an integer Type", error.Label);
         Assert.Equal("w", error.Text);
         Assert.Equal("A wrapping integer Type is never a shift count (SPEC 13.3)", error.Note);
-        Assert.Equal($"Convert the count to {integer} with @{integer}", error.Advice);
     }
 
     // The shifted operand is judged before the count, so a floating-point operand with a floating-point count is one record.
@@ -166,10 +159,10 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(3, Errors(compilation).Length);
     }
 
-    // The repairs the Advice names are accepted, verified and executed: the bit pattern through @bits and a wrapping count
+    // The written repairs are accepted, verified and executed: the bit pattern through @bits and a wrapping count
     // converted to its integer argument.
     [Fact]
-    public void TheAdvisedRepairsAreAcceptedAndExecute()
+    public void TheWrittenRepairsAreAcceptedAndExecute()
     {
         const string Source = """
             let x = -2.5
@@ -186,7 +179,7 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void CliAndLspCarryTheLabelsAndAdvice()
+    public void CliAndLspCarryTheLabels()
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = Analyze("func bits(x: f64) -> f64 => x & x\nfunc f(n: i32, w: Wrapping<i32>) -> i32 => n << w\npublic func main() => ()", path);
@@ -197,10 +190,8 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("Hello.kimi:1:29", console.Text, StringComparison.Ordinal);
         Assert.Contains("^^^^^ f64 has no &", console.Text, StringComparison.Ordinal);
-        Assert.Contains(string.Format(Bits64, "&"), console.Text, StringComparison.Ordinal);
         Assert.Contains("Hello.kimi:2:49", console.Text, StringComparison.Ordinal);
         Assert.Contains("^ Wrapping<i32> is not an integer Type", console.Text, StringComparison.Ordinal);
-        Assert.Contains("Convert the count to i32 with @i32", console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("TypeMismatch", console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
@@ -215,8 +206,6 @@ public sealed class NonIntegerOperandDiagnosticTest(ITestOutputHelper output)
                 Assert.Contains(result.Diagnostics[i].Message, sent[i].Message, StringComparison.Ordinal);
             }
 
-            Assert.Contains("@bits<u64>", sent[0].Message, StringComparison.Ordinal);
-            Assert.Contains("Convert the count to i32 with @i32", sent[1].Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }

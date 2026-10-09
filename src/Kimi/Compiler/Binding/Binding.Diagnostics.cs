@@ -7,25 +7,14 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private const string RangeShapeAdvice = "If the function only resolves a range for slicing, accept R with R is PositionRange; if it enumerates, require the matching Iterable, UniqIterable or IntoIterable entry and its Item constraints; if it accesses boundaries, retain the required concrete range Type. Verify the function body after changing its contract";
-
-    // SPEC 11.2: the Advice keeps the written receiver in a function and never proposes another receiver Type.
-    private const string AccessorGetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R) -> T, named by SPEC 4.7.1: into + noun when it consumes the receiver, verb + noun when it advances state";
-    private const string AccessorSetterShapeAdvice = "Keep this receiver, its Origins and the body in a function instead, func name(self: R, value: U) -> (), named by SPEC 4.7.1";
-
-    // SPEC 15.3.6, 10.8: a per-call Origin lies beyond the call, so no annotation of the slot can name it; conditional prose only.
-    private const string PerCallOriginAdvice = "If the argument's result is meant to borrow its own input, use it where that input is known, such as in an anonymous function written at the call; otherwise pass a function whose result does not borrow its input, such as one that returns a Copy of the borrowed value";
-
     // SPEC 10.2.1, 10.7: no ordering is defined between an erasure and a direct match at one argument; the erasure's receiver and Owned
     // conditions are judged only after selection, so they never make it inapplicable.
     private const string ErasureAmbiguityNote = "At one argument, one candidate erases the argument to a common Function Type and another takes it directly; these adaptations are incomparable (SPEC 10.2.1, 10.7), and the erasure's receiver and Owned conditions are judged only after selection";
 
     private const string SharedObjectAuthorityNote = "rc and arc provide shared payload access only; even a strong count of one does not grant objuniq or uniq/Self authority";
-    private const string StrongCloneAdvice = "Strong clone accepts only rc or arc handles; obj ownership cannot be duplicated";
 
     // SPEC 12.3.3, 13.3: string has no arithmetic; an interpolated literal is the one way to join strings, and a buffer builds text.
     private const string StringOperatorNote = "string has no arithmetic operators; an interpolated literal creates an owning string and borrows the values it embeds (SPEC 12.3.3, 13.3)";
-    private const string StringBuildingAdvice = "; to build text in steps, write to a Text.HeapBuffer through Text.writer and $tryWrite, then intoString";
 
     // SPEC 23.3.6.4: the operands a node consulted that did not resolve are its explicit prerequisites. They are recorded
     // when consulted (BindNode, failures of other nodes, symbol uses), never searched in the tree afterwards. The storage is
@@ -98,16 +87,15 @@ public sealed partial class Binding
     private readonly record struct RejectedCandidate(FunctionKoto Function, BoundType? Actual, BoundType? Expected, bool SharedReceiver = false, bool ObjectClone = false, bool CallableSignature = false, bool Selected = false, SemanticsKind? ActualReceiver = null, SemanticsKind? RequiredReceiver = null, bool ReferenceSignature = false, bool UnfixedReference = false, int ReceiverParameter = -1, bool ErasureIncomparable = false, ReferenceConstraintFailure? ConstraintFailure = null);
 
     // The referenced declaration, its Type parameter, the parameters of the fixed expected call signature whose per-call Origins the
-    // slot would hold (as bits), that signature and the parameters that the advised wrapper passes with @move (as bits), or null when
-    // no wrapper applies, since its call could not infer every slot.
-    private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature, ulong? Moves);
+    // slot would hold (as bits) and that signature.
+    private readonly record struct PerCallSlotFact(FunctionKoto Declaration, int Slot, ulong Parameters, BoundType Signature);
 
     // The referenced declaration, its Type parameter when one is known (else -1), the failure and whether Type arguments are written.
     private readonly record struct ReferenceSlotFact(FunctionKoto Declaration, int Slot, ReferenceSlotFailure Failure, bool Explicit);
 
-    // SPEC 15.6.1, 23.3.6.5: the Reason facts, Advice and related locations of an Origin relation record, shared by every phase that
-    // reports one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
-    internal static (object[] Evidence, string Advice, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
+    // SPEC 15.6.1, 23.3.6.5: the Reason facts and related locations of an Origin relation record, shared by every phase that reports
+    // one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
+    internal static (object[] Evidence, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
     {
         // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
         // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
@@ -121,7 +109,6 @@ public sealed partial class Binding
         var shorterBorrow = relation.FixedBy is { } fixedBy && relation.Shorter.Kind is OriginKind.Projection or OriginKind.Anchor ? BorrowSource(fixedBy, relation.Shorter) : null;
         var shorter = OriginDisplay(relation.Shorter, shorterBorrow, typeLevel);
         var operation = relation.Equality ? "==" : "outlives";
-        var advice = OriginRelationAdvice(relation, longer, shorter, source);
         // SPEC 23.3.6.5: a borrow or omitted end is also related at its syntax.
         var longerAt = longer.Kind == "borrow" ? borrow ?? relation.At : longer.Kind == "omitted" ? OmittedAt(relation.Longer) : null;
         var shorterAt = shorter.Kind == "omitted" ? OmittedAt(relation.Shorter) : shorter.Kind == "borrow" ? shorterBorrow : null;
@@ -145,14 +132,14 @@ public sealed partial class Binding
         {
             // SPEC 23.3.6.5: only a fit names its destination Type; a declared relation relates its clause instead, and well-formedness
             // its Type occurrence, which is the primary location.
-            return ([operation, longer, shorter, source], advice, related);
+            return ([operation, longer, shorter, source], related);
         }
 
         // SPEC 23.3.6.5: the destination shows only the Origin at the failed position, also below another borrow layer; a borrow, omitted
         // or closure end is never written as an Origin expression.
         var destination = relation.Destination is not { } type ? $"during {shorter.Text}"
             : DiagnosticTypeName(type, shorter.Kind == "expression" ? relation.Shorter : null, shorter.Text);
-        return ([operation, longer, shorter, source, destination], advice, related);
+        return ([operation, longer, shorter, source, destination], related);
     }
 
     // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one.
@@ -160,6 +147,44 @@ public sealed partial class Binding
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
+
+    /// <summary>Forms the Transfer candidate of a bare Place (SPEC 23.3.6.9): <c>@move</c> after the Place, or <c>(*p)@move</c> around a dereference.</summary>
+    /// <param name="node">The reporting node, in the Place's document.</param>
+    /// <param name="place">The Place.</param>
+    /// <param name="judgment">The Take judgment; never refuted.</param>
+    /// <returns>The candidate.</returns>
+    internal static DiagnosticRepairFact[] TransferRepair(Koto node, Koto place, AcquisitionJudgment judgment)
+    {
+        DiagnosticEditFact[] edits = place is DereferenceKoto
+            ? [node.Edit(new(place.Span.Start, 0), "("), node.Edit(new(place.Span.End, 0), ")@move")]
+            : [node.Edit(new(place.Span.End, 0), "@move")];
+        var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
+        var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
+        return [new(RepairKind.Transfer, [place.ToString(), TransferTarget(place)], edits, verified, required)];
+    }
+
+    // The destination a Place is acquired for, as the Transfer title names it.
+    internal static string TransferTarget(Koto place)
+        => Destination(place) switch
+        {
+            InvocationKoto call when ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) => "its call",
+            InvocationKoto call => call.Method is MemberAccessKoto member ? member.Right.ToString() : call.Method.ToString(),
+            VariableKoto variable => $"the binding {variable.NameKoto.IdentifierName}",
+            ReturnKoto => "the result",
+            ArrayLiteralKoto or TupleLiteralKoto or DictionaryLiteralKoto => "the element",
+            _ => "its destination",
+        };
+
+    private static Koto? Destination(Koto place)
+    {
+        var parent = place.Parent;
+        while (parent is ParenthesizedKoto)
+        {
+            parent = parent.Parent;
+        }
+
+        return parent;
+    }
 
     // The call whose argument or receiver `at` is.
     private static InvocationKoto? EnclosingCall(Koto at)
@@ -173,111 +198,6 @@ public sealed partial class Binding
         }
 
         return null;
-    }
-
-    // SPEC 15.6.1: conditional Advice, never a repair candidate. A Refuted relation is not repaired by an annotation; an omitted end is
-    // named by a set first; bounding the result is offered only at a result source, and binding to static never for an exclusive input.
-    private static string OriginRelationAdvice(OriginRelationFact relation, DiagnosticOrigin longer, DiagnosticOrigin shorter, string source)
-    {
-        if (relation.Refuted)
-        {
-            return "Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body";
-        }
-
-        if (OmittedInput(relation.Shorter) is not null || OmittedInput(relation.Longer) is not null)
-        {
-            return "A Function Type quantifies the Origin of an unnamed borrowed input per call, and no fixed Origin stands for it; write the fixed Origin in that input's Type, as in 'ref/T during x', or accept any borrow there";
-        }
-
-        // SPEC 15.6.1: a pair binder's implicit outer Origin is written by no Origin expression, so no clause, set or bound names it. The
-        // occurrence is annotated instead, which a binder admitting a value Semantics cannot use until a header slot that only a
-        // conditional pair slot uses is completed (PLAN G10); otherwise an owned or Copied value or an existing borrowed input remains.
-        if ((IsPairOuterOrigin(relation.Longer) ? relation.Longer : IsPairOuterOrigin(relation.Shorter) ? relation.Shorter : null) is { Occurrence: GenericParameterKoto pair })
-        {
-            const string Remaining = "return an owned or Copied value, or bound the result by an existing borrowed input";
-            return AnnotatableOuterOrigin(pair) ? $"Annotate the occurrence as '{pair.SemanticsParameter}/{pair.Identifier} during name' and relate that name, {Remaining}" : char.ToUpperInvariant(Remaining[0]) + Remaining[1..];
-        }
-
-        var omitted = longer.Kind == "omitted" ? longer.Text : shorter.Kind == "omitted" ? shorter.Text : null;
-        if (omitted is not null)
-        {
-            return $"Name the omitted Origin with a set on that Type, as in '{omitted}{{name}}', then relate it by that name";
-        }
-
-        // A result bound names the whole meet that the value holds, and only when a signature can name each of its operands: a body-local
-        // Origin, such as a Borrow inside the body, never stands in a result Type.
-        var inner = relation.Destination is { } type && !ReferenceEquals(type.Origin, relation.Shorter);
-        var bound = source == "fit" && IsResultValue(relation.At) && FixedOrigin(relation.Meet ?? relation.Longer) && !MentionsPairOuterOrigin(relation.Meet ?? relation.Longer)
-            ? $", or bound the {(inner ? "inner result" : "result")} by {(relation.Meet is { } meet ? OriginDisplay(meet, null).Text : longer.Text)}" : string.Empty;
-        var input = OuterInput(relation.Longer);
-        var anonymous = relation.Longer is { Kind: OriginKind.Input, Binder: FunctionKoto { IsAnonymous: true } };
-        var advice = relation.Clause is { } clause && !relation.Substituted && relation.Shorter.Kind != OriginKind.Static ? DeclaredRelationAdvice(relation, clause, longer, shorter, anonymous ? input : null)
-            : relation.Equality ? $"Use one Origin at both positions, or bind {shorter.Text} to {longer.Text} where it is introduced"
-            : anonymous && relation.Shorter.Kind != OriginKind.Static ? $"An anonymous function has no origin clauses; write the input as '{(input is not null ? $"{input.InternalName}: {WrittenInputType(input)} during {shorter.Text}" : $"during {shorter.Text}")}' so that it accepts only borrows that outlive {shorter.Text}{bound}"
-            : relation.Shorter.Kind != OriginKind.Static ? $"If {longer.Text} always outlives {shorter.Text}, add 'origin {longer.Text} outlives {shorter.Text}', which changes the public contract{bound}"
-            : input?.Type is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq } ? $"{longer.Text} is an exclusive borrow, which cannot be bound to static; return an owned value instead"
-            : $"Bind {longer.Text} to static where it is introduced, as in '{(input is not null ? $"{input.InternalName}: {input.Type} during static" : "during static")}'{bound}";
-        return (SimilarNames(relation.Shorter) ?? SimilarNames(relation.Longer)) is { } similar ? advice + similar : advice;
-    }
-
-    // SPEC 15.3.3, 15.6.1: a declared relation is established by a premise of the declaration whose premises its clause is checked
-    // against: the enclosing named function or accessor for a local, and the enclosing Type for a Field or Case. An anonymous function
-    // has no origin clauses (SPEC 7.6.1), so a relation over its own Origins is offered only the bound on its input, and one over an
-    // enclosing function's Origins only that function's clauses. An `==` clause is offered an `==` premise, never the input bound,
-    // which states one direction only. The premises are those around the record's location: a Type's own clause substituted at a
-    // use is established where it is used, and is offered other Origins for that use instead of the removal of the Type's clause.
-    private static string DeclaredRelationAdvice(OriginRelationFact relation, Koto clause, DiagnosticOrigin longer, DiagnosticOrigin shorter, FunctionParameterKoto? anonymousInput)
-    {
-        var premise = relation.Equality
-            ? $"If {longer.Text} and {shorter.Text} are always equal, add 'origin {longer.Text} == {shorter.Text}' to the clauses of the enclosing"
-            : $"If {longer.Text} always outlives {shorter.Text}, add 'origin {longer.Text} outlives {shorter.Text}' to the clauses of the enclosing";
-        var otherwise = clause.Parent is DeclarationContainerKoto { Name: var type } ? $"give this {type} Origins that satisfy its clause" : "remove this clause";
-        var crossed = false;
-        for (var node = relation.At.Parent; node is not null; node = node.Parent)
-        {
-            if (node is DeclarationContainerKoto container)
-            {
-                // Top-level runtime items belong to no function and no Type that could state a premise.
-                return crossed || container.IsRoot ? $"No origin clause can establish this relation here; {otherwise}"
-                    : $"{premise} Type, which changes its public contract, or {otherwise}";
-            }
-
-            if (node is FunctionKoto { IsAnonymous: true } closure)
-            {
-                if (OfFunction(relation.Longer, closure) || OfFunction(relation.Shorter, closure))
-                {
-                    return anonymousInput is not null && !relation.Equality && ReferenceEquals(relation.Longer.Binder, closure)
-                        ? $"An anonymous function has no origin clauses; write the input as '{anonymousInput.InternalName}: {WrittenInputType(anonymousInput)} during {shorter.Text}' so that it accepts only borrows that outlive {shorter.Text}, or {otherwise}"
-                        : $"An anonymous function has no origin clauses that could establish this relation; {otherwise}";
-                }
-
-                crossed = true;
-            }
-            else if (node is FunctionKoto or PropertyAccessorKoto)
-            {
-                return $"{premise} function{(crossed && node is FunctionKoto named ? $" '{named.Name}'" : string.Empty)}, which changes its public contract, or {otherwise}";
-            }
-        }
-
-        return $"No origin clause can establish this relation here; {otherwise}";
-
-        static bool OfFunction(BoundOrigin origin, FunctionKoto function)
-        {
-            if (ReferenceEquals(origin.Binder, function))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (OfFunction(origin.Operands[i], function))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     // Whether a clause belongs to a Field or Case, whose Type's premises decide it, rather than to a local of a function or accessor.
@@ -294,35 +214,6 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 8.1.1: the outer Origin `o` of a pair binder, which no Origin expression or set can name.
-    private static bool IsPairOuterOrigin(BoundOrigin origin) => origin is { Kind: OriginKind.Parameter, Occurrence: GenericParameterKoto };
-
-    // A bound that names a pair's implicit outer Origin, alone or in a meet, cannot be written (SPEC 15.6.1).
-    private static bool MentionsPairOuterOrigin(BoundOrigin origin)
-    {
-        if (IsPairOuterOrigin(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (IsPairOuterOrigin(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // SPEC 8.1.2, 15.3.6: whether a pair occurrence can be annotated with a named slot: a function's own Origin always, and a Type's header
-    // slot only when its binder admits no value Semantics, since a value case leaves that slot unbound and construction does not complete
-    // it yet (PLAN G10).
-    private static bool AnnotatableOuterOrigin(GenericParameterKoto pair)
-        => pair.BoundSymbol is not { Kind: BindingSymbolKind.SemanticsTarget, WholeType: { } whole, Scope: { } scope } || scope.Owner is not DeclarationContainerKoto ||
-            (pair.CodeContext.Compilation.Binding.AdmittedSemantics(whole, scope) & SemanticsMask.Value) == 0;
-
     // SPEC 23.3.6.5: the Type occurrence that an omitted Origin end is related at.
     private static Koto? OmittedAt(BoundOrigin origin)
         => origin.Occurrence ?? OmittedInput(origin) ?? (origin is { Kind: OriginKind.Inference, Binder: TypeKoto occurrence } ? occurrence : null);
@@ -331,100 +222,6 @@ public sealed partial class Binding
     private static Koto? OmittedInput(BoundOrigin origin)
         => origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionTypeKoto binder } && origin.InputIndex >= 0 && origin.InputIndex < InputCount(binder)
             ? InputType(binder, origin.InputIndex) is ParenthesizedTypeKoto { Type: { } inner } ? inner : InputType(binder, origin.InputIndex) : null;
-
-    // A parameter's Type as written, or its bound Type when the anonymous function omitted it.
-    private static string WrittenInputType(FunctionParameterKoto input)
-        => input.Type is SyntaxFormKoto { Akind: KotoKind.InferredType } && input.Type.BoundType is { } bound ? DiagnosticTypeName(bound) : input.Type.ToString();
-
-    // The parameter whose outer borrow an Input Origin is.
-    private static FunctionParameterKoto? OuterInput(BoundOrigin origin)
-        => origin is { Kind: OriginKind.Input, Occurrence: null, Binder: FunctionKoto function } && origin.InputIndex >= 0 && origin.InputIndex < function.Parameters.Count
-            ? function.Parameters[origin.InputIndex] : null;
-
-    // SPEC 15.6.1: a signature Origin name is introduced by writing it, so a misspelling introduces a new one; similar names visible in
-    // the signature, its parameters and the Origins written on their Types and on the result, are shown.
-    private static string? SimilarNames(BoundOrigin origin)
-    {
-        if (origin is not { Kind: OriginKind.Parameter, Binder: FunctionKoto function } || origin.Name.Length < 3 || IsPairOuterOrigin(origin))
-        {
-            return null;
-        }
-
-        List<string>? similar = null;
-        for (var i = 0; i <= function.Parameters.Count; i++)
-        {
-            var type = i < function.Parameters.Count ? function.Parameters[i].Type : function.ReturnType;
-            if (i < function.Parameters.Count)
-            {
-                Consider(function.Parameters[i].InternalName);
-            }
-
-            for (var depth = 0; depth < 16 && type is TypeSemanticsKoto layer; depth++, type = layer.Type)
-            {
-                Consider(layer.OriginName);
-            }
-        }
-
-        return similar is null ? null : $"; {origin.Name} is introduced by this signature, so if {string.Join(" or ", similar)} was meant, write it instead";
-
-        void Consider(string? name)
-        {
-            if (name is not null && name != origin.Name && !(similar?.Contains(name) ?? false) && EditDistance(name, origin.Name) is var distance &&
-                distance <= 2 && distance * 2 < origin.Name.Length)
-            {
-                (similar ??= new(1)).Add(name);
-            }
-        }
-    }
-
-    private static int EditDistance(string a, string b)
-    {
-        if (Math.Abs(a.Length - b.Length) > 2 || a.Length > 64 || b.Length > 64)
-        {
-            return int.MaxValue;
-        }
-
-        Span<int> row = stackalloc int[b.Length + 1];
-        for (var j = 0; j <= b.Length; j++)
-        {
-            row[j] = j;
-        }
-
-        for (var i = 1; i <= a.Length; i++)
-        {
-            var diagonal = row[0];
-            row[0] = i;
-            for (var j = 1; j <= b.Length; j++)
-            {
-                var above = row[j];
-                row[j] = Math.Min(Math.Min(row[j] + 1, row[j - 1] + 1), diagonal + (a[i - 1] == b[j - 1] ? 0 : 1));
-                diagonal = above;
-            }
-        }
-
-        return row[b.Length];
-    }
-
-    // The value of a return or of an expression body, through parentheses, blocks and if or match arms, is a result source.
-    private static bool IsResultValue(Koto at)
-    {
-        for (Koto? node = at, parent = at.Parent; parent is not null; node = parent, parent = parent.Parent)
-        {
-            switch (parent)
-            {
-                case ReturnKoto returned:
-                    return KotoHelper.ResolveTransferTarget(returned) is FunctionKoto;
-                case FunctionKoto function:
-                    return ReferenceEquals(function.ExpressionBody, node);
-                case ParenthesizedKoto or IfKoto or MatchKoto or CodeBlockKoto:
-                    continue;
-                default:
-                    return false;
-            }
-        }
-
-        return false;
-    }
 
     private static bool SharedObjectAuthorityMismatch(BoundType actual, BoundType expected)
         => ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref } &&
@@ -451,10 +248,9 @@ public sealed partial class Binding
     // slot. The rule decides a mismatch of the whole default and of any part of it, such as an arm, a Tuple element or an operand;
     // the body of a function inside the default is that function's own. When the whole default's parameter Type is a Type
     // parameter with one Callable signature that the default fits (SPEC 10.7), that common Function Type accepts the default by
-    // erasure (SPEC 7.6.4); changing the parameter Type is an API choice, so it is Advice.
-    private string? GenericDefaultNote(Koto node, object actual, object expected, out string? advice)
+    // erasure (SPEC 7.6.4).
+    private string? GenericDefaultNote(Koto node, object actual, object expected)
     {
-        advice = null;
         var value = node;
         while (value.Parent is ParenthesizedKoto parentheses)
         {
@@ -484,13 +280,6 @@ public sealed partial class Binding
         }
 
         var name = DiagnosticTypeName(required);
-        if (ReferenceEquals(value, root) && required.Kind == BoundTypeKind.Parameter && actual is BoundType source &&
-            this.TryCallable(required, this.ConstraintScope(value), out var signature, out _, out var several) && !several && signature.Kind == BoundTypeKind.Function &&
-            this.ValueSignature(source) is { } own && CallableSignatureFits(own, signature, SignatureOwner(source)))
-        {
-            advice = $"Declare the parameter as {DiagnosticTypeName(signature)}, which accepts {value} by erasure as an owned Non-Copy value, or remove the default and pass {value} at the calls";
-        }
-
         return required.Kind == BoundTypeKind.Parameter
             ? $"A default is checked for every binding of {name} that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)"
             : $"A default is checked for every binding of the Type parameters in {name} that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)";
@@ -760,18 +549,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 13.5.4.4: a floating-point value has no bitwise or shift operator, but its bits are an integer of the same width.
-    private static string? BitPatternAdvice(BoundType operand, string symbol, KotoKind operation)
-    {
-        if (operation is KotoKind.Percent or KotoKind.PrefixPlusPlus or KotoKind.PrefixMinusMinus or KotoKind.PostfixIncrement or KotoKind.PostfixDecrement)
-        {
-            return null;
-        }
-
-        var (bits, type) = ReferenceEquals(operand, BoundType.F32) ? ("u32", "f32") : ("u64", "f64");
-        return $"If the bit pattern is meant, reinterpret each {type} operand with @bits<{bits}> before applying {symbol}; @bits<{type}> turns resulting bits back into an {type}";
-    }
-
     // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
     private static bool IsStringJoin(Koto node, int depth)
         => depth < 32 && KotoHelper.UnwrapParentheses(node) is PlusKoto join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
@@ -779,108 +556,16 @@ public sealed partial class Binding
     private static bool IsStringOperand(Koto node, int depth)
         => ReferenceTypes.EndsInString(KotoHelper.UnwrapParentheses(node).BoundType) || IsStringJoin(node, depth);
 
-    // The failed node is the innermost join of the chain around it; the whole chain is one interpolated literal.
-    private static string StringJoinAdvice(BinaryKoto operation)
-    {
-        Koto top = operation;
-        while (true)
-        {
-            var parent = top.Parent;
-            while (parent is ParenthesizedKoto)
-            {
-                parent = parent.Parent;
-            }
-
-            if (parent is PlusKoto join && IsStringJoin(join, 0))
-            {
-                top = join;
-            }
-            else if (parent is PlusEqualsKoto append && ReferenceTypes.EndsInString(append.Left.BoundType))
-            {
-                return StringAppendAdvice(append); // The chain is the value appended to a string target.
-            }
-            else
-            {
-                break;
-            }
-        }
-
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            builder.Append("If the strings are to be joined, write the interpolated literal \"");
-            AppendJoinSegment(ref builder, top, 0);
-            builder.Append("\" in place of ");
-            top.WriteTo(ref builder);
-            builder.Append(StringBuildingAdvice);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
-        }
-    }
-
-    // target += value becomes the replacement target = "\(target)value" (SPEC 13.7.1), spelled from the written operands.
-    private static string StringAppendAdvice(BinaryKoto operation)
-    {
-        var builder = default(IndentedStringBuilder);
-        try
-        {
-            builder.Append("If text is to be appended to ");
-            operation.Left.WriteTo(ref builder);
-            builder.Append(", assign a new string: ");
-            operation.Left.WriteTo(ref builder);
-            builder.Append(" = \"\\(");
-            operation.Left.WriteTo(ref builder);
-            builder.Append(')');
-            AppendJoinSegment(ref builder, operation.Right, 0);
-            builder.Append('"');
-            builder.Append(StringBuildingAdvice);
-            return builder.ToString();
-        }
-        finally
-        {
-            builder.Dispose();
-        }
-    }
-
-    // An escaped or interpolated literal contributes its content as written, a string join its operands, and every other
-    // operand an interpolation of its spelling.
-    private static void AppendJoinSegment(ref IndentedStringBuilder builder, Koto operand, int depth)
-    {
-        operand = KotoHelper.UnwrapParentheses(operand);
-        if (operand is StringLiteralKoto { IsRaw: false } literal)
-        {
-            literal.WriteContentTo(ref builder);
-        }
-        else if (operand is InterpolatedStringKoto interpolated)
-        {
-            interpolated.WriteContentTo(ref builder);
-        }
-        else if (depth < 32 && operand is PlusKoto join && IsStringJoin(join, depth))
-        {
-            AppendJoinSegment(ref builder, join.Left, depth + 1);
-            AppendJoinSegment(ref builder, join.Right, depth + 1);
-        }
-        else
-        {
-            builder.Append("\\(");
-            operand.WriteTo(ref builder);
-            builder.Append(')');
-        }
-    }
-
     // SPEC 15.6.1, 23.3.6.5: an Origin relation record at the value that supplies the longer end, with both ends as Origin
     // displays, the relation's source and the destination Type, in which only the Origin at the failed position is shown; a
     // borrow end is related at its syntax; the SPEC 15.4.3 elision Note follows an omitted result Origin.
     // SPEC 15.6.1, 23.3.6.5: the Reason names the comparison, the member, the relation and its two ends, rigid symbols of the comparison
-    // displayed as the required contract writes them; an omitted end is related at its Type occurrence. Advice only describes a repair.
+    // displayed as the required contract writes them; an omitted end is related at its Type occurrence.
     private static void ReportOriginContract(Koto node, OriginContractFact contract, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (contract.Required is { } original)
         {
-            node.Report(requirement, code, evidence: ["implementation", contract.Member, contract.Equality ? "==" : "outlives", OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)], related: [("requirement", original, "the original implementation contract")], advice: "Preserve the original contract's Origin bindings and requirements; an implementation cannot add a precondition", at: contract.At);
+            node.Report(requirement, code, evidence: ["implementation", contract.Member, contract.Equality ? "==" : "outlives", OriginDisplay(contract.Longer, null), OriginDisplay(contract.Shorter, null)], related: [("requirement", original, "the original implementation contract")], at: contract.At);
             return;
         }
 
@@ -900,21 +585,11 @@ public sealed partial class Binding
             // is related at the anonymous function's header.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
             const string Note = "A common Function value cannot return a borrow of its hidden environment receiver (SPEC 7.6.4)";
-            const string Owned = "Return an owned or Copied value, or a captured reference, instead of a borrow of the closure's environment";
-            node.Report(requirement, code, note: Note, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, relatedSpans: [("origin", closure, header, null)], advice: Owned, at: contract.At);
+            node.Report(requirement, code, note: Note, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, relatedSpans: [("origin", closure, header, null)], at: contract.At);
             return;
         }
 
-        // SPEC 15.3.7: an implementation condition is proven from the required contract; writing the input that supplies its longer end
-        // over the shorter one proves it, and a per-call Origin of the required Type is never named.
-        var condition = contract.Member == "the result's well-formedness" || contract.Member.StartsWith("the clause '", StringComparison.Ordinal);
-        var without = contract.Member == "the result's well-formedness" ? "whose result Type needs no such relation" : "without that clause";
-        var advice = condition ? contract.Input is { } input ? $"Write {input} of the required Type over {shorter.Text}, or convert an implementation {without}" : $"Convert an implementation {without}"
-            : contract.Equality ? "Use equal Origin bindings at the compared positions, or convert an implementation whose bindings match the required Type"
-            : contract.Member != "the result" ? $"Write {contract.Member} of the required Type over {shorter.Text}, or convert an implementation that accepts any borrow there"
-            : longer.Kind == "omitted" ? $"Leave the required result's Origin omitted, which bounds it by the borrowed inputs, or convert an implementation whose result outlives {shorter.Text}"
-            : $"Write the required result over {longer.Text}, or convert an implementation whose result outlives {shorter.Text}";
-        node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, advice: advice, at: contract.At);
+        node.Report(requirement, code, evidence: ["conversion", contract.Member, contract.Equality ? "==" : "outlives", longer, shorter], related: related, at: contract.At);
     }
 
     // The capture entry that names an environment binding, when the closure has a capture list.
@@ -955,18 +630,17 @@ public sealed partial class Binding
 
     private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
     {
-        var (evidence, advice, related) = OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
+        var (evidence, related) = OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
         if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
         {
             // SPEC 23.3.6.5: a closure end is related at the anonymous function's header, from `func` through the parameter list.
             var header = SourceSpan.FromBounds(closure.Span.Start, Math.Max(closure.Span.Start, closure.HeaderEnd));
-            const string Owned = "Return an owned or Copied value instead of a borrow of storage that ends with the call";
             var at = relation.At is CodeBlockKoto ? BorrowSource(relation.At, relation.Longer) ?? relation.At : relation.At;
-            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], advice: Owned, at: at);
+            node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: [("origin", closure, header, null)], at: at);
             return;
         }
 
-        node.Report(requirement, code, note: note, evidence: evidence, related: related, advice: advice, at: relation.At, condition: condition);
+        node.Report(requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
     }
 
     private static bool BodyLocalOrigin(BoundOrigin origin)
@@ -1162,29 +836,26 @@ public sealed partial class Binding
         var parameters = arity.Declaration.Declaration is DeclarationContainerKoto container ? string.Join(", ", container.GenericParameterNodes) : string.Empty;
         var declared = $"{name}<{parameters}>";
         var member = node.Parent is MemberAccessKoto access && ReferenceEquals(KotoHelper.UnwrapParentheses(access.Left), node) ? access.Right.ToString() : null;
-        string note, advice;
+        string note;
         if (arity.Outer)
         {
             note = $"{node} is declared in {declared}; outside it, the Type arguments of {name} are written on the qualifier and are never inferred (SPEC 9.6.1)";
-            advice = $"Name it through {name} with its Type arguments, one for each of {parameters}";
         }
         else if (arity.Written == 0 && member is not null)
         {
             note = $"{declared} is named without its Type arguments; this qualifier requires explicit Type arguments; only the construction target itself can infer its own slots (SPEC 9.6.1, 10.8.1)";
-            advice = $"Write them on the qualifier, one for each of {parameters}, as in {name}<...>.{member}";
         }
         else
         {
             note = $"{declared} declares {arity.Declared} Type parameter{(arity.Declared == 1 ? string.Empty : "s")}, and {arity.Written} Type argument{(arity.Written == 1 ? " is" : "s are")} written (SPEC 9.6.1)";
-            advice = $"Write exactly one Type argument for each of {parameters}";
         }
 
-        node.Report(requirement, code, note: note, advice: advice, related: [("declaration", arity.Declaration.Declaration, null)]);
+        node.Report(requirement, code, note: note, related: [("declaration", arity.Declaration.Declaration, null)]);
     }
 
     // SPEC 15.2.3, 23.3.6.5: an Owned failure of a common Function conversion is a Constraint record whose Reason names the subject, the
     // member through which the Origin enters OwnedOrigins and, when one is displayable, that Origin; a capture borrow is shown by its
-    // entry and related there. Advice only describes a repair.
+    // entry and related there.
     private void ReportOwnedConversion(Koto node, OwnedConversionFact owned, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var subject = DiagnosticTypeName(owned.Subject);
@@ -1220,7 +891,7 @@ public sealed partial class Binding
             }
         }
 
-        string note, advice;
+        string note;
         if (owned.Closure is { } converted && PreparedCapture(converted, owned.Member) is { } preparedSource)
         {
             // SPEC 7.2.3: in a default, a capture of a preceding argument can neither move it nor keep a new borrow of it, and the
@@ -1232,32 +903,20 @@ public sealed partial class Binding
             // An exclusive reference is captured by a Reborrow, which no proof makes valid there.
             var parameter = $"give the Function Type a parameter for {owned.Member} and pass {owned.Member} where the function value is called";
             // A borrowing entry of a Copy Owned argument, such as [k@ref] of k: i32, is repaired by its bare Copy entry, [k].
-            advice = owned.Refuted && entry is not null && preparedSource.Type is { Kind: not BoundTypeKind.Semantics } copied &&
-                this.ProveCopy(copied, node) == ConstraintProof.Proven && this.ProveOwned(copied, node) == ConstraintProof.Proven
-                ? $"Capture a Copy of {owned.Member} instead, as in [{owned.Member}], or {parameter}"
-                : owned.Refuted || owned.MemberType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? PreparedCaptureAdvice(owned.Member)
-                : owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or {parameter}"
-                : $"Prove the capture {owned.Member} Owned, or {parameter}";
         }
         else if (owned.Closure is not null)
         {
             note = origin is { } shown
                 ? $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} depends on {OriginText(shown)}, which is not static"
                 : $"Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture {owned.Member} is not proven Owned";
-            advice = owned.Refuted && entry is not null ? $"Capture {owned.Member} by Copy or Move instead of borrowing its slot, or keep the concrete closure without converting it to a common Function Type"
-                : owned.Refuted ? $"Capture an owned value instead of {owned.Member}, which holds a borrow, or keep the concrete closure without converting it to a common Function Type"
-                : owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or keep the concrete closure without converting it"
-                : $"Prove the capture {owned.Member} Owned, or keep the concrete closure without converting it to a common Function Type";
         }
         else
         {
             note = $"Common Function conversion requires Owned bound generic arguments (SPEC 7.6.4, 15.2.3); the {owned.Member} is not proven Owned";
-            advice = owned.MemberType.Kind == BoundTypeKind.Parameter ? $"Declare {DiagnosticTypeName(owned.MemberType)} is Owned on the enclosing declaration, or bind an Owned Type argument"
-                : "Bind Owned Type arguments, or keep the concrete Item without converting it to a common Function Type";
         }
 
         object[] evidence = origin is { } fact ? [subject, owned.Member, fact] : [subject, owned.Member];
-        node.Report(requirement, code, note: note, advice: advice, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
+        node.Report(requirement, code, note: note, evidence: evidence, related: related, relatedSpans: spans, at: owned.At);
 
         static string OriginText(DiagnosticOrigin origin) => origin.Kind switch
         {
@@ -1278,18 +937,12 @@ public sealed partial class Binding
         var prepared = self && DefaultParameters.InLaterDefault(node, contextual);
         var note = self ? "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)"
             : "A setter's value is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.6.2)";
-        var advice = !self ? "Name it in a capture list, as in [value]"
-            : declaring is FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } ? "Capture the Fields the body needs instead, as in let id = self.id and [id]; in a constructor or destructor, self is reached only through its Fields"
-            : !prepared ? "Name it in a capture list, as in [self] or [self@ref]"
-            : contextual.Type is { Kind: not BoundTypeKind.Semantics } type && this.ProveCopy(type, node) == ConstraintProof.Proven && this.ProveOwned(type, node) == ConstraintProof.Proven
-                ? "Name it in a capture list, as in [self], which Copies it"
-                : PreparedCaptureAdvice("self") + ", such as a preceding parameter whose default reads a Field of self";
         if (prepared)
         {
             note += "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
         }
 
-        node.Report(requirement, code, note: note, advice: advice, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
+        node.Report(requirement, code, note: note, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
     }
 
     private BoundType? CompleteDependent(Koto node, Koto cause)
@@ -1664,9 +1317,8 @@ public sealed partial class Binding
     private OriginRelationFact FailedChain(Koto use, BoundOrigin longer, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact>? all = null, ulong condition = 0)
     {
         var operand = this.FailingOperand(longer, shorter, use, judged, true, condition) ?? this.FailingOperand(longer, shorter, use, judged, false, condition) ?? longer;
-        var meet = ReferenceEquals(operand, longer) ? null : longer;
-        OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter), Meet: meet);
-        if (all is not null && (meet is null || !this.AddFailingChains(use, longer, longer, shorter, type, judged, all, condition)))
+        OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter));
+        if (all is not null && (ReferenceEquals(operand, longer) || !this.AddFailingChains(use, longer, shorter, type, judged, all, condition)))
         {
             all.Add(chain);
         }
@@ -1674,15 +1326,15 @@ public sealed partial class Binding
         return chain;
     }
 
-    // Adds the chain of each failing operand of `meet`, nested meets flattened in order; whether any was added.
-    private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin meet, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all, ulong condition = 0)
+    // Adds the chain of each failing operand of `origin`, nested meets flattened in order; whether any was added.
+    private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all, ulong condition = 0)
     {
         if (IsLocalRegion(origin))
         {
             var found = false;
             foreach (var source in this.LocalRegionSources(origin))
             {
-                found |= this.AddFailingChains(use, source, meet, shorter, type, judged, all, condition);
+                found |= this.AddFailingChains(use, source, shorter, type, judged, all, condition);
             }
 
             return found;
@@ -1695,14 +1347,14 @@ public sealed partial class Binding
                 return false;
             }
 
-            all.Add(new(use, origin, shorter, false, type, RefutesOriginRelation(origin, shorter), Meet: meet));
+            all.Add(new(use, origin, shorter, false, type, RefutesOriginRelation(origin, shorter)));
             return true;
         }
 
         var added = false;
         for (var i = 0; i < origin.Operands.Count; i++)
         {
-            added |= this.AddFailingChains(use, origin.Operands[i], meet, shorter, type, judged, all, condition);
+            added |= this.AddFailingChains(use, origin.Operands[i], shorter, type, judged, all, condition);
         }
 
         return added;
@@ -1711,8 +1363,8 @@ public sealed partial class Binding
     private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, ulong condition = 0)
         => !this.ProvesOriginOutlives(longer, shorter, use, condition) && (!judged || this.OriginRelationFails(longer, shorter, use, condition));
 
-    // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code and
-    // Advice, before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
+    // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code,
+    // before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
     private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted, ulong condition = 0)
     {
         if (IsLocalRegion(longer))
@@ -1766,28 +1418,19 @@ public sealed partial class Binding
     private BoundType? FailOperand(Koto node, BoundType operand, BindingFailure failure)
         => this.FailExplained(ref this.operatorOperands, node, failure, operand);
 
-    // SPEC 13.2, 13.3: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings,
-    // and + or += whose other operand is a string gets the literal that joins the same operands in the same order as Advice. A
-    // floating-point operand of a bit operator is told how to reach its bits; a shift count is located at the count, and a
-    // wrapping count is told to leave Wrapping<U> through U.
+    // SPEC 13.2, 13.3: the operand Type and the operator are the facts. A string operand is told that interpolation joins strings;
+    // a shift count is located at the count, and a wrapping count is told to leave Wrapping<U> through U.
     private void ReportOperatorOperand(Koto operation, BoundType operand, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var symbol = operation is BinaryKoto binary ? binary.InfixText.Trim() : ((UnaryKoto)operation).OperatorText;
         if (code == DiagnosticCode.NonNumericOperand_Kd)
         {
             var text = ReferenceTypes.EndsInString(operand);
-            var advice = !text ? null
-                : operation.Akind == KotoKind.Plus && IsStringJoin(operation, 0) ? StringJoinAdvice((BinaryKoto)operation)
-                : operation.Akind == KotoKind.PlusEquals && IsStringOperand(((BinaryKoto)operation).Right, 0) ? StringAppendAdvice((BinaryKoto)operation)
-                : null;
-            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol, note: text ? StringOperatorNote : null, advice: advice);
+            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol, note: text ? StringOperatorNote : null);
         }
         else if (code == DiagnosticCode.NonIntegerOperand_Kd)
         {
-            // A compound form applies its operator to the reinterpreted value; the assignment is not part of the advice.
-            var compound = operation.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals;
-            var kind = compound ? KotoHelper.CompoundOperation(operation.Akind) : operation.Akind;
-            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol, advice: BitPatternAdvice(operand, compound ? symbol[..^1] : symbol, kind));
+            operation.Report(requirement, code, DiagnosticTypeName(operand), symbol);
         }
         else
         {
@@ -1799,7 +1442,6 @@ public sealed partial class Binding
                 DiagnosticTypeName(operand),
                 symbol,
                 note: integer is not null ? "A wrapping integer Type is never a shift count (SPEC 13.3)" : null,
-                advice: integer is not null ? $"Convert the count to {integer} with @{integer}" : null,
                 at: ((BinaryKoto)operation).Right);
         }
     }
@@ -1813,64 +1455,6 @@ public sealed partial class Binding
 
     private BoundType? FailObjectAuthority(Koto node, Koto target)
         => this.FailExplained(ref this.writeTargets, node, BindingFailure.SharedPathAccess, target);
-
-    // SPEC 3.5, 15.1.5, 23.3.6.9: the Advice of a bare Place that needs @move states what the Transfer candidate cannot: the borrow
-    // alternative where a reference may be meant, or, for a Place without Take, the alternatives that remain.
-    internal const string NoTakeAdvice = "This Place offers no Take and cannot be transferred; borrow it with @ref or @uniq instead";
-    internal const string BorrowAlternativeAdvice = "Borrow it with @ref or @uniq instead when a reference is meant";
-
-    /// <summary>Gets the Advice of a Place that needs @move: nothing for a call argument, whose position acquires by value for every candidate (SPEC 7.3.1).</summary>
-    /// <param name="place">The Place.</param>
-    /// <param name="judgment">The Take judgment.</param>
-    /// <returns>The Advice, or <see langword="null"/>.</returns>
-    internal static string? TransferAdvice(Koto place, AcquisitionJudgment judgment)
-        => judgment == AcquisitionJudgment.Refuted ? NoTakeAdvice : Destination(place) is InvocationKoto call && !ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) ? null : BorrowAlternativeAdvice;
-
-    /// <summary>Forms the Transfer candidate of a bare Place (SPEC 23.3.6.9): <c>@move</c> after the Place, or <c>(*p)@move</c> around a dereference.</summary>
-    /// <param name="node">The reporting node, in the Place's document.</param>
-    /// <param name="place">The Place.</param>
-    /// <param name="judgment">The Take judgment; never refuted.</param>
-    /// <returns>The candidate.</returns>
-    internal static DiagnosticRepairFact[] TransferRepair(Koto node, Koto place, AcquisitionJudgment judgment)
-    {
-        DiagnosticEditFact[] edits = place is DereferenceKoto
-            ? [node.Edit(new(place.Span.Start, 0), "("), node.Edit(new(place.Span.End, 0), ")@move")]
-            : [node.Edit(new(place.Span.End, 0), "@move")];
-        var verified = judgment == AcquisitionJudgment.Verified ? RepairConditionSet.Take : RepairConditionSet.None;
-        var required = RepairConditionSet.UsageLegality | (judgment == AcquisitionJudgment.Required ? RepairConditionSet.Take : RepairConditionSet.None);
-        return [new(RepairKind.Transfer, [place.ToString(), TransferTarget(place)], edits, verified, required)];
-    }
-
-    // The destination a Place is acquired for, as the Transfer title names it.
-    internal static string TransferTarget(Koto place)
-        => Destination(place) switch
-        {
-            InvocationKoto call when ReferenceEquals(KotoHelper.UnwrapParentheses(call.Method), KotoHelper.UnwrapParentheses(place)) => "its call",
-            InvocationKoto call => call.Method is MemberAccessKoto member ? member.Right.ToString() : call.Method.ToString(),
-            VariableKoto variable => $"the binding {variable.NameKoto.IdentifierName}",
-            ReturnKoto => "the result",
-            ArrayLiteralKoto or TupleLiteralKoto or DictionaryLiteralKoto => "the element",
-            _ => "its destination",
-        };
-
-    /// <summary>Gets the Advice for a default closure that needs a preceding argument which no capture entry can take there: a
-    /// transfer is a Move and a new borrow would stay in the result (SPEC 7.2.3), and the erased environment must be Owned
-    /// (SPEC 7.6.4), so only Copy values that hold no borrow can be captured.</summary>
-    /// <param name="name">The argument's Name.</param>
-    /// <returns>The Advice.</returns>
-    internal static string PreparedCaptureAdvice(string name)
-        => $"Give the Function Type a parameter for {name} and pass {name} where the function value is called, or capture only Copy values that hold no borrow";
-
-    private static Koto? Destination(Koto place)
-    {
-        var parent = place.Parent;
-        while (parent is ParenthesizedKoto)
-        {
-            parent = parent.Parent;
-        }
-
-        return parent;
-    }
 
     // A bare Place that needs its acquisition spelled (TransferRequired or ExclusiveBorrowRequired), with the Place it names.
     private BoundType? FailAcquisition(Koto node, BindingFailure failure, Koto place, bool @object = false, bool unresolved = false)
@@ -1889,24 +1473,23 @@ public sealed partial class Binding
         }
 
         var judgment = TakeJudgment(place);
-        node.Report(requirement, code, note: this.BorrowOriginHint(node), at: place, evidence: [text], advice: TransferAdvice(place, judgment), repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
+        node.Report(requirement, code, note: this.BorrowOriginHint(node), at: place, evidence: [text], repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
     }
 
     // SPEC 7.6.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
     // located at the entry and names the initialization it stands for; a bare entry of a Non-Copy binding offers the transfer
-    // and the borrow as candidates (SPEC 23.3.6.9), so no Advice repeats them. In a default, the binding of a preceding
-    // argument admits neither, nor an exclusive borrow (SPEC 7.2.3), so no candidate is offered and the Advice changes the
-    // signature instead.
+    // and the borrow as candidates (SPEC 23.3.6.9). In a default, the binding of a preceding argument admits neither, nor an
+    // exclusive borrow (SPEC 7.2.3), so no candidate is offered.
     private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, BindingSymbol? source, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         var name = capture.Name;
         switch (code)
         {
             case DiagnosticCode.InvalidAssignment_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], advice: PreparedCaptureAdvice(name), span: capture.Span);
+                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], span: capture.Span);
                 break;
             case DiagnosticCode.InvalidAssignment_Kd:
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], advice: "Declare the binding with var, or capture it with @ref when shared access suffices", span: capture.Span);
+                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], span: capture.Span);
                 break;
             case DiagnosticCode.TransferRequired_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
                 node.Report(
@@ -1914,7 +1497,6 @@ public sealed partial class Binding
                     code,
                     note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is not proven Copy, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)",
                     evidence: [name],
-                    advice: PreparedCaptureAdvice(name),
                     span: capture.Span);
                 break;
             case DiagnosticCode.TransferRequired_Kd:
@@ -1932,7 +1514,7 @@ public sealed partial class Binding
                 break;
             case DiagnosticCode.InvalidCaptureBinding_Kd:
                 // SPEC 7.6.2: an explicit capture of self obeys the construction and destruction restrictions.
-                node.Report(requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.6.2)", advice: "Capture the Fields the body needs instead, as in let id = self.id and [id]", span: capture.Span);
+                node.Report(requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.6.2)", span: capture.Span);
                 break;
             default:
                 node.Report(requirement, code, span: capture.Span);
@@ -1940,7 +1522,7 @@ public sealed partial class Binding
         }
     }
 
-    // Reports a write failure at its target; an assignment names the target, and a let root gets conditional advice. An
+    // Reports a write failure at its target; an assignment names the target. An
     // Exclusive call of a closure (SPEC 7.6.3) borrows the callee exclusively, so the callee is the written target.
     private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
     {
@@ -1972,12 +1554,7 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(root is MemberAccessKoto member ? member.Left : ((IndexKoto)root).Left);
         }
 
-        var immutable = root is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Let } } };
-        var shared = target.BoundType?.Semantics == SemanticsKind.Ref;
-        var callAdvice = consuming ? objectCallee ? "Call a Consuming closure through an owned closure value" : $"Write {target}@follow() to call a Copy of a Copy closure, or call an owned closure value"
-            : call && shared ? "A ref/F value cannot supply an Exclusive call; call the closure through its own var binding or a uniq/F borrow"
-            : immutable ? call ? "Declare the binding with var to call it" : "Declare the binding with var to assign it again" : null;
-        node.Report(requirement, code, note: callNote, at: target, evidence: [target.ToString()], advice: callAdvice);
+        node.Report(requirement, code, note: callNote, at: target, evidence: [target.ToString()]);
     }
 
     // SPEC 4.6.9, 8.4.8.2: a user index publishes its element exclusively only through indexUniq. When the receiver's Type
@@ -2022,7 +1599,6 @@ public sealed partial class Binding
             written.ToString(),
             at: written,
             evidence: [getter ? "ref/Self" : "uniq/Self"],
-            advice: getter ? AccessorGetterShapeAdvice : AccessorSetterShapeAdvice,
             related: [("property", property.NameKoto, $"{property.NameKoto.IdentifierName} is read through ref/Self and written through uniq/Self")]);
     }
 

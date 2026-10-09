@@ -164,7 +164,6 @@ public class ContextualLabelTest
         Assert.Equal(code, error.Code);
         Assert.Equal(token, error.Text);
         Assert.NotEmpty(error.Label!);
-        Assert.NotEmpty(error.Advice!);
         Assert.Empty(Publish(valid));
         var independent = Publish(source + "\nfunc unrelated() -> i32 => true");
         Assert.Contains(error, independent);

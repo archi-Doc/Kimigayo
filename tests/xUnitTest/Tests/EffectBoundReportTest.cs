@@ -33,7 +33,6 @@ public class EffectBoundReportTest
         Assert.Equal(nameof(DiagnosticCode.IncompatibleContractImplementation_Kd), error.Code);
         Assert.Equal(reason, error.Label);
         Assert.Contains(note, error.Note);
-        Assert.Contains("declare no bound", error.Advice);
         Assert.Equal(roles, error.Related!.Select(static x => x.Role).ToArray());
 
         var c = MinimalEmissionTest.Analyze(declarations + Main);
@@ -48,7 +47,6 @@ public class EffectBoundReportTest
         var result = DiagnosticCorpus.Check("struct Writer\n    Self is BufferWriter\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        Console.writeLine(\"reserve\")\n        return .Err(BufferFull.init())\n" + Main);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal("an external operation, which confined excludes", error.Label);
-        Assert.DoesNotContain("declare no bound", error.Advice);
     }
 
     // SPEC 8.4.10.6: semantic inspection exposes the bounds each Contract declares.

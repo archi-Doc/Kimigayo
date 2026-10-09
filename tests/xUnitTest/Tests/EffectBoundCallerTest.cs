@@ -30,7 +30,6 @@ public class EffectBoundCallerTest
             Assert.Equal(at, error.Text);
             Assert.Equal("take may affect a Loan that first keeps".Replace("first", declarations.Contains("pair", StringComparison.Ordinal) ? "pair" : "first", StringComparison.Ordinal), error.Label);
             Assert.Contains("no bound excludes it", error.Note);
-            Assert.Contains("preserves results", error.Advice);
         }
     }
 

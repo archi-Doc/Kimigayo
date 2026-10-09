@@ -124,7 +124,6 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity], x => x.Code == record.Code);
             Assert.Equal(record.Display!.Range, sent.Range);
-            Assert.Contains("own block cannot prove it", sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }

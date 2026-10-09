@@ -152,7 +152,6 @@ public class LexicalLayoutRecoveryTest(ITestOutputHelper output)
         if (code == "TabIndentation_Kd")
         {
             Assert.Equal("tab in indentation", record.Label);
-            Assert.Contains("U+0020 spaces", record.Advice);
         }
 
         var console = new DiagnosticContractTest.DiagnosticConsole();

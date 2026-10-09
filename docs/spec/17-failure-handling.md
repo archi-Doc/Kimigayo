@@ -163,7 +163,7 @@ func run() -> Result<(), Error>
     return .Ok(())
 ```
 
-For mismatched normal or failure results, diagnose the path and Types. Suggest a suitable return annotation where missing, explicit success wrapping where needed, or removing try when its operand already has the complete return Type and is itself the normal result. These are alternatives stated as Advice, not repair candidates (§23.3.6.9). Validate changes to inference, calls, ownership and cleanup. For `try X.m`, explain grouping and suggest `(try X).m` only as a checked candidate; do not search unlimited alternate interpretations.
+For mismatched normal or failure results, diagnose the path and Types. For `try X.m`, explain grouping; do not search unlimited alternate interpretations.
 
 There is no user-defined try support, try block, Option/Result interconversion, special implicit error conversion, automatic borrowing from borrowed enums, success wrapping, None-from-null or new Option layout guarantee. A try-prefixed API name is separate: it promises its documented result, not propagation or interception of argument Abort.
 
@@ -236,7 +236,7 @@ These rules are independent of implementation mechanisms such as a `trap` instru
 
 ## 17.4. Warnings
 
-When an interpolated string literal is passed directly to `Utf8Writer.write`, warn and suggest `$tryWrite` ([formatting profile](utf8-formatting.md#53-short-circuiting-trywrite)). Preserve ordinary evaluation and owning interpolation. This warning is independent of the discard-warning priority below.
+When an interpolated string literal is passed directly to `Utf8Writer.write`, warn that it first creates an owning string ([formatting profile](utf8-formatting.md#53-short-circuiting-trywrite)). Preserve ordinary evaluation and owning interpolation. This warning is independent of the discard-warning priority below.
 
 A warning is diagnostic information about a condition worth reporting while processing continues and its result remains usable. Examples include deprecated configuration, ignored optional metadata, fallback encoding, and a failed cache update after the primary operation succeeds.
 
@@ -272,8 +272,6 @@ let total = do
 let corrected = if useCache => loadCached() else => compute()
 ```
 
-The diagnostic should suggest `yield`, `return`, a named `exit` or a single-item body, as appropriate.
-
 If the two calls in the example return `Result`, each discarded arm result receives only this warning, not an additional discarded-Result or effect-free warning, because supplying the missing result removes the discard itself.
 
 ### 17.4.2. Discarded effect-free values
@@ -283,14 +281,14 @@ For a non-Unit expression in Discard Context, a warning is issued when its evalu
 The analysis considers literals, Copy locals, built-in operations and comparisons, Case construction and Tuples, including their nested operations. It accounts for calls, user-defined comparisons, Move and Loan effects, destruction, Abort and possible divergence. Callee and destructor bodies are not inspected to infer purity; if the absence of effects cannot be established, no warning is issued.
 
 ```kimi
-func isAdult(age: i32) => age >= 18 // Warning: add -> bool if this is the result.
+func isAdult(age: i32) => age >= 18 // Warning: the bool value is discarded.
 func answer() => 42               // Warning also with an omitted Unit return Type.
 left == right                    // Warning for initialized i32 locals.
 if ready => 1                     // Warn on the discarded body value.
 func cleanup() => handle.close()  // Do not assume a call is effect-free.
 ```
 
-The explicit no-op Unit value `()` receives no warning. The diagnostic should suggest a return annotation or a use of the value; it carries no repair candidate and never deletes the expression automatically. Diagnostics for `defer` placement and `while true` follow §16.1.3 and §14.9.2.
+The explicit no-op Unit value `()` receives no warning. The diagnostic carries no repair candidate and never deletes the expression automatically. Diagnostics for `defer` placement and `while true` follow §16.1.3 and §14.9.2.
 
 ### 17.4.3. Try success and intentional discard
 
@@ -308,7 +306,7 @@ Use existing Value/Discard Context propagation, including parentheses and branch
 | try save() | Propagate error, continue with Unit | None |
 | _ = try save() | Explicit Unit discard | None; discard marker optional |
 
-A try-success warning explains that the extracted value is unused, not that failure is unhandled. Suggest using it or writing `_ = try ...`. For Result discard, suggest applicable options in order: propagate and use success (or explicitly discard it), handle with match, then explicitly ignore the entire Result. Do not suggest bare try as warning-free for a non-Unit payload. The propagation (`_ = try ...`) and the explicit discard (`_ = ...`) are repair candidates at the discard site when the expression is a direct item of an indented body (§23.3.6.9): propagation only when the failure return target fits (§17.2.4), and in that order; `_ =` puts the expression in Value Context (§14.2.4) and changes no scope. Other fixes are Advice, and nothing is applied automatically.
+A try-success warning explains that the extracted value is unused, not that failure is unhandled. The propagation (`_ = try ...`) and the explicit discard (`_ = ...`) are repair candidates at the discard site when the expression is a direct item of an indented body (§23.3.6.9): propagation only when the failure return target fits (§17.2.4), and in that order; `_ =` puts the expression in Value Context (§14.2.4) and changes no scope. Nothing is applied automatically.
 
 ### 17.4.4. Positions and ranges that always fail
 

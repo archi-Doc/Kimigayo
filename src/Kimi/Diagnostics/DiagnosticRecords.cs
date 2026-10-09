@@ -136,9 +136,6 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
     /// <summary>Gets further explanation.</summary>
     public string? Note { get; init; }
 
-    /// <summary>Gets conditional repair advice; no edit is inferred from it.</summary>
-    public string? Advice { get; init; }
-
     /// <summary>Gets the parts that limits omitted, with their counts.</summary>
     public DiagnosticOmission[]? Omissions { get; init; }
 
@@ -151,7 +148,7 @@ public sealed record CheckDiagnostic(string Code, DiagnosticSeverity Severity, D
     public bool Equals(CheckDiagnostic? other)
         => other is not null && this.Code == other.Code && this.Severity == other.Severity && this.Category == other.Category &&
             this.Message == other.Message && this.Source == other.Source && this.Span == other.Span && this.Label == other.Label &&
-            this.Note == other.Note && this.Advice == other.Advice && Equals(this.Display, other.Display) &&
+            this.Note == other.Note && Equals(this.Display, other.Display) &&
             (this.Reason ?? []).AsSpan().SequenceEqual(other.Reason ?? []) && (this.Related ?? []).AsSpan().SequenceEqual(other.Related ?? []) &&
             (this.Omissions ?? []).AsSpan().SequenceEqual(other.Omissions ?? []) && (this.Repairs ?? []).AsSpan().SequenceEqual(other.Repairs ?? []);
 

@@ -72,7 +72,7 @@ Formatters preserve Body forms and should keep an `if` inside a single-item body
 
 ### 2.2.2. Leading-dot continuation and Case references
 
-The grammar determines a new body or match-arm position before dot continuation is considered. A leading dot at an arm position starts a Case Pattern; at the first item of a new executable body it may start a Case construction. Neither continues the header. These decisions use neither expected Types nor name lookup. Consequently, a `.where(...)` line after a header is not a header continuation; a diagnostic should suggest delimiters inside the header expression rather than reparse by guesswork.
+The grammar determines a new body or match-arm position before dot continuation is considered. A leading dot at an arm position starts a Case Pattern; at the first item of a new executable body it may start a Case construction. Neither continues the header. These decisions use neither expected Types nor name lookup. Consequently, a `.where(...)` line after a header is not a header continuation; it is diagnosed as written and never reparsed by guesswork.
 
 Otherwise, a leading single dot exactly one indentation level deeper than the expression it follows continues that expression, and later chain lines use the same level. Thus `.Some(1)` one level below a completed root-level initializer is a member-call continuation, while a Case Pattern below `match` begins an arm. Range tokens are not single dots. To write an independent Case expression, use normal item indentation, group it or qualify its enum Type. Case lookup follows §6.3.2.
 
@@ -194,7 +194,7 @@ Documentation metadata may be omitted from the Parser's executable syntax tree; 
 
 When documentation processing is enabled, retain the target fragment and the original SourceDocument and range. Publication scope is configurable; public output follows effective accessibility. Optional documentation diagnostics cover unattached or ignored documentation, missing or ambiguous items, missing `safety` prose on unsafe declarations, and unresolved links. An ignored `///` is diagnosed only where lexing identified an actual line comment, respecting the exclusions of §2.3.3. Documentation diagnostics never affect ordinary language validity, although a separate CI gate may fail on them. Existing encoding, layout and syntax errors are never downgraded to lint.
 
-Optional writing diagnostics may suggest adopted syntax when text resembles an omitted feature, such as a Setext heading or indented code. Such resemblance is not a definite syntax error. Exhaustive detection and a comparison parser are not required. Tab and trailing-space advice is separate, because hard-break spaces remain meaningful. Do not collect diagnostic-only data when these checks are disabled; measure their added cost when they are enabled.
+Optional writing diagnostics may report text that resembles an omitted feature, such as a Setext heading or indented code, and name that feature in the Reason. Such resemblance is not a definite syntax error. Exhaustive detection and a comparison parser are not required. Tab and trailing-space diagnostics are separate, because hard-break spaces remain meaningful. Do not collect diagnostic-only data when these checks are disabled; measure their added cost when they are enabled.
 
 Canonical formatting uses `/// ` for nonempty lines and `///` for empty ones, preserving the extracted text. Moving blocks before Attributes must preserve every block's association and text. No new formatter or command syntax is required.
 

@@ -26,7 +26,6 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(code, error.Code);
         Assert.Equal(new SourceSpan(source.IndexOf(marked, StringComparison.Ordinal), 1), error.Span);
         Assert.False(string.IsNullOrWhiteSpace(error.Label));
-        Assert.False(string.IsNullOrWhiteSpace(error.Advice));
         Assert.DoesNotContain("Unexpected token", error.Message, StringComparison.Ordinal);
     }
 
@@ -52,7 +51,6 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Equal($"The external parameter name '{name}' is already used in this parameter list", error.Message);
         Assert.Equal(new SourceSpan(source.LastIndexOf(name, StringComparison.Ordinal), name.Length), error.Span);
         Assert.Equal("external name is repeated", error.Label);
-        Assert.Contains("Rename", error.Advice!, StringComparison.Ordinal);
         var first = Assert.Single(error.Related!);
         Assert.Equal("declaration", first.Role);
         Assert.Equal("first external parameter name", first.Label);
@@ -116,7 +114,6 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("^ " + error.Label, console.Text, StringComparison.Ordinal);
         Assert.Contains(first.Label!, console.Text, StringComparison.Ordinal);
-        Assert.Contains(error.Advice!, console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
@@ -124,7 +121,6 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
             Assert.Equal(error.Display!.Range, sent.Range);
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
-            Assert.Contains(error.Advice!, sent.Message, StringComparison.Ordinal);
             if (related)
             {
                 Assert.Equal(first.Range, Assert.Single(sent.RelatedInformation!).Location.Range);
@@ -174,14 +170,12 @@ public class ParameterSyntaxDiagnosticTest(ITestOutputHelper output)
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("^ " + error.Label, console.Text, StringComparison.Ordinal);
-        Assert.Contains(error.Advice!, console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
             Assert.Equal(error.Display!.Range, sent.Range);
-            Assert.Contains(error.Advice!, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }

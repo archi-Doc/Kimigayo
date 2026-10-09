@@ -16,14 +16,14 @@ public class ContextualCaptureTest
     private const string Counter = "struct Counter\n    public var count: i32\n    public init(count: i32) => self.count = count\n\n";
 
     [Theory]
-    [InlineData(Counter + "    public func peek(self: ref/Self) -> i32\n        let read = func () => self.count\n        return read()\n", "self", "[self]")]
-    [InlineData(Counter + "    public func bump(self: uniq/Self) -> ()\n        var step = func () => self.count += 1\n        step()\n", "self", "[self]")]
-    [InlineData(Counter + "    public func take(self) -> i32\n        let read = func () => self.count\n        return read()\n", "self", "[self]")]
-    [InlineData(Counter + "    public func reader(self: ref/Self) -> () -> i32\n        return func () => self.count\n", "self", "[self]")]
-    [InlineData(Counter + "    public func nested(self: ref/Self) -> i32\n        let outer = func () => (func () => self.count)()\n        return outer()\n", "self", "[self]")]
-    [InlineData("struct Box\n    public var item: i32\n        set(self: uniq/Self, value: i32) -> ()\n            let read = func () => value + 1\n            storage = read()\n    public init(item: i32) => self.item = item\n", "value", "[value]")]
-    [InlineData("struct Res\n    public var id: i32\n    public init(id: i32) => self.id = id\n    drop\n        let show = func () => self.id\n        Console.writeLine(\"\\(show())\")\n", "self", "let id = self.id")]
-    public void AnOmittedCaptureListNeverCapturesAContextualBinding(string declarations, string name, string advice)
+    [InlineData(Counter + "    public func peek(self: ref/Self) -> i32\n        let read = func () => self.count\n        return read()\n", "self")]
+    [InlineData(Counter + "    public func bump(self: uniq/Self) -> ()\n        var step = func () => self.count += 1\n        step()\n", "self")]
+    [InlineData(Counter + "    public func take(self) -> i32\n        let read = func () => self.count\n        return read()\n", "self")]
+    [InlineData(Counter + "    public func reader(self: ref/Self) -> () -> i32\n        return func () => self.count\n", "self")]
+    [InlineData(Counter + "    public func nested(self: ref/Self) -> i32\n        let outer = func () => (func () => self.count)()\n        return outer()\n", "self")]
+    [InlineData("struct Box\n    public var item: i32\n        set(self: uniq/Self, value: i32) -> ()\n            let read = func () => value + 1\n            storage = read()\n    public init(item: i32) => self.item = item\n", "value")]
+    [InlineData("struct Res\n    public var id: i32\n    public init(id: i32) => self.id = id\n    drop\n        let show = func () => self.id\n        Console.writeLine(\"\\(show())\")\n", "self")]
+    public void AnOmittedCaptureListNeverCapturesAContextualBinding(string declarations, string name)
     {
         var path = Path.GetFullPath("Hello.kimi");
         var c = MinimalEmissionTest.Analyze(declarations, path);
@@ -33,7 +33,6 @@ public class ContextualCaptureTest
         Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
         Assert.Equal(name, error.Text); // Located at the use.
         Assert.Contains("never captured implicitly", error.Note, StringComparison.Ordinal);
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);
@@ -64,7 +63,6 @@ public class ContextualCaptureTest
         Assert.Equal(nameof(DiagnosticCode.InvalidCaptureBinding_Kd), error.Code);
         Assert.StartsWith("self", error.Text, StringComparison.Ordinal); // Located at the capture entry.
         Assert.Contains("reached only through its Fields", error.Note, StringComparison.Ordinal);
-        Assert.Contains("let id = self.id", error.Advice, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -106,7 +106,6 @@ public class BitConversionTest
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal(code, error.Code);
-        Assert.NotNull(error.Advice);
     }
 
     [Fact]

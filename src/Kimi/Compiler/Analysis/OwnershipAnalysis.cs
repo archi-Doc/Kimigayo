@@ -210,16 +210,13 @@ public sealed partial class OwnershipAnalysis
 
             if (issue.Failure is OwnershipFailure.DefaultArgumentAccess or OwnershipFailure.DefaultArgumentBorrow)
             {
-                var advice = issue.Failure == OwnershipFailure.DefaultArgumentAccess ? "Use temporary shared inspection, or create an independent value inside the default" :
-                    "Return an independent value or Copy an existing shared reference with external dependencies";
                 var defaultCase = this.CaseFact(issue, out var singleDefaultCase);
                 issue.Source.Report(
                     requirement,
                     issue.Code,
                     note: Note(CaseNote(null, defaultCase, singleDefaultCase)),
                     evidence: CaseEvidence(issue.Code, null, defaultCase),
-                    related: Locations(this.WithCaseDeclarations(issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, defaultCase)),
-                    advice: advice);
+                    related: Locations(this.WithCaseDeclarations(issue.Related is { } parameter ? [("declaration", parameter, "preceding prepared parameter")] : null, defaultCase)));
                 continue;
             }
 
@@ -248,10 +245,10 @@ public sealed partial class OwnershipAnalysis
                 var fit = Binding.IsFitObligation(obligation);
                 var at = fit && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
                 var relation = new OriginRelationFact(at, longer, shorter, obligation.Equality, obligation.Type, Binding.RefutesOriginRelation(longer, shorter), obligation.Clause, WellFormed: obligation.WellFormed);
-                var (evidence, advice, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
+                var (evidence, related) = Binding.OriginRelationFacts(relation, fit ? "fit" : obligation.Clause is not null ? "declared" : "wellFormed");
                 if (ChainOrdinal(at, issue.Code, evidence) is { } chain)
                 {
-                    at.Report(requirement, issue.Code, note: Note(null), evidence: evidence, advice: advice, related: Locations(related), condition: (ushort)(Condition(issue) | (chain << 8)));
+                    at.Report(requirement, issue.Code, note: Note(null), evidence: evidence, related: Locations(related), condition: (ushort)(Condition(issue) | (chain << 8)));
                 }
 
                 continue;
@@ -292,7 +289,6 @@ public sealed partial class OwnershipAnalysis
                 issue.Code,
                 note: Note(CaseNote(AcquisitionNote(issue), found, single)),
                 evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
-                advice: transfer ? Binding.TransferAdvice(issue.Source, judgment) : null,
                 related: Locations(this.WithCaseDeclarations(RelatedLocations(issue), found)),
                 condition: Condition(issue),
                 span: SignatureSpan(issue.Source),
@@ -312,45 +308,20 @@ public sealed partial class OwnershipAnalysis
         void ReportDefaultMove(in OwnershipIssue issue)
         {
             var entries = issue.Source is FunctionKoto { Captures: { } captured } && issue.Capture >= 0 && issue.Capture < captured.Length ? captured : null;
-            var name = entries is not null ? entries[issue.Capture].Name : KotoHelper.UnwrapParentheses(issue.Source).ToString();
-            var type = entries is not null ? CapturedType((FunctionKoto)issue.Source, name) : issue.Source.BoundType;
-            var copy = type is not null && this.compilation.Binding.ProveCopy(type, issue.Source) == ConstraintProof.Proven;
-            var advice = entries is not null
-                ? copy ? $"Capture a Copy of the prepared argument instead, as in [{name}]"
-                    : "A default closure can neither move nor borrow a preceding argument that is not Copy; build an independent value inside the default and capture that"
-                : copy ? $"Copy the prepared argument instead, as in {name} or {name}@copy"
-                : $"Inspect the prepared argument through a temporary shared borrow, such as Text.toString({name}), or build an independent value";
             var span = entries is not null ? entries[issue.Capture].Span : (SourceSpan?)null;
-            issue.Source.Report(Requirement(issue), issue.Code, note: Note(null), related: Locations(null), condition: Condition(issue), advice: advice, span: span);
-        }
-
-        static BoundType? CapturedType(FunctionKoto closure, string name)
-        {
-            var storage = closure.ClosureStorage?.Storage;
-            for (var i = 0; i < (storage?.Count ?? 0); i++)
-            {
-                if (storage![i].Source.Name == name)
-                {
-                    return storage[i].Source.Type;
-                }
-            }
-
-            return null;
+            issue.Source.Report(Requirement(issue), issue.Code, note: Note(null), related: Locations(null), condition: Condition(issue), span: span);
         }
 
         // SPEC 7.6.2: an omitted list never infers a Move, a borrow or a Reborrow, so a capture without Copy needs an entry. In a
-        // default, no entry can take a preceding argument other than by Copy (SPEC 7.2.3), so the Advice changes the signature.
+        // default, no entry can take a preceding argument other than by Copy (SPEC 7.2.3).
         void ReportCapture(in OwnershipIssue issue, FunctionKoto function, BindingSymbol source)
         {
             var name = source.Name;
-            var reference = source.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 };
             var omitted = function.Captures is null;
             var prepared = omitted && DefaultParameters.InLaterDefault(function, source);
             var note = !omitted ? null : $"The omitted capture list captures {name} only by Copy; it never infers a Move, a borrow or a Reborrow" +
                 (prepared ? ", and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)" : string.Empty);
-            var advice = !omitted ? null : prepared ? Binding.PreparedCaptureAdvice(name)
-                : reference ? $"List the capture as [{name}] to Reborrow the exclusive reference, or [{name}@move] to transfer it" : $"List the capture as [{name}@move] to transfer it, or [{name}@ref] to borrow it";
-            issue.Source.Report(Requirement(issue), issue.Code, note: Note(note), related: Locations(null), condition: Condition(issue), evidence: [name], advice: advice);
+            issue.Source.Report(Requirement(issue), issue.Code, note: Note(note), related: Locations(null), condition: Condition(issue), evidence: [name]);
         }
 
         // SPEC 8.4.10.6: the Reason names the access and the Loan; the Note states that no available bound excludes it, without
@@ -363,15 +334,11 @@ public sealed partial class OwnershipAnalysis
             (string Role, Koto At, string? Label)[]? related = issue.LoanSource is not { } loan ? null
                 : issue.Related is { } earlier ? [("loan", loan, "value retaining the conflicting loan"), ("call", earlier, "the earlier call whose result keeps the loan")]
                 : [("loan", loan, "value retaining the conflicting loan")];
-            var advice = call?.BoundValueCall is not null
-                ? $"End the use of {holder} before this call, or declare effect preserves results on the Callable Constraint when every bound callable satisfies it"
-                : $"End the use of {holder} before this call, or require a Contract that declares preserves results for {name}, when every use Type conforms to it";
             issue.Source.Report(
                 Requirement(issue),
                 issue.Code,
                 note: Note($"{name} may affect every Loan that the Type of its inputs may denote, and {holder} keeps such a Loan from an earlier call; under the premises here no bound excludes it (SPEC 8.4.10.4)"),
                 evidence: [$"{name} may affect a Loan that {holder} keeps"],
-                advice: advice,
                 related: Locations(related),
                 condition: Condition(issue));
         }
@@ -390,14 +357,12 @@ public sealed partial class OwnershipAnalysis
                 : entries is null && issue.Borrow is { } site ? [("loan", loan, RetainedLoanLabel), ("borrow", site, BorrowLabel)]
                 : [("loan", loan, RetainedLoanLabel)];
             (string Role, Koto In, SourceSpan Span, string? Label)[]? spans = entries is not null ? [("borrow", issue.Borrow!, entries[issue.BorrowCapture].Span, BorrowLabel)] : null;
-            var advice = (issue.Destroyed.Length > 0 ? $"Declare {place} in a scope" : $"Keep {place} in a local") + " that outlives the value keeping its Loan, or keep an owned value instead of the borrow";
             var found = this.CaseFact(issue, out var single);
             issue.Source.Report(
                 Requirement(issue),
                 issue.Code,
                 note: Note(CaseNote(char.ToUpperInvariant(place[0]) + place[1..] + kept + transfer, found, single)),
                 evidence: CaseEvidence(issue.Code, null, found),
-                advice: advice,
                 related: Locations(this.WithCaseDeclarations(related, found)),
                 relatedSpans: spans,
                 condition: Condition(issue));

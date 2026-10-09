@@ -114,7 +114,7 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
         Assert.Null(call.BoundCall);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "Write the anonymous function's result Type, or annotate the Type of the call's result"), (error.Code, error.Advice));
+        Assert.Equal(nameof(DiagnosticCode.UnboundTypeArgument_Kd), error.Code);
     }
 
     [Fact]

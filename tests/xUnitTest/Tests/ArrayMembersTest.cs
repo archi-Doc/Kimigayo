@@ -192,7 +192,6 @@ public class ArrayMembersTest
     {
         var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(code, record.Code);
-        Assert.DoesNotContain("initRepeating", record.Message + record.Label + record.Note + record.Advice + string.Join(",", record.Related?.Select(static x => x.Label) ?? []), StringComparison.Ordinal);
         if (source.Contains("init(1, 2)", StringComparison.Ordinal))
         {
             Assert.Equal(2, record.Related!.Length);

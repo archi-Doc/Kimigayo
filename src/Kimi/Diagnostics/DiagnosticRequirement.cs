@@ -53,7 +53,7 @@ public readonly record struct DiagnosticRequirement(DiagnosticPartition Partitio
 }
 
 /// <summary>The requirement vocabulary: stable names from each phase's failure enumeration with their descriptions, and for
-/// syntax forms the phrase and advice their diagnostics display, validated when loaded.</summary>
+/// syntax forms the phrase their diagnostics display, validated when loaded.</summary>
 public static class DiagnosticRequirements
 {
     private const string ResourceName = "Diagnostics.DiagnosticRequirement.tinyhand";
@@ -144,14 +144,8 @@ public static class DiagnosticRequirements
         return phrase is not null;
     }
 
-    /// <summary>Gets the conditional advice of a syntax form, or <see langword="null"/> when the table gives none.</summary>
-    /// <param name="requirement">The requirement.</param>
-    /// <returns>The advice.</returns>
-    public static string? AdviceOf(DiagnosticRequirement requirement)
-        => Entries.TryGetValue(requirement.Name, out var entry) ? entry.Advice : null;
-
     /// <summary>Loads a requirement table and lists its anomalies: unknown, duplicate and missing names, empty descriptions,
-    /// a syntax form without a phrase, and a phrase or advice on a requirement that is not a syntax form.</summary>
+    /// a syntax form without a phrase, and a phrase on a requirement that is not a syntax form.</summary>
     /// <param name="utf8">The table text, or <see langword="null"/> when the resource is missing.</param>
     /// <returns>The entries by stable name and the anomalies.</returns>
     internal static (Dictionary<string, DiagnosticRequirementEntry> Entries, string[] Anomalies) Load(byte[]? utf8)
@@ -191,9 +185,9 @@ public static class DiagnosticRequirements
             {
                 anomalies.Add($"{entry.Name}: the syntax form has no phrase.");
             }
-            else if (!isForm && (entry.Phrase is not null || entry.Advice is not null))
+            else if (!isForm && entry.Phrase is not null)
             {
-                anomalies.Add($"{entry.Name}: only a syntax form has a phrase or advice.");
+                anomalies.Add($"{entry.Name}: only a syntax form has a phrase.");
             }
             else if (!descriptions.TryAdd(entry.Name, entry))
             {
@@ -227,7 +221,4 @@ internal sealed partial class DiagnosticRequirementEntry
     /// <summary>Gets the phrase a syntax form displays in a message or label; it has no article and starts in lower case
     /// unless it is a quoted token or a capitalized term such as Type.</summary>
     public string? Phrase { get; init; }
-
-    /// <summary>Gets the conditional advice a diagnostic of a syntax form carries; prose, from which no edit is inferred.</summary>
-    public string? Advice { get; init; }
 }

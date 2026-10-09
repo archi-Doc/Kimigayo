@@ -45,7 +45,6 @@ public sealed partial class Binding
 
     // SPEC 13.5.4.1: the explanation of a numeric conversion rejected for a different integer argument.
     internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4.1)";
-    internal const string WrappingConversionAdvice = "Convert through the integer argument first, as in x@U@Wrapping<U> or w@U@V, or wrap the value with x@wrap<Wrapping<U>> or w@wrap<V>";
 
     // SPEC 13.5.4.3: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
     // or generic, without a check. A direct literal is wrapped at compile time; for a generic U only the generic literals fit.

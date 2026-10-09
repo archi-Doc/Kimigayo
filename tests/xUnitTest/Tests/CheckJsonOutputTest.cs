@@ -12,7 +12,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 23.3.6.8: `kimi check --Format json` checks one unit through the shared check entry and writes the kimi.check/1 document
+// SPEC 23.3.6.8: `kimi check --Format json` checks one unit through the shared check entry and writes the kimi.check/2 document
 // to standard output alone; its records equal the text form's, its inputs carry the hash of the bytes that were read, and a
 // project that cannot be loaded is a Blocked document.
 public sealed class CheckJsonOutputTest : IDisposable
@@ -114,7 +114,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         var project = this.WriteProject("App", "main.kimi", Broken);
         var document = CheckJsonOutput.Create(new KimiOptions(), [project], TestContext.Current.CancellationToken);
         var json = JsonSerializer.Serialize(document, DiagnosticJsonContext.Default.CheckDocument);
-        Assert.StartsWith("{\"schema\":\"kimi.check/1\",\"compiler\":\"", json, StringComparison.Ordinal);
+        Assert.StartsWith("{\"schema\":\"kimi.check/2\",\"compiler\":\"", json, StringComparison.Ordinal);
         Assert.Contains("\"unit\":{\"project\":", json, StringComparison.Ordinal);
         Assert.Contains("\"mode\":\"Product\",\"debug\":false}", json, StringComparison.Ordinal);
         Assert.Contains("\"outcome\":\"Completed\",\"accepted\":false,\"testPresence\":\"No\",\"sources\":[{\"path\":", json, StringComparison.Ordinal);

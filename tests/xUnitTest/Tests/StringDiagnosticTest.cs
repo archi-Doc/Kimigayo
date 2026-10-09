@@ -13,7 +13,6 @@ namespace XunitTest;
 public sealed class StringDiagnosticTest(ITestOutputHelper output)
 {
     private const string BrokenCall = "::Kimi.Console.writeLine(\"Hello, world!)";
-    private const string Advice = "Close the string before any code that follows it.";
 
     // SPEC 23.3.6.2–4: the lexical cause owns the explanation, including recovery of its argument and enclosing delimiters.
     [Theory]
@@ -35,7 +34,6 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         Assert.Equal("string starts here", error.Label);
         Assert.Equal("\"", Assert.Single(error.Reason!).Value);
         Assert.Equal("expected", error.Reason![0].Name);
-        Assert.Equal(Advice, error.Advice);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         c.Bind();
         c.Binding.ReportDiagnostics();
@@ -127,7 +125,6 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("Hello.kimi:1:26", console.Text, StringComparison.Ordinal);
         Assert.Contains("^ string starts here", console.Text, StringComparison.Ordinal);
-        Assert.Contains(Advice, console.Text, StringComparison.Ordinal);
         Assert.DoesNotContain("NoApplicableOverload", console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
@@ -137,7 +134,6 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
             Assert.Equal(error.Display!.Range, sent.Range);
             Assert.Equal(error.Code, sent.Code);
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
-            Assert.Contains(Advice, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }
@@ -273,7 +269,6 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         {
             Assert.Equal(DiagnosticSeverity.Error, x.Severity);
             Assert.Equal(DiagnosticCategory.Language, x.Category);
-            Assert.Null(x.Advice);
             Assert.Null(x.Repairs);
         });
         Assert.Equal([new SourceRange(new(0, 19), new(0, 21)), new SourceRange(new(0, 29), new(0, 31))], result.Diagnostics.Select(static x => x.Display!.Range));

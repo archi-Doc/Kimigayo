@@ -18,24 +18,23 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     private const string RunR = "func run<R, F>(action: ref/F) -> R\n    F is Callable<(i32) -> R>\n    return action(1)\n";
 
     [Theory]
-    [InlineData("OmittedParameter", "func run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> i32>\n    return 7\npublic func main() -> ()\n    require run(func (n) => 1) == 7 else => $abort(\"c0c\")\n", "run(func (n) => 1)", "T", "func (n) => 1", "Write the anonymous function's parameter Types")]
-    [InlineData("OmittedResult", RunR + "public func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)", "R", "func (n) => n + 1", "Write the anonymous function's result Type, or annotate the Type of the call's result")]
-    [InlineData("Overloads", "func g(n: i32) -> i32 => n + 1\nfunc g(n: i64) -> i64 => n + 2\n" + RunR + "public func main() -> ()\n    let r = run(g)\n", "run(g)", "R", "g", "Bind the function reference to a local whose Function Type is written, or annotate the Type of the call's result")]
-    [InlineData("GenericReference", "func identity<T>(value: T) -> T => value@move\n" + RunR + "public func main() -> ()\n    let r = run(identity)\n", "run(identity)", "R", "identity", "Write explicit Type arguments for the function reference, as in identity<Type>, or annotate the Type of the call's result")]
-    [InlineData("NoEvidence", "func make<T>() -> i32 => 7\npublic func main() -> ()\n    require make() == 7 else => $abort(\"u1\")\n", "make()", "T", null, "Write explicit Type arguments for make")]
-    [InlineData("ContextualCase", "func size<T>(value: Option<T>) -> i32 => 7\npublic func main() -> ()\n    require size(.None) == 7 else => $abort(\"u2\")\n", "size(.None)", "T", null, "Write explicit Type arguments for size")]
-    [InlineData("CommonFunction", "func runOnly<T>(action: (T) -> i32) -> i32\n    return 7\npublic func main() -> ()\n    require runOnly(func (n) => 7) == 7 else => $abort(\"u3\")\n", "runOnly(func (n) => 7)", "T", "func (n) => 7", "Write the anonymous function's parameter Types")]
-    [InlineData("Result", "func make<T>() -> Option<T> => .None\npublic func main() -> ()\n    let x = make()\n", "make()", "T", null, "Write explicit Type arguments for make, or annotate the Type of the call's result")]
-    [InlineData("Constraint", "func make<T>() -> i32\n    T is Equatable\n    return 1\npublic func main() -> ()\n    require make() == 1 else => $abort(\"u7b\")\n", "make()", "T", null, "Write explicit Type arguments for make")]
-    [InlineData("TypeIdentity", "func count<I, E>(items: uniq/I) -> i32\n    I is Iterator\n    I.Item is E\n    return 0\npublic func main() -> ()\n    var values = [1, 2, 3]\n    var it = values.iterate()\n    require count(it@uniq) == 0 else => $abort(\"ident\")\n", "count(it@uniq)", "E", null, "Write explicit Type arguments for count")]
-    public void AnUnsolvedSlotOfTheSelectedCandidateIsTheInferenceBoundary(string name, string source, string call, string slot, string? argument, string advice)
+    [InlineData("OmittedParameter", "func run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> i32>\n    return 7\npublic func main() -> ()\n    require run(func (n) => 1) == 7 else => $abort(\"c0c\")\n", "run(func (n) => 1)", "T", "func (n) => 1")]
+    [InlineData("OmittedResult", RunR + "public func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)", "R", "func (n) => n + 1")]
+    [InlineData("Overloads", "func g(n: i32) -> i32 => n + 1\nfunc g(n: i64) -> i64 => n + 2\n" + RunR + "public func main() -> ()\n    let r = run(g)\n", "run(g)", "R", "g")]
+    [InlineData("GenericReference", "func identity<T>(value: T) -> T => value@move\n" + RunR + "public func main() -> ()\n    let r = run(identity)\n", "run(identity)", "R", "identity")]
+    [InlineData("NoEvidence", "func make<T>() -> i32 => 7\npublic func main() -> ()\n    require make() == 7 else => $abort(\"u1\")\n", "make()", "T", null)]
+    [InlineData("ContextualCase", "func size<T>(value: Option<T>) -> i32 => 7\npublic func main() -> ()\n    require size(.None) == 7 else => $abort(\"u2\")\n", "size(.None)", "T", null)]
+    [InlineData("CommonFunction", "func runOnly<T>(action: (T) -> i32) -> i32\n    return 7\npublic func main() -> ()\n    require runOnly(func (n) => 7) == 7 else => $abort(\"u3\")\n", "runOnly(func (n) => 7)", "T", "func (n) => 7")]
+    [InlineData("Result", "func make<T>() -> Option<T> => .None\npublic func main() -> ()\n    let x = make()\n", "make()", "T", null)]
+    [InlineData("Constraint", "func make<T>() -> i32\n    T is Equatable\n    return 1\npublic func main() -> ()\n    require make() == 1 else => $abort(\"u7b\")\n", "make()", "T", null)]
+    [InlineData("TypeIdentity", "func count<I, E>(items: uniq/I) -> i32\n    I is Iterator\n    I.Item is E\n    return 0\npublic func main() -> ()\n    var values = [1, 2, 3]\n    var it = values.iterate()\n    require count(it@uniq) == 0 else => $abort(\"ident\")\n", "count(it@uniq)", "E", null)]
+    public void AnUnsolvedSlotOfTheSelectedCandidateIsTheInferenceBoundary(string name, string source, string call, string slot, string? argument)
     {
         var check = DiagnosticCorpus.Check(source);
         var error = Assert.Single(check.Diagnostics);
         output.WriteLine($"{name}: {error.Note}");
         Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), DiagnosticCategory.Language, call), (error.Code, error.Category, Text(source, error.Span)));
         Assert.Equal($"Generic parameter '{slot}' is not bound", error.Label);
-        Assert.Equal(advice, error.Advice);
         Assert.Null(error.Repairs);
         var related = error.Related!;
         Assert.Contains(related, static x => x.Role == "declaration");
@@ -149,13 +148,13 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal(result, System.Text.Json.JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
     }
 
-    // SPEC 10.5, 10.8: the repairs the Advice names bind the slot, and the calls run.
+    // SPEC 10.5, 10.8: the written repairs bind the slot, and the calls run.
     [Theory]
     [InlineData("ExpectedResult", RunR + "let r: i32 = run(func (n) => n + 1)\nrequire r == 2 else => $abort(\"q2\")")]
     [InlineData("WrittenResult", RunR + "let r = run(func (n) -> i32 => n + 1)\nrequire r == 2 else => $abort(\"q3\")")]
     [InlineData("ExpectedOption", "func make<T>() -> Option<T> => .None\nlet x: Option<i32> = make()")]
     [InlineData("Explicit", "func make<T>() -> i32 => 7\nfunc size<T>(value: Option<T>) -> i32 => 7\nfunc runOnly<T>(action: (T) -> i32) -> i32\n    return 7\nfunc run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> i32>\n    return 7\nrequire make<i32>() + size<i32>(.None) + runOnly(func (n: i32) => 7) + run(func (n: i32) => 1) == 28 else => $abort(\"v1\")")]
-    public void TheAdvisedRepairsRun(string name, string source)
+    public void TheWrittenRepairsRun(string name, string source)
         => ScalarEmissionTest.EmitFixture("UnboundSlotCounterpart" + name, source, string.Empty);
 
     [Trait("Purpose", "Allocation")]

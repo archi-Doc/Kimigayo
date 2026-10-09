@@ -33,7 +33,6 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(source.IndexOf(marked, StringComparison.Ordinal), marked.Length), error.Span);
         Assert.Equal(DiagnosticCategory.Language, error.Category);
         Assert.False(string.IsNullOrWhiteSpace(error.Label));
-        Assert.False(string.IsNullOrWhiteSpace(error.Advice));
     }
 
     [Theory]
@@ -88,7 +87,6 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(DiagnosticCategory.Language, error.Category);
         Assert.Equal(DiagnosticSeverity.Error, error.Severity);
         Assert.False(string.IsNullOrWhiteSpace(error.Label));
-        Assert.False(string.IsNullOrWhiteSpace(error.Advice));
         Assert.DoesNotContain("Unexpected token", error.Message, StringComparison.Ordinal);
     }
 
@@ -129,18 +127,16 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(new SourceSpan(source.IndexOf(marked, StringComparison.Ordinal), marked.StartsWith("during", StringComparison.Ordinal) ? 6 : marked.Length), error.Span);
         Assert.DoesNotContain("Unexpected token", error.Message, StringComparison.Ordinal);
         Assert.False(string.IsNullOrWhiteSpace(error.Label));
-        Assert.True(error.Repairs is not null || !string.IsNullOrWhiteSpace(error.Advice), "a repair candidate or Advice explains the repair");
         Assert.Null(error.Reason);
     }
 
-    // SPEC 3.3.6, 23.3.6.9: the former keyword offers 'during' as a repair candidate, and no Advice repeats the edit.
+    // SPEC 3.3.6, 23.3.6.9: the former keyword offers 'during' as a repair candidate.
     [Fact]
     public void TheFormerKeywordOffersDuring()
     {
         const string source = "func f(x: ref/i32 from a) => ()";
         var error = Assert.Single(Parse(source).Diagnostics.Finalize(rejected: true).Diagnostics);
         Assert.Equal("BorrowOriginKeyword_Kd", error.Code);
-        Assert.Null(error.Advice);
         var repair = Assert.Single(error.Repairs!);
         Assert.Equal("Repair.ReplaceToken", repair.Kind);
         Assert.Equal("Replace 'from' with 'during'", repair.Title);
@@ -201,7 +197,6 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("^ " + label, console.Text, StringComparison.Ordinal);
-        Assert.Contains(error.Advice!, console.Text, StringComparison.Ordinal);
         output.WriteLine(console.Text);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
@@ -210,7 +205,6 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
             Assert.Equal(error.Display!.Range, sent.Range);
             Assert.Equal(error.Code, sent.Code);
             Assert.Contains(error.Message, sent.Message, StringComparison.Ordinal);
-            Assert.Contains(error.Advice!, sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
     }

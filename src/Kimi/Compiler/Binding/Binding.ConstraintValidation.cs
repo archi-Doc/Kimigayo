@@ -509,7 +509,7 @@ public sealed partial class Binding
         var name = application.SemanticsParameter!;
         if ((causes & TypeRoleCause.MissingSlot) != 0)
         {
-            node.Report(requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)", advice: $"Name the slot, as in {name}/U during a");
+            node.Report(requirement, code, evidence: [$"{name} admits {text}, and a borrow needs an outer-Origin slot"], note: "A pair layer stores an outer Origin in its binder's borrow cases, which this occurrence does not name (SPEC 8.1.2)");
         }
         else
         {
