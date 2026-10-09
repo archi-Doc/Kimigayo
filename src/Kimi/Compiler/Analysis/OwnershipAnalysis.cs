@@ -1899,7 +1899,10 @@ public sealed partial class OwnershipAnalysis
             this.body.CallLoans.Add(new(invoke, this.Value(result), loanEnd, ReferenceTypes.IndependentResult(plan.ReturnType) ? LoanRequirement.None : LoanRequirement.Ref));
         }
 
-        if (this.instance is null && plan.Target.Declaration is FunctionKoto callee && plan.Target.CompilerFunction == CompilerFunctionKind.None)
+        // SPEC 4.7.5: a Kimi operation with a published summary is no unbounded generic call; its inputs are accessed in their
+        // parameter modes and its result keeps the dependencies its row states, which the ordinary Loans track.
+        if (this.instance is null && plan.Target.Declaration is FunctionKoto callee && plan.Target.CompilerFunction == CompilerFunctionKind.None &&
+            !KimiLibraryCatalog.PublishesSummary(call.BoundSymbol))
         {
             this.RequirementEffects(call, plan, callee, invoke, result);
         }

@@ -49,6 +49,20 @@ public class EffectBoundCallerTest
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
+    // SPEC 4.7.5, 8.4.10.4: only a Kimi operation's published summary replaces the unbounded model; a user generic function keeps it,
+    // even when its body calls such an operation, so an earlier user generic result still conflicts.
+    [Theory]
+    [InlineData("func keep<V>(v: V) -> Option<V>\n    V is Copy\n    return .Some(v)\nfunc touch<V>(v: V) -> isize\n    V is Copy\n    return 1\nfunc put<K>(k: K) -> isize\n    K is Copy\n    let r = keep(k)\n    let n = touch(k)\n    match r\n        .Some(_) => return n\n        .None => return 0\n", "touch(k)")]
+    [InlineData("func fill<V>(d: uniq/Dictionary<i32, V>, v: V) -> Result<(), (i32, V)>\n    V is Copy\n    return d.tryInsert(1, v)\nfunc put<V>(v: V) -> isize\n    V is Copy\n    var d: Dictionary<i32, V> = [:]\n    let r = fill(d@uniq, v)\n    var e: Dictionary<i32, V> = [:]\n    let s = fill(e@uniq, v)\n    match r\n        .Ok(()) => return 1\n        .Err(_) => return 0\n", "fill(e@uniq, v)")]
+    public void UserGenericCallsKeepTheUnboundedModel(string declarations, string at)
+    {
+        var c = MinimalEmissionTest.Analyze(declarations + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.Ownership.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal((nameof(DiagnosticCode.CallEffectConflict_Kd), at), (error.Code, error.Text));
+    }
+
     // A lending item keeps the receiver borrow itself; the existing activation check reports it once.
     [Fact]
     public void ALendingItemKeepsItsActivationDiagnostic()

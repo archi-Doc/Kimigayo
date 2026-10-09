@@ -34,6 +34,15 @@ public class DictionaryLibraryTest
         Assert.False(module.NeedsDictionaryRuntime);
     }
 
+    // SPEC 4.7.5: a Dictionary operation is called with its published summary, not as an unbounded generic call, so a generic body may
+    // keep its result across another call; `K` here may be a borrow, whose Loans the ordinary dependencies track.
+    [Theory]
+    [InlineData("DictionaryPublishedTwice", "func put<K>(k: K) -> isize\n    K is Copy\n    K is Equatable\n    var d: Dictionary<K, i32> = [:]\n    let r = d.tryInsert(k, 1)\n    var e: Dictionary<K, i32> = [:]\n    let s = e.tryInsert(k, 2)\n    match r\n        .Ok(()) => return 1\n        .Err(_) => return 0\nlet n = 7\nConsole.writeLine(\"\\(put(n@ref))\")", "1\n")]
+    [InlineData("DictionaryPublishedThenGeneric", "func touch<V>(v: V) -> isize\n    V is Copy\n    return 1\nfunc put<K>(k: K) -> isize\n    K is Copy\n    K is Equatable\n    var d: Dictionary<K, i32> = [:]\n    let r = d.tryInsert(k, 1)\n    let n = touch(k)\n    match r\n        .Ok(()) => return n\n        .Err(_) => return 0\nlet n = 7\nConsole.writeLine(\"\\(put(n@ref))\")", "1\n")]
+    [InlineData("DictionaryPublishedArrayControl", "func f<U>(x: U) -> isize\n    U is Copy\n    var a = Array<U>.init(capacity: 2)\n    a.append(x)\n    var b = Array<U>.init(capacity: 2)\n    b.append(x)\n    return a.length + b.length\nlet n = 3\nConsole.writeLine(\"\\(f(n@ref))\")", "2\n")]
+    public void GenericBodiesUsePublishedSummaries(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout);
+
     [Fact]
     public void RemovalResultCompilesFromOrdinarySource()
     {
