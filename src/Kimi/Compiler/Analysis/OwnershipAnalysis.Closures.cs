@@ -160,10 +160,10 @@ public sealed partial class OwnershipAnalysis
         {
             // A reference receiver is used again at the call, so the Place it borrows stays lent while the arguments run; an
             // exclusive receiver is instead held by its call reservation.
-            var use = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver);
+            read = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver);
             if (this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
             {
-                this.SetValue(use, OwnershipValueKind.Alias, [receiverValue]);
+                this.SetValue(read, OwnershipValueKind.Alias, [receiverValue]);
             }
         }
 
@@ -178,6 +178,7 @@ public sealed partial class OwnershipAnalysis
             this.Emit(OwnershipOperationKind.CallEntry, plan.Receiver, receiver);
         }
 
+        var inputStart = this.body.CallInputCount;
         var acquired = true;
         for (var i = mark; i < this.arguments.Count; i++)
         {
@@ -188,13 +189,14 @@ public sealed partial class OwnershipAnalysis
             else
             {
                 var entry = this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
-                this.body.RecordCallInput(entry, this.Resolve(plan.Arguments[i - mark].ParameterType, this.Active));
+                this.body.RecordCallInput(entry, i - mark, this.Resolve(plan.Arguments[i - mark].ParameterType, this.Active));
             }
         }
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
 
         var invoke = this.Emit(OwnershipOperationKind.Call, call, input: receiver);
+        this.body.RecordCall(invoke, new(inputStart, this.body.CallInputCount - inputStart, null, CallResultSource.Environment, read, plan.ReceiverKind is SemanticsKind.Uniq or SemanticsKind.Owner));
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         if (!acquired || ReferenceEquals(plan.ReturnType, BoundType.Never))
         {

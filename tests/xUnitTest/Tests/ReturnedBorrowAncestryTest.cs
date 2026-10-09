@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -34,6 +35,26 @@ public class ReturnedBorrowAncestryTest
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == Kimi.Compiler.OwnershipFailure.ComparisonLoanConflict);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
+    }
+
+    [Theory]
+    [InlineData("second(q, p)")]
+    [InlineData("second(b: p, a: q)")]
+    public void ResultAncestryUsesRecordedInputsAfterSourceDetachment(string expression)
+    {
+        var c = MinimalEmissionTest.Analyze(Counter + "func change(p: uniq/Counter, q: uniq/Counter)\n    " + expression + ".value += 1\n    p.value += 1");
+        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var body = c.Ownership.Bodies.Single(x => x.Function.Name == "change");
+        var call = Enumerable.Range(0, body.Operations.Count).Single(i => body.Operations[i].Kind == OwnershipOperationKind.Call && body.CallAt(i)?.Target.Name == "second");
+        var inputs = body.CallInputs(call).ToArray();
+        var expected = Assert.Single(inputs, x => x.Parameter == 1).Entry;
+        body.OperationStorage[call] = body.Operations[call] with { Source = body.Function };
+        foreach (var input in inputs)
+        {
+            body.OperationStorage[input.Entry] = body.Operations[input.Entry] with { Source = body.Function };
+        }
+
+        Assert.Equal(expected, body.ResultArgument(call));
     }
 
     [Fact]

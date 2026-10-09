@@ -10,6 +10,8 @@ Current phase contracts and the reorganization ledger are in [COMPILER_ARCHITECT
 Whole-value updates share `OwnershipAnalysis.Updates.WholeValueUpdate`; the distinct `OwnershipOperationKind`
 `ReplaceBorrowed`/`ExchangeBorrowed`/`SwapBorrowed` entries feed initialization, `OwnershipBody.Updates` and
 `BodyLowering.Updates`. `WholeValueTest` checks storage-form agreement and source-independent initialization.
+Call inputs and result-source rules are recorded by `OwnershipAnalysis.Calls` and retained in `OwnershipBody.Calls`;
+`CallArgumentMappingTest` and `ReturnedBorrowAncestryTest` cover parameter order and source-independent queries.
 
 Paths below are relative to [src/Kimi](../../src/Kimi/).
 

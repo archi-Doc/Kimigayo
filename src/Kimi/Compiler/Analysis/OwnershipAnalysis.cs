@@ -1833,6 +1833,7 @@ public sealed partial class OwnershipAnalysis
             this.Unsupported(call); // Every parameter must have an explicit or default acquisition.
         }
 
+        var inputStart = this.body.CallInputCount;
         var acquired = true;
         for (var i = mark; i < this.arguments.Count; i++)
         {
@@ -1843,7 +1844,10 @@ public sealed partial class OwnershipAnalysis
                 var contract = offset < 0 ? plan.ReceiverOperation.ParameterType
                     : offset < plan.ArgumentOperations.Length ? plan.ArgumentOperations[offset].ParameterType
                     : plan.DefaultArguments[offset - plan.ArgumentOperations.Length].ParameterType;
-                this.body.RecordCallInput(entry, this.Resolve(contract, this.Active));
+                var parameter = offset < 0 ? plan.ReceiverOperation.ParameterIndex
+                    : offset < plan.ArgumentOperations.Length ? plan.ArgumentOperations[offset].ParameterIndex
+                    : plan.DefaultArguments[offset - plan.ArgumentOperations.Length].Parameter.Slot;
+                this.body.RecordCallInput(entry, parameter, this.Resolve(contract, this.Active), offset >= plan.ArgumentOperations.Length);
             }
             else
             {
@@ -1853,10 +1857,7 @@ public sealed partial class OwnershipAnalysis
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         var invoke = this.Emit(OwnershipOperationKind.Call, call);
-        if (selected is not null)
-        {
-            this.body.RecordResolvedCall(invoke, plan);
-        }
+        this.RecordCall(invoke, inputStart, plan);
 
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         if (!acquired || ReferenceEquals(call.BoundType, BoundType.Never))

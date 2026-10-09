@@ -1152,49 +1152,6 @@ public sealed partial class OwnershipBody
     }
 
     // Whether every Origin that `type` names is a slot of `owner` (the receiver's declaring Type), and whether it names one.
-    private static bool NamesOnlyReceiverOrigins(BoundType type, DeclarationContainerKoto owner, out bool named)
-    {
-        named = false;
-        return Visit(type, owner, ref named);
-
-        static bool Visit(BoundType type, DeclarationContainerKoto owner, ref bool named)
-        {
-            if (!Receiver(type.Origin, owner, ref named))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (!Receiver(type.OriginArguments[i], owner, ref named))
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (!Visit(type.Components[i], owner, ref named))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        static bool Receiver(BoundOrigin? origin, DeclarationContainerKoto owner, ref bool named)
-        {
-            if (origin is null || origin.Kind == OriginKind.Static)
-            {
-                return true;
-            }
-
-            named = true;
-            return origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, owner);
-        }
-    }
-
     private static bool DefinesBorrowHolder(OwnershipOperation operation, int place)
         => (operation.Place == place && operation.Kind is OwnershipOperationKind.Declare or OwnershipOperationKind.Produce or OwnershipOperationKind.InitializeReceiverField or OwnershipOperationKind.InitializeSubject or OwnershipOperationKind.Write or OwnershipOperationKind.Cleanup or OwnershipOperationKind.CallEntry or OwnershipOperationKind.Deliver or OwnershipOperationKind.StorePointer or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.ReplaceBorrowed or OwnershipOperationKind.ExchangeBorrowed or OwnershipOperationKind.SwapBorrowed) ||
             (operation.Input == place && operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.AcquirePattern) ||
@@ -1465,23 +1422,12 @@ public sealed partial class OwnershipBody
 
                         break;
                     case OperationFlow.Call:
-                        if (this.Values[id].Kind == OwnershipValueKind.DefaultCall)
+                        foreach (var input in this.CallInputs(id))
                         {
-                            var evaluation = this.DefaultEvaluations![(int)this.Values[id].Constant];
-                            for (var p = 0; p < evaluation.Parameter; p++)
-                            {
-                                Merge(operation.Place, this.DefaultInputs![evaluation.Start + p].Place, id);
-                            }
-
-                            break;
+                            Merge(operation.Place, this.Operations[input.Entry].Place, id, contract: this.CallInfo(id).ResultSource == CallResultSource.PreparedOrigins ? null : input.Type);
                         }
 
-                        for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
-                        {
-                            Merge(operation.Place, input.Place, id, contract: this.CallInputType(entry));
-                        }
-
-                        if (operation.Input >= 0 && operation.Source is InvocationKoto { BoundValueCall: not null })
+                        if (operation.Input >= 0)
                         {
                             Merge(operation.Place, operation.Input, id, contract: this.Places[operation.Input].Type);
                         }
@@ -1873,12 +1819,13 @@ public sealed partial class OwnershipBody
                 continue;
             }
 
-            if (operation.Input >= 0 && operation.Source is InvocationKoto { BoundValueCall.ReceiverKind: SemanticsKind.Uniq or SemanticsKind.Owner })
+            if (operation.Input >= 0 && this.CallInfo(id).RetainsEnvironment)
             {
                 var environment = this.Places[operation.Input].Type;
-                for (var argument = id - 1; argument >= 0 && this.Operations[argument] is { Kind: OwnershipOperationKind.CallEntry } incoming &&
-                    ReferenceEquals(incoming.Source, operation.Source); argument--)
+                foreach (var operand in this.CallInputs(id))
                 {
+                    var argument = operand.Entry;
+                    var incoming = this.Operations[argument];
                     this.retentions.Add(new(operation.Input, id, incoming.Place, environment, argument, false));
                     for (var r = 0; r < this.borrowRoots!.Count; r++)
                     {
@@ -1902,15 +1849,19 @@ public sealed partial class OwnershipBody
                 }
             }
 
-            for (var entry = id - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
+            foreach (var operand in this.CallInputs(id))
             {
+                var entry = operand.Entry;
+                var input = this.Operations[entry];
                 if (input.Place < 0 || this.Places[input.Place].Type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [var storage] } || !storage.CarriesOrigin)
                 {
                     continue;
                 }
 
-                for (var argument = id - 1; argument >= 0 && this.Operations[argument] is { Kind: OwnershipOperationKind.CallEntry } incoming && ReferenceEquals(incoming.Source, operation.Source); argument--)
+                foreach (var other in this.CallInputs(id))
                 {
+                    var argument = other.Entry;
+                    var incoming = this.Operations[argument];
                     if (incoming.Place == input.Place)
                     {
                         continue;
@@ -3211,18 +3162,6 @@ public sealed partial class OwnershipBody
         return false;
     }
 
-    // The receiver's CallEntry, the first of the entries that immediately precede the Call.
-    private int ReceiverEntry(int call)
-    {
-        var entries = 0;
-        while (entries < call && this.Operations[call - entries - 1] is { Kind: OwnershipOperationKind.CallEntry } entry && ReferenceEquals(entry.Source, this.Operations[call].Source))
-        {
-            entries++;
-        }
-
-        return entries == 0 ? -1 : call - entries;
-    }
-
     // SPEC 15.6.1, 15.6.4 steps 4-5: a call result that names the Origin of a borrowed argument whose referent carries Origins, such
     // as `h.get()` returning `ref/i32 during self` while `h` holds `ref/i32 during a`, may reach every reference that referent holds.
     private void CollectWholeReferentOrigins()
@@ -3236,9 +3175,10 @@ public sealed partial class OwnershipBody
             }
 
             var result = this.Places[operation.Place].Type;
-            for (var entry = call - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, operation.Source); entry--)
+            foreach (var argumentInput in this.CallInputs(call))
             {
-                if (input.Place >= 0 && this.Places[input.Place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { Kind: OriginKind.Projection } origin } argument &&
+                var input = this.Operations[argumentInput.Entry];
+                if (input.Kind == OwnershipOperationKind.CallEntry && input.Place >= 0 && this.Places[input.Place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { Kind: OriginKind.Projection } origin } argument &&
                     HasProjection(argument.Components[0]) && Binding.ContainsOrigin(result, origin) && !this.IsWholeReferentOrigin(origin))
                 {
                     (this.wholeReferentOrigins ??= new()).Add(origin);
@@ -3258,261 +3198,5 @@ public sealed partial class OwnershipBody
         }
 
         return false;
-    }
-
-    // The read of a value call's receiver Place when the call's result depends on that Place.
-    private int ReceiverRead(int call, Koto receiver, int result)
-    {
-        var count = this.Places.Count;
-        for (var id = call - 1; id >= 0; id--)
-        {
-            if (this.Operations[id] is { Kind: OwnershipOperationKind.Read, Place: >= 0 } read && ReferenceEquals(read.Source, receiver))
-            {
-                return this.borrowDependencies[(result * count) + read.Place] != LoanRequirement.None ? id : -1;
-            }
-        }
-
-        return -1;
-    }
-
-    private int ResultArgument(int call)
-    {
-        if (this.Values[call].Kind == OwnershipValueKind.DefaultCall)
-        {
-            var evaluation = this.DefaultEvaluations![(int)this.Values[call].Constant];
-            var result = this.Places[this.Operations[call].Place].Type;
-            var sole = -1;
-            for (var i = 0; i < evaluation.Parameter; i++)
-            {
-                var input = this.DefaultInputs![evaluation.Start + i];
-                if (this.NamesResultOrigin(result, this.Places[input.Place].Type))
-                {
-                    if (sole >= 0)
-                    {
-                        return -1;
-                    }
-
-                    sole = input.Read;
-                }
-            }
-
-            return sole;
-        }
-
-        if (this.Operations[call].Source is InvocationKoto { BoundValueCall: { } valueCall })
-        {
-            // SPEC 15.6.3: a value call's result descends from the one argument whose Origins it names, as an ordinary call's; a result
-            // bound to the call receiver (SPEC 15.8.2) descends from the receiver's read, as a method result from its receiver entry.
-            if (this.Operations[call].Place < 0)
-            {
-                return -1;
-            }
-
-            var result = this.Operations[call].Place;
-            return this.SoleResultInput(call, this.Places[result].Type) is >= 0 and var sole ? sole : this.ReceiverRead(call, valueCall.Receiver, result);
-        }
-
-        if (this.Operations[call].Source is not InvocationKoto { BoundValueCall: null, BoundCall: { Target: { CompilerFunction: CompilerFunctionKind.None, Declaration: FunctionKoto target } } plan })
-        {
-            return -1;
-        }
-
-        var inputSlot = -1;
-        if (target.ReturnType?.BoundType is not { } declaredResult || !FindInput(declaredResult) || inputSlot < 0)
-        {
-            if (this.Operations[call].Place >= 0 && this.SoleResultInput(call, this.Places[this.Operations[call].Place].Type) is >= 0 and var sole)
-            {
-                return sole; // The sole input naming the result's Origins supplies every dependency, including those nested in a generic Item.
-            }
-
-            // SPEC 15.6.3, 22.1.2.4: a result that names only Origins of the receiver's own Type, such as an Iterator's item
-            // `Option<uniq/T during source>`, keeps Loans the receiver's value holds, so it descends from the receiver when no
-            // other input's Type names them; otherwise it may come from that input too.
-            return plan.Receiver is not null && target.ReturnType?.BoundType is { } result && target.BoundSymbol?.Scope.Owner is DeclarationContainerKoto owner &&
-                NamesOnlyReceiverOrigins(result, owner, out var named) && named && this.ReceiverEntry(call) is >= 0 and var receiver &&
-                !this.OtherInputNamesResult(call, receiver) ? receiver : -1;
-        }
-
-        // CallEntry operations immediately precede Call: receiver, explicit
-        // arguments in source order, then defaults. A default has no caller Loan.
-        var entries = 0;
-        while (entries < call && this.Operations[call - entries - 1] is { Kind: OwnershipOperationKind.CallEntry } entry && ReferenceEquals(entry.Source, this.Operations[call].Source))
-        {
-            entries++;
-        }
-
-        if (entries != target.Parameters.Count)
-        {
-            return -1;
-        }
-
-        var index = -1;
-        var offset = 0;
-        if (plan.Receiver is not null)
-        {
-            offset = 1;
-            index = plan.ReceiverOperation.ParameterIndex == inputSlot ? 0 : -1;
-        }
-
-        var mapping = plan.ArgumentToParameter;
-        for (var i = 0; i < mapping.Length && index < 0; i++)
-        {
-            index = mapping[i] == inputSlot ? offset + i : -1;
-        }
-
-        return index < 0 ? -1 : call - entries + index;
-
-        // A contract may wrap its borrowed result in Option, a Tuple or another dependent Type.
-        // Follow one explicitly named input through every layer, never choose between inputs
-        // because their instantiated Origins happen to be equal.
-        bool FindInput(BoundType type)
-        {
-            if (type.Origin is { } origin && !VisitOrigin(origin))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (!VisitOrigin(type.OriginArguments[i]))
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (!FindInput(type.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        bool VisitOrigin(BoundOrigin origin)
-        {
-            if (origin.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < origin.Operands.Count; i++)
-                {
-                    if (!VisitOrigin(origin.Operands[i]))
-                    {
-                        return false;
-                    }
-                }
-            }
-            else if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, target))
-            {
-                if (inputSlot >= 0 && inputSlot != origin.Slot)
-                {
-                    return false;
-                }
-
-                inputSlot = origin.Slot;
-            }
-
-            return true;
-        }
-    }
-
-    // SPEC 15.6.3: a result whose instantiated Origins are all named by one input's Type, such as the
-    // `Option<(K, V)>` that `Dictionary.remove` returns from its receiver, descends from that input, because
-    // values carrying those Origins reach the result only from it. When another input also names one of them,
-    // as `insertOrReplace`'s `value: V` does, the result may come from either and descends from neither.
-    private int SoleResultInput(int call, BoundType result)
-    {
-        if (this.Operations[call].Input is >= 0 and var receiver && this.NamesResultOrigin(result, this.Places[receiver].Type, includeBounds: true))
-        {
-            return -1; // The stored environment is another possible source, independent of this invocation's arguments.
-        }
-
-        var sole = -1;
-        for (var entry = call - 1; entry >= 0 && this.Operations[entry] is { Kind: OwnershipOperationKind.CallEntry } input && ReferenceEquals(input.Source, this.Operations[call].Source); entry--)
-        {
-            if (input.Place < 0)
-            {
-                return -1;
-            }
-
-            var type = this.CallInputType(entry);
-            if (this.ResultOriginsFromInput(result, type, out var retained) && retained)
-            {
-                if (sole >= 0)
-                {
-                    return -1;
-                }
-
-                sole = entry;
-            }
-            else if (this.NamesResultOrigin(result, type, includeBounds: true))
-            {
-                return -1;
-            }
-        }
-
-        return sole;
-    }
-
-    // Whether an input of the call other than its receiver entry names an Origin of the call's result.
-    private bool OtherInputNamesResult(int call, int receiver)
-    {
-        if (this.Operations[call].Place < 0)
-        {
-            return false;
-        }
-
-        var result = this.Places[this.Operations[call].Place].Type;
-        for (var entry = call - 1; entry > receiver; entry--)
-        {
-            var input = this.Operations[entry];
-            if (input.Place < 0 || this.NamesResultOrigin(result, this.CallInputType(entry), includeBounds: true))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private bool ResultOriginsFromInput(BoundType result, BoundType input, out bool retained)
-    {
-        retained = false;
-        return Visit(result, ref retained);
-
-        bool Visit(BoundType type, ref bool found)
-        {
-            if (type.Origin is { Kind: not OriginKind.Static } origin)
-            {
-                found = true;
-                if (this.NamedOriginRequirement(input, origin) == LoanRequirement.None)
-                {
-                    return false;
-                }
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if (type.OriginArguments[i].Kind != OriginKind.Static)
-                {
-                    found = true;
-                    if (this.NamedOriginRequirement(input, type.OriginArguments[i]) == LoanRequirement.None)
-                    {
-                        return false;
-                    }
-                }
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (!Visit(type.Components[i], ref found))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
     }
 }

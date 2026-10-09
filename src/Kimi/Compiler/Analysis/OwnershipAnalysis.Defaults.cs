@@ -126,6 +126,7 @@ public sealed partial class OwnershipAnalysis
         var inputs = this.body.DefaultInputs ??= new();
         var evaluations = this.body.DefaultEvaluations ??= new();
         var start = inputs.Count;
+        var inputStart = this.body.CallInputCount;
         for (var i = 0; i < parameter; i++)
         {
             var place = this.defaultPlaces[i];
@@ -139,9 +140,11 @@ public sealed partial class OwnershipAnalysis
             this.SetValue(read, OwnershipValueKind.DefaultRead, [], constant: inputs.Count);
             this.placeValues[place] = value;
             inputs.Add((place, value, read));
+            this.body.RecordCallInput(read, i, null);
         }
 
         var invoke = this.Emit(OwnershipOperationKind.Call, expression);
+        this.body.RecordCall(invoke, new(inputStart, parameter, null, CallResultSource.PreparedOrigins));
         this.Connect(invoke, this.abortExit, OwnershipEdgeKind.Abort);
         var type = this.Resolve(this.compilation.Binding.InstantiateStorageType(((FunctionKoto)call.Target.Declaration).Parameters[parameter].Type.BoundType!, call), this.Active)!;
         var result = this.Place(expression, type, OwnershipPlaceKind.Temporary, false);

@@ -69,6 +69,13 @@ Places and borrowed storage. The direct-owner expansion is removed. Initializati
 flags and physical update selection consume the operation kind. `IsWholeUpdate` identifies the shared operand shape;
 it does not erase the distinct transfer behavior. Remaining Binding/type/provenance queries keep U2 and U1b open.
 
+Calls now retain an indexed input range in evaluation order, parameter slots, default acquisitions, verified input
+Types and the selected target. Construction records the declared result-source rule and the callable environment's
+read/retention capability. Result ancestry and call retention use those records, including recursive default reads;
+they no longer reconstruct input correspondence by walking preceding operations or reading invocation syntax.
+`CallAt` uses the recorded target, with no source fallback. These records still contain BoundCall/BoundType and therefore
+do not establish U1b closure. Physical argument validation and remaining source-based consumers are still open U2 work.
+
 U1b closure is a prerequisite for each migrated consumer. Moving all Binding internals need not precede a vertical
 slice, but an existing syntax-bearing record cannot be called closed merely because it is exposed read-only.
 

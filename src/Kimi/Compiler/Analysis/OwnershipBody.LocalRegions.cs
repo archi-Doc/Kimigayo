@@ -20,9 +20,10 @@ public sealed partial class OwnershipBody
     // Element payload only: excludes object headers and hash buckets, whose entry capacity is reported separately.
     internal long LocalRegionStorageBytes => (4L * (this.loanFlow.Length + this.loanSlots.Length + this.loanProjectionSlots.Length + this.loanRetentionSlots.Length + this.retentionStarts.Length + this.referentTargets.Capacity)) +
         this.loanQueued.Length + this.transferredOrigins.Length + ((long)Unsafe.SizeOf<LoanFlowPart>() * this.loanParts.Capacity) + (8L * this.referentWork.Capacity) +
-        ((long)Unsafe.SizeOf<BorrowRetention>() * this.retentions.Capacity);
+        ((long)Unsafe.SizeOf<BorrowRetention>() * this.retentions.Capacity) + ((long)Unsafe.SizeOf<OwnershipCallInput>() * this.callInputs.Capacity) +
+        ((long)Unsafe.SizeOf<OwnershipCall>() * this.calls.Capacity);
 
-    internal int LocalRegionIndexCapacity => this.loanPartIndex.EnsureCapacity(0) + this.referentCache.EnsureCapacity(0) + this.referentVisited.EnsureCapacity(0) + (this.callInputContracts?.EnsureCapacity(0) ?? 0);
+    internal int LocalRegionIndexCapacity => this.loanPartIndex.EnsureCapacity(0) + this.referentCache.EnsureCapacity(0) + this.referentVisited.EnsureCapacity(0);
 
     internal int LocalLoanFlowCapacity => this.loanFlow.Length;
 
