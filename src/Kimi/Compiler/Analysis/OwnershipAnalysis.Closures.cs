@@ -123,6 +123,14 @@ public sealed partial class OwnershipAnalysis
             : this.Expression(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
         if (receiver < 0)
         {
+            // SPEC 14.9.2: arguments after a receiver that does not complete are still checked, as at an ordinary call.
+            for (var i = 0; i < plan.Arguments.Length; i++)
+            {
+                _ = this.PrepareCallArgument(call, call.ArgumentNodes[i], plan.Arguments[i]);
+            }
+
+            this.ActivateCallReservations(call, reservationMark);
+            this.EndComparisonLoans(depth, call);
             this.comparisonDepth = depth;
             return -1;
         }

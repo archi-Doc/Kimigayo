@@ -69,6 +69,7 @@ public class UnreachableOwnershipTest
     [InlineData("func f()\n    let x = \"s\"\n    let result = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f()\n    let x = \"s\"\n    return\n    let value = label work: do\n        exit to work x@move\n        Console.writeLine(x)", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("func f()\n    return\n    let x = Option<string>.Some(\"s\")\n    match x@move\n        .Some(let text)\n            yield\n            _ = text@move\n            Console.writeLine(text)\n        .None => ()", OwnershipFailure.PossiblyMovedUse)]
+    [InlineData("func stop() -> Never => stop()\nfunc eat(text: string) => ()\nfunc make(seed: i32) -> (string) -> () => eat\nfunc f()\n    let x = \"s\"\n    _ = x@move\n    make(stop())(x@move)", OwnershipFailure.PossiblyMovedUse)]
     public void CheckingUsesOrdinaryOwnershipDiagnostics(string source, OwnershipFailure failure)
     {
         var c = Parse(source);
