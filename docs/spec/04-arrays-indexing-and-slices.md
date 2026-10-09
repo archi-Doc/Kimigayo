@@ -834,7 +834,7 @@ values.append(values[0])       // The element Copy finishes before receiver acti
 | Member | Behavior |
 | --- | --- |
 | `init(! capacity: isize)` | An empty Array with `capacity >= capacity` (§4.7.4); a negative argument Aborts, and zero allocates nothing |
-| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts |
+| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating` (§4.7.4); a negative count Aborts, and zero allocates nothing |
 | `isEmpty: bool` | Read-only; whether `length` is zero |
 | `first`, `last: Option<ref/T>` | Read-only, `get(self: ref/Self) -> Option<ref/T during self>`; the first or last element, or `None` when empty |
 | `tryGet(index)`, `trySlice(range)`, `splitAt(index)`, `trySplitAt(index)` | The read operations of §4.6.6 on `self[..]`, with results `during self` |
@@ -897,7 +897,7 @@ let removed = names.remove(1) // A temporary key is borrowed under §10.2.
 
 ### 4.7.4. Capacity and allocation
 
-Both collections expose read-only `capacity: isize` through shared access: the maximum number of elements or entries supported without internal allocation, not bytes or buckets. The result is a snapshot without a Loan. `0 <= length <= capacity <= isize.MaxValue` always holds. Typed empty `[]` and `[:]` have length and capacity zero and allocate nothing internally; a fixed handle-management cost is permitted. `Array<T>.init(capacity: c)` behaves as `[]` followed by `reserve(additional: c)`.
+Both collections expose read-only `capacity: isize` through shared access: the maximum number of elements or entries supported without internal allocation, not bytes or buckets. The result is a snapshot without a Loan. `0 <= length <= capacity <= isize.MaxValue` always holds. Typed empty `[]` and `[:]` have length and capacity zero and allocate nothing internally; a fixed handle-management cost is permitted. `Array<T>.init(capacity: c)` behaves as `[]` followed by `reserve(additional: c)`. `Array<T>.init(repeating: v, count: n)` behaves as `init(capacity: n)` followed by `n` appends of a Copy of `v`: `v` is acquired once as an ordinary argument, even when `n` is zero; a negative `n` Aborts before any element is placed; and the appends stay within the reserved capacity, so the construction allocates at most once. No exact capacity is promised.
 
 | Operation | Contract |
 | --- | --- |
@@ -933,7 +933,7 @@ The following user-code effects are published and composed with argument and def
 
 | Operation | User-code effects inside the operation |
 | --- | --- |
-| Array `append`/`insert`/`pop`/`remove`; `reserve`/`shrinkToFit` of both collections | None |
+| Array `init(capacity:)`, `init(repeating:count:)`, `append`/`insert`/`pop`/`remove`; `reserve`/`shrinkToFit` of both collections | None |
 | Dictionary `tryGet`/`tryInsert`/`remove` | `K` equality |
 | Dictionary `insertOrReplace` | `K` equality and destruction of the unused input `K` |
 | Dictionary indexed replacement | `K` equality and destruction of the old `V` |

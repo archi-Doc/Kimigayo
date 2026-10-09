@@ -252,3 +252,17 @@
 
 - **Proposed fix:** Synthesize `init()` conditionally, existing only in the instantiations where the base premise holds.
 - **Why not applied:** The condition would be a hidden premise that no declaration states (Principle 3), and a member that appears only in some instantiations contradicts definition-time checking (§8.4.8.2, §8.10). An explicit constructor with the Constraint expresses the same thing in source.
+
+## Constructor delegation, whole-`self` placement or a factory for library constructors
+
+- **Problem:** A Kimi constructor of a compiler-managed Type, such as `Array<T>.init(repeating:count:)`, must build its value from another constructor and representation operations, but a constructor body can neither delegate to another constructor nor place a whole `self`.
+- **Example:**
+
+  ```kimi
+  public init(! repeating: T, count: isize)
+      T is Copy
+      self = Array<T>.init(capacity: count) // Not Kimigayo: whole-self placement.
+  ```
+
+- **Proposed fix:** Add constructor delegation or whole-`self` placement, admit them only in the Kimi library, or spell the operation as a factory function such as `Array.repeating(value, count:)`.
+- **Why not applied:** Delegation and whole-`self` placement would add a second construction path for every structure (§6.2.3.3, §6.2.3.4). A factory splits infallible construction from `init` (§6.2.3.5, STYLE §5.2) and loses constructor inference (§10.8.1). A rule available only to the Kimi library would be a language rule user code cannot use. The compiler instead supplies the constructor's definition with an identical contract (§22.1), which no user Type can obtain.
