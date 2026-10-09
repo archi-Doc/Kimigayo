@@ -152,11 +152,6 @@ internal sealed partial class BodyLowering
             return this.LowerArrayOperation(library, body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
         }
 
-        if (operation.Source is InvocationKoto constructionCall && original is { Target.CompilerFunction: CompilerFunctionKind.ArrayWithCapacity } constructionPlan)
-        {
-            return this.LowerArrayConstruction(body, function, constants, directory, id, constructionCall, constructionPlan, out failure);
-        }
-
         var generic = original is { } bound ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;
         var directIndex = original is not null && this.instanceEntry?.ConcreteCalls is not null ? Array.IndexOf(this.instanceEntry.Template.DirectCalls, original) : -1;
         var resolved = directIndex >= 0 ? this.instanceEntry!.ConcreteCalls![directIndex] : original;

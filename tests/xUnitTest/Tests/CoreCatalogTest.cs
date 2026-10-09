@@ -168,9 +168,9 @@ public class CoreCatalogTest
         // located Dictionary capacity (G20) six DictionaryStorage bodies over four private primitives in place of two bridges.
         // UniqSlice adds its record/projection, one bounds primitive and twelve located source bodies.
         // Eleven arithmetic Contracts supply the public operator requirements, and the repeating Array constructor adds its
-        // public signature and the linked internal implementation (SPEC 22.1).
-        Assert.Equal(177, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(182, c.Library.Declarations.Length);
+        // public signature and the linked internal implementation, as the capacity constructor adds its implementation (SPEC 22.1).
+        Assert.Equal(178, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(183, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

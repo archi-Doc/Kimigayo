@@ -100,7 +100,7 @@ public class EffectBoundImplementationTest
                 continue;
             }
 
-            var published = entry.Id is KimiDeclarationId.DictionaryReserve or KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryClear or KimiDeclarationId.ArrayRepeatingImplementation ? null : equals;
+            var published = entry.Id is KimiDeclarationId.DictionaryReserve or KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryClear or KimiDeclarationId.ArrayRepeatingImplementation or KimiDeclarationId.ArrayCapacityImplementation ? null : equals;
             foreach (var (confined, preserves) in new[] { (true, false), (false, true) })
             {
                 var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, confined, preserves, published);
@@ -111,7 +111,7 @@ public class EffectBoundImplementationTest
             operations++;
         }
 
-        Assert.Equal(9, operations);
+        Assert.Equal(10, operations);
     }
 
     // SPEC 8.4.10.2, 22.3.1: a foreign call accesses only what its arguments permit, so preserves results admits it.

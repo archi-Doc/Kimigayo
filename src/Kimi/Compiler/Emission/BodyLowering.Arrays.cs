@@ -499,43 +499,6 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    // SPEC 4.7.2, 4.7.4: Array<T>.init(capacity:) zeroes the result handle and reserves the capacity once; the reserve runtime
-    // aborts on a negative capacity, and zero allocates nothing.
-    private bool LowerArrayConstruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
-    {
-        failure = null;
-        if (plan.Target.Declaration is not FunctionKoto { IsConstructor: true } target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
-            call.ArgumentNodes.Count != 1 || plan.ArgumentOperations.Length != 1 || plan.ArgumentToParameter.Length != 1 || target.Parameters.Count != 1 ||
-            body.Resolve(call.BoundType, body.ContextAt(id)) is not { Kind: BoundTypeKind.Array } arrayType || !this.TryGetArrayElement(arrayType.Components[0], out var element))
-        {
-            return Fail("Array construction has an unsupported argument plan or element Type.", out failure);
-        }
-
-        if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
-        {
-            return false;
-        }
-
-        if (!complete)
-        {
-            return true;
-        }
-
-        var location = -1;
-        if (!this.ScalarArrayArgument(body, id, 0, BoundType.ISize, out var capacity) || (!function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location)))
-        {
-            return Fail("Array construction capacity or location is unavailable at the call.", out failure);
-        }
-
-        this.arrayRuntimeUsed = true;
-        var handle = new EmissionOperand(EmissionOperandKind.SlotAddress, body.Operations[id].Place);
-        var place = new EmissionOperand(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, location);
-        var length = new EmissionOperand(function.Abi.CallerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, location);
-        function.AddCall(id, WindowsLowering.ArrayInit, [handle, place, length]);
-        function.AddCall(id, WindowsLowering.ArrayReserve, [handle, new(EmissionOperandKind.Integer, element.Stride), capacity, place, length]);
-        return true;
-    }
-
     private bool PrepareCollectionArguments(OwnershipBody body, int id, InvocationKoto call, BoundCall plan, FunctionKoto target, out bool complete, out string? failure)
     {
         failure = null;

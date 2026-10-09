@@ -156,6 +156,14 @@ public struct Array<T>
                 .Some(let value) => self.append(value@move)
                 .None => return
 
+    /// Defines `init(! capacity:)`: an empty Array that reserves `capacity` once (SPEC 4.7.4).
+    ///
+    /// - abort: `capacity` is negative.
+    internal func initCapacity(capacity: isize) -> Self
+        var result: Array<T> = []
+        result.reserve(additional: capacity)
+        return result@move
+
     /// Defines `init(! repeating:count:)`: `count` Copies of `repeating` placed in one reserved buffer (SPEC 4.7.4).
     ///
     /// - abort: `count` is negative; the capacity constructor aborts before any element is placed.

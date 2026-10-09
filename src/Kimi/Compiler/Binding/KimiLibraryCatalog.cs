@@ -84,9 +84,10 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear),
         new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
         new(KimiDeclarationId.ArraySwap, "swapAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArraySwap),
-        new(KimiDeclarationId.ArrayWithCapacity, "init", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayWithCapacity, Overload: 0),
-        // SPEC 4.7.2, 4.7.4, 22.1: the public constructor is a bodiless signature whose definition the compiler supplies from the
-        // linked internal source function, with the same parameters and premise and a `Self` result.
+        // SPEC 4.7.2, 4.7.4, 22.1: the public constructors are bodiless signatures whose definitions the compiler supplies from the
+        // linked internal source functions, with the same parameters and premises and a `Self` result.
+        new(KimiDeclarationId.ArrayWithCapacity, "init", KimiLibraryContainer.Array, Overload: 0, PublishedSummary: true, Implementation: KimiDeclarationId.ArrayCapacityImplementation),
+        new(KimiDeclarationId.ArrayCapacityImplementation, "initCapacity", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, PublishedSummary: true),
         new(KimiDeclarationId.ArrayRepeating, "init", KimiLibraryContainer.Array, Overload: 1, PublishedSummary: true, Implementation: KimiDeclarationId.ArrayRepeatingImplementation),
         new(KimiDeclarationId.ArrayRepeatingImplementation, "initRepeating", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, PublishedSummary: true),
         new(KimiDeclarationId.Utf8Format, "Utf8Format"),

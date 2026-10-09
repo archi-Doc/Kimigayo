@@ -72,7 +72,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
                         >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
                         KimiDeclarationId.Loan => this.ValidLoan(symbol),
-                        KimiDeclarationId.ArrayRepeating or KimiDeclarationId.ArrayRepeatingImplementation => this.ValidCollectionOperation(symbol, entry.Id),
+                        KimiDeclarationId.ArrayRepeating or KimiDeclarationId.ArrayRepeatingImplementation or KimiDeclarationId.ArrayCapacityImplementation => this.ValidCollectionOperation(symbol, entry.Id),
                         _ when rule.SourceFunction => symbol.CompilerFunction == CompilerFunctionKind.None && symbol.Declaration is FunctionKoto { IsRequirement: false, IsGenerated: false, IsSpecialization: false } ordinary && (ordinary.Body is not null || ordinary.ExpressionBody is not null),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),

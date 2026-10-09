@@ -2,6 +2,8 @@
 // The receiver is reserved exclusively before later arguments (SPEC 4.7.5). The internal isize operations check their
 // positions; the public position entries in Array.kimi resolve a position before calling them.
 /// Creates an empty Array whose capacity is at least `capacity`; a negative argument aborts and zero allocates nothing.
+///
+/// The compiler supplies this constructor's definition from `initCapacity` (SPEC 4.7.4, 22.1).
 public init(! capacity: isize)
 /// Creates an Array of `count` Copies of `repeating`; a negative count aborts and zero allocates nothing.
 ///

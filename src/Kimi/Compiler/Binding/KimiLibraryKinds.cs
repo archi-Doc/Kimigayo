@@ -37,7 +37,6 @@ public enum CompilerFunctionKind : byte
     ArrayClear,
     ArrayShrinkToFit,
     ArraySwap,
-    ArrayWithCapacity,
     TextFixed,
     TextHeap,
     TextWriter,

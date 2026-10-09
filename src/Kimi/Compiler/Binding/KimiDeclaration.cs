@@ -192,6 +192,7 @@ public enum KimiDeclarationId : byte
     Negatable,
     ArrayRepeating,
     ArrayRepeatingImplementation,
+    ArrayCapacityImplementation,
 }
 
 public enum KimiDeclarationState : byte
