@@ -20,9 +20,9 @@ internal static class InheritanceLifecycleMeasurements
     internal static void Run()
     {
         var results = new List<object>();
-        foreach (var (depth, width) in new[] { (1, 1), (8, 1), (32, 1), (4, 32) })
+        foreach (var (depth, width, implicitConstructors) in new[] { (1, 1, false), (8, 1, false), (32, 1, false), (4, 32, false), (32, 1, true), (4, 32, true) })
         {
-            var source = VerificationWorkloads.InheritedPlans(depth, width);
+            var source = VerificationWorkloads.InheritedPlans(depth, width, implicitConstructors);
             var edited = source + "\ngroup MeasurementEdit\n    public func value() -> i32 => 37\n";
             var freshTimes = new double[Samples];
             var freshBytes = new long[Samples];
@@ -79,6 +79,7 @@ internal static class InheritanceLifecycleMeasurements
             {
                 depth,
                 width,
+                implicitConstructors,
                 sourceSha256 = Hash(source),
                 editedSourceSha256 = Hash(edited),
                 freshMilliseconds = freshTimes,

@@ -7,7 +7,9 @@ namespace Verification;
 // Linked into tests and benchmarks so their language inputs cannot drift apart.
 internal static class VerificationWorkloads
 {
-    internal static string InheritedPlans(int depth, int width)
+    // With implicitConstructors, no layer declares `init() => ()`: the root's constructor is synthesized and every derived layer's
+    // synthesized constructor selects its base's (SPEC 6.2.3.6).
+    internal static string InheritedPlans(int depth, int width, bool implicitConstructors = false)
     {
         var source = new StringBuilder();
         for (var layer = 0; layer < depth; layer++)
@@ -24,7 +26,11 @@ internal static class VerificationWorkloads
                 source.Append("    public var f").Append(layer).Append('_').Append(field).Append(": i32 = ").Append(field).AppendLine();
             }
 
-            source.AppendLine("    public init() => ()");
+            if (!implicitConstructors)
+            {
+                source.AppendLine("    public init() => ()");
+            }
+
             if (layer == 0)
             {
                 source.AppendLine("    public func read(self: ref/Self) -> i32 => self.f0_0");

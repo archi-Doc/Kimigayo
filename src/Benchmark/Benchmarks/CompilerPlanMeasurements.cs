@@ -31,7 +31,7 @@ internal static class CompilerPlanMeasurements
             : arithmetic ? ArithmeticWorkloads.Names.Select(static name => (name, 0)).ToArray() : adaptations
             ? new[] { ("adaptation-cases", 1), ("adaptation-cases", 8), ("adaptation-cases", 32) }
             : inheritance
-            ? new[] { ("milestone25", 0), ("inheritance-depth", 1), ("inheritance-depth", 8), ("inheritance-depth", 32), ("inheritance-width", 8), ("inheritance-width", 32) }
+            ? new[] { ("milestone25", 0), ("inheritance-depth", 1), ("inheritance-depth", 8), ("inheritance-depth", 32), ("inheritance-width", 8), ("inheritance-width", 32), ("implicit-depth", 8), ("implicit-depth", 32), ("implicit-width", 32) }
             : regions
             ? new[] { ("candidates", 4), ("candidates", 8), ("candidates", 16), ("results", 4), ("results", 8), ("results", 16), ("regions", 4), ("regions", 8), ("regions", 16) }
             : (properties ? new[] { "milestone24" } : views ? new[] { "exclusive-views", "slice-copies" } : callable ? new[] { "fixed-reference", "ranked-reference", "borrowed-reference", "nested-universal" } : new[] { "direct", "stored", "rc-clone", "arc-clone" }).Select(static name => (name, 0)).ToArray();
@@ -45,6 +45,8 @@ internal static class CompilerPlanMeasurements
                 "adaptation-cases" => size == 1 ? AdaptationWorkloads.Single : AdaptationWorkloads.Create(size),
                 "inheritance-depth" => VerificationWorkloads.InheritedPlans(size, 1),
                 "inheritance-width" => VerificationWorkloads.InheritedPlans(4, size),
+                "implicit-depth" => VerificationWorkloads.InheritedPlans(size, 1, true),
+                "implicit-width" => VerificationWorkloads.InheritedPlans(4, size, true),
                 "candidates" or "results" or "regions" => VerificationWorkloads.CallableRegions(name, size),
                 "exclusive-views" => VerificationWorkloads.ExclusiveViews,
                 "slice-copies" => VerificationWorkloads.SliceCopies,

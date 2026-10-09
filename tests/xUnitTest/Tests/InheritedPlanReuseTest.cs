@@ -9,21 +9,26 @@ namespace XunitTest;
 public class InheritedPlanReuseTest
 {
     [Theory]
-    [InlineData(1, 1)]
-    [InlineData(8, 1)]
-    [InlineData(32, 1)]
-    [InlineData(4, 8)]
-    [InlineData(4, 32)]
-    public void DeepAndWideStorageRetainsFieldIdentity(int depth, int width)
-        => ScalarEmissionTest.EmitFixture($"InheritedPlans{depth}x{width}", VerificationWorkloads.InheritedPlans(depth, width), string.Empty);
+    [InlineData(1, 1, false)]
+    [InlineData(8, 1, false)]
+    [InlineData(32, 1, false)]
+    [InlineData(4, 8, false)]
+    [InlineData(4, 32, false)]
+    [InlineData(1, 1, true)]
+    [InlineData(32, 1, true)]
+    [InlineData(4, 32, true)]
+    public void DeepAndWideStorageRetainsFieldIdentity(int depth, int width, bool implicitConstructors)
+        => ScalarEmissionTest.EmitFixture($"InheritedPlans{depth}x{width}" + (implicitConstructors ? "Implicit" : string.Empty), VerificationWorkloads.InheritedPlans(depth, width, implicitConstructors), string.Empty);
 
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(32, 1)]
-    [InlineData(4, 32)]
-    public void WarmFieldAndBasePlansAllocateNothing(int depth, int width)
+    [InlineData(32, 1, false)]
+    [InlineData(4, 32, false)]
+    [InlineData(32, 1, true)]
+    [InlineData(4, 32, true)]
+    public void WarmFieldAndBasePlansAllocateNothing(int depth, int width, bool implicitConstructors)
     {
-        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InheritedPlans(depth, width));
+        var c = MinimalEmissionTest.Analyze(VerificationWorkloads.InheritedPlans(depth, width, implicitConstructors));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), MinimalEmissionTest.Describe(c, error));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
