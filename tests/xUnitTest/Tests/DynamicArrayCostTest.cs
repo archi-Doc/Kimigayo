@@ -26,6 +26,33 @@ public class DynamicArrayCostTest
     public void RepeatingConstructionAllocatesAtMostOnceWithoutGrowthTransfers(int count)
         => WriteCostFixture("Repeating" + count, "let values = Array<i32>.init(repeating: 7, count: " + count + ")\nrequire values.length == " + count + " else => $abort(\"length\")", count == 0 ? 0 : 1, 0);
 
+    // SPEC 4.7.4, 22.5.2: the one reservation that fails Aborts at the construction, which the implementation's caller location names.
+    [Fact]
+    public void RepeatingAllocationFailureReportsTheConstruction()
+    {
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("let values = Array<i32>.init(repeating: 1, count: 2)"));
+        Assert.Contains("call ptr @HeapAlloc(", ir, StringComparison.Ordinal);
+        ir = ir.Replace("call ptr @HeapAlloc(", "call ptr @fail_allocate(", StringComparison.Ordinal);
+        ir += "\ndefine internal ptr @fail_allocate(ptr %heap, i32 %flags, i64 %size) { ret ptr null }\n";
+        ScalarEmissionTest.WriteFixture("DynamicArrayCostRepeatingFailure", ir, string.Empty, 1, "Hello.kimi:1:14: abort KIMI_E_ALLOC: Failed to allocate memory\n");
+    }
+
+    // The Copies are placed in the reserved buffer by the implementation's own loop: no per-element append or place helper, and the
+    // implementation is prepared only for a program that constructs one.
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void RepeatingConstructionCompilesOnlyItsImplementationLoop(bool used)
+    {
+        var c = MinimalEmissionTest.Analyze(used ? "let values = Array<i32>.init(repeating: 1, count: 3)\nrequire values[2] == 1 else => $abort(\"value\")" : "let values = Array<i32>.init(capacity: 3)\nrequire values.length == 0 else => $abort(\"value\")");
+        Assert.True(c.Emission.TryPrepare(out _, out var failure), MinimalEmissionTest.Describe(c, failure));
+        var implementation = c.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation)!.Declaration;
+        Assert.Equal(used, c.Ownership.Bodies.Any(body => ReferenceEquals(body.Function, implementation)));
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.DoesNotContain("@__kimi_array_append_", ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("@__kimi_array_place_", ir, StringComparison.Ordinal);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ZeroSizedRepeatingConstructionAllocatesNothing()
@@ -155,7 +182,7 @@ public class DynamicArrayCostTest
     [InlineData("Pipeline")]
     public void WarmArrayAnalysisAndEmissionAllocateNothing(string stage)
     {
-        var c = MinimalEmissionTest.Analyze("struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\nlet tasks: Array<Task> = [Task.init(42)]\nlet task = tasks[0]@ref\nrequire task.id == 42 else => $abort(\"task\")\nlet taskView = tasks[..]\nfor item in taskView => require item.id == 42 else => $abort(\"shared\")\nvar values: Array<i32> = [1, 2]\nvalues@uniq.insert(^0, 3)\nvalues[0] = 4\nlet last = values@uniq.remove(^1)\nlet view = values[0..1]\nlet item = view[0]@ref\nrequire item == 4 else => $abort(\"view\")\nfor value in values@move => require value > 0 else => $abort(\"value\")");
+        var c = MinimalEmissionTest.Analyze("struct Task\n    public let id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\nlet tasks: Array<Task> = [Task.init(42)]\nlet task = tasks[0]@ref\nrequire task.id == 42 else => $abort(\"task\")\nlet taskView = tasks[..]\nfor item in taskView => require item.id == 42 else => $abort(\"shared\")\nvar values: Array<i32> = [1, 2]\nvalues@uniq.insert(^0, 3)\nvalues[0] = 4\nlet last = values@uniq.remove(^1)\nlet view = values[0..1]\nlet item = view[0]@ref\nrequire item == 4 else => $abort(\"view\")\nfor value in values@move => require value > 0 else => $abort(\"value\")\nlet filled = Array<Task>.init(capacity: 0)\nlet copies = Array<i32>.init(repeating: 5, count: 3)\nrequire copies[2] == 5 and filled.length == 0 else => $abort(\"repeating\")");
         for (var i = 0; i < 32; i++)
         {
             Assert.True(c.Bind().IsComplete);
