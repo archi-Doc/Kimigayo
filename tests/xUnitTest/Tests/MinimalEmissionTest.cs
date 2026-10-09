@@ -15,6 +15,42 @@ public class MinimalEmissionTest
     // Supported floating arithmetic retained in the original execution-boundary inputs.
     internal const string FloatExpression = "1.0 + 2.0";
 
+    [Fact]
+    public void PhysicalModuleStorageHasNoTransitiveSemanticReferences()
+    {
+        var visited = new HashSet<Type>();
+        var pending = new Stack<Type>();
+        pending.Push(typeof(EmissionModule));
+        while (pending.TryPop(out var type))
+        {
+            if (!visited.Add(type) || type.IsEnum)
+            {
+                continue;
+            }
+
+            Assert.False(typeof(Kimi.Compiler.Parsing.Koto).IsAssignableFrom(type), type.FullName);
+            Assert.False(typeof(Delegate).IsAssignableFrom(type), type.FullName);
+            Assert.False(type.Name.StartsWith("Bound", StringComparison.Ordinal) || type == typeof(Binding) || type == typeof(Compilation) || type == typeof(OwnershipBody), type.FullName);
+            if (type.HasElementType)
+            {
+                pending.Push(type.GetElementType()!);
+            }
+
+            foreach (var argument in type.GenericTypeArguments)
+            {
+                pending.Push(argument);
+            }
+
+            if (type.Assembly == typeof(EmissionModule).Assembly)
+            {
+                foreach (var field in type.GetFields(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance))
+                {
+                    pending.Push(field.FieldType);
+                }
+            }
+        }
+    }
+
     [Theory]
     [InlineData("::Kimi.Console.writeLine(\"Hello, world!\")")]
     [InlineData("Console.writeLine(\"\")")]

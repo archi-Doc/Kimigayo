@@ -72,7 +72,7 @@ public class LengthStorageEmissionTest
         // SPEC 21.3.1: one concrete body per closed substitution; the repeated keep<2, i32> reuses its body.
         var c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>([1, 2])\nlet b = keep<0, i32>([])\nlet c = keep<1, string>([\"x\"])\nlet d = keep<2, i32>([3, 4])");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         Assert.Equal(3, GenericStorageEmissionTest.Instances(module).Length);
     }
 

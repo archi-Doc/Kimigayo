@@ -8,12 +8,12 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, BoundCall? Related), DictionaryHelper> dictionaryHelpers = new();
-    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, BoundCall? Related), DictionaryHelper> dictionaryHelperCache = new();
+    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Related), DictionaryHelper> dictionaryHelpers = new();
+    private readonly Dictionary<(DictionaryHelperKind Kind, ValueLowering Key, int KeyLayout, ValueLowering Value, int ValueLayout, int Related), DictionaryHelper> dictionaryHelperCache = new();
     private bool dictionaryRuntimeUsed;
     private bool storageBytesUsed;
 
-    internal Func<bool, BoundType, BoundType, BoundCall>? RequireDictionaryOperation { get; set; }
+    internal Func<bool, BoundType, BoundType, int>? RequireDictionaryOperation { get; set; }
 
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
@@ -30,7 +30,7 @@ internal sealed partial class BodyLowering
     {
         var find = kind == DictionaryHelperKind.CheckKey;
         var related = find || (kind == DictionaryHelperKind.Drop && (key.NeedsDestruction || value.NeedsDestruction))
-            ? this.RequireDictionaryOperation!(find, key.Type, value.Type) : null;
+            ? this.RequireDictionaryOperation!(find, key.Type, value.Type) : -1;
         var cacheKey = (kind, key.Value, key.Layout?.Id ?? -1, value.Value, value.Layout?.Id ?? -1, related);
         if (this.dictionaryHelpers.TryGetValue(cacheKey, out var helper))
         {

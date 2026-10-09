@@ -244,7 +244,7 @@ internal sealed class EmissionModule
 
     internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
 
-    internal Dictionary<BoundCall, FunctionAbi> SourceCalls { get; } = new(ReferenceEqualityComparer.Instance);
+    internal List<FunctionAbi> FunctionReferences { get; } = new();
 
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.7.4).</summary>
     internal bool NeedsArrayRuntime { get; set; }
@@ -273,9 +273,6 @@ internal sealed class EmissionModule
     internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
 
     internal List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> FormattingConversions { get; } = new();
-
-    /// <summary>Gets the generic call entries whose concrete instance is still to be lowered (SPEC 21.3.1); empty once generation succeeds.</summary>
-    internal List<GenericStoragePlan.CallEntry> PendingEntries { get; } = new();
 
     internal List<ObjectCreation> Objects { get; } = new();
 
@@ -307,7 +304,7 @@ internal sealed class EmissionModule
         this.Aggregates.Clear();
         this.ArrayHelpers.Clear();
         this.DictionaryHelpers.Clear();
-        this.SourceCalls.Clear();
+        this.FunctionReferences.Clear();
         this.NeedsArrayRuntime = false;
         this.NeedsDictionaryRuntime = false;
         this.NeedsStorageBytes = false;
@@ -321,7 +318,6 @@ internal sealed class EmissionModule
         this.NeedsFormattingRuntime = false;
         this.FormattingWrites.Clear();
         this.FormattingConversions.Clear();
-        this.PendingEntries.Clear();
         this.Objects.Clear();
         this.NeedsObjectRuntime = false;
         this.Externals.Clear();
@@ -349,8 +345,24 @@ internal sealed class EmissionModule
     internal void RemoveLastFunction()
         => this.functionCount--;
 
-    internal void Complete()
-        => this.IsComplete = true;
+    internal bool Complete(out string? failure)
+    {
+        this.IsComplete = false;
+        foreach (var helper in this.DictionaryHelpers)
+        {
+            if (helper.Related < -1 || helper.Related >= this.FunctionReferences.Count ||
+                (helper.Kind == DictionaryHelperKind.CheckKey && (helper.Related < 0 || this.DictionaryRequireAbsent is null)) ||
+                (helper.Kind == DictionaryHelperKind.Place && this.DictionaryAppend is null))
+            {
+                failure = "Dictionary helper has an unresolved physical function reference.";
+                return false;
+            }
+        }
+
+        failure = null;
+        this.IsComplete = true;
+        return true;
+    }
 
     internal void WriteIr(TextWriter output)
     {
@@ -404,7 +416,7 @@ internal enum DictionaryHelperKind : byte
 }
 
 /// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI.</summary>
-internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, BoundCall? Related);
+internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, int Related);
 
 // SPEC 4.6.4: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
 internal static class SliceShape

@@ -1,6 +1,6 @@
 # Compiler architecture
 
-The compiler reorganization is active. This document separates enforced boundaries from migration work; it does not
+The compiler reorganization is paused at the user's request (2026-10-10). This document separates enforced boundaries from migration work; it does not
 claim that the current compiler already has a closed semantic IR. Required behavior remains in SPEC/IMPL, navigation
 in CODEMAP, verified support in STATUS, and execution/verification rules in AGENTS and VERIFICATION.
 
@@ -61,7 +61,7 @@ Every migrated route removes its old interpretation; temporary producer adapters
 | U5 | Active | Borrow liveness owns its result/workspace; remaining dependency, authority, conflict and diagnostic ownership is pending. |
 | U6 | Pending | Decompose Binding internals behind closed contracts; remove persistent semantic fields from syntax. |
 | U7 | Pending | Semantic default/case/instance templates; remove downstream source replay. |
-| U8 | Pending | Close representation/lowering inputs and the physical module, including construction queues/maps. |
+| U8 | Active | Physical module storage no longer retains semantic references or pending construction entries; representation/lowering input closure remains pending. |
 | U9/U10 | Pending | Complete remaining source/service boundaries; remove all adapters and audit closure/costs. |
 
 The first U2 route uses `ReplaceBorrowed`, `ExchangeBorrowed` and `SwapBorrowed` operation kinds for both direct owned
@@ -84,6 +84,18 @@ runtime/checking edges without modifying dependencies or diagnosing conflicts. C
 computed during semantic construction. The body still coordinates dependency/authority convergence and conflict checks,
 and the remaining analysis inputs are not yet transitively closed.
 
+`EmissionModule` stores physical function references by index. Source-call deduplication and the pending-instance
+cursor belong to `GenericStoragePlan`, whose generation work is drained before publication. The redundant pending
+list and repeated searches are removed. Module completion rejects unresolved Dictionary helper references and clears
+prior success on failure. `MinimalEmissionTest` checks the transitive stored-type graph for semantic/syntax references;
+`DictionaryLibraryTest` checks rejection and successful repreparation. This is a storage boundary, not proof that
+lowering inputs are closed or that every physical opcode, ABI and control-flow invariant has a final verifier.
+
+Resume with the remaining call consumers (`LocalRegions`, `Defaults`, `Updates`, `Reservations` and physical argument
+validation), closed Type/target/proof contracts and the corresponding builder routes. Dependency/authority convergence,
+conflict checking and diagnostic publication still need separate state owners. Binding, default/instance generation,
+lowering and source/service boundaries remain in the ledger above; this checkpoint does not complete U0-U10.
+
 U1b closure is a prerequisite for each migrated consumer. Moving all Binding internals need not precede a vertical
 slice, but an existing syntax-bearing record cannot be called closed merely because it is exposed read-only.
 
@@ -94,6 +106,21 @@ The implementation starts from 462 files, 6,324,004 recursive file-content bytes
 The before manifest and file hashes are retained under `artifacts/benchmarks/compiler-reorganization-2026-10-09/`.
 Measure the same recursive scope after changes; report C# and whole-folder totals. Moving code outside Compiler,
 changing line endings or removing explanatory comments is not semantic consolidation and must not count as its benefit.
+
+The 2026-10-10 checkpoint uses the same scope and retains per-file hashes in `after.json` and deltas in `summary.json`
+beside the baseline. LF-normalized bytes exclude the checkout's mixed line endings; no code was moved outside Compiler.
+
+| Measure | Before | Checkpoint | Reduction |
+| --- | ---: | ---: | ---: |
+| Folder payload bytes | 6,324,004 | 6,313,352 | 10,652 (0.168%) |
+| LF-normalized folder bytes | 6,283,538 | 6,277,454 | 6,084 (0.097%) |
+| C# payload bytes | 6,168,600 | 6,157,948 | 10,652 |
+| C# lines, including comments/blanks | 134,706 | 134,591 | 115 |
+| Files (C# files) | 462 (455) | 465 (458) | Three additional responsibility owners |
+
+The normalized reduction is modest: duplicate interpretation was removed, while retained semantic facts and explicit
+state owners were added. File splitting is not counted as a reduction. Whole-plan consolidation and final cost audits
+remain unfinished.
 
 | Current area | Destination responsibility |
 | --- | --- |

@@ -238,7 +238,7 @@ public sealed partial class LlvmEmitter
 
             // Destructors can introduce further closed local Types. Drain their ordinary generic entries
             // to a fixed point, after each body has finished using the reusable layout scratch storage.
-            while (this.generics.HasPendingSourceCalls || this.defaults.HasPending || module.PendingEntries.Count != 0)
+            while (this.generics.HasPendingSourceCalls || this.defaults.HasPending || this.generics.HasPendingImplementations)
             {
                 if (!this.LowerDefaults(c, module, out failure) ||
                     !this.generics.PrepareSourceCalls(c, module, this.lowering.AggregateLayouts, out failure) ||
@@ -253,14 +253,12 @@ public sealed partial class LlvmEmitter
             if (c.IsTestBuild)
             {
                 module.TestRuntime = Testing.TestRuntime.Create(c.Tests, this.functions);
-                module.Complete();
-                return true;
+                return module.Complete(out failure);
             }
 
             if (c.Binding.Startup.OutputKind == OutputKind.Library)
             {
-                module.Complete();
-                return true;
+                return module.Complete(out failure);
             }
 
             if (!this.functions.TryGetValue(c.Binding.Startup.Function!, out var entry))
@@ -273,8 +271,7 @@ public sealed partial class LlvmEmitter
             start.AddCall(-1, entry, []);
             start.AddCall(-1, WindowsLowering.Exit, [new(EmissionOperandKind.Integer, 0)]);
             start.Add(EmissionOpcode.Unreachable, -1);
-            module.Complete();
-            return true;
+            return module.Complete(out failure);
         }
         finally
         {
@@ -423,16 +420,10 @@ public sealed partial class LlvmEmitter
         // A factory Item or a direct base call can discover descriptor dependencies while lowering.
         // The next worklist pass prepares their object calls before lowering the appended entries.
         var count = this.generics.Entries.Count;
-        for (var index = 0; index < count; index++)
+        for (var index = this.generics.LoweredCount; index < count; index++)
         {
             var entry = this.generics.Entries[index];
             var call = entry.Context!;
-            // A selected explicit specialization (SPEC 21.3.4) is never pending; a reused entry is lowered once.
-            if (!module.PendingEntries.Contains(entry))
-            {
-                continue;
-            }
-
             var lowered = false;
             this.generics.ExpansionParent = entry;
             if (c.Ownership.AnalyzeInstance(entry.Template.Body, call) is { } body &&
@@ -453,7 +444,7 @@ public sealed partial class LlvmEmitter
                 {
                     module.NeedsStringComparison |= function.NeedsStringComparison;
                     this.lowering.RegisterAggregates(module);
-                    module.PendingEntries.Remove(entry);
+                    this.generics.LoweredCount++;
                 }
                 else
                 {

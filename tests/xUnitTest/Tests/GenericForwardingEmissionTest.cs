@@ -41,7 +41,7 @@ public class GenericForwardingEmissionTest
         var source = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "../../../../../tests/milestones/Milestone22.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture("GenericForwardingProgram22", source, "Compound layouts preserved.\nSpecialization preserved.\nRed received.\nRed destroyed.\nBlue received.\nBlue destroyed.\nGeneric generation finished.\n");
     }
 

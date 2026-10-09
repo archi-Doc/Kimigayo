@@ -75,7 +75,7 @@ public class GenericBorrowedElementTest
         Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source} ({x.Source.GetType().Name})")
             .Concat(c.Ownership.ControlFlow!.Issues.Select(x => $"flow {x.Message}: {x.Node}")).Concat(c.Ownership.ControlFlow.PendingBinding.Select(x => $"pending: {x}"))));
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         ScalarEmissionTest.EmitFixture(
             "GenericBorrowedElementProgram20",
             Program20Source,
@@ -89,7 +89,7 @@ public class GenericBorrowedElementTest
         // element storage instead of keeping the shared entry.
         var c = MinimalEmissionTest.Analyze(At + "let a: [2 of (i32, bool)] = [(6, false), (7, true)]\nlet n = at<2, (i32, bool)>(a@ref, 1)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
         Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.Sequence && x.ScalarOperator == "ArrayStorageRead");
         Assert.Contains(instance.Instructions, x => x.Opcode == EmissionOpcode.TransferAggregate);

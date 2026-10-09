@@ -13,14 +13,33 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("var entries = [1: \"first\", 2: \"second\"]\nentries.clear()\n_ = entries.tryInsert(3, \"last\")\nConsole.writeLine(entries[3])");
         Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Contains(module.SourceCalls, entry => ReferenceEquals(entry.Key.Target.Declaration, c.Library.DictionaryFind));
-        var clear = Assert.Single(module.SourceCalls, entry => ReferenceEquals(entry.Key.Target.Declaration, c.Library.DictionaryClear));
-        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, clear.Value)));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryFind));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClear));
+        var check = Assert.Single(module.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.CheckKey);
+        var clear = Assert.Single(module.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.Drop);
+        Assert.InRange(check.Related, 0, module.FunctionReferences.Count - 1);
+        Assert.InRange(clear.Related, 0, module.FunctionReferences.Count - 1);
+        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, module.FunctionReferences[clear.Related])));
         var ir = CompilationTestHelper.WriteIr(c);
         Assert.DoesNotContain("__kimi_dictionary_find", ir, StringComparison.Ordinal);
         Assert.DoesNotContain("__kimi_dictionary_clear", ir, StringComparison.Ordinal);
         Assert.DoesNotContain("_destroy(i64 %environment", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryTypedCleanup", ir, "last\n");
+    }
+
+    [Fact]
+    public void UnresolvedPhysicalHelperCannotPublishAndRepreparationRecovers()
+    {
+        var c = MinimalEmissionTest.Analyze("let entries = [1: 2]\nrequire entries[1] == 2 else => $abort(\"value\")");
+        Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
+        module.FunctionReferences.Clear();
+        Assert.False(module.Complete(out failure));
+        Assert.Contains("unresolved physical function", failure, StringComparison.Ordinal);
+        Assert.False(module.IsComplete);
+        Assert.Throws<InvalidOperationException>(() => module.WriteIr(TextWriter.Null));
+        Assert.True(c.Emission.TryPrepare(out module, out failure), MinimalEmissionTest.Describe(c, failure));
+        Assert.True(module.IsComplete);
+        module.WriteIr(TextWriter.Null);
     }
 
     [Theory]

@@ -71,7 +71,7 @@ public class GenericCallbackEmissionTest
         // SPEC 21.3.1: the instance calls its (T) -> bool value through the substituted signature.
         var c = MinimalEmissionTest.Analyze("func accepts<T>(value: T, f: (T) -> bool) -> bool => f(value@move)\nlet r = accepts<" + type + ">(" + value + ", func (x: " + type + ") => x == " + value + ")");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
-        Assert.Empty(module.PendingEntries);
+        Assert.True(module.IsComplete);
         var instance = Assert.Single(GenericStorageEmissionTest.Instances(module));
         var valueCall = Assert.Single(instance.Instructions, x => x.Opcode == EmissionOpcode.CallValue);
         Assert.Equal([type == "bool" ? "i1" : type, "ptr", "i64"], valueCall.Callee!.Parameters.Select(p => p.Type).ToArray());

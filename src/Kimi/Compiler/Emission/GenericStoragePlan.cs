@@ -55,6 +55,10 @@ internal sealed partial class GenericStoragePlan
 
     internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
 
+    internal int LoweredCount { get; set; }
+
+    internal bool HasPendingImplementations => this.LoweredCount < this.implementations.Count;
+
     internal CallEntry? ExpansionParent { get; set; }
 
     /// <summary>Gets a value indicating whether the last failure exceeded a mandatory generation resource limit (SPEC 21.3.5).</summary>
@@ -78,6 +82,7 @@ internal sealed partial class GenericStoragePlan
         this.templates.Clear();
         this.entries.Clear();
         this.implementations.Clear();
+        this.LoweredCount = 0;
         this.calls.Clear();
         this.formattingCalls.Clear();
         this.formattingWrites.Clear();
@@ -487,7 +492,6 @@ internal sealed partial class GenericStoragePlan
         entry.ImplementationPrepared = true;
         entry.Parent = this.ExpansionParent;
         this.implementations.Add(entry);
-        module.PendingEntries.Add(entry);
         var parent = this.ExpansionParent;
         this.ExpansionParent = entry;
         try

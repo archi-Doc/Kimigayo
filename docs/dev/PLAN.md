@@ -19,7 +19,7 @@ PLAN holds current work; STATUS changes only with verified support boundaries; P
 
 ## 3. Current position
 
-- **Compiler reorganization (user order, 2026-10-09):** active; [architecture and migration ledger](COMPILER_ARCHITECTURE.md). Normalize semantic contracts, remove duplicate interpretation and split analysis ownership; measure the complete Compiler folder before/after. Existing feature limits and paused work remain separate.
+- **Compiler reorganization (user order, 2026-10-09; paused by the user, 2026-10-10):** checkpoint at common whole-value updates, recorded call inputs, shared transfers, separate borrow liveness and physical-module storage. [Architecture, measurements and remaining migration gates](COMPILER_ARCHITECTURE.md). Resume only on a new instruction; U0-U10 are not complete. Existing feature limits and paused work remain separate.
 
 - **Associated-Type inference (G84):** [U0–U4](../impl/associated-type-inference.md#4-implementation-sequence) are complete within the existing artifact, object receiver and general Origin boundaries in STATUS. Shared declaration completion, frozen evidence, invalidation, public diagnostics/Hover, native execution and allocation/scaling checks are verified. [Completion evidence](PLAN_HISTORY.md#associated-inference-completion).
 

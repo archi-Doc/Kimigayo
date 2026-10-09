@@ -5,20 +5,22 @@ namespace Kimi.Compiler;
 internal sealed partial class GenericStoragePlan
 {
     private readonly Dictionary<BoundCall, string> destructorNames = new(ReferenceEqualityComparer.Instance);
-    private readonly HashSet<BoundCall> requestedSourceCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundCall, int> requestedSourceCalls = new(ReferenceEqualityComparer.Instance);
     private readonly List<(BoundCall Call, CallEntry? Parent)> sourceCallQueue = new();
     private int preparedSourceCalls;
 
     internal bool HasPendingSourceCalls => this.preparedSourceCalls < this.sourceCallQueue.Count;
 
-    internal BoundCall RequireSourceCall(BoundCall call)
+    internal int RequireSourceCall(BoundCall call)
     {
-        if (this.requestedSourceCalls.Add(call))
+        if (!this.requestedSourceCalls.TryGetValue(call, out var reference))
         {
+            reference = this.sourceCallQueue.Count;
+            this.requestedSourceCalls.Add(call, reference);
             this.sourceCallQueue.Add((call, this.ExpansionParent));
         }
 
-        return call;
+        return reference;
     }
 
     // Layout discovery reserves the name only. Preparing the body here would recursively request the
@@ -55,7 +57,7 @@ internal sealed partial class GenericStoragePlan
                     return false;
                 }
 
-                module.SourceCalls.Add(call, abi!);
+                module.FunctionReferences.Add(abi!);
             }
             finally
             {

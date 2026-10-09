@@ -15,6 +15,9 @@ Call inputs and result-source rules are recorded by `OwnershipAnalysis.Calls` an
 `OwnershipFlow` supplies transfer correspondence to dependency/authority policies; `BorrowLiveness` owns live-holder
 results. `OwnershipAnalysis.Cleanup` records cleanup observation, and `SharedEngineTotalityTest` covers the flow table
 and runtime/checking edge distinction.
+`GenericStoragePlan` owns source-call requests and pending-instance progress; `EmissionModule.FunctionReferences`
+contains only physical ABIs. `EmissionModule.Complete` checks Dictionary helper references before publication;
+`MinimalEmissionTest` checks transitive stored types and `DictionaryLibraryTest` checks failure/repreparation.
 
 Paths below are relative to [src/Kimi](../../src/Kimi/).
 
