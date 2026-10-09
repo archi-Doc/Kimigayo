@@ -251,7 +251,7 @@ Bare Type-parameter construction, inherited or extension constructors, field-wis
 
 #### 6.2.3.3. Evaluation order
 
-After normal argument and default evaluation, fresh Uninitialized construction storage is allocated and the parameters are bound. The base arguments are evaluated in the constructor's parameter and source context, and the selected direct-base constructor runs in its subobject. Omitting the base clause selects an accessible zero-argument invocation, including one whose parameters all have defaults; `: base(...)` in a structure without a base is an error. Exactly one base call occurs; same-Type delegation and repeated base initialization are unavailable. This dedicated operation may call protected base constructors without an ordinary instance receiver.
+After normal argument and default evaluation, fresh Uninitialized construction storage is allocated and the parameters are bound. The base arguments are evaluated in the constructor's parameter and source context, and the selected direct-base constructor runs in its subobject. Omitting the base clause selects, by ordinary selection (§10) with no arguments, an accessible base constructor, including one whose parameters all have defaults; `: base(...)` in a structure without a base is an error. Exactly one base call occurs; same-Type delegation and repeated base initialization are unavailable. This dedicated operation may call protected base constructors without an ordinary instance receiver.
 
 Base construction completes first. Then this layer's Field declaration initializers are evaluated in logical declaration order, and then the constructor body executes. Declaration initializers keep their own declaration-site environments and cannot reference constructor parameters or `self`. Base arguments may reference constructor parameters but cannot access `self`. No constructor silently initializes a field with zero, null or an element Type's default constructor. The Origins required by stored arguments and by the completed base must be represented by the constructed Type's declared Origin contract and inferred under ordinary lifetime constraints; hidden or invented Origins cannot make a construction valid.
 
@@ -269,7 +269,28 @@ Constructors have no recoverable-failure return or exception mechanism. For fall
 
 #### 6.2.3.6. Implicit constructor
 
-After merging, one public zero-parameter constructor is synthesized if and only if there is no selected explicit constructor, every own Field has an initializer, and any base has an accessible zero-argument invocation. Its effective access is the Type's, and its implicit Unit body follows the normal initialization and completion rules. Empty structs meet the field condition. Otherwise no implicit constructor exists, and the Type itself remains valid. Any selected explicit or generated constructor, even a private one, suppresses synthesis; no memberwise constructor is added. Synthesis depends on declarations, not on initializer validity: resulting errors are reported normally, and generic obligations are retained until instantiation.
+After merging, one zero-parameter constructor is synthesized if and only if no explicit or generated constructor is selected, every own Field has an initializer, and, for a structure with a base, the omitted base clause of §6.2.3.3 selects a base constructor. Empty structs meet the Field condition. Any selected explicit or generated constructor, even a private one, suppresses synthesis; no memberwise constructor is added.
+
+The base selection is ordinary selection (§10) over the direct base's constructors with no arguments. It is made from the derived declaration, where protected base constructors are accessible, under the derived declaration's Constraints, and a Refuted premise makes only its own candidate inapplicable. If no candidate applies or the selection is ambiguous, no implicit constructor exists, and the Type itself remains valid. If the selection cannot be decided because a candidate premise is Unknown there (§8.4.8.2), it is unproven and no implicit constructor exists: a construction of the Type reports the unproven premise, and a synthesis in a derived structure or an explicit omitted-base call that depends on this absence is a derived problem with that premise as its prerequisite (§23.3.6.4). If the base declaration is invalid, or the structure's `: BaseType` clause has Constraints that are not Proven, the decision depends on that failure.
+
+The synthesized constructor has the Type's effective access and behaves as `init() => ()` with an omitted base clause, following the normal initialization and completion rules; an error of its base call is reported at the structure's `: BaseType` clause (§6.2.2). Synthesis depends on declarations, not on the validity of initializers, defaults or the selected base call. The synthesized constructor of a generic structure is a generic definition (§8.10), and only its Deferred Obligations wait for instantiation. A Kimi Type whose representation the compiler manages has no implicit constructor (§22.1).
+
+```kimi
+public open struct Counter
+    protected var count: i32 = 0
+    protected init() => ()
+
+public struct Tally : Counter        // Synthesized: public init() selects the protected base constructor.
+
+public open struct Choice
+    public init(first: i32 = 1) => ()
+    public init(second: bool = true) => ()
+
+public struct Picked : Choice        // Valid without a constructor: both base constructors apply.
+
+let tally = Tally.init()
+// let picked = Picked.init()       // Error: Picked has no constructor.
+```
 
 ### 6.2.4. Virtual members and overrides
 

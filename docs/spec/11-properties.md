@@ -396,7 +396,7 @@ Compatible custom and computed accessors implement calls directly. Calls through
 | Shared receiver -> `ref/F` | Authorized shared slot borrow |
 | Exclusive receiver, input `F` -> Unit | Accessible `var` standard `set` |
 
-Every bridge is checked against the receiver, Property permissions, Origins, Loans and premises. Storage borrows cannot outlive receiver or slot validity, and copied references keep their original dependencies. Hidden storage behind a custom `get` is unavailable. Other conversions, projections and reborrows need compatible explicit accessors and are never synthesized.
+Every bridge is checked against the receiver, Property permissions, Origins, Loans and premises. Storage borrows cannot outlive receiver or slot validity, and copied references keep their original dependencies. Hidden storage behind a custom `get` is unavailable. Other conversions, projections and reborrows need compatible explicit accessors and are never synthesized. For a Property inherited along a base path, a bridge takes the requirement receiver over the conforming Type and reaches the Field by standard projection (§11.1.2), forming no base-subobject receiver projection (§9.5.1); it is checked and executed under the premises of its conformance path, including conformance conditions and the substituted premises of an inherited path.
 
 ```text
 Requirement + selected Property + Type/Origin substitutions + base path

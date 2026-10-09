@@ -235,3 +235,20 @@
 
 - **Proposed fix:** Give the follow the slot `a` alone.
 - **Why not applied:** The concrete `uniq` follow meets every reaching borrow (§15.5, §15.6.3): `uniq/Box<uniq/i32 during a> during c` cannot return `uniq/i32 during a`, because the result would outlive the exclusive borrow `c` it was reached through. A generic body is never weaker than its concrete case (§8.10).
+
+## A conditional implicit constructor over an Unknown base premise
+
+- **Problem:** When the omitted base call of a derived structure's implicit constructor depends on a premise that is Unknown at the derived declaration, no implicit constructor exists (§6.2.3.6), although one would be valid in every instantiation where the premise holds.
+- **Example:**
+
+  ```kimi
+  public open struct Base<T>
+      public init()
+          T is Copy
+          ()
+
+  public struct Derived<T> : Base<T> // No implicit constructor: `T is Copy` is Unknown here.
+  ```
+
+- **Proposed fix:** Synthesize `init()` conditionally, existing only in the instantiations where the base premise holds.
+- **Why not applied:** The condition would be a hidden premise that no declaration states (Principle 3), and a member that appears only in some instantiations contradicts definition-time checking (§8.4.8.2, §8.10). An explicit constructor with the Constraint expresses the same thing in source.
