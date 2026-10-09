@@ -103,6 +103,17 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 13.5.5.1: exclusive payload access needs exclusive authority along the whole path, also to an objuniq view.
+    [Fact]
+    public void AnObjuniqViewReachedThroughASharedPathLendsNoExclusiveReceiver()
+    {
+        var source = "struct Counter\n    public var n: i32 = 0\n    public func bump(self: uniq/Self) => self.n += 1\nvar h = Kimi.Intrinsics.makeObj(Counter.init())\nlet u = h@objuniq\nlet r = u@ref\nr@follow.bump()";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Emission.Validate(out _));
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "r@follow.bump()"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmPayloadReadPlansAllocateNothing()

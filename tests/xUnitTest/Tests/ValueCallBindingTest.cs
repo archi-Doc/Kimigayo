@@ -51,6 +51,27 @@ public class ValueCallBindingTest
         Assert.Equal(call.ArgumentNodes.Count, plan.Arguments.Length);
     }
 
+    // SPEC 7.3, 13.5.5.1: an object callee records the acquisition of its complete payload; a value reference keeps none.
+    [Theory]
+    [InlineData("func apply(f: objref/(() -> i32)) -> i32 => f()", true)]
+    [InlineData("func apply(f: rc/(() -> i32)) -> i32 => f()", true)]
+    [InlineData("func apply(f: rc/(() -> i32)) -> i32 => f@follow()", true)]
+    [InlineData("func apply(f: ref/(() -> i32)) -> i32 => f()", false)]
+    public void ObjectCalleesRecordTheirPayloadReceiver(string source, bool payload)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        var plan = Assert.IsType<BoundValueCall>(call.BoundValueCall);
+        Assert.Same(call.Method, plan.Receiver);
+        Assert.Equal(payload ? ArgumentOperationKind.PayloadProjection : ArgumentOperationKind.Value, plan.ReceiverOperation.Kind);
+        if (payload)
+        {
+            Assert.Same(KotoHelper.UnwrapParentheses(call.Method) is ConversionKoto follow ? follow.Left : call.Method, plan.ReceiverOperation.Source);
+            Assert.Equal((SemanticsKind.Ref, BoundTypeKind.Function), (plan.ReceiverOperation.AdaptedType!.Semantics, plan.ReceiverOperation.AdaptedType.Components[0].Kind));
+        }
+    }
+
     [Theory]
     [InlineData("func apply(f: (i32) -> bool) -> bool => f()")]
     [InlineData("func apply(f: (i32) -> bool) -> bool => f(1, 2)")]

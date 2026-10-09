@@ -63,6 +63,53 @@ public class ClosureReceiverClassificationTest
         Assert.Equal(advice, error.Advice);
     }
 
+    // SPEC 7.3 (check 1), 7.6.3, 13.5.5.1: an object callee supplies only its payload authority. rc, arc and objref grant shared access,
+    // a let obj handle is not writable, a reference supplies no owning receiver and a payload offers no Take; a temporary callee, a
+    // callee reached through a reference or an element and an Exclusive call of an unproven Sealed payload are located limits before
+    // generation, and an environment-borrowing result keeps the handle lent.
+    [Theory]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeRc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.6.3)", true, null)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeArc(next@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Exclusive (SPEC 7.6.3)", true, null)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet h = Kimi.Intrinsics.makeRc(next@move)\nlet a = h@follow()", "SharedPathAccess_Kd", "h@follow", "The call is Exclusive (SPEC 7.6.3)", true, null)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nlet v = o@objref\nlet a = v()", "SharedPathAccess_Kd", "v", "The call is Exclusive (SPEC 7.6.3)", false, null)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar h = Kimi.Intrinsics.makeObj(next@move)\nlet u = h@objuniq\nlet r = u@ref\nlet a = r@follow()", "SharedPathAccess_Kd", "r@follow", "The call is Exclusive (SPEC 7.6.3)", false, null)]
+    [InlineData("func call<F>(v: rc/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload and Sealed\n    return v()\n()", "SharedPathAccess_Kd", "v", "The call is Exclusive (SPEC 7.6.3)", true, null)]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nlet o = Kimi.Intrinsics.makeObj(next@move)\nlet a = o()", "InvalidAssignment_Kd", "o", "The call is Exclusive (SPEC 7.6.3)", false, "Declare the binding with var to call it")]
+    [InlineData("let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nlet outer = func [var o@move] () -> i32 => o@follow()\nlet a = outer()", "InvalidAssignment_Kd", "outer", "The call is Exclusive (SPEC 7.6.3)", false, "Declare the binding with var to call it")]
+    [InlineData("let text = \"abc\"\nlet h = Kimi.Intrinsics.makeArc(func [text@move] () -> string => text@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Consuming (SPEC 7.6.3)", true, null)]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () -> i32 => n@move)\nlet a = h()", "SharedPathAccess_Kd", "h", "The call is Consuming (SPEC 7.6.3)", true, null)]
+    [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet a = h()", "InvalidAssignment_Kd", "h", "The call is Consuming (SPEC 7.6.3)", false, "Call a Consuming closure through an owned closure value")]
+    [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet u = h@objuniq\nlet a = u()", "InvalidAssignment_Kd", "u", "The call is Consuming (SPEC 7.6.3)", false, "Call a Consuming closure through an owned closure value")]
+    [InlineData("func call(r: ref/(() -> i32)) -> i32 => 1\nlet n: i32 = 4\nlet f = func [n] () -> i32 => n@move\nlet r = f@ref\nlet a = r()", "InvalidAssignment_Kd", "r", "The call is Consuming (SPEC 7.6.3)", false, "Write r@follow() to call a Copy of a Copy closure, or call an owned closure value")]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "ComparisonLoanConflict_Kd", "h", null, false, null)]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h@follow()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "ComparisonLoanConflict_Kd", "h", null, false, null)]
+    [InlineData("func call<F>(v: objuniq/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload\n    return v()\n()", "UnsupportedBinding_Kd", "v", "A direct call through an object handle or view acquires its complete payload", false, null)]
+    [InlineData("require Kimi.Intrinsics.makeRc(func [] () -> i32 => 7)() == 7 else => $abort(\"temporary\")", "UnsupportedBinding_Kd", "Kimi.Intrinsics.makeRc(func [] () -> i32 => 7)", "A direct call through an object handle or view acquires its complete payload", false, null)]
+    [InlineData("func seven() -> i32 => 7\nrequire Kimi.Intrinsics.makeRc(seven)() == 7 else => $abort(\"temporary item\")", "UnsupportedBinding_Kd", "Kimi.Intrinsics.makeRc(seven)", "A direct call through an object handle or view acquires its complete payload", false, null)]
+    [InlineData("struct Holder\n    public var callback: rc/(() -> i32)\n    public init(callback: rc/(() -> i32)) => self.callback = callback@move\nfunc call(holder: ref/Holder) -> i32 => holder.callback()\nlet f: () -> i32 = func [] () -> i32 => 7\nlet holder = Holder.init(Kimi.Intrinsics.makeRc(f@move))\nrequire call(holder@ref) == 7 else => $abort(\"field\")", "UnsupportedBinding_Kd", "holder.callback", "A direct call through an object handle or view acquires its complete payload", false, null)]
+    [InlineData("func call(r: ref/(rc/(() -> i32))) -> i32 => r@follow()\nlet f: () -> i32 = func [] () -> i32 => 7\nlet h = Kimi.Intrinsics.makeRc(f@move)\nrequire call(h@ref) == 7 else => $abort(\"follow\")", "UnsupportedBinding_Kd", "r@follow", "A direct call through an object handle or view acquires its complete payload", false, null)]
+    [InlineData("let f: () -> i32 = func [] () -> i32 => 7\nlet hs = [Kimi.Intrinsics.makeRc(f@move)]\nrequire hs[0]() == 7 else => $abort(\"element\")", "UnsupportedBinding_Kd", "hs[0]", "A direct call through an object handle or view acquires its complete payload", false, null)]
+    public void ObjectCalleesSupplyOnlyTheirPayloadAuthority(string source, string code, string at, string? note, bool authority, string? advice)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Emission.Validate(out _));
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, at), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        if (note is not null)
+        {
+            Assert.Contains(note, error.Note, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(authority, error.Note?.Contains("rc and arc provide shared payload access only", StringComparison.Ordinal) == true);
+        Assert.Equal(advice, error.Advice);
+        Assert.Null(error.Repairs);
+    }
+
+    // A closure that calls its captured object's payload exclusively is itself Exclusive.
+    [Fact]
+    public void AnExclusivePayloadCallMakesTheCaptureExclusive()
+        => ScalarEmissionTest.EmitFixture("ClosureReceiverPayloadFollow", "let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nvar outer = func [var o@move] () -> i32 => o@follow()\nrequire outer() == 1 and outer() == 2 else => $abort(\"captured follow\")", string.Empty);
+
     // A shared borrow through the captured exclusive reference keeps the call Shared; its result depends on the receiver.
     [Fact]
     public void ASharedReborrowResultStaysShared()

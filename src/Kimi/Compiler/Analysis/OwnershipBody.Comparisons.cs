@@ -16,6 +16,23 @@ public sealed partial class OwnershipBody
         _ => false,
     };
 
+    /// <summary>Gets whether a value call's receiver Place is the temporary borrow that lends its callee: a shared borrow of a common
+    /// Function value in a field or element, or the complete payload of an object callee borrowed in the call's receiver mode (SPEC 7.3,
+    /// 7.6.3, 13.5.5.1).</summary>
+    /// <param name="place">The receiver Place.</param>
+    /// <param name="receiver">The plan's receiver Type where the call reads it.</param>
+    /// <param name="plan">The value call.</param>
+    /// <returns>Whether the Place lends the callee.</returns>
+    internal static bool IsBorrowedCallableReceiver(OwnershipPlace place, BoundType receiver, BoundValueCall plan)
+    {
+        var payload = plan.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection;
+        var callee = payload && (ObjectTypes.HandleMode(receiver) is not null || ObjectTypes.IsBorrow(receiver)) ? receiver.Components[0] : receiver;
+        return place.Kind == OwnershipPlaceKind.Temporary && callee.Kind != BoundTypeKind.Semantics &&
+            place.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrow && ReferenceEquals(borrow.Components[0], callee) &&
+            (payload ? borrow.Semantics == plan.ReceiverKind && plan.ReceiverKind is SemanticsKind.Ref or SemanticsKind.Uniq
+                : borrow.Semantics == SemanticsKind.Ref && plan.ReceiverKind == SemanticsKind.Ref && callee.Kind == BoundTypeKind.Function);
+    }
+
     internal bool ConflictsWithLoan(int id, int loanId, int activation = -1)
     {
         var operation = this.Operations[id];
@@ -277,14 +294,13 @@ public sealed partial class OwnershipBody
             this.LoanStates[end] == this.LoanInputs[entry];
     }
 
-    // The receiver Place has the plan's Type, or is the temporary shared borrow of a common Function value in a field or element. The
-    // analyzed Place Type is compared with the plan's declared receiver Type interpreted where the Loan reads it (SPEC 8.10).
+    // The receiver Place has the plan's Type or lends its callee (IsBorrowedCallableReceiver). The analyzed Place Type is compared with
+    // the plan's declared receiver Type interpreted where the Loan reads it (SPEC 8.10).
     private bool CallableReceiverType(int place, BoundValueCall plan, int read)
     {
         var type = this.Places[place].Type;
         var receiver = this.Resolve(plan.ReceiverType, this.ContextAt(read));
-        return ReferenceEquals(type, receiver) || (receiver?.Kind == BoundTypeKind.Function && this.Places[place].Kind == OwnershipPlaceKind.Temporary &&
-            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } && ReferenceEquals(type.Components[0], receiver));
+        return ReferenceEquals(type, receiver) || (receiver is not null && IsBorrowedCallableReceiver(this.Places[place], receiver, plan));
     }
 
     private bool ValidCallableLoan(int index)

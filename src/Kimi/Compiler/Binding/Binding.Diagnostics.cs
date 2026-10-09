@@ -1941,9 +1941,24 @@ public sealed partial class Binding
     // Exclusive call of a closure (SPEC 7.6.3) borrows the callee exclusively, so the callee is the written target.
     private void ReportWrite(Koto node, Koto target, DiagnosticRequirement requirement, DiagnosticCode code)
     {
+        var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
+        var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
+        var closure = callee?.Symbol?.Declaration as FunctionKoto;
+        var objectCallee = call && ((target.BoundType is { Kind: BoundTypeKind.Semantics } layer && IsObjectSemantics(layer.Semantics)) ||
+            KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow });
+        var plan = closure?.ClosureStorage;
+        var consuming = call && target.BoundType is { } calleeType && this.TryCallable(calleeType, this.ConstraintScope(node), out _, out var calleeReceiver) && calleeReceiver == SemanticsKind.Owner;
+        var callNote = !call ? null : consuming ? objectCallee
+            ? "The call is Consuming (SPEC 7.6.3): it moves values out of the callee's environment, and an object payload offers no Take (SPEC 13.5.5.1)"
+            : "The call is Consuming (SPEC 7.6.3): it moves values out of the callee's environment, which a reference cannot supply, since a callable value is no read Type (SPEC 3.5.3, 7.3)"
+            : plan is { ExclusiveReborrow: true, ExclusiveUse: { } use }
+            ? $"The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference {use} exclusively"
+            : "The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent";
         if (code != DiagnosticCode.InvalidAssignment_Kd)
         {
-            var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : ObjectTypes.HandleMode(target.BoundType) is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : this.SharedIndexNote(target);
+            var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
+            var authority = ObjectTypes.HandleMode(handle) is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : null;
+            var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : objectCallee ? authority is null ? callNote : $"{callNote}. {authority}" : authority ?? this.SharedIndexNote(target);
             node.Report(requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
             return;
         }
@@ -1955,14 +1970,9 @@ public sealed partial class Binding
         }
 
         var immutable = root is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { VariableKind: VariableKind.Let } } };
-        var call = node is InvocationKoto invocation && ReferenceEquals(invocation.Method, target);
-        var callee = target.BoundType is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } reference ? reference.Components[0] : target.BoundType;
-        var plan = (callee?.Symbol?.Declaration as FunctionKoto)?.ClosureStorage;
         var shared = target.BoundType?.Semantics == SemanticsKind.Ref;
-        var callNote = !call ? null : plan is { ExclusiveReborrow: true, ExclusiveUse: { } use }
-            ? $"The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference {use} exclusively"
-            : "The call is Exclusive (SPEC 7.6.3): it borrows the callee exclusively, because the callee changes its environment or a captured referent";
-        var callAdvice = call && shared ? "A ref/F value cannot supply an Exclusive call; call the closure through its own var binding or a uniq/F borrow"
+        var callAdvice = consuming ? objectCallee ? "Call a Consuming closure through an owned closure value" : $"Write {target}@follow() to call a Copy of a Copy closure, or call an owned closure value"
+            : call && shared ? "A ref/F value cannot supply an Exclusive call; call the closure through its own var binding or a uniq/F borrow"
             : immutable ? call ? "Declare the binding with var to call it" : "Declare the binding with var to assign it again" : null;
         node.Report(requirement, code, note: callNote, at: target, evidence: [target.ToString()], advice: callAdvice);
     }
@@ -2026,6 +2036,7 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();
+        this.payloadCallees?.Clear();
         this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();

@@ -314,7 +314,7 @@ public sealed partial class Binding
     // result, also stays within the receiver; a Copy of a captured shared reference keeps its external Origin. A Consuming call consumes
     // the environment: borrows of it were Refuted at the closure (SPEC 15.8.2), and a reference it moves out keeps its own Origin.
     // Null when some Origin cannot be expressed; the caller keeps that call a located limit.
-    private BoundType? ReceiverDependentResult(BoundType result, Koto receiver, SemanticsKind kind, Koto use)
+    private BoundType? ReceiverDependentResult(BoundType result, Koto receiver, SemanticsKind kind, Koto use, BoundOrigin? lent = null)
     {
         var type = receiver.BoundType!;
         type = type.Kind == BoundTypeKind.Semantics ? type.Components[0] : type;
@@ -324,9 +324,10 @@ public sealed partial class Binding
         }
 
         // A call on the closure literal itself borrows that literal's temporary, which its own Place Origin names.
+        // An object callee's payload is lent by the Place its recorded acquisition names (SPEC 7.3), as its written follow's is.
         var place = kind == SemanticsKind.Owner ? null
             : ReferenceEquals(KotoHelper.UnwrapParentheses(receiver), function) ? this.OriginAtom(function, OriginKind.Projection, ClosureValueSlot)
-            : this.PlaceOrigin(receiver);
+            : lent ?? this.PlaceOrigin(receiver);
         var context = new ReceiverContext(function, closure, place, this.ProveCopy(result, receiver) == ConstraintProof.Proven, use);
         var mapped = this.ReceiverType(result, context, out var failed);
         return failed ? null : mapped;

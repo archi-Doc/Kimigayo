@@ -32,6 +32,19 @@ internal sealed partial class BodyLowering
         return call is null ? default : CallReceiverOperation(call);
     }
 
+    // The complete-payload receiver Binding recorded for a value call whose object callee, or its written payload follow, is the source.
+    private static BoundArgumentOperation? ValueCallReceiverOperation(Koto source)
+    {
+        var callee = source;
+        while (callee.Parent is ParenthesizedKoto || (callee.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } follow && ReferenceEquals(follow.Left, callee)))
+        {
+            callee = callee.Parent;
+        }
+
+        return callee.Parent is InvocationKoto { BoundValueCall: { ReceiverOperation: { Kind: ArgumentOperationKind.PayloadProjection } receiver } } call &&
+            ReferenceEquals(call.Method, callee) && ReferenceEquals(receiver.Source, source) ? receiver : null;
+    }
+
     // The reference-typed base of a borrowed Field/Tuple path, or an Array element whose own borrow, of the element's complete stored
     // Type in the part's mode, is the single receiver (PLAN G59).
     private static Koto? ProjectedRoot(OwnershipBody body, int id, BinaryKoto projected, BoundType type, int inputs, out bool element)
@@ -219,7 +232,9 @@ internal sealed partial class BodyLowering
                     ReferenceEquals(memberReceiver.Source, operation.Source) &&
                     ((memberReceiver.Kind == ArgumentOperationKind.PayloadProjection && ReferenceTypes.StorageMatches(body.Resolve(memberReceiver.ParameterType, body.ContextAt(id)), output)) ||
                     (memberReceiver.Kind == ArgumentOperationKind.BaseBorrow && output.Semantics == SemanticsKind.Ref && memberReceiver.BasePath is not null));
-                if (!ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection) ||
+                var callProjection = ValueCallReceiverOperation(operation.Source) is { } callReceiver &&
+                    ReferenceTypes.StorageMatches(body.Resolve(callReceiver.ParameterType, body.ContextAt(id)), output);
+                if (!ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection || callProjection) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.ObjUniq &&
                         ObjectTypes.HandleMode(type) is not { PayloadAuthority: LoanRequirement.Uniq }))
                 {

@@ -1002,6 +1002,11 @@ public sealed partial class Binding
             var viewTarget = DiagnosticTypeName(erasure.Target);
             issue.Node.Report(requirement, issue.Code, note: $"Erasing {subject} to the {viewTarget} object View requires {subject} is Owned", evidence: issue.Code == DiagnosticCode.UnprovenConstraint_Kd ? [subject, "Owned"] : null);
         }
+        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.payloadCallees?.TryGetValue(issue.Node, out var payloadLimit) == true)
+        {
+            // SPEC 7.3, 13.5.5.1: an object callee is acquired through its complete payload, located at the callee.
+            issue.Node.Report(requirement, issue.Code, evidence: [payloadLimit], at: ((InvocationKoto)issue.Node).Method, note: "A direct call through an object handle or view acquires its complete payload, as p@follow@ref or p@follow@uniq would (SPEC 7.3, 13.5.5.1); this acquisition is not yet implemented here");
+        }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
             this.ReportOwnedConversion(issue.Node, owned, requirement, issue.Code);

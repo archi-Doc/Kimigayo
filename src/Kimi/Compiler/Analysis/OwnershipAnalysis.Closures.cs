@@ -101,7 +101,11 @@ public sealed partial class OwnershipAnalysis
     {
         var depth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
-        var explicitReceiver = plan.ReceiverKind == SemanticsKind.Uniq && IsDirectExclusiveBorrow(plan.Receiver);
+        // SPEC 7.3, 13.5.5.1: an object callee lends its complete payload through the same checked borrow as `h@follow@ref`/`@uniq`,
+        // also when the callee is a written object view (`(h@objuniq)()`).
+        var payload = plan.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection;
+        var explicitReceiver = !payload && plan.ReceiverKind == SemanticsKind.Uniq && IsDirectExclusiveBorrow(plan.Receiver);
+        var reserved = explicitReceiver || (payload && plan.ReceiverKind == SemanticsKind.Uniq);
 
         // A common Function value stored in a field or element is called through a shared borrow of that part, as `@ref`
         // would take it, since reading the Non-Copy value out would transfer it.
@@ -112,6 +116,7 @@ public sealed partial class OwnershipAnalysis
                 (direct is InvocationKoto && ElementAccess.PlaceCallReference(direct) is not null));
         var receiver = explicitReceiver
             ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, plan.ReceiverType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
+            : payload ? this.PrepareCallArgument(call, plan.ReceiverOperation.Source!, plan.ReceiverOperation, immediate: plan.ReceiverKind != SemanticsKind.Uniq)
             : part ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, this.compilation.Binding.Reference(SemanticsKind.Ref, plan.ReceiverType), ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow), immediate: true)
             : plan.ReceiverKind == SemanticsKind.Uniq && KotoHelper.UnwrapParentheses(plan.Receiver) is IdentifierNameKoto { BoundSymbol: { } binding } && this.body.SymbolPlaces.TryGetValue(binding, out var local)
             ? local // SPEC 15.6.7: the reserved read below acquires an exclusive receiver binding, as a method receiver's entry does.
@@ -123,7 +128,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         // Even a temporary has a distinct read marking the receiver Loan's start.
-        var reservation = plan.ReceiverKind == SemanticsKind.Uniq && !explicitReceiver ? this.NewCallReservation(call) : -1;
+        var reservation = plan.ReceiverKind == SemanticsKind.Uniq && !reserved ? this.NewCallReservation(call) : -1;
         var receiverValue = this.Value(receiver);
         var read = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver, reservation: reservation);
         if (ReferenceTypes.IsBorrow(this.body.Places[receiver].Type) && this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
@@ -151,7 +156,7 @@ public sealed partial class OwnershipAnalysis
             this.arguments.Add(this.PrepareCallArgument(call, call.ArgumentNodes[i], plan.Arguments[i]));
         }
 
-        if (!explicitReceiver && reservation < 0 && ReferenceTypes.IsBorrow(this.body.Places[receiver].Type))
+        if (!reserved && reservation < 0 && ReferenceTypes.IsBorrow(this.body.Places[receiver].Type))
         {
             // A reference receiver is used again at the call, so the Place it borrows stays lent while the arguments run; an
             // exclusive receiver is instead held by its call reservation.
@@ -240,7 +245,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var path = KotoHelper.UnwrapParentheses(plan.Receiver);
-        while (path is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Follow } conversion)
+        while (path is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Follow or ConversionBinding.PayloadFollow } conversion)
         {
             path = KotoHelper.UnwrapParentheses(conversion.Left);
         }
