@@ -78,14 +78,5 @@ public class ExternalOriginForwardingTest
         Assert.False(c.Emission.Validate(out _));
     }
 
-    private static string Source()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Kimigayo.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return File.ReadAllText(Path.Combine(directory!.FullName, "tests", "milestones", "Milestone16.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
-    }
+    private static string Source() => Repository.ReadText("tests", "milestones", "Milestone16.kimi");
 }

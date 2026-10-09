@@ -51,7 +51,7 @@ public class WorkloadCostTest
     }
 
     private static string Program()
-        => File.ReadAllText(Path.Combine(FindRoot(), "tests", "milestones", "Milestone37.kimi")).Replace("\r\n", "\n", StringComparison.Ordinal);
+        => Repository.ReadText("tests", "milestones", "Milestone37.kimi");
 
     private static void WriteWorkload(string name, string source, string stdout, int bound)
     {
@@ -92,16 +92,5 @@ public class WorkloadCostTest
 
             """;
         ScalarEmissionTest.WriteFixture(name, ir, stdout);
-    }
-
-    private static string FindRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Kimigayo.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory!.FullName;
     }
 }

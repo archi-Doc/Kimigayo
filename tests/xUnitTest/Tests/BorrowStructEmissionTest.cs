@@ -15,7 +15,7 @@ public class BorrowStructEmissionTest
     [Fact]
     public void Milestone5()
     {
-        var source = File.ReadAllText(Path.Combine(FindRoot(), "tests", "milestones", "Milestone5.kimi"));
+        var source = File.ReadAllText(Path.Combine(Repository.Root, "tests", "milestones", "Milestone5.kimi"));
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.True(c.Ownership.Result.IsVerified, c.Ownership.Result + "\nObligations: " + string.Join('\n', c.Binding.Obligations) + "\n" + string.Join('\n', c.Ownership.Issues) + "\nFlow: " + string.Join('\n', c.Ownership.ControlFlow!.Issues) + "\nPending: " + string.Join('\n', c.Ownership.ControlFlow.PendingBinding));
@@ -74,7 +74,7 @@ public class BorrowStructEmissionTest
     [InlineData("counter = Counter.init()")]
     public void DestructorKeepsStoredLoanAlive(string statement)
     {
-        var milestone = File.ReadAllText(Path.Combine(FindRoot(), "tests", "milestones", "Milestone5.kimi"));
+        var milestone = File.ReadAllText(Path.Combine(Repository.Root, "tests", "milestones", "Milestone5.kimi"));
         Assert.Contains("// Mutating or moving counter here", milestone);
         var source = milestone.Replace("// Mutating or moving counter here", statement + "\n        // Mutating or moving counter here");
         var c = MinimalEmissionTest.Analyze(source);
@@ -127,16 +127,5 @@ public class BorrowStructEmissionTest
             Assert.True(c.Ownership.Analyze().IsVerified);
             Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         }
-    }
-
-    private static string FindRoot()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "Kimigayo.slnx")))
-        {
-            directory = directory.Parent;
-        }
-
-        return directory!.FullName;
     }
 }
