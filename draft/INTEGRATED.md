@@ -202,3 +202,69 @@ The earlier `docs/dev/RANGES_REVIEW.md` reference records a historical checkpoin
 - Deviation from §6.1.3: LIBRARY §3.5 lists no `Dictionary<K, V>.init()` (only `[:]` and literals), so the premise of keeping it does not hold. SPEC §22.1 states that a compiler-managed Kimi Type has exactly the constructors its Kimi declaration declares and that an empty Dictionary is written `[:]`; G80-K1 moves the three `CallReservationTest` rows that call `Dictionary<i32, i32>.init()` to `[:]`. One canonical form for an empty Dictionary upholds Principle 1.
 - Rationale: the old §6.2.3.6 left the access context, the selection rule, conditional premises and invalid bases open, and its "generic obligations are retained until instantiation" contradicted §8.4.8.2 and §8.10; §22.1 did not say which constructors a compiler-managed Type has (F23); §11.4.2 did not name an inherited bridge's receiver. The texts decide constructor existence from declarations (Local Reasoning), state the inherited bridge's receiver and premises (Explicit Semantics), and route Unknown and invalid-base failures to one located problem with derived dependents (Compiler Server Protocol).
 - Note (G80-K0 implementation, 2026-10-09): SPEC §8.4.8.2 now states when an Unknown premise can affect selection: an applicable candidate that is strictly best (§10.4) with every candidate whose applicability is unproven compared as though applicable is selected; otherwise the decision is deferred. This makes the existing deferral rule locally checkable (F26); §6.2.3.6 refers to it unchanged. No proposal text is frozen by it.
+
+## 2026-10-09 — Debugging approach
+
+- `Obsolete/2026-10-07 LLDB Debugging and Implementation Plan.md`: 完了 (closed 2026-10-09). The user chose a Kimi-owned debug adapter on the Win32 Debug API, planned in `Proposals/2026-10-09 Kimi Debug Adapter Plan.md` (new plan). Nothing from this proposal was integrated into the specification. Dispositions by section:
+  - §1: the intake order is transferred (new plan §1.2): a prototype before P38, then intake after its results, with Appendix D, PLAN, STATUS and INTEGRATED in the same commit. The (A)/(B) layering and the "(A) only" fallback are rejected. The Kimi adapter owns both generation and debugging, so no separate debugger layer remains.
+  - §2.1: rejected. The Kimi adapter owns DAP, the session, display and Windows process control, instead of LLDB, lldb-dap and the official extension.
+  - §2.2: transferred with changes (new plan §§2.1–2.2). Output goes to the Debug Console, and interactive stdin is deferred. Ownership/Loan visualization and partial display after a partial Move stay out of scope (§2.2).
+  - §2.3, row by row:
+    - The CodeView/PDB format is transferred (§6.1, §6.4).
+    - The DWARF-in-PE fallback is rejected, because the adapter reads PDB on Windows.
+    - Names and identifiers become debug names (§6.1, §6.3).
+    - The `ref`/`uniq`/`raw` distinction and the basic-type name table move to the side table's views (§7, §8.9).
+    - The formatter medium, debug component source, Python, stdio route and official-extension version rows are rejected, because no LLDB component is used.
+    - Among the checks: object invariance (1) → §6.5; line 0 (2) → KD0-P2 and §6.2; Pause positions (6) → §8.5 (KD-Q3); stopOnEntry (6) → §9.1; hover by variable path (5) → path expressions (§8.10); closure locals (8) → §2.1 and the KD7 scenarios.
+    - The sourceMap (3), name-breakpoint (4), lldb-dap environment (7) and clean-machine (9) checks are rejected for the same reason. Abort stops are handled inside the adapter (§8.6).
+  - §3: transferred with changes (§5):
+    - `DebugInfo` is CLI-only and limited to O0; `.kimiproj` support is deferred as KD-Q8.
+    - `debug` and `debugInfo` fields are written only when they differ from the default.
+    - `optimization` is no longer a launch key.
+    - The rejection of settings for `run <path.exe>` is transferred to new plan §5.2, which keeps it out of scope and records it as a PLAN issue at intake.
+  - §4.1: the preamble (`EmissionModule` boundary, nothing collected when `DebugInfo=false`) and the table's logical `DIFile` paths with SHA-256, debug names, artificial runtime functions at line 1 and cleanup positions are transferred with changes (§§6.1–6.2, §10). Rejected:
+    - logical paths for the whole IR and for Abort strings, because `DebugInfo=false` output stays unchanged;
+    - DI type identity and the struct, internal-representation and enum DI shapes, because Kimi types are shown from the side table and DI types stay minimal.
+  - §4.2: transferred with changes (§6.3):
+    - When `DebugInfo` is true, every named binding has a fixed slot; only scalar parameters change machine code.
+    - Validity is taken from the side table, with the final choice at KD7. Joins with uncertain initialization are unavailable.
+    - A partially moved binding is unavailable as a whole, and `noinit` arrays are shown without a validity guarantee.
+
+    Always-present slots are rejected, because `DebugInfo=false` output stays unchanged.
+  - §4.3: transferred with changes (§6.5). DI-only invariance is checked by stripping DI from the same IR. Always-explicit `/opt` is rejected for the same reason as in §4.2.
+  - §4.4: transferred with changes (§6.4). `-disable-auto-upgrade-debug-info` applies only when `DebugInfo=true`, and the readobj check joins the build-time link check.
+  - §4.5:
+    - Transferred with changes (§5.3, §6.4, §8.1): the PDB link line, `/pdbaltpath`, RSDS pairing and the publication order (temporary names, then PDB, EXE and record). The manifest/record `debug` and `debugInfo` fields are also transferred, written only when they differ from the default. Immutable records are transferred to new plan §5.3, which keeps them out of scope and records them as a PLAN issue at intake.
+    - Rejected: record directories, the latest view, pins, collection, removal of fixed paths, `sources/` copies, `debugFormat`, the schema bump and the old-schema failure, and removal of O2 redaction. `DebugInfo=true` builds use a separate `Name.debuginfo.*` artifact set with a session lock; the new fields need no schema change; and `DebugInfo=false` output stays unchanged.
+  - §4.6: rejected. The extension builds with the existing task, and the adapter verifies the build record like `run --no-build`.
+  - §5.1: rejected. No debug toolchain component, `locate` or Python is needed.
+  - §5.2: transferred with changes (§§8.6, 8.11, 9.1–9.3):
+    - the existing `kimi` type, removal of `noDebug`, and the key rules;
+    - `stopOnAbort` becomes the `abort` exception filter;
+    - `stopOnEntry` stops at the first statement of the entry body;
+    - `cwd` is decided by Kimi.
+
+    LLDB-specific keys and the extension-dependency question are rejected.
+  - §5.3: transferred with changes (§4.2, §8.1, §8.6): trust, selection, saving, building with the existing task, `DebugAdapterExecutable`, verification and Stop. The lldb-dap launch, `locate`, `--PinOwner` and `startDebugging` are rejected.
+  - §5.4: transferred with changes. The stale-source notice and the `source` requests for library and package sources move to §§8.3 and 8.11; `justMyCode` replaces step-avoid (§8.4, §9.1).
+  - §5.5: transferred with changes (§§8.5, 8.10–8.11). Pause now stops in the user's thread, and evaluation is limited to path expressions. `--no-lldbinit` is rejected, because LLDB is not used.
+  - §§6.1–6.3: transferred with changes (§§8.8–8.9). The adapter implements the views from the side table.
+  - §6.4: rejected. The adapter owns the views, and compatibility is checked with the side table's compiler identity.
+  - §6.5: transferred (§11).
+  - §7: replaced by KD0–KD9 (§11).
+  - §8: transferred with changes (§10). Debugger scenarios run as ordinary functional tests in Session, on Windows only, with no opt-in category.
+  - §9.1: replaced by new plan §14. Of the SETTLED candidates:
+    - "no own DAP" and "no LLDB fork" are rejected by new plan KD-R1;
+    - "no Kimigayo expression evaluation" is replaced by path expressions (§8.10) plus the Appendix D and SETTLED split in §2.2;
+    - "no runtime initialization bitmap" is transferred to §6.3 (no runtime flags are read).
+
+    The toolchain, `locate`, `debugFormat`, record and report rows are rejected for the reasons given for §4.5 and §5.1.
+  - §9.2, row by row:
+    - Transferred with changes (§5.2, §9.1): `run --no-build` verification, `run --` arguments, the `noDebug` migration, and Ctrl+F5 use of `debug`, `args` and `env` (without `optimization`).
+    - The `run <path.exe>` row follows §3.
+    - Rejected for §4.5's reasons: the fixed-path, old-schema, real-path and O2-redaction rows.
+    - Rejected for §§4.1–4.3's reason (`DebugInfo=false` output unchanged): the IR logical-path, fixed-slot and explicit-`/opt` rows.
+  - §10: background.
+  - Any remaining item that depends on LLDB, lldb-dap, the build report or record directories, or that changes `DebugInfo=false` output, is rejected for the reasons above.
+
+  The whole file is frozen and moved unchanged from Proposals to Obsolete; closure does not imply support beyond STATUS.
