@@ -612,32 +612,14 @@ public sealed partial class Binding
 
         var candidates = new CallCandidates(group, requirementGroup, imports);
         var self = requirementGroup?.Self ?? (callee as RequirementCalleeKoto)?.Self;
-        var candidateCount = 0;
-        var maxParameters = 0;
-        var maxGenerics = 0;
-        var maxOrigins = 0;
-        var maxInputOrigins = 0;
-        var solveOrigins = self is not null || group.Scope.Owner is StructKoto or EnumKoto;
-        foreach (var candidate in candidates)
-        {
-            if (candidate.Declaration is FunctionKoto function)
-            {
-                candidateCount++;
-                maxParameters = Math.Max(maxParameters, function.Parameters.Count);
-                maxGenerics = Math.Max(maxGenerics, CallSlotCount(function));
-                maxOrigins = Math.Max(maxOrigins, function.Origins.Count);
-                maxInputOrigins = Math.Max(maxInputOrigins, InputOriginCount(function));
-                solveOrigins |= function.Origins.Count != 0 || (candidate.Type is { } resultPattern && resultPattern.CarriesOrigin);
-                for (var p = 0; !solveOrigins && p < function.Parameters.Count; p++)
-                {
-                    solveOrigins |= function.Parameters[p].Type.BoundType is { } input && input.CarriesOrigin;
-                }
-            }
-        }
-
+        var shape = MeasureCandidates(candidates, self is not null || group.Scope.Owner is StructKoto or EnumKoto);
+        var candidateCount = shape.Count;
+        var maxParameters = shape.Parameters;
+        var maxGenerics = shape.Generics;
+        var solveOrigins = shape.SolveOrigins;
         var argumentCount = call.ArgumentNodes.Count;
-        var originSlots = solveOrigins ? maxOrigins : 0;
-        var inputSlots = solveOrigins ? maxInputOrigins : 0;
+        var originSlots = solveOrigins ? shape.Origins : 0;
+        var inputSlots = solveOrigins ? shape.InputOrigins : 0;
         var savedCandidates = candidateCount > 1 ? candidateCount : 0;
         var scratch = this.typeScratch.Rent(Math.Max(1, maxGenerics));
         var lengthArguments = this.lengthScratch.Rent(maxGenerics);
@@ -707,105 +689,51 @@ public sealed partial class Binding
                 }
             }
 
-            var count = 0;
-            var applicable = 0;
-            var winnerIndex = -1;
-            var pending = false;
-            var pendingCount = 0;
-            var premisesOnly = true;
-            CallableConstraintFact? callableFailure = null;
-            ReferenceConstraintFailure? constraintFailure = null;
-            var error = false;
-            Koto? incompleteSignature = null;
-            Koto? failedPendingSignature = null;
-            Koto? invalidDeclaration = null;
+            var evaluation = new CallEvaluation
+            {
+                Call = call,
+                Callee = callee,
+                Generic = generic,
+                Scope = scope,
+                Expected = expected,
+                Self = self,
+                Requirements = requirementGroup,
+                Scratch = scratch,
+                LengthArguments = lengthArguments,
+                ExplicitLengths = explicitLengths,
+                Mapping = mapping,
+                Used = used,
+                Origins = origins,
+                Inputs = inputs,
+                Evaluated = evaluated,
+                Operations = operations,
+                OperationStride = operationStride,
+                BoundStarts = boundStarts,
+                SavedCandidates = savedCandidates,
+                AllTypes = allTypes,
+                AllLengths = allLengths,
+                AllMaps = allMaps,
+                AllOrigins = allOrigins,
+                AllInputs = allInputs,
+                MaxGenerics = maxGenerics,
+                OriginSlots = originSlots,
+                InputSlots = inputSlots,
+                Winner = -1,
+                PremisesOnly = true,
+            };
             this.acquisitionFailure = null;
             foreach (var candidate in candidates)
             {
-                if (candidate.Declaration is not FunctionKoto function)
-                {
-                    continue;
-                }
-
-                var index = count++;
-                boundStarts[index] = this.candidateBounds.Count;
-                operations.AsSpan(index * operationStride, operationStride).Clear();
-                var declaringType = self is null ? this.CallDeclaringType(callee, candidate) : null;
-                var state = CandidateApplicability.Inapplicable;
-                scratch.AsSpan(0, CallSlotCount(function)).Clear();
-                if (this.MeasureCallInference)
-                {
-                    this.inferenceMappings++;
-                }
-
-                var argumentMap = MapCallArguments(call, function, this.CallReceiver(generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is not null, mapping, used);
-                var defaultsUsed = argumentMap.DefaultsUsed;
-                ClosureReceiverRefutation? closureReceiver = null;
-                var unsolved = false;
-                var independentRejection = false;
-                var premiseUnknown = false;
-                ReferenceConstraintFailure? rejectedConstraint = null;
-                // SPEC 4.6.3: a synthesized range construction pins its Kimi target, which source access does not restrict.
-                var accessible = callee is SyntheticKoto || this.Accessible(candidate, scope, receiverType: this.CallReceiver(callee)?.BoundType);
-                if (accessible)
-                {
-                    this.BindHeader(candidate);
-                    if (function.IsConstructor)
-                    {
-                        declaringType = argumentMap.Valid ? this.ConstructorType(call, function, scope, mapping) : null;
-                    }
-
-                    this.activeRequirementContract = requirementGroup?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
-                    state = this.TryCandidate(call, function, generic, scope, scratch, lengthArguments, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations.AsSpan(index * operationStride, operationStride), out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, out rejectedConstraint, out premiseUnknown);
-                    this.activeRequirementContract = null;
-                }
-
-                if (function.IsConstructor && declaringType is not null)
-                {
-                    declaringType = this.ConstructionType(function, declaringType, scratch) ?? declaringType;
-                }
-
-                evaluated[index] = new(candidate, state, declaringType, defaultsUsed, unsolved, closureReceiver, argumentMap, accessible, function.IsConstructor && StableConstructionPremises(state, unsolved, declaringType, operations.AsSpan(index * operationStride, operationStride)), independentRejection, rejectedConstraint, premiseUnknown);
-                if (savedCandidates != 0)
-                {
-                    mapping.AsSpan(0, argumentCount).CopyTo(allMaps.AsSpan(index * argumentCount));
-                }
-
-                pending |= state == CandidateApplicability.Pending;
-                failedPendingSignature ??= state == CandidateApplicability.Pending ? IncompleteSignature(function) ?? this.FailedSignaturePart(function) : null;
-                if (state == CandidateApplicability.Pending)
-                {
-                    // SPEC 8.7, 15.6.1: a Callable proof that is Unknown only in its Origin part is explained by its Constraint record.
-                    pendingCount++;
-                    premisesOnly &= premiseUnknown;
-                    callableFailure ??= function.TypeConstraints.Count != 0 ? this.CallableOriginFailure(call, function, scratch, lengthArguments, mapping, scope, self, declaringType) : null;
-                    constraintFailure ??= this.CandidateConstraintFailure(function, scratch, lengthArguments, scope, self, declaringType, ConstraintProof.Unknown);
-                }
-
-                error |= state == CandidateApplicability.Error;
-                invalidDeclaration ??= state == CandidateApplicability.Error ? InvalidDeclarationContextCause(function) : null;
-                if (state is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
-                {
-                    incompleteSignature ??= state == CandidateApplicability.Inapplicable ? IncompleteSignature(function) : null;
-                    continue;
-                }
-
-                applicable++;
-                winnerIndex = index;
-                if (savedCandidates != 0)
-                {
-                    scratch.AsSpan(0, CallSlotCount(function)).CopyTo(allTypes.AsSpan(index * maxGenerics));
-                    lengthArguments.AsSpan(0, CallSlotCount(function)).CopyTo(allLengths.AsSpan(index * maxGenerics));
-                    origins.AsSpan(0, originSlots).CopyTo(allOrigins.AsSpan(index * originSlots));
-                    inputs.AsSpan(0, inputSlots).CopyTo(allInputs.AsSpan(index * inputSlots));
-                }
+                this.EvaluateCallCandidate(ref evaluation, candidate);
             }
 
+            var count = evaluation.Count;
+            var applicable = evaluation.Applicable;
             boundStarts[count] = this.candidateBounds.Count;
-            if (error)
+            if (evaluation.Error)
             {
                 // A candidate in a failed declaration cannot be judged, so the selection rests on that failure (SPEC 23.3.6.4).
-                return invalidDeclaration is not null ? this.CompleteDependent(call, invalidDeclaration) : this.Fail(call, BindingFailure.InvalidConstraint);
+                return evaluation.InvalidDeclaration is { } invalidDeclaration ? this.CompleteDependent(call, invalidDeclaration) : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
             if (!this.CheckCallShapeContracts(call, generic, scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))
@@ -813,25 +741,29 @@ public sealed partial class Binding
                 return Complete(call, null);
             }
 
-            // SPEC 8.4.8.2: an Unknown premise defers the selection only when it can affect it.
-            if (pending && (failedPendingSignature is not null || !premisesOnly || applicable == 0 || !this.PremisesCannotAffect(call, evaluated.AsSpan(0, count), operations, operationStride)))
+            var (selection, winnerIndex) = this.ClassifySelection(ref evaluation);
+            if (selection == CallSelection.FailedSignature)
             {
                 // A candidate whose own signature failed, such as a nested borrow without its Origin (`ref/uniq/i32`), stays
-                // pending at every call; the selection rests on that failure (SPEC 23.3.6.4). Omitted header Types rest on the call.
-                return failedPendingSignature is { } failedSignature
-                    ? this.CompleteDependent(call, failedSignature)
-                    : pendingCount == 1 && callableFailure is { } callable ? this.FailCallableSelection(call, callable)
-                    : pendingCount == 1 && constraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
+                // pending at every call; the selection rests on that failure (SPEC 23.3.6.4).
+                return this.CompleteDependent(call, evaluation.FailedPendingSignature!);
+            }
+
+            if (selection == CallSelection.Unproven)
+            {
+                // SPEC 8.4.8.2: an Unknown premise that can affect the selection defers it. Omitted header Types rest on the call.
+                return evaluation.PendingCount == 1 && evaluation.CallableFailure is { } callable ? this.FailCallableSelection(call, callable)
+                    : evaluation.PendingCount == 1 && evaluation.ConstraintFailure is { } constraint ? this.FailPendingConstraint(call, constraint)
                     : this.FailWaitingSelection(call, BindingFailure.UnprovenConstraint);
             }
 
-            if (applicable == 0 && incompleteSignature is not null)
+            if (selection == CallSelection.IncompleteSignature)
             {
                 // A candidate whose signature failed cannot be judged, so the selection rests on that failure.
-                return this.CompleteDependent(call, incompleteSignature);
+                return this.CompleteDependent(call, evaluation.IncompleteSignature!);
             }
 
-            if (applicable == 0)
+            if (selection == CallSelection.NoneApplicable)
             {
                 // SPEC 15.1.5: name the missing spelling when a bare Place was the only obstacle.
                 var failure = this.acquisitionFailure?.Kind ?? BindingFailure.NoApplicableCandidate;
@@ -887,45 +819,26 @@ public sealed partial class Binding
                 return this.FailWaitingSelection(call, failure);
             }
 
-            if (applicable > 1)
+            if (selection == CallSelection.Ambiguous)
             {
-                var comparable = true;
+                if (this.DeferNestedCall(call, expected))
+                {
+                    return Complete(call, null);
+                }
+
+                var remaining = new RejectedCandidate[applicable];
+                var next = 0;
+                var erasure = ErasureIncomparable(evaluated.AsSpan(0, count), operations, operationStride, argumentCount);
                 for (var i = 0; i < count; i++)
                 {
-                    if (evaluated[i].State == CandidateApplicability.Waiting)
+                    if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                     {
-                        // F will be this argument's concrete callable Type in every candidate. Its Callable signature
-                        // is an expectation, not a parameter Type to rank. Select from ordinary inputs/defaults first;
-                        // only the winner supplies a body context, even when the candidates' signatures differ. Slots
-                        // acquired in different modes violate the parameter acquisition shape (SPEC 7.3.1), which the
-                        // declarations report; such candidates select nothing.
-                        comparable = ComparableCallableSlots(call, evaluated.AsSpan(0, count), operations, operationStride);
-                        break;
+                        remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
                     }
                 }
 
-                winnerIndex = comparable ? this.SelectBest(evaluated.AsSpan(0, count), operations, operationStride) : -1;
-                if (winnerIndex < 0)
-                {
-                    if (this.DeferNestedCall(call, expected))
-                    {
-                        return Complete(call, null);
-                    }
-
-                    var remaining = new RejectedCandidate[applicable];
-                    var next = 0;
-                    var erasure = ErasureIncomparable(evaluated.AsSpan(0, count), operations, operationStride, argumentCount);
-                    for (var i = 0; i < count; i++)
-                    {
-                        if (evaluated[i].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
-                        {
-                            remaining[next++] = new((FunctionKoto)evaluated[i].Symbol!.Declaration, null, null, ErasureIncomparable: erasure);
-                        }
-                    }
-
-                    (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
-                    return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
-                }
+                (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = remaining;
+                return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
             }
 
             this.KeepCandidateBounds(boundMark, boundStarts[winnerIndex], winnerIndex + 1 < count ? boundStarts[winnerIndex + 1] : boundStarts[count], boundStarts[count]);

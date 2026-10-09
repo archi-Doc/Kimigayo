@@ -208,8 +208,7 @@ public sealed partial class Binding
         if (node.Parent is InvocationKoto { Parent: FunctionKoto { IsConstructor: true } constructor } call &&
             ReferenceEquals(call.Method, node) && ReferenceEquals(constructor.BaseInitializer, call))
         {
-            var parent = this.StoredBase(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
-            if (parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var initializer))
+            if (this.BaseConstructorGroup(constructor, out var parent) is { } initializer)
             {
                 return this.BindReference(node, initializer, scope);
             }
@@ -221,6 +220,13 @@ public sealed partial class Binding
         }
 
         return this.Fail(node, BindingFailure.InvalidTypeFormation);
+    }
+
+    // SPEC 6.2.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
+    private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
+    {
+        parent = this.StoredBase(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
+        return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
     // SPEC 6.2.3.6, 22.1: a Type without constructors is a located absence at its construction or base call. A derived structure that

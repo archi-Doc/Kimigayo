@@ -496,6 +496,10 @@ public sealed partial class Binding
         this.ValidateConformances(mode, false);
         this.ValidateConstraintEnvironments();
         this.PrepareSpecializations();
+        if (this.CaptureOmittedBaseQueries)
+        {
+            this.CaptureOmittedBases();
+        }
     }
 
     // Source bodies, then the library bodies outside the compiler-intrinsic declarations.

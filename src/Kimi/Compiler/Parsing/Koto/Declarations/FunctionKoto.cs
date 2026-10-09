@@ -249,6 +249,9 @@ public sealed class FunctionKoto : DeclarationKoto
 
     private InvocationKoto? implicitBaseInitializer;
 
+    /// <summary>Gets a value indicating whether <see cref="BaseInitializer"/> is the retained call of an omitted base clause.</summary>
+    internal bool HasOmittedBaseInitializer => this.BaseInitializer is not null && ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer);
+
     internal void PrepareBaseInitializer()
     {
         if (this.BaseInitializer is not null && !ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer))

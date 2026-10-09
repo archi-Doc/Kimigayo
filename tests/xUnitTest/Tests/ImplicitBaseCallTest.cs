@@ -66,6 +66,46 @@ public class ImplicitBaseCallTest
         }
     }
 
+    // SPEC 6.2.3.6: the omitted base query, which publishes nothing, decides as the bound base call does: the same selected
+    // constructor or the same class of failed selection. It leaves the obligations and diagnostics of the pass unchanged.
+    [Theory]
+    [InlineData("open struct Base\n    public init() => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base\n    protected init() => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base\n    private init() => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.NoneApplicable))]
+    [InlineData("open struct Base\n    protected init(x: i32 = 1) => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base\n    protected init(x: i32) => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.NoneApplicable))]
+    [InlineData("open struct Base\n    protected init() => ()\n    protected init(x: i32 = 0) => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base\n    private init() => ()\n    protected init(x: i32 = 0) => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base\n    protected init(x: i32 = 1) => ()\n    protected init(y: string = \"x\") => ()\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Ambiguous))]
+    [InlineData("open struct Base\n    public var count: i32\nstruct Leaf: Base\n    public init() => ()\n()", nameof(OmittedBaseOutcome.NoBaseConstructor))]
+    [InlineData("open struct Base<T>\n    protected init()\n        T is Equatable\n        ()\nstruct Leaf: Base<i32>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base<T>\n    protected init()\n        T is Equatable\n        ()\nstruct Leaf<U>: Base<U>\n    U is Equatable\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base<T>\n    protected init()\n        T is Equatable\n        ()\n    protected init(x: i32 = 0) => ()\nstruct Leaf<U>: Base<U>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Unproven))]
+    [InlineData("struct NoEq\n    public var v: i32 = 0\nopen struct Base<T>\n    protected init()\n        T is Equatable\n        ()\n    protected init(x: i32 = 0) => ()\nstruct Leaf: Base<NoEq>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()\nstruct Leaf<U>: Base<U>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base<T>\n    protected init() => ()\nstruct Leaf: Base<i64>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    [InlineData("open struct Base {a}\n    public var n: i32 = 1\n    public init() => ()\nstruct Leaf {b}: Base during b\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
+    public void OmittedBaseQueryAgreesWithTheBoundCall(string source, string outcome)
+        => AssertOmittedBaseAgreement(CompilationTestHelper.ParseSuccess(source), outcome);
+
+    [Theory]
+    [InlineData("internal", nameof(OmittedBaseOutcome.NoneApplicable))]
+    [InlineData("protected internal", nameof(OmittedBaseOutcome.Selected))]
+    public void OmittedBaseQueryUsesTheDerivedModulesAccess(string access, string outcome)
+        => AssertOmittedBaseAgreement(ModuleBindingTest.Create("alias Lib.Api\nstruct Leaf: Base\n    public init() => ()\n()", "public group Api\n    public open struct Base\n        " + access + " init() => ()"), outcome);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void RepeatedOmittedBaseQueriesAllocateNothing()
+    {
+        var c = CompilationTestHelper.ParseSuccess("open struct Base<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()\nstruct Leaf<U>: Base<U>\n    public init() => ()\n()");
+        Assert.True(c.Bind().IsComplete);
+        var constructor = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.HasOmittedBaseInitializer);
+        var selected = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => selected &= c.Binding.SelectOmittedBaseConstructor(constructor).Outcome == OmittedBaseOutcome.Selected, iterations: 64, warmupIterations: 16));
+        Assert.True(selected);
+    }
+
     // SPEC 6.2.3.6: a base without constructors is one Language absence at the base call target, omitted or written, placed alike by the
     // CLI and the language server; a base that would receive a synthesized constructor remains unsupported until it is synthesized.
     [Theory]
@@ -134,5 +174,31 @@ public class ImplicitBaseCallTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
         Assert.True(valid);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
+    }
+
+    private static void AssertOmittedBaseAgreement(Compilation c, string expected)
+    {
+        c.Binding.CaptureOmittedBaseQueries = true;
+        c.Bind();
+        var constructor = c.SourceModules.SelectMany(static x => KotoTree.Walk(x.RootKoto)).OfType<FunctionKoto>().Single(static x => x.HasOmittedBaseInitializer);
+        var query = c.Binding.OmittedBaseQueries![constructor];
+        var call = constructor.BaseInitializer!;
+        (OmittedBaseOutcome Outcome, FunctionKoto? Winner) bound = call.BoundCall is { } selected ? (OmittedBaseOutcome.Selected, (FunctionKoto?)selected.Target.Declaration)
+            : call.Method.BindingFailure == BindingFailure.MissingName ? (OmittedBaseOutcome.NoBaseConstructor, null)
+            : (call.BindingFailure switch
+            {
+                BindingFailure.NoApplicableCandidate => OmittedBaseOutcome.NoneApplicable,
+                BindingFailure.Ambiguous => OmittedBaseOutcome.Ambiguous,
+                BindingFailure.UnprovenConstraint => OmittedBaseOutcome.Unproven,
+                _ => OmittedBaseOutcome.Unsupported,
+            }, null);
+        Assert.Equal((Enum.Parse<OmittedBaseOutcome>(expected), bound.Outcome, bound.Winner), (query.Outcome, query.Outcome, query.Winner));
+
+        // A query inside the finished pass changes nothing the pass published.
+        var issues = c.Binding.Issues.Count;
+        var obligations = c.Binding.Obligations.Count;
+        var state = (call.BindingState, call.BindingFailure, call.BoundType);
+        Assert.Equal(query, c.Binding.SelectOmittedBaseConstructor(constructor));
+        Assert.Equal((issues, obligations, state), (c.Binding.Issues.Count, c.Binding.Obligations.Count, (call.BindingState, call.BindingFailure, call.BoundType)));
     }
 }
