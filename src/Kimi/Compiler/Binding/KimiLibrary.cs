@@ -354,6 +354,21 @@ public sealed partial class KimiLibrary
     public KimiDeclarationState GetDeclarationState(KimiDeclarationId id)
         => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.declarations[index].State : KimiDeclarationState.Missing;
 
+    /// <summary>Gets the internal source function that defines a linked constructor when both declarations are validated (SPEC 22.1).</summary>
+    /// <param name="constructor">The selected public constructor.</param>
+    /// <returns>The executed implementation; null when the constructor is not linked or the link is not validated.</returns>
+    internal BindingSymbol? ConstructorImplementation(BindingSymbol constructor)
+        => constructor.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is { } implementation &&
+            this.GetDeclarationState(id) == KimiDeclarationState.Validated && this.GetDeclarationState(implementation) == KimiDeclarationState.Validated
+            ? this.GetSymbol(implementation) : null;
+
+    /// <summary>Gets the declaration that hover, effects and diagnostics name for an executed target: the public declaration an
+    /// internal implementation defines, or the target itself.</summary>
+    /// <param name="target">The executed target.</param>
+    /// <returns>The presented declaration.</returns>
+    internal BindingSymbol PresentedTarget(BindingSymbol target)
+        => target.LibraryDeclaration is { } id && KimiLibraryCatalog.PresentationOf(id) is { } presented && this.GetSymbol(presented) is { } symbol ? symbol : target;
+
     /// <summary>Gets a value indicating whether the strong ownership declarations are validated; not a runtime support certificate.</summary>
     public bool IsCompleteStrongOwnershipFamily =>
         this.GetDeclarationState(KimiDeclarationId.MakeObj) == KimiDeclarationState.Validated &&

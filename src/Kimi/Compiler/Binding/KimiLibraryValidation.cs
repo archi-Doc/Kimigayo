@@ -72,6 +72,7 @@ public sealed partial class KimiLibrary
                         KimiDeclarationId.StoragePlaceDictionaryEntry => this.ValidDictionaryPlacement(symbol),
                         >= KimiDeclarationId.RawAllocate and <= KimiDeclarationId.RawSlice => this.ValidRawOperation(symbol, entry.Id),
                         KimiDeclarationId.Loan => this.ValidLoan(symbol),
+                        KimiDeclarationId.ArrayRepeating or KimiDeclarationId.ArrayRepeatingImplementation => this.ValidCollectionOperation(symbol, entry.Id),
                         _ when rule.SourceFunction => symbol.CompilerFunction == CompilerFunctionKind.None && symbol.Declaration is FunctionKoto { IsRequirement: false, IsGenerated: false, IsSpecialization: false } ordinary && (ordinary.Body is not null || ordinary.ExpressionBody is not null),
                         >= KimiDeclarationId.Utf8Format => this.ValidFormatting(symbol, rule),
                         _ => this.ValidEnum(symbol, entry.Id),
@@ -529,9 +530,11 @@ public sealed partial class KimiLibrary
                 return false; // Array storage is compiler-managed; helpers cannot add fields.
             }
 
-            // A signature without a body is a catalog operation the compiler implements; helpers keep their bodies.
+            // A signature without a body is a catalog operation the compiler implements, or one whose definition it supplies from a
+            // linked internal source function (SPEC 22.1); helpers keep their bodies.
             if (member.Body is null && member.ExpressionBody is null &&
-                (member.BoundSymbol is not { CompilerFunction: not CompilerFunctionKind.None } operation || !ReferenceEquals(operation.Declaration, member) || Array.IndexOf(this.registeredSymbols, operation) < 0))
+                (member.BoundSymbol is not { } operation || !ReferenceEquals(operation.Declaration, member) || Array.IndexOf(this.registeredSymbols, operation) < 0 ||
+                    (operation.CompilerFunction == CompilerFunctionKind.None && !this.ValidImplementationLink(operation))))
             {
                 this.InvalidDeclaration ??= member;
                 return false;

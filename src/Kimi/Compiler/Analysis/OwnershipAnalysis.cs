@@ -371,7 +371,7 @@ public sealed partial class OwnershipAnalysis
         void ReportCallEffect(in OwnershipIssue issue)
         {
             var call = issue.Source as InvocationKoto;
-            var name = call?.BoundCall?.Target.Name ?? call?.BoundValueCall?.Receiver.ToString() ?? "the callable";
+            var name = (call?.BoundCall is { } bound ? this.compilation.Binding.Library.PresentedTarget(bound.Target).Name : null) ?? call?.BoundValueCall?.Receiver.ToString() ?? "the callable";
             var holder = issue.LoanSource is VariableKoto { NameKoto.IdentifierName: { } named } ? named : issue.LoanSource?.ToString() ?? "a value";
             (string Role, Koto At, string? Label)[]? related = issue.LoanSource is not { } loan ? null
                 : issue.Related is { } earlier ? [("loan", loan, "value retaining the conflicting loan"), ("call", earlier, "the earlier call whose result keeps the loan")]

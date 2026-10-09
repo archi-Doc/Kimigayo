@@ -11,6 +11,7 @@ public sealed partial class KimiLibrary
     private static readonly CollectionSignature?[] CollectionSignatures = IndexSignatures<CollectionSignature>(
     [
         new(KimiDeclarationId.ArrayWithCapacity, CollectionType.Unit, [(CollectionType.ISize, "capacity")]),
+        new(KimiDeclarationId.ArrayRepeating, CollectionType.Unit, [(CollectionType.Element, "repeating"), (CollectionType.ISize, "count")], "Copy"),
         new(KimiDeclarationId.ArrayReserve, CollectionType.Unit, [(CollectionType.Receiver, "self"), (CollectionType.ISize, "additional")]),
         new(KimiDeclarationId.ArrayAppend, CollectionType.Unit, [(CollectionType.Receiver, "self"), (CollectionType.Element, "value")]),
         new(KimiDeclarationId.ArrayInsert, CollectionType.Unit, [(CollectionType.Receiver, "self"), (CollectionType.ISize, "index"), (CollectionType.Element, "value")]),
@@ -85,20 +86,31 @@ public sealed partial class KimiLibrary
                 (result ? borrow.OriginExpression is IdentifierNameKoto { IdentifierName: "self" } : borrow.OriginName is null && borrow.OriginExpression is null) && BareName(target, name);
     }
 
+    // SPEC 22.1: a link joins a bodiless public declaration to an internal source function of the same structure that carries the
+    // caller location; whether the two agree is the signature row's concern.
+    private bool ValidImplementationLink(BindingSymbol symbol)
+        => symbol.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is { } implementation &&
+            symbol.Declaration is FunctionKoto { Body: null, ExpressionBody: null } declaration &&
+            this.GetSymbol(implementation)?.Declaration is FunctionKoto { Modifier: ModifierKind.Internal } linked &&
+            (linked.Body is not null || linked.ExpressionBody is not null) && ReferenceEquals(linked.Parent, declaration.Parent);
+
     private bool ValidCollectionOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
+        // An implementation shares its public declaration's row, with a `Self` result in place of the constructor's.
+        var presented = KimiLibraryCatalog.PresentationOf(id);
         var index = KimiLibraryCatalog.Index(id);
         ref readonly var rule = ref KimiLibraryCatalog.Entries[index];
-        var signature = CollectionSignatures[index]!.Value;
+        var signature = CollectionSignatures[KimiLibraryCatalog.Index(presented ?? id)]!.Value;
         var dictionary = rule.Container == KimiLibraryContainer.Dictionary;
-        var constructor = id == KimiDeclarationId.ArrayWithCapacity;
         if (symbol.CompilerFunction != rule.Function || symbol.Declaration is not FunctionKoto function ||
             !ReferenceEquals(function.Parent, dictionary ? this.DictionaryScope.Owner : this.ArrayScope.Owner) ||
-            function.Name != rule.Name || (constructor ? !function.IsConstructor || function.NameBoundaryIndex != 0 : function.NameBoundaryIndex >= 0) ||
-            function.Modifier != (id is KimiDeclarationId.ArrayInsert or KimiDeclarationId.ArrayRemove or KimiDeclarationId.ArraySwap ? ModifierKind.Internal : ModifierKind.Public) ||
-            function.GenericArguments.Count != 0 || function.Origins.Count != 0 || function.TypeConstraints.Count != 0 ||
+            function.Name != rule.Name || function.IsConstructor != (rule.Name == "init") || (function.IsConstructor ? function.NameBoundaryIndex != 0 : function.NameBoundaryIndex >= 0) ||
+            function.Modifier != (id is KimiDeclarationId.ArrayInsert or KimiDeclarationId.ArrayRemove or KimiDeclarationId.ArraySwap || presented is not null ? ModifierKind.Internal : ModifierKind.Public) ||
+            function.GenericArguments.Count != 0 || function.Origins.Count != 0 ||
+            (signature.ElementPremise is { } premise ? !SinglePremise(function, dictionary ? "K" : "T", premise) : function.TypeConstraints.Count != 0) ||
             (function.Body is not null || function.ExpressionBody is not null) != rule.SourceFunction || function.AttributeChain is not null ||
-            function.IsRequirement || function.IsGenerated || function.IsSpecialization || function.Parameters.Count != signature.Inputs.Length)
+            function.IsRequirement || function.IsGenerated || function.IsSpecialization || function.Parameters.Count != signature.Inputs.Length ||
+            (rule.Implementation is not null && !this.ValidImplementationLink(symbol)))
         {
             return false;
         }
@@ -115,6 +127,11 @@ public sealed partial class KimiLibrary
         }
 
         var result = function.ReturnType;
+        if (presented is not null)
+        {
+            return BareName(result, "Self");
+        }
+
         if (id is KimiDeclarationId.DictionaryIndex or KimiDeclarationId.DictionaryIndexUniq)
         {
             if (result is not PlaceResultKoto place)
@@ -130,7 +147,8 @@ public sealed partial class KimiLibrary
 
     private bool ValidBoundCollectionOperation(BindingSymbol symbol, KimiDeclarationId id)
     {
-        if (CollectionSignatures[KimiLibraryCatalog.Index(id)] is not { } signature)
+        var presented = KimiLibraryCatalog.PresentationOf(id);
+        if (CollectionSignatures[KimiLibraryCatalog.Index(presented ?? id)] is not { } signature)
         {
             return true;
         }
@@ -144,7 +162,8 @@ public sealed partial class KimiLibrary
         }
 
         var value = dictionary ? slots[1].Symbol.Type : null;
-        if (function.Parameters.Count != signature.Inputs.Length || !this.ValidBoundCollectionType(symbol.Type, signature.Result, function, element, value))
+        if (function.Parameters.Count != signature.Inputs.Length ||
+            !(presented is null ? this.ValidBoundCollectionType(symbol.Type, signature.Result, function, element, value) : symbol.Type is { } result && this.CollectionStorage(result, element, value)))
         {
             return false;
         }
@@ -191,5 +210,5 @@ public sealed partial class KimiLibrary
     private bool CollectionResult(BoundType? type, KimiDeclarationId id)
         => type is { Kind: BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Origin: null, OriginArguments.Count: 0 } && ReferenceEquals(type.Symbol, this.GetSymbol(id));
 
-    private readonly record struct CollectionSignature(KimiDeclarationId Id, CollectionType Result, (CollectionType Type, string Name)[] Inputs);
+    private readonly record struct CollectionSignature(KimiDeclarationId Id, CollectionType Result, (CollectionType Type, string Name)[] Inputs, string? ElementPremise = null);
 }

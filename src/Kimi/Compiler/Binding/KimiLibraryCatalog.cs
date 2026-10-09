@@ -84,7 +84,11 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.ArrayClear, "clear", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayClear),
         new(KimiDeclarationId.ArrayShrinkToFit, "shrinkToFit", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayShrinkToFit),
         new(KimiDeclarationId.ArraySwap, "swapAt", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArraySwap),
-        new(KimiDeclarationId.ArrayWithCapacity, "init", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayWithCapacity),
+        new(KimiDeclarationId.ArrayWithCapacity, "init", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayWithCapacity, Overload: 0),
+        // SPEC 4.7.2, 4.7.4, 22.1: the public constructor is a bodiless signature whose definition the compiler supplies from the
+        // linked internal source function, with the same parameters and premise and a `Self` result.
+        new(KimiDeclarationId.ArrayRepeating, "init", KimiLibraryContainer.Array, Overload: 1, PublishedSummary: true, Implementation: KimiDeclarationId.ArrayRepeatingImplementation),
+        new(KimiDeclarationId.ArrayRepeatingImplementation, "initRepeating", KimiLibraryContainer.Array, SourceFunction: true, CallerLocation: true, PublishedSummary: true),
         new(KimiDeclarationId.Utf8Format, "Utf8Format"),
         new(KimiDeclarationId.BufferWriter, "BufferWriter"),
         new(KimiDeclarationId.BufferFull, "BufferFull"),
@@ -220,6 +224,9 @@ internal static class KimiLibraryCatalog
 
     private static readonly int[] Indices = CreateIndices();
 
+    // The public declaration of each linked implementation, by catalog index; -1 elsewhere.
+    private static readonly int[] Presentations = CreatePresentations();
+
     internal static ReadOnlySpan<Entry> Entries => Definitions;
 
     internal static bool IsArrayOperation(CompilerFunctionKind kind) => kind is >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.ArraySwap;
@@ -242,6 +249,12 @@ internal static class KimiLibraryCatalog
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 
+    // The internal source function that defines a linked public declaration (SPEC 22.1).
+    internal static KimiDeclarationId? ImplementationOf(KimiDeclarationId id) => Index(id) is >= 0 and var index ? Definitions[index].Implementation : null;
+
+    // The public declaration an internal implementation defines, which every presentation names instead.
+    internal static KimiDeclarationId? PresentationOf(KimiDeclarationId id) => Index(id) is >= 0 and var index && Presentations[index] >= 0 ? Definitions[Presentations[index]].Id : null;
+
     /// <summary>Gets a value indicating whether a name is a cataloged declaration that the library does not yet declare in source (PLAN G4).</summary>
     /// <param name="container">The container the name was looked up in.</param>
     /// <param name="name">The name.</param>
@@ -257,6 +270,32 @@ internal static class KimiLibraryCatalog
         }
 
         return false;
+    }
+
+    // A link joins a bodiless public declaration to one internal source function of the same container that carries the caller
+    // location; no implementation is linked twice or linked onward.
+    private static int[] CreatePresentations()
+    {
+        var result = new int[Definitions.Length];
+        Array.Fill(result, -1);
+        for (var i = 0; i < Definitions.Length; i++)
+        {
+            if (Definitions[i].Implementation is not { } implementation)
+            {
+                continue;
+            }
+
+            var target = Indices[(int)implementation];
+            if (target < 0 || result[target] >= 0 || Definitions[i].SourceFunction || Definitions[i].Function != CompilerFunctionKind.None ||
+                Definitions[target] is not { SourceFunction: true, CallerLocation: true, Implementation: null } linked || linked.Container != Definitions[i].Container)
+            {
+                throw new InvalidOperationException("Invalid Kimi implementation link.");
+            }
+
+            result[target] = i;
+        }
+
+        return result;
     }
 
     private static int[] CreateIndices()
@@ -277,8 +316,8 @@ internal static class KimiLibraryCatalog
         return result;
     }
 
-    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false, bool CallerLocation = false, string? Owner = null, bool ManagedRepresentation = false, bool PublishedSummary = false)
+    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false, bool CallerLocation = false, string? Owner = null, bool ManagedRepresentation = false, bool PublishedSummary = false, KimiDeclarationId? Implementation = null)
     {
-        internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
+        internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics || this.Implementation is not null;
     }
 }

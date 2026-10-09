@@ -112,6 +112,13 @@ public sealed partial class Binding
         => contract.Contract is { } shape && shape.MembersByName.TryGetValue(name, out var members) && members.Count == 1
             ? path.WitnessMap.GetValueOrDefault(members[0]) : null;
 
+    // SPEC 22.1: the declaration a selected call executes. A linked Kimi constructor runs its validated internal implementation,
+    // which has the same parameters and premise; null when the link is not validated. Otherwise the compiler requirement target.
+    private BindingSymbol? ExecutedTarget(BindingSymbol selected, BoundType? self)
+        => selected.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is not null
+            ? this.Library.ConstructorImplementation(selected)
+            : this.CompilerRequirementTarget(selected, self);
+
     private BindingSymbol CompilerRequirementTarget(BindingSymbol selected, BoundType? self)
     {
         if (self is not null && ArithmeticContracts.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic && ArithmeticContracts.Supports(self, arithmetic))

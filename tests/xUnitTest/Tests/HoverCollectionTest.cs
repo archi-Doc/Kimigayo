@@ -195,7 +195,7 @@ public sealed class HoverCollectionTest : IDisposable
         Assert.Same(iterator, Assert.Single(compilation.Binding.GetDocumentation(iterator.Declaration!)));
         var constructor = Assert.Single(
             compilation.Library.Kotonoha.DocumentationSources.SelectMany(static source => source.Comments),
-            static comment => comment.Source.Path.EndsWith("/ArrayOperations.kimi", StringComparison.Ordinal) && comment.Declaration is FunctionKoto { IsConstructor: true });
+            static comment => comment.Source.Path.EndsWith("/ArrayOperations.kimi", StringComparison.Ordinal) && comment.Declaration is FunctionKoto { IsConstructor: true, Parameters: [{ InternalName: "capacity" }] });
         Assert.Contains("zero allocates nothing", constructor.GetText().Text);
     }
 }

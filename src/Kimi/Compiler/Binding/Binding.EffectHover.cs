@@ -30,8 +30,9 @@ public sealed partial class Binding
             StringBuilder? text = null;
             if (syntax.BoundCall is { } call)
             {
-                var original = call.Target.Declaration is FunctionKoto specialized && binding.GetSpecializationOriginal(specialized) is { } originalFunction
-                    ? originalFunction : call.Target.Declaration;
+                var presented = binding.Library.PresentedTarget(call.Target).Declaration;
+                var original = presented is FunctionKoto specialized && binding.GetSpecializationOriginal(specialized) is { } originalFunction
+                    ? originalFunction : presented;
                 info = new([this.Declaration(original)], this.CallUse(call, syntax), TypeIdentity: this.CallIdentity(call));
                 if (call.VirtualDispatch is not null && binding.TryGetObjectErasure(syntax, out var erasure))
                 {

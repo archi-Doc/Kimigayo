@@ -156,6 +156,23 @@ public struct Array<T>
                 .Some(let value) => self.append(value@move)
                 .None => return
 
+    /// Defines `init(! repeating:count:)`: `count` Copies of `repeating` placed in one reserved buffer (SPEC 4.7.4).
+    ///
+    /// - abort: `count` is negative; the capacity constructor aborts before any element is placed.
+    internal func initRepeating(repeating: T, count: isize) -> Self
+        T is Copy
+        var result = Array<T>.init(capacity: count)
+        unsafe
+            let storage = Storage.borrowStorageUniq(result@uniq).storage
+            // The new Array is exclusively owned and holds no element, and Copy cannot invoke user code, so each slot below
+            // `count` is initialized exactly once before the length is published.
+            var index: isize = 0
+            while index < count
+                Raw.initialize(storage + index, repeating)
+                index += 1
+            Storage.setArrayLength(result@uniq, count)
+        return result@move
+
     /// Copies each element of `values` to the end, in order.
     public func appendCopies(self: uniq/Self, values: Slice<T>)
         T is Copy

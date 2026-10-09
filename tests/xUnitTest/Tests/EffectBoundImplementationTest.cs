@@ -93,7 +93,14 @@ public class EffectBoundImplementationTest
 
             var operation = c.Library.GetSymbol(entry.Id)!;
             Assert.True(KimiLibraryCatalog.PublishesSummary(operation));
-            var published = entry.Id is KimiDeclarationId.DictionaryReserve or KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryClear ? null : equals;
+            if (entry.Implementation is { } implementation)
+            {
+                // A bodiless constructor's summary is its linked implementation's, which is checked as its own entry.
+                Assert.Same(c.Library.GetSymbol(implementation), c.Library.ConstructorImplementation(operation));
+                continue;
+            }
+
+            var published = entry.Id is KimiDeclarationId.DictionaryReserve or KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryClear or KimiDeclarationId.ArrayRepeatingImplementation ? null : equals;
             foreach (var (confined, preserves) in new[] { (true, false), (false, true) })
             {
                 var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, confined, preserves, published);
@@ -104,7 +111,7 @@ public class EffectBoundImplementationTest
             operations++;
         }
 
-        Assert.Equal(8, operations);
+        Assert.Equal(9, operations);
     }
 
     // SPEC 8.4.10.2, 22.3.1: a foreign call accesses only what its arguments permit, so preserves results admits it.

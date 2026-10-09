@@ -208,6 +208,16 @@ public sealed class HoverProjectionTest
         }
     }
 
+    // SPEC 22.1: hover presents the public repeating constructor, never its internal implementation.
+    [Fact]
+    public void RepeatingConstructionHoverPresentsThePublicConstructor()
+    {
+        const string text = "func make() -> Array<i64> => Array<i64>.init(repeating: 7, count: 3)\n";
+        var declaration = Assert.Single(At(Project(text), text.IndexOf("init", StringComparison.Ordinal)).Declarations);
+        Assert.Contains("init(! repeating: T, count: isize)", declaration.Header, StringComparison.Ordinal);
+        Assert.DoesNotContain("initRepeating", declaration.Header + string.Concat(declaration.Documentation.Select(static x => x.ToString())), StringComparison.Ordinal);
+    }
+
     [Fact]
     public void InvalidConstraintsNeverPublishCopyYes()
     {

@@ -16,6 +16,21 @@ public class DynamicArrayCostTest
     public void SliceCopiesAllocateAtMostOnceWithoutGrowthTransfers(int count)
         => WriteCostFixture("SliceCopy" + count, "let values: [" + count + " of i32] = [" + count + " of 7]\nlet copy = values.slice().toArray()\nrequire copy.length == " + count + " else => $abort(\"length\")", count == 0 ? 0 : 1, 0);
 
+    // SPEC 4.7.4: repeating construction reserves once and places every Copy within that capacity; zero-sized elements allocate nothing.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(17)]
+    [InlineData(1024)]
+    public void RepeatingConstructionAllocatesAtMostOnceWithoutGrowthTransfers(int count)
+        => WriteCostFixture("Repeating" + count, "let values = Array<i32>.init(repeating: 7, count: " + count + ")\nrequire values.length == " + count + " else => $abort(\"length\")", count == 0 ? 0 : 1, 0);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ZeroSizedRepeatingConstructionAllocatesNothing()
+        => WriteCostFixture("RepeatingZeroSized", "let values = Array<()>.init(repeating: (), count: 1024)\nrequire values.length == 1024 else => $abort(\"length\")", 0, 0);
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AppendingCopiesRetainsPreallocatedStorage()

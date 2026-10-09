@@ -1084,8 +1084,13 @@ public sealed partial class Binding
                 result = selectedType!;
             }
 
+            if (this.ExecutedTarget(winner, self) is not { } executed)
+            {
+                return this.Fail(call, BindingFailure.Unsupported, true); // SPEC 22.1: a linked constructor whose link is not validated.
+            }
+
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;
-            (call.CallStorage ??= new()).Set(this.CompilerRequirementTarget(winner, self), result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
+            (call.CallStorage ??= new()).Set(executed, result, this.CallReceiver(callee), mapping.AsSpan(0, argumentCount), scratch.AsSpan(0, selected.GenericArguments.Count), self, selectedType, origins.AsSpan(0, solveOrigins ? selected.Origins.Count : 0), inputs.AsSpan(0, solveOrigins ? InputOriginCount(selected) : 0), selectedOperations[..argumentCount], receiverOperation, basePath, defaults.AsSpan(0, defaultCount), lengthArguments.AsSpan(0, selected.GenericArguments.Count));
             call.CallStorage.ResultMode = ResultModeOf(selected.ReturnType);
             if (selected.IsRequirement)
             {
@@ -1136,13 +1141,15 @@ public sealed partial class Binding
 
     private ConstraintProof CheckCallTypeConstraints(BoundCall call, BindingScope scope)
     {
-        if (InvalidDeclarationContext(call.Target.Declaration))
+        // A linked constructor is judged as the public declaration it selected (SPEC 22.1).
+        var target = this.Library.PresentedTarget(call.Target);
+        if (InvalidDeclarationContext(target.Declaration))
         {
             return ConstraintProof.Error;
         }
 
         var proof = this.CheckTypeConstraints(call.ReturnType, scope);
-        if (UnresolvedTypeDeclarationContext(call.Target.Declaration))
+        if (UnresolvedTypeDeclarationContext(target.Declaration))
         {
             proof = CombineProof(proof, ConstraintProof.Unknown, true);
         }
@@ -1165,14 +1172,14 @@ public sealed partial class Binding
             }
         }
 
-        if (call.Target.Declaration is FunctionKoto function)
+        if (target.Declaration is FunctionKoto function)
         {
             // Conditional evidence can fail after candidate selection. Recheck the committed
             // candidate's constraints without reopening lookup or overload selection.
             proof = CombineProof(proof, this.CheckConstraints(function.TypeConstraints, function, call.TypeArguments, scope, call.ConformingType, call.DeclaringType, call.LengthArguments), true);
         }
 
-        proof = CombineProof(proof, this.ProveMemberConditions(call.Target, call.DeclaringType, scope), true);
+        proof = CombineProof(proof, this.ProveMemberConditions(target, call.DeclaringType, scope), true);
         proof = CombineProof(proof, this.CheckOperationTypeConstraints(call.ReceiverOperation, scope), true);
         foreach (var operation in call.ArgumentOperations)
         {

@@ -16,6 +16,7 @@ public class GeneralDefaultTest
     [InlineData("GenericArray", "func f<T>(x: T, values: Array<T> = [x]) -> T\n    T is Copy\n    return values[0]\nrequire f(3) == 3 and f(true) else => $abort(\"generic array\")")]
     [InlineData("GenericDictionary", "func f<T>(x: T, values: Dictionary<i32, T> = [1: x]) -> T\n    T is Copy\n    return values[1]\nrequire f(3) == 3 and f(true) else => $abort(\"generic dictionary\")")]
     [InlineData("GenericArrayMutation", "func f<T>(x: T, values: Array<T> = label work: do\n    var a = Array<T>.init(capacity: 1)\n    a@uniq.append(x)\n    exit to work a@move\n) -> T\n    T is Copy\n    return values[0]\nrequire f(3) == 3 and f(true) else => $abort(\"generic mutation\")")]
+    [InlineData("GenericRepeating", "func f<T>(x: T, values: Array<T> = Array<T>.init(repeating: x, count: 2)) -> isize\n    T is Copy\n    return values.length\nrequire f(3) == 2 and f(true) == 2 else => $abort(\"generic repeating\")")]
     public void DefaultsUseOrdinaryBodyOperations(string name, string source)
         => ScalarEmissionTest.EmitFixture("GeneralDefault" + name, source, string.Empty);
 

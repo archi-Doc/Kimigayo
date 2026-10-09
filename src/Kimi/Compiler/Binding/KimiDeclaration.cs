@@ -190,6 +190,8 @@ public enum KimiDeclarationId : byte
     LeftDividable,
     LeftRemainderProvider,
     Negatable,
+    ArrayRepeating,
+    ArrayRepeatingImplementation,
 }
 
 public enum KimiDeclarationState : byte

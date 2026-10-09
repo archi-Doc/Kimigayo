@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -9,6 +11,29 @@ namespace XunitTest;
 /// Kimigayo over the compiler-supplied operations.</summary>
 public class ArrayMembersTest
 {
+    private const string Repeating =
+        "struct Point\n    Self is Copy\n    public var x: i32 = 1\n    public var y: i32 = 2\n" +
+        "func make<U>(value: U, count: isize) -> Array<U>\n    U is Copy\n    return Array<U>.init(repeating: value, count: count)\n" +
+        "func twice<U>(value: U) -> isize\n    U is Copy\n    let a = Array<U>.init(repeating: value, count: 2)\n    let b = Array<U>.init(repeating: value, count: 3)\n    return a.length + b.length\n" +
+        "func touch<V>(value: V) -> isize\n    V is Copy\n    return 1\n" +
+        "func thenGeneric<U>(value: U) -> isize\n    U is Copy\n    let a = Array<U>.init(repeating: value, count: 2)\n    return a.length + touch(value)\n" +
+        "public func main()\n" +
+        "    let explicit = Array<i64>.init(repeating: 7, count: 3)\n" +
+        "    let inferred = Array.init(repeating: 8, count: 2)\n" +
+        "    let expected: Array<i64> = Array.init(repeating: 9, count: 1)\n" +
+        "    let empty = Array<i32>.init(repeating: 1, count: 0)\n" +
+        "    let points = Array<Point>.init(repeating: Point.init(), count: 2)\n" +
+        "    let pairs = Array<[2 of i32]>.init(repeating: [3, 4], count: 2)\n" +
+        "    let units = Array<()>.init(repeating: (), count: 4)\n" +
+        "    var grown = make(5, 2)\n" +
+        "    grown.append(6)\n" +
+        "    var n = 10\n" +
+        "    let refs = Array.init(repeating: n@ref, count: 2)\n" +
+        "    require explicit.length == 3 and explicit[2] == 7 and inferred[1] == 8 and expected[0] == 9 else => $abort(\"values\")\n" +
+        "    require empty.length == 0 and empty.capacity == 0 and points[1].y == 2 and pairs[1][1] == 4 and units.length == 4 else => $abort(\"shapes\")\n" +
+        "    require grown.length == 3 and grown[2] == 6 and refs[1]@follow == 10 and twice(n@ref) == 5 and thenGeneric(1) == 3 else => $abort(\"generic\")\n" +
+        "    Console.writeLine(\"Repeating ok.\")\n";
+
     private const string Access =
         "public func main()\n" +
         "    var values: Array<i32> = [30, 10, 20]\n" +
@@ -108,6 +133,7 @@ public class ArrayMembersTest
         { "Access", Access, "Out of range.\nEmpty has no first.\nAccess ok.\n" },
         { "Mutation", Mutation, "Mutation ok.\n" },
         { "Owned", Owned, "Truncating.\nDropped.\nDropped.\nTruncated.\nDropped.\nDropped.\n" },
+        { "Repeating", Repeating, "Repeating ok.\n" },
     };
 
     [Theory]
@@ -137,11 +163,48 @@ public class ArrayMembersTest
         ScalarEmissionTest.EmitFixture("ArrayMembersAnonymousCallables", Source, "Anonymous ok.\n");
     }
 
+    // SPEC 4.7.4: a negative count Aborts at the construction, before any element is placed.
+    [Fact]
+    public void NegativeRepeatingCountAborts()
+        => ScalarEmissionTest.EmitFixture("ArrayMembersNegativeRepeating", "let bad = Array<i32>.init(repeating: 1, count: -1)\n", string.Empty, 1, "Hello.kimi:1:11: abort KIMI_E_ARG_RANGE: Argument out of range\n");
+
+    // SPEC 22.1: the call keeps the public constructor it selected and executes the linked implementation; a user constructor with the
+    // same spellings is an ordinary constructor.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RepeatingConstructionExecutesItsLinkedImplementation(bool user)
+    {
+        var source = user ? "struct Box<T>\n    public var size: isize = 0\n    public init(! repeating: T, count: isize)\n        T is Copy\n        self.size = count\nlet b = Box<i32>.init(repeating: 1, count: 2)" : "let a = Array<i32>.init(repeating: 1, count: 2)";
+        var c = CompilationTestHelper.BindSuccess(source);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(static x => x.BoundSymbol is { Declaration: FunctionKoto { IsConstructor: true } });
+        var constructor = call.BoundSymbol!;
+        Assert.Equal(user ? constructor : c.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation), call.BoundCall!.Target);
+        Assert.Equal(user ? null : KimiDeclarationId.ArrayRepeating, constructor.LibraryDeclaration);
+    }
+
+    // The public constructor's premise and labels decide applicability and every report names it, never its implementation.
+    [Theory]
+    [InlineData("let a = Array<string>.init(repeating: \"x\", count: 2)", "NoApplicableOverload_Kd")]
+    [InlineData("func make<U>(x: U) -> Array<U>\n    return Array<U>.init(repeating: x, count: 2)\nlet a = make(1)", "UnprovenConstraint_Kd")]
+    [InlineData("let a = Array<i32>.init(1, 2)", "NoApplicableOverload_Kd")]
+    public void RepeatingConstructionReportsThePublicDeclaration(string source, string code)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(code, record.Code);
+        Assert.DoesNotContain("initRepeating", record.Message + record.Label + record.Note + record.Advice + string.Join(",", record.Related?.Select(static x => x.Label) ?? []), StringComparison.Ordinal);
+        if (source.Contains("init(1, 2)", StringComparison.Ordinal))
+        {
+            Assert.Equal(2, record.Related!.Length);
+        }
+    }
+
     [Theory]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nvalues.swap(first: 0, second: 0)\nlet n = view.length")]
     [InlineData("let values: Array<i32> = [1]\nvalues.truncate(0)")]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nvalues.reverse()\nlet n = view.length")]
     [InlineData("var values: Array<string> = []\nlet more: Array<string> = [\"a\"]\nvalues.appendCopies(more[..])")]
+    [InlineData("var n = 10\nlet refs = Array.init(repeating: n@ref, count: 2)\nn = 11\nlet first = refs[0]@follow")]
     public void Rejects(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

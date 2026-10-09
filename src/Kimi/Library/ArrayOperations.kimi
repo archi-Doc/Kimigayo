@@ -3,6 +3,11 @@
 // positions; the public position entries in Array.kimi resolve a position before calling them.
 /// Creates an empty Array whose capacity is at least `capacity`; a negative argument aborts and zero allocates nothing.
 public init(! capacity: isize)
+/// Creates an Array of `count` Copies of `repeating`; a negative count aborts and zero allocates nothing.
+///
+/// The compiler supplies this constructor's definition from `initRepeating` (SPEC 4.7.4, 22.1).
+public init(! repeating: T, count: isize)
+    T is Copy
 public func reserve(self: uniq/Self, additional: isize)
 public func append(self: uniq/Self, value: T)
 internal func insertAt(self: uniq/Self, index: isize, value: T)

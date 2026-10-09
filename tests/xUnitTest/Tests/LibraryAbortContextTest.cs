@@ -41,6 +41,7 @@ public class LibraryAbortContextTest
     [InlineData("ClosedRange", "let r = 3..=1\nlet value = r.resolve(4)", "Hello.kimi:2:13")]
     [InlineData("ResolvedRange", "let r = (0..1).resolve(1)\nlet value = r.resolve(0)", "Hello.kimi:2:13")]
     [InlineData("Truncate", "var values = [1, 2]\nvalues.truncate(-1)", "Hello.kimi:2:1")]
+    [InlineData("Repeating", "let n: isize = -1\nlet values = Array<i32>.init(repeating: 1, count: n)", "Hello.kimi:2:14")]
     [InlineData("Generic", "func start<T>(range: Range<T, T>)\n    T is PrimitiveInteger\n    let it = range.iterate()\nstart(3..1)", "Hello.kimi:3:14")]
     public void StandardPreconditionsReportTheSourceOperation(string name, string source, string location)
         => ScalarEmissionTest.EmitFixture("LibraryAbortContext" + name, source, string.Empty, 1, location + ": abort KIMI_E_ARG_RANGE: Argument out of range\n");

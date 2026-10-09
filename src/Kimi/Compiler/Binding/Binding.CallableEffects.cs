@@ -34,7 +34,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.nodes.Count; i++)
         {
             var node = this.nodes[i];
-            if (node is InvocationKoto { BoundCall: { Target.Declaration: FunctionKoto function } call })
+            if (node is InvocationKoto { BoundCall: { } call } && this.Library.PresentedTarget(call.Target).Declaration is FunctionKoto function)
             {
                 this.CheckCallableEffectUses(node, function.TypeConstraints, function, call.TypeArguments, call.DeclaringType, call, call.LengthArguments);
             }

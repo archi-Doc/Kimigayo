@@ -72,9 +72,11 @@ public sealed partial class OwnershipAnalysis
             return null;
         }
 
+        // A linked Kimi constructor is named as the public declaration the call selected (SPEC 22.1).
+        var target = bound.Target.LibraryDeclaration is { } id && KimiLibraryCatalog.PresentationOf(id) is not null && call.BoundSymbol is { } selected ? selected : bound.Target;
         if (bound.Receiver is { } receiver && Contains(receiver, input))
         {
-            return IsDirectExclusiveBorrow(receiver) ? null : $"`{input}` implicitly {acquired} exclusively as the receiver of `{bound.Target.Name}`";
+            return IsDirectExclusiveBorrow(receiver) ? null : $"`{input}` implicitly {acquired} exclusively as the receiver of `{target.Name}`";
         }
 
         for (var i = 0; i < call.ArgumentNodes.Count && i < bound.ArgumentOperations.Length; i++)
@@ -87,9 +89,9 @@ public sealed partial class OwnershipAnalysis
                 }
 
                 var index = bound.ArgumentOperations[i].ParameterIndex;
-                return bound.Target.Declaration is FunctionKoto function && (uint)index < (uint)function.Parameters.Count && function.Parameters[index] is { } parameter
-                    ? $"`{input}` implicitly {acquired} exclusively for parameter `{(parameter.ExternalName.Length > 0 ? parameter.ExternalName : parameter.InternalName)}` of `{bound.Target.Name}`"
-                    : $"`{input}` implicitly {acquired} exclusively as an argument of `{bound.Target.Name}`";
+                return target.Declaration is FunctionKoto function && (uint)index < (uint)function.Parameters.Count && function.Parameters[index] is { } parameter
+                    ? $"`{input}` implicitly {acquired} exclusively for parameter `{(parameter.ExternalName.Length > 0 ? parameter.ExternalName : parameter.InternalName)}` of `{target.Name}`"
+                    : $"`{input}` implicitly {acquired} exclusively as an argument of `{target.Name}`";
             }
         }
 

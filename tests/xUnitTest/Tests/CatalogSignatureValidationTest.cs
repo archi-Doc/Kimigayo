@@ -10,6 +10,8 @@ public class CatalogSignatureValidationTest
 {
     [Theory]
     [InlineData(KimiDeclarationId.ArrayWithCapacity)]
+    [InlineData(KimiDeclarationId.ArrayRepeating)]
+    [InlineData(KimiDeclarationId.ArrayRepeatingImplementation)]
     [InlineData(KimiDeclarationId.ArrayInsert)]
     [InlineData(KimiDeclarationId.ArrayPop)]
     [InlineData(KimiDeclarationId.DictionaryTryInsert)]
@@ -62,6 +64,8 @@ public class CatalogSignatureValidationTest
     [InlineData(KimiDeclarationId.ArraySwap)]
     [InlineData(KimiDeclarationId.ArrayShrinkToFit)]
     [InlineData(KimiDeclarationId.ArrayWithCapacity)]
+    [InlineData(KimiDeclarationId.ArrayRepeating)]
+    [InlineData(KimiDeclarationId.ArrayRepeatingImplementation)]
     [InlineData(KimiDeclarationId.DictionaryReserve)]
     [InlineData(KimiDeclarationId.DictionaryTryInsert)]
     [InlineData(KimiDeclarationId.DictionaryInsertOrReplace)]

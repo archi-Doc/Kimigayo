@@ -49,7 +49,9 @@ embedded, validated and implemented.
   Their private loader supplies the owning container (a group, the `Array` struct for its constructor and mutation operations, the
   internal `Storage` group of `Storage.kimi` for the standard storage boundary, or the public `Raw` group of `Raw.kimi` for raw storage; a struct also admits bodiless `init` signatures).
   Within these signature resources, only catalog-registered compiler implementations may omit bodies
-  without an ordinary `#LibraryImport` declaration. Ordinary
+  without an ordinary `#LibraryImport` declaration. A catalog link may instead name an internal source function of the same
+  struct as a bodiless constructor's definition (`Array.init(! repeating:count:)` → `Array.initRepeating`, SPEC 22.1); calls
+  select and present the public constructor and execute the implementation. Ordinary
   helpers in these containers use the normal compilation pipeline; this is not
   public syntax for declaring a user intrinsic or omitting a function body.
 - `Storage.kimi` implements contiguous shared/exclusive `splitFirst` by borrowing raw element

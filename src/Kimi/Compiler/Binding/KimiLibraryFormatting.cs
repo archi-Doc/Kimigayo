@@ -32,8 +32,9 @@ public sealed partial class KimiLibrary
         => node is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Uniq } borrow &&
             BareType(borrow.Type) is FixedArrayTypeKoto array && BareName(array.Length, "N") && BareName(array.ElementType, "u8");
 
-    private static bool FormattingPremise(FunctionKoto function, string parameter, string contract)
-        => function.TypeConstraints.Count == 1 && function.TypeConstraints[0] is IsKoto clause && BareName(clause.Left, parameter) && BareName(clause.Right, contract);
+    // Exactly one Constraint clause, `parameter is contract`.
+    private static bool SinglePremise(FunctionKoto function, string parameter, string contract)
+        => function.TypeConstraints.Count == 1 && function.TypeConstraints[0] is IsKoto { IsNegated: false } clause && BareName(clause.Left, parameter) && BareName(clause.Right, contract);
 
     private static bool FormattingField(PropertyKoto field, KimiDeclarationId id, int index)
     {
@@ -72,8 +73,8 @@ public sealed partial class KimiLibrary
             }
         }
 
-        return id == KimiDeclarationId.TextWriter ? FormattingPremise(function, "W", "BufferWriter") :
-            id is not (KimiDeclarationId.TextToString or KimiDeclarationId.TextTryFormat or KimiDeclarationId.WriterWrite) || FormattingPremise(function, "T", "Utf8Format");
+        return id == KimiDeclarationId.TextWriter ? SinglePremise(function, "W", "BufferWriter") :
+            id is not (KimiDeclarationId.TextToString or KimiDeclarationId.TextTryFormat or KimiDeclarationId.WriterWrite) || SinglePremise(function, "T", "Utf8Format");
     }
 
     private static bool FormattingSyntaxOperand(Koto? type, FormattingOperand expected, bool nested = false)

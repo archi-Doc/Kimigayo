@@ -1062,7 +1062,7 @@ public sealed partial class Binding
             // failed leaves the call resting on that failure (SPEC 23.3.6.4).
             if (node is InvocationKoto { BoundCall: { } call })
             {
-                if (node.BindingFailure == BindingFailure.None && InvalidDeclarationContextCause(call.Target.Declaration) is { } invalidTarget)
+                if (node.BindingFailure == BindingFailure.None && InvalidDeclarationContextCause(this.Library.PresentedTarget(call.Target).Declaration) is { } invalidTarget)
                 {
                     this.CompleteDependent(node, invalidTarget);
                 }

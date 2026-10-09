@@ -275,12 +275,12 @@ Complexity bounds describe collection management for fixed Types. Allocator inte
 
 [Specification: Array operations](spec/04-arrays-indexing-and-slices.md#472-array-operations) and [destruction order](spec/04-arrays-indexing-and-slices.md#476-commit-failure-and-destruction-order).
 
-An ordered, growable sequence constructed with `[]`, `[a, b, ...]` or `init(! capacity:)`.
+An ordered, growable sequence constructed with `[]`, `[a, b, ...]`, `init(! capacity:)` or `init(! repeating:count:)`.
 
 | Member | Guarantee |
 | --- | --- |
 | `init(! capacity: isize)` | An empty Array with `capacity >= capacity`; a negative argument Aborts and zero allocates nothing. |
-| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`; a negative count Aborts. |
+| `init(! repeating: T, count: isize)`, `T is Copy` | `count` Copies of `repeating`, placed after one reservation, so at most one allocation; `repeating` is acquired once, a negative count Aborts before any element is placed, and zero allocates nothing. |
 | `indices: ResolvedRange` | The interval `[0, length)`. |
 | `values[i]`, where i is a position | An element Place: shared for reads, exclusive for mutation; invalid bounds Abort. |
 | `values[r]`, where r is a range | A shared Slice; invalid bounds Abort. |

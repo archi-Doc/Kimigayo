@@ -167,9 +167,10 @@ public class CoreCatalogTest
         // Private caller-context metadata recognizes another fifteen ordinary source bodies and one failure primitive, and the
         // located Dictionary capacity (G20) six DictionaryStorage bodies over four private primitives in place of two bridges.
         // UniqSlice adds its record/projection, one bounds primitive and twelve located source bodies.
-        // Eleven arithmetic Contracts supply the public operator requirements.
-        Assert.Equal(175, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(180, c.Library.Declarations.Length);
+        // Eleven arithmetic Contracts supply the public operator requirements, and the repeating Array constructor adds its
+        // public signature and the linked internal implementation (SPEC 22.1).
+        Assert.Equal(177, c.Library.ValidatedDeclarationCount);
+        Assert.Equal(182, c.Library.Declarations.Length);
         for (var i = 0; i < c.Library.Declarations.Length; i++)
         {
             var entry = c.Library.Declarations[i];

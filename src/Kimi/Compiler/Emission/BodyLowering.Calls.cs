@@ -187,12 +187,12 @@ internal sealed partial class BodyLowering
         if (body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { } returnType ||
             !ReferenceEquals(body.Resolve(ElementAccess.PlaceCallReference(call) ?? call.BoundType, body.ContextAt(id)), returnType))
         {
-            return Fail($"Call {plan.Target.Name} has inconsistent expression and retained result Types: {Binding.DiagnosticTypeName(call.BoundType ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(plan.ReturnType)}.", out failure);
+            return Fail($"Call {library.PresentedTarget(plan.Target).Name} has inconsistent expression and retained result Types: {Binding.DiagnosticTypeName(call.BoundType ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(plan.ReturnType)}.", out failure);
         }
 
         if (!ReferenceTypes.StorageMatches(intrinsic ? returnType : generic?.Result ?? creation?.Result ?? (target.IsConstructor ? plan.DeclaringType : target.BoundSymbol?.Type), returnType))
         {
-            return Fail($"Call {plan.Target.Name} has incompatible implementation and result storage: {Binding.DiagnosticTypeName(target.BoundSymbol?.Type ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(returnType)}.", out failure);
+            return Fail($"Call {library.PresentedTarget(plan.Target).Name} has incompatible implementation and result storage: {Binding.DiagnosticTypeName(target.BoundSymbol?.Type ?? (object)"unresolved")} / {Binding.DiagnosticTypeName(returnType)}.", out failure);
         }
 
         var runtime = formatting || clone || ReferenceEquals(plan.Target, library.WriteLine) || ReferenceEquals(plan.Target, library.Abort) || ReferenceEquals(plan.Target, library.GetSymbol(KimiDeclarationId.TestTempDirectory));
