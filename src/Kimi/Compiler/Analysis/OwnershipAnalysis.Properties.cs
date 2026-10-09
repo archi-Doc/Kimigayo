@@ -49,7 +49,7 @@ public sealed partial class OwnershipAnalysis
         try
         {
             var previous = getter is null ? arithmetic is null ? this.Value(this.ReadBorrowedField(storage)) : this.BorrowStruct(storage, ArithmeticInputType(arithmetic))
-                : this.PropertyGetterValue(target, this.Call(getter, preparedReceiver: this.ReborrowPropertyReceiver(getter, receiver)), arithmetic);
+                : this.ReborrowPropertyReceiver(getter, receiver) is >= 0 and var prepared ? this.PropertyGetterValue(target, this.Call(getter, preparedReceiver: prepared), arithmetic) : -1;
             if (source is not BinaryKoto)
             {
                 right = this.IncrementOne(source);
@@ -84,14 +84,39 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    // SPEC 9.5.1, 13.7.2: the getter's receiver from the one located receiver. A getter selected through a base path reborrows the whole
+    // receiver at its own Type and lends the base prefix, as its call does (PrepareCallArgument), never the receiver as the base.
     private int ReborrowPropertyReceiver(InvocationKoto getter, int receiver)
     {
         var argument = getter.BoundCall!.ArgumentOperations[0];
-        var type = this.compilation.Binding.PreparedBorrowType(argument.Source!, argument.ParameterType!);
-        var result = this.Place(argument.Source!, type, OwnershipPlaceKind.Temporary, false);
-        var borrow = this.Emit(OwnershipOperationKind.Borrow, argument.Source!, receiver, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+        if (argument.Kind == ArgumentOperationKind.BaseBorrow)
+        {
+            return this.BaseBorrowTypes(argument.Source!, argument, out var type, out var whole) && this.ReborrowReceiver(argument.Source!, receiver, whole) is >= 0 and var reference
+                ? this.BorrowThrough(getter, reference, type, -1) : -1;
+        }
+
+        return this.ReborrowReceiver(argument.Source!, receiver, this.compilation.Binding.PreparedBorrowType(argument.Source!, argument.ParameterType!));
+    }
+
+    private int ReborrowReceiver(Koto source, int receiver, BoundType type)
+    {
+        var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
+        var borrow = this.Emit(OwnershipOperationKind.Borrow, source, receiver, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
         this.SetValue(borrow, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
         return this.RegisterTemporary(result);
+    }
+
+    // The getter's receiver from a named owned Place, borrowed at the getter's own call; through a base path as above.
+    private int BorrowGetterReceiver(InvocationKoto getter, Koto receiver, int place)
+    {
+        var argument = getter.BoundCall!.ArgumentOperations[0];
+        if (argument.Kind != ArgumentOperationKind.BaseBorrow)
+        {
+            return this.BorrowPropertyPlace(receiver, place, argument.ParameterType!);
+        }
+
+        return this.BaseBorrowTypes(argument.Source!, argument, out var type, out var whole) && this.BorrowPropertyPlace(receiver, place, whole) is >= 0 and var reference
+            ? this.BorrowThrough(getter, reference, type, -1) : -1;
     }
 
     private int UpdatePropertyPlace(Koto source, Koto target, BoundArgumentOperation operation, InvocationKoto? getter, InvocationKoto? setter, IdentifierNameKoto receiver, int right, InvocationKoto? arithmetic, int loanDepth)
@@ -105,7 +130,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var previous = getter is null ? arithmetic is null ? this.Value(this.Expression(target, PlaceUseKind.Read)) : this.BorrowStruct(target, ArithmeticInputType(arithmetic))
-            : this.PropertyGetterValue(target, this.Call(getter, preparedReceiver: this.BorrowPropertyPlace(receiver, place, getter.BoundCall!.ArgumentOperations[0].ParameterType!)), arithmetic);
+            : this.BorrowGetterReceiver(getter, receiver, place) is >= 0 and var prepared ? this.PropertyGetterValue(target, this.Call(getter, preparedReceiver: prepared), arithmetic) : -1;
         if (source is not BinaryKoto)
         {
             right = this.IncrementOne(source);

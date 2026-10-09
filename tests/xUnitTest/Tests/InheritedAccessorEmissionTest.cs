@@ -26,6 +26,8 @@ public class InheritedAccessorEmissionTest
 
         """;
 
+    private const string Leveled = "open struct Leveled<T>\n    public var level: i32 = 1\n        get(self: ref/Self) -> i32 => storage\nstruct Leaf: Leveled<i64>\n    public init() => ()\n";
+
     [Theory]
     [InlineData("Owner", "let x = Leaf.init()\nrequire x.number == 42 else => $abort(\"getter\")")]
     [InlineData("Reference", "func read(x: ref/Leaf) -> i32 => x.number\nlet x = Leaf.init()\nrequire read(x@ref) == 42 else => $abort(\"getter\")")]
@@ -37,6 +39,22 @@ public class InheritedAccessorEmissionTest
     [InlineData("Generic", "struct Other<U>: Base<U>\n    public init() => ()\nfunc read<V>(x: ref/Other<V>) -> i32 => x.number\nlet x = Other<bool>.init()\nrequire read(x@ref) == 42 else => $abort(\"getter\")")]
     public void SharedInheritedGettersUseTheOrdinaryCallPipeline(string name, string body, string stdout = "")
         => ScalarEmissionTest.EmitFixture("InheritedAccessor" + name, Source + body, stdout);
+
+    // SPEC 13.7.2, 9.5.1: a compound update of an inherited Property with a custom `get` and a standard `set` reads through the getter
+    // with the whole located receiver lent at its base prefix, as a getter call does (it failed generation with "Borrow source has no
+    // matching aggregate storage" or "Reborrow has no matching reference source").
+    [Theory]
+    [InlineData("Compound", "var x = Leaf.init()\nx.level += 1\nConsole.writeLine(\"\\(x.level)\")", "2\n")]
+    [InlineData("Increment", "var x = Leaf.init()\nx.level++\nConsole.writeLine(\"\\(x.level)\")", "2\n")]
+    [InlineData("Exclusive", "func up(x: uniq/Leaf) -> ()\n    x.level += 1\nvar x = Leaf.init()\nup(x@uniq)\nConsole.writeLine(\"\\(x.level)\")", "2\n")]
+    [InlineData("Mixed", "var x = Leaf.init()\nx.level = 5\nx.level += 1\nConsole.writeLine(\"\\(x.level)\")", "6\n")]
+    [InlineData("Generic", "struct Other<U>: Leveled<U>\n    public init() => ()\nfunc up<V>(x: uniq/Other<V>) -> ()\n    x.level += 2\nvar x = Other<bool>.init()\nup(x@uniq)\nConsole.writeLine(\"\\(x.level)\")", "3\n")]
+    public void CompoundUpdatesReadThroughAProjectedGetter(string name, string body, string stdout)
+        => ScalarEmissionTest.EmitFixture("InheritedAccessorUpdate" + name, Leveled + body, stdout);
+
+    [Fact]
+    public void ACompoundUpdateKeepsTheReceiverExclusive()
+        => Assert.Equal("ComparisonLoanConflict_Kd", Assert.Single(DiagnosticCorpus.Check(Leveled + "var x = Leaf.init()\nlet r = x@ref\nx.level += 1\n_ = r").Diagnostics).Code);
 
     [Theory]
     [InlineData("var x = Leaf.init()\nlet r = x.view\nx.item = 0\n_ = r")]
