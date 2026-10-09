@@ -133,7 +133,7 @@ public sealed partial class Binding
         }
 
         if (!skipOrigin && !ReferenceEquals(actual.Origin, expected.Origin) && !InactiveOuterOrigin(actual, binding, use) && (actual.Origin is null || expected.Origin is null ||
-            (!structural && (!OriginFits(actual.Origin, expected.Origin) || (invariant && !OriginFits(expected.Origin, actual.Origin))))))
+            (!structural && (!OriginFits(actual.Origin, expected.Origin, SlotCondition()) || (invariant && !OriginFits(expected.Origin, actual.Origin, SlotCondition()))))))
         {
             return false;
         }
@@ -191,8 +191,11 @@ public sealed partial class Binding
 
         return true;
 
-        bool OriginFits(BoundOrigin a, BoundOrigin b) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
-            binding is null ? OriginOutlives(a, b) : binding.FitOriginOutlives(a, b, use!);
+        bool OriginFits(BoundOrigin a, BoundOrigin b, ulong condition = 0) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
+            binding is null ? OriginOutlives(a, b) : binding.FitOriginOutlives(a, b, use!, condition);
+
+        // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
+        ulong SlotCondition() => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use)) : 0;
     }
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
@@ -391,7 +394,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            this.AddOriginFit(actual.Origin, expected.Origin, expected, use, polarity);
+            this.AddOriginFit(actual.Origin, expected.Origin, expected, use, polarity, actual.ContainsPairLayer ? RequiredCondition(this.PairSlotCondition(actual, use)) : 0);
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)
@@ -428,11 +431,12 @@ public sealed partial class Binding
     }
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a contravariant
-    // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination.
-    private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance)
+    // one, and `==` otherwise; `type` is the expected Type at that position, the record's destination, and `condition` the Semantics
+    // case the position exists in.
+    private void AddOriginFit(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, ulong condition = 0)
         => this.AddObligation(variance == OriginVariance.Contravariant
-            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual)
-            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant));
+            ? new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, expected, actual, Condition: condition)
+            : new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, type, actual, expected, Equality: variance != OriginVariance.Covariant, Condition: condition));
 
     private BoundType DirectTarget(BoundType whole)
     {

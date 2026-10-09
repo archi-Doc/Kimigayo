@@ -473,8 +473,9 @@ public sealed partial class Binding
             actual = null;
         }
 
-        if (pattern.Origin is { } origin && result.Origin is { } value &&
-            !this.VisitWellFormedPremise(origin, outer, result, value, actual?.Origin, substituted, visit))
+        // SPEC 15.6.5: a pair layer's own slot is stored only in its binder's borrow cases.
+        if (pattern.Origin is { } origin && result.Origin is { } value && (result.ContainsPairLayer ? this.PairSlotCondition(result, visit.Use) : 0) is { } slot &&
+            !this.VisitWellFormedPremise(origin, outer, result, value, actual?.Origin, substituted, visit, RequiredCondition(slot)))
         {
             return false;
         }
@@ -500,7 +501,7 @@ public sealed partial class Binding
 
     // `kept` is the argument's Origin at the same position, which satisfies the relation already when the fit kept it: the argument's
     // Type is well formed, and the fit, judged on its own, makes its outer Origin outlive the substituted one.
-    private bool VisitWellFormedPremise(BoundOrigin longer, BoundOrigin outer, BoundType result, BoundOrigin value, BoundOrigin? kept, BoundOrigin substituted, in WellFormedVisit visit)
+    private bool VisitWellFormedPremise(BoundOrigin longer, BoundOrigin outer, BoundType result, BoundOrigin value, BoundOrigin? kept, BoundOrigin substituted, in WellFormedVisit visit, ulong condition = 0)
     {
         if (OriginOutlives(longer, outer) || OriginOutlives(value, substituted) || ReferenceEquals(value, kept))
         {
@@ -513,7 +514,7 @@ public sealed partial class Binding
             this.resultPremiseExcluded = function;
             try
             {
-                if (this.ProvesOriginOutlives(longer, outer, function))
+                if (this.ProvesOriginOutlives(longer, outer, function, condition))
                 {
                     return true; // The definition proves it without the premise.
                 }
@@ -550,15 +551,15 @@ public sealed partial class Binding
                 visit.Inference!.Bounds.Remove((longer, outer, true, true));
                 return true;
             case WellFormedAction.Prove:
-                return this.ProvesOriginOutlives(value, substituted, visit.Use);
+                return this.ProvesOriginOutlives(value, substituted, visit.Use, condition);
             default:
                 if (visit.Function is null)
                 {
-                    this.JudgeCallPosition(visit.Use, value, substituted, false, null, null, wellFormed: true);
+                    this.JudgeCallPosition(visit.Use, value, substituted, false, null, null, wellFormed: true, condition: condition);
                 }
                 else
                 {
-                    this.RequireResultOutlives(result, value, substituted, visit.Use);
+                    this.RequireResultOutlives(result, value, substituted, visit.Use, condition);
                 }
 
                 return true;
@@ -593,18 +594,18 @@ public sealed partial class Binding
     }
 
     // A meet outlives an Origin exactly when each operand does, so each failing operand is its own chain (SPEC 15.6.1 Identity).
-    private void RequireResultOutlives(BoundType result, BoundOrigin value, BoundOrigin substituted, Koto use)
+    private void RequireResultOutlives(BoundType result, BoundOrigin value, BoundOrigin substituted, Koto use, ulong condition)
     {
         if (value.Kind == OriginKind.Intersection)
         {
             for (var i = 0; i < value.Operands.Count; i++)
             {
-                this.RequireResultOutlives(result, value.Operands[i], substituted, use);
+                this.RequireResultOutlives(result, value.Operands[i], substituted, use, condition);
             }
         }
         else if (!OriginOutlives(value, substituted))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, result, value, substituted, WellFormed: true));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, result, value, substituted, WellFormed: true, Condition: condition));
         }
     }
 }

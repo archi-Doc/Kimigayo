@@ -39,6 +39,8 @@ internal enum OriginPremiseRule : byte
 /// S and the top-like nodes, follows incoming edges, adds the operands of a reached meet, and adds a meet once all of its operands
 /// are reached. Each node is inserted once, each edge activated once and each operand incidence decremented once per closure, so a
 /// closure is linear in nodes, edges and meet incidences. Storage is reused across environments and allocates nothing when warm.
+/// An edge may carry a Semantics-case condition (SPEC 15.6.5): the pair binders that must all be borrows for it to hold; a closure
+/// follows only the edges whose condition the request's condition contains.
 /// </summary>
 internal sealed class OriginPremiseClosure
 {
@@ -58,6 +60,7 @@ internal sealed class OriginPremiseClosure
     private int[] edgeLonger = new int[64];
     private int[] edgeNext = new int[64];
     private OriginPremiseRule[] edgeRule = new OriginPremiseRule[64];
+    private ulong[] edgeCondition = new ulong[64];
     private int[] meetLink = new int[64];
     private int[] meetNext = new int[64];
     private int[] topNodes = new int[8];
@@ -185,7 +188,8 @@ internal sealed class OriginPremiseClosure
     /// <param name="longer">The longer node.</param>
     /// <param name="shorter">The shorter node.</param>
     /// <param name="rule">The catalog rule that introduced it.</param>
-    internal void AddEdge(int longer, int shorter, OriginPremiseRule rule)
+    /// <param name="condition">The pair binders that must be borrows for the edge to hold, as bits; none for an unconditional edge.</param>
+    internal void AddEdge(int longer, int shorter, OriginPremiseRule rule, ulong condition = 0)
     {
         if (longer == shorter)
         {
@@ -195,8 +199,10 @@ internal sealed class OriginPremiseClosure
         Grow(ref this.edgeLonger, this.edgeCount + 1);
         Grow(ref this.edgeNext, this.edgeCount + 1);
         Grow(ref this.edgeRule, this.edgeCount + 1);
+        Grow(ref this.edgeCondition, this.edgeCount + 1);
         this.edgeLonger[this.edgeCount] = longer;
         this.edgeRule[this.edgeCount] = rule;
+        this.edgeCondition[this.edgeCount] = condition;
         this.edgeNext[this.edgeCount] = this.firstIncoming[shorter];
         this.firstIncoming[shorter] = this.edgeCount++;
     }
@@ -204,8 +210,9 @@ internal sealed class OriginPremiseClosure
     /// <summary>Whether `longer >= shorter` is entailed: whether the closure from <paramref name="shorter"/> reaches it.</summary>
     /// <param name="longer">The longer node.</param>
     /// <param name="shorter">The target node.</param>
+    /// <param name="condition">The pair binders that are borrows in every case the relation is required in, as bits.</param>
     /// <returns>Whether the relation is entailed.</returns>
-    internal bool Entails(int longer, int shorter)
+    internal bool Entails(int longer, int shorter, ulong condition = 0)
     {
         if (++this.stamp == int.MaxValue)
         {
@@ -236,6 +243,11 @@ internal sealed class OriginPremiseClosure
 
             for (var edge = this.firstIncoming[node]; edge >= 0; edge = this.edgeNext[edge])
             {
+                if ((this.edgeCondition[edge] & ~condition) != 0)
+                {
+                    continue; // A premise of a case the relation is not required in.
+                }
+
                 activations++;
                 this.Reach(this.edgeLonger[edge], edge, node, ref tail);
             }

@@ -431,7 +431,7 @@ public sealed partial class Binding
     private bool CheckLocalTypeUse(BoundType actual, BoundType expected, Koto use)
         => (HasLocalRegion(actual) || HasLocalRegion(expected)) && this.CheckTypeUse(actual, expected, use);
 
-    private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use)
+    private OriginJudgment JudgeLocalRegion(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
         if (!FixedOrigin(shorter))
         {
@@ -442,7 +442,7 @@ public sealed partial class Binding
         var result = OriginJudgment.Proven;
         foreach (var source in sources)
         {
-            var judgment = this.JudgeOriginAtoms(source, shorter, use);
+            var judgment = this.JudgeOriginAtoms(source, shorter, use, condition);
             if (judgment == OriginJudgment.Refuted)
             {
                 return judgment;

@@ -39,7 +39,7 @@ public sealed partial class Binding
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
     // and a single closure from `shorter` decides the relation; its work is linear in the graph (OriginPremiseClosure).
-    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use)
+    private bool EntailsOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
         if (OriginOutlives(longer, shorter))
         {
@@ -66,7 +66,7 @@ public sealed partial class Binding
             var target = closure.Node(shorter, out _);
             var candidate = closure.Node(longer, out _);
             this.ExtractOriginPremises(environment);
-            var entailed = closure.Entails(candidate, target);
+            var entailed = closure.Entails(candidate, target, condition);
             this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
             return entailed;
         }
@@ -216,7 +216,8 @@ public sealed partial class Binding
     // SPEC 15.3.4, 15.3.7, 8.1.1: a well-formed input Type's own clauses substituted with its Origin arguments, and the Origins stored
     // below each borrow or slice layer outliving that layer's Origin. In the admitted borrow cases a pair layer is a borrow of its
     // target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value cases no
-    // Type denotes the slot. Each Type is visited once per environment.
+    // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). Each Type is visited
+    // once per environment.
     private void AddTypePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
         if (!environment.Types.Add(type))
@@ -237,9 +238,10 @@ public sealed partial class Binding
         if (TryPairLayer(type, out var whole, out var target))
         {
             if (target.CarriesOrigin && this.OuterOrigin(type) is { } slot &&
-                (this.AdmittedSemantics(whole, environment.Scope ??= this.ConstraintScope(environment.Use)) & SemanticsMask.Borrow) != 0)
+                (this.AdmittedSemantics(whole, environment.Scope ??= this.ConstraintScope(environment.Use)) & SemanticsMask.Borrow) != 0 &&
+                this.PairSlotCondition(type, environment.Use) is { } condition)
             {
-                this.AddStoredPremises(environment, target, this.PremiseNode(environment, slot), rule, false);
+                this.AddStoredPremises(environment, target, this.PremiseNode(environment, slot), rule, false, condition);
             }
 
             this.AddTypePremises(environment, target, rule);
@@ -281,26 +283,28 @@ public sealed partial class Binding
     }
 
     // Every Origin stored in `type` outlives the node `shorter`; with `result`, Origins inside a nested Function Type are not stored.
-    private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result)
+    // `condition` is the Semantics case of the storage itself; a pair layer's own slot is stored only in its binder's borrow cases,
+    // while its target is stored in every case (SPEC 15.6.5).
+    private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition = 0)
     {
         if (result && type.Kind == BoundTypeKind.Function)
         {
             return;
         }
 
-        if (type.Origin is { } origin)
+        if (type.Origin is { } origin && (type.ContainsPairLayer ? this.PairSlotCondition(type, environment.Use) : 0) is { } slot)
         {
-            environment.Closure.AddEdge(this.PremiseNode(environment, origin), shorter, rule);
+            environment.Closure.AddEdge(this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            environment.Closure.AddEdge(this.PremiseNode(environment, type.OriginArguments[i]), shorter, rule);
+            environment.Closure.AddEdge(this.PremiseNode(environment, type.OriginArguments[i]), shorter, rule, condition);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.AddStoredPremises(environment, type.Components[i], shorter, rule, result);
+            this.AddStoredPremises(environment, type.Components[i], shorter, rule, result, condition);
         }
     }
 

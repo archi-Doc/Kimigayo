@@ -1526,7 +1526,9 @@ public sealed partial class Binding
         }
 
         OriginRelationFact? first = null;
-        if (actual.Origin is { } outer && expected.Origin is { } required && this.FailedOriginPart(outer, required, expected, use, polarity, judged, all, verified) is { } layer)
+        // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
+        if (actual.Origin is { } outer && expected.Origin is { } required && (actual.ContainsPairLayer ? this.PairSlotCondition(actual, use) : 0) is { } slotCondition &&
+            this.FailedOriginPart(outer, required, expected, use, polarity, judged, all, verified, RequiredCondition(slotCondition)) is { } layer)
         {
             if (all is null)
             {
@@ -1586,7 +1588,7 @@ public sealed partial class Binding
 
     // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a
     // contravariant one, and both, as `==` with `actual` first, at an invariant one.
-    private OriginRelationFact? FailedOriginPart(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, bool judged, List<OriginRelationFact>? all = null, bool verified = false)
+    private OriginRelationFact? FailedOriginPart(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, bool judged, List<OriginRelationFact>? all = null, bool verified = false, ulong condition = 0)
     {
         if (ReferenceEquals(actual, expected))
         {
@@ -1595,12 +1597,12 @@ public sealed partial class Binding
 
         if (variance == OriginVariance.Contravariant)
         {
-            return Fails(expected, actual) ? this.FailedChain(use, expected, actual, type, judged, all) : null;
+            return Fails(expected, actual) ? this.FailedChain(use, expected, actual, type, judged, all, condition) : null;
         }
 
         if (variance == OriginVariance.Covariant)
         {
-            return Fails(actual, expected) ? this.FailedChain(use, actual, expected, type, judged, all) : null;
+            return Fails(actual, expected) ? this.FailedChain(use, actual, expected, type, judged, all, condition) : null;
         }
 
         if (!Fails(actual, expected) && !Fails(expected, actual))
@@ -1614,18 +1616,18 @@ public sealed partial class Binding
 
         bool Fails(BoundOrigin longer, BoundOrigin shorter) => verified
             ? !this.VerifiedRegionOutlives(longer, shorter, use)
-            : this.OriginPartFails(longer, shorter, use, judged);
+            : this.OriginPartFails(longer, shorter, use, judged, condition);
     }
 
     // SPEC 15.3.6, 15.6.1: a meet at the longer end outlives an Origin exactly when each operand does, so an `outlives` relation names
     // the chain of one failing operand, never the meet itself, and keeps the whole meet for a result bound. With `all`, the chain of
     // every failing operand is added in the meet's order (every failed chain is reported).
-    private OriginRelationFact FailedChain(Koto use, BoundOrigin longer, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact>? all = null)
+    private OriginRelationFact FailedChain(Koto use, BoundOrigin longer, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact>? all = null, ulong condition = 0)
     {
-        var operand = this.FailingOperand(longer, shorter, use, judged, true) ?? this.FailingOperand(longer, shorter, use, judged, false) ?? longer;
+        var operand = this.FailingOperand(longer, shorter, use, judged, true, condition) ?? this.FailingOperand(longer, shorter, use, judged, false, condition) ?? longer;
         var meet = ReferenceEquals(operand, longer) ? null : longer;
         OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter), Meet: meet);
-        if (all is not null && (meet is null || !this.AddFailingChains(use, longer, longer, shorter, type, judged, all)))
+        if (all is not null && (meet is null || !this.AddFailingChains(use, longer, longer, shorter, type, judged, all, condition)))
         {
             all.Add(chain);
         }
@@ -1634,14 +1636,14 @@ public sealed partial class Binding
     }
 
     // Adds the chain of each failing operand of `meet`, nested meets flattened in order; whether any was added.
-    private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin meet, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all)
+    private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin meet, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all, ulong condition = 0)
     {
         if (IsLocalRegion(origin))
         {
             var found = false;
             foreach (var source in this.LocalRegionSources(origin))
             {
-                found |= this.AddFailingChains(use, source, meet, shorter, type, judged, all);
+                found |= this.AddFailingChains(use, source, meet, shorter, type, judged, all, condition);
             }
 
             return found;
@@ -1649,7 +1651,7 @@ public sealed partial class Binding
 
         if (origin.Kind != OriginKind.Intersection)
         {
-            if (!this.OriginPartFails(origin, shorter, use, judged))
+            if (!this.OriginPartFails(origin, shorter, use, judged, condition))
             {
                 return false;
             }
@@ -1661,24 +1663,24 @@ public sealed partial class Binding
         var added = false;
         for (var i = 0; i < origin.Operands.Count; i++)
         {
-            added |= this.AddFailingChains(use, origin.Operands[i], meet, shorter, type, judged, all);
+            added |= this.AddFailingChains(use, origin.Operands[i], meet, shorter, type, judged, all, condition);
         }
 
         return added;
     }
 
-    private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged)
-        => !this.ProvesOriginOutlives(longer, shorter, use) && (!judged || this.OriginRelationFails(longer, shorter, use));
+    private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, ulong condition = 0)
+        => !this.ProvesOriginOutlives(longer, shorter, use, condition) && (!judged || this.OriginRelationFails(longer, shorter, use, condition));
 
     // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code and
     // Advice, before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
-    private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted)
+    private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted, ulong condition = 0)
     {
         if (IsLocalRegion(longer))
         {
             foreach (var source in this.LocalRegionSources(longer))
             {
-                if (this.FailingOperand(source, shorter, use, judged, refuted) is { } failed)
+                if (this.FailingOperand(source, shorter, use, judged, refuted, condition) is { } failed)
                 {
                     return failed;
                 }
@@ -1689,12 +1691,12 @@ public sealed partial class Binding
 
         if (longer.Kind != OriginKind.Intersection)
         {
-            return (!refuted || RefutesOriginRelation(longer, shorter)) && this.OriginPartFails(longer, shorter, use, judged) ? longer : null;
+            return (!refuted || RefutesOriginRelation(longer, shorter)) && this.OriginPartFails(longer, shorter, use, judged, condition) ? longer : null;
         }
 
         for (var i = 0; i < longer.Operands.Count; i++)
         {
-            if (this.FailingOperand(longer.Operands[i], shorter, use, judged, refuted) is { } operand)
+            if (this.FailingOperand(longer.Operands[i], shorter, use, judged, refuted, condition) is { } operand)
             {
                 return operand;
             }

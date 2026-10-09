@@ -17,6 +17,10 @@ public sealed partial class Binding
         SemanticsKind.Owner, SemanticsKind.Ref, SemanticsKind.Uniq, SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc, SemanticsKind.ObjRef, SemanticsKind.ObjUniq, SemanticsKind.Raw,
     ];
 
+    // The binders in scope of one PairSlotCondition query, reused, and whether a query is collecting them.
+    private readonly List<PairBinder> pairConditionBinders = new();
+    private bool pairConditionActive;
+
     /// <summary>Counts the resolved cases of one body without overflowing the resource counter.</summary>
     /// <param name="binders">The body's pair binders and their admitted sets.</param>
     /// <returns>The product, saturated at the largest representable count.</returns>
@@ -130,6 +134,56 @@ public sealed partial class Binding
     internal BoundOrigin? OuterOrigin(BoundType occurrence)
         => occurrence.Origin ?? (occurrence.Kind == BoundTypeKind.Parameter && occurrence.Symbol is { Kind: BindingSymbolKind.SemanticsTarget } target ? this.PairOuterOrigin(target) : null);
 
+    /// <summary>Gets the Semantics-case condition under which a pair layer's outer-Origin slot exists at a use (SPEC 8.1.2, 15.6.5):
+    /// no condition when every admitted case of its binder is a borrow, the binder's bit in the order of <see cref="PairBinders"/> at
+    /// the use when its admitted set mixes borrows with other Semantics, and null when no admitted case is a borrow, so the slot
+    /// never exists. A binder that is not in scope, or beyond the 64th, is <see cref="ulong.MaxValue"/>: a premise under it is never
+    /// usable, and a relation required under it is judged unconditionally.</summary>
+    /// <param name="layer">A Type; only a pair layer has a condition.</param>
+    /// <param name="use">The use whose binders give the bits.</param>
+    /// <returns>The condition, or null when the slot never exists.</returns>
+    internal ulong? PairSlotCondition(BoundType layer, Koto use)
+    {
+        if (!TryPairLayer(layer, out var whole, out _))
+        {
+            return 0;
+        }
+
+        var admitted = this.AdmittedSemantics(whole, this.ConstraintScope(use));
+        if ((admitted & SemanticsMask.Borrow) == 0)
+        {
+            return null;
+        }
+
+        if ((admitted & ~SemanticsMask.Borrow) == 0)
+        {
+            return 0;
+        }
+
+        // A query nested in the collection of the binders, such as a proof of an admitted set, takes its own list.
+        var binders = this.pairConditionBinders.Count == 0 && !this.pairConditionActive ? this.pairConditionBinders : new List<PairBinder>();
+        var outer = this.pairConditionActive;
+        this.pairConditionActive = true;
+        try
+        {
+            this.PairBinders(use, binders);
+            for (var i = 0; i < binders.Count && i < 64; i++)
+            {
+                if (ReferenceEquals(binders[i].Target.WholeType, whole))
+                {
+                    return 1UL << i;
+                }
+            }
+
+            return ulong.MaxValue;
+        }
+        finally
+        {
+            binders.Clear();
+            this.pairConditionActive = outer;
+        }
+    }
+
     /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.10): every pair layer of a binder in
     /// <paramref name="cases"/> becomes the Type of that binder's Semantics over its direct target with the layer's outer-Origin
     /// slot (<c>U</c> for owner, <c>s/U during o</c> for a borrow, <c>s/U</c> otherwise), other Types map their components, and
@@ -242,6 +296,9 @@ public sealed partial class Binding
             }
         }
     }
+
+    // The condition of a relation required where a slot exists: a binder without a bit is judged in every case.
+    private static ulong RequiredCondition(ulong? condition) => condition is { } value && value != ulong.MaxValue ? value : 0;
 
     // The Semantics a case gives one binder, or null when the binder is not resolved in it.
     private static SemanticsKind? CaseOf(ReadOnlySpan<PairCase> cases, BindingSymbol target)

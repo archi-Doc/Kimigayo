@@ -16,6 +16,12 @@ public class OriginPremiseCatalogTest
 
     private const string Nested = "contract C\n    associate Item(a, b) is ref/(ref/i32 during a) during b\nstruct S\n    Self is C\n";
 
+    private const string Box = "public struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\n";
+
+    // Seven pair binders, the last one's slot stored below a borrow; six admit one Semantics each.
+    private const string Seven = "func f<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(x: ref/Box<h/H during q> during r, y: ref/i32 during q) -> ref/i32 during r\n" +
+        "    a is ref\n    b is ref\n    c is ref\n    d is ref\n    e is ref\n    g is ref\n";
+
     public static TheoryData<string, string, string> Rows => new()
     {
         // R1, SPEC 15.3.3: an enclosing function's clause.
@@ -69,6 +75,28 @@ public class OriginPremiseCatalogTest
         var (codes, metrics) = Check(source);
         Assert.Empty(codes);
         Assert.NotEqual(0, metrics.EdgesOf(OriginPremiseRule.LocalPlace));
+    }
+
+    // SPEC 15.6.5, 8.1.2: a pair layer's slot is stored only in its binder's borrow cases, so it is a premise only of a relation required
+    // in those cases: a fit or Type occurrence at the same slot, also nested under two binders, and never an ordinary relation of a body
+    // whose binder admits a value case (A.2: `a outlives c` holds only when `s` is ref).
+    [Theory]
+    [InlineData(Box + "func f<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is owner\n    return x\n", false)]
+    [InlineData(Box + "func f<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is owner or ref\n    return x\n", false)]
+    [InlineData(Box + "func f<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is ref\n    return x\n", true)]
+    [InlineData(Box + "func f<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i32 during c\n    s is owner\n    return x\nfunc g(b: ref/Box<i32>) -> i32\n    var m: i32 = 5\n    let h = f<i32>\n    return h(b, m@ref)@follow\n", false)]
+    [InlineData("func f<s/T, t/U>(x: s/(t/U during b) during a, m: s/T) -> i32\n    s is owner or ref\n    t is owner or ref\n    let y: s/(t/U during b) during a = x@move\n    return 1\n", true)]
+    [InlineData("func f<s/T, t/U>(x: t/U during b, m: s/T during a) -> i32\n    s is owner or ref\n    t is owner or ref\n    let y: Option<s/(t/U during b) during a> = .None\n    return 1\n", false)]
+    [InlineData("func shorten<s/T>(x: ref/(s/T during a) during b, y: s/T during a) -> s/T during b\n    s is owner or ref\n    T is Copy\n    return y\n", true)]
+    [InlineData(Box + "func f<s/T>(b: ref/Box<s/(ref/i32 during q) during a> during c, w: s/T) -> ref/i32 during c\n    s is owner or ref\n    return b.item@follow\n", true)]
+    [InlineData(Box + "func f<s/T>(b: ref/Box<s/(ref/i32 during q) during a> during c, w: s/T, z: ref/i32 during d) -> ref/i32 during d\n    s is owner or ref\n    return b.item@follow\n", false)]
+    [InlineData(Box + Seven + "    h is ref\n    let z: ref/Box<h/H during q> during r = x\n    return y\n", true)]
+    [InlineData(Box + Seven + "    h is owner or ref\n    let z: ref/Box<h/H during q> during r = x\n    $abort(\"unused\")\n", true)]
+    [InlineData(Box + Seven + "    h is owner or ref\n    return y\n", false)]
+    public void APairSlotIsAPremiseOnlyInItsBorrowCases(string body, bool valid)
+    {
+        var codes = Check(body + Main).Codes;
+        Assert.Equal(valid ? [] : [nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], codes);
     }
 
     // SPEC 15.3.3, 15.6.1: a local's clause is an obligation, never a premise: it does not prove itself, and the enclosing clause

@@ -156,8 +156,10 @@ public sealed class BoundOrigin
 /// <c>Clause</c> is a substituted declaration clause at its supplying argument or Type occurrence <c>Use</c> (SPEC 15.3.3, 15.6.1); one with
 /// <c>WellFormed</c> is a callee's result premise substituted at the call <c>Use</c>, the well-formedness of its result, or the intrinsic
 /// relation of an input's instantiated Type at that input (SPEC 15.3.7, 15.6.4 step 3), which classifies the record's source and is
-/// discharged by judgment. <c>Discharge</c> names the check responsible for the obligation.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment);
+/// discharged by judgment. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
+/// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
+/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases.</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0);
 
 internal enum TypePosition : byte
 {
