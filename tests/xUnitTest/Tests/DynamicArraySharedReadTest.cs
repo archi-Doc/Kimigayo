@@ -38,6 +38,11 @@ public class DynamicArraySharedReadTest
     public void ChainedReadsThroughViewsBorrowTheNonCopyElement(string name, string read)
         => ScalarEmissionTest.EmitFixture("DynamicArraySharedRead" + name, Task + "var values: Array<Task> = [Task.init(42)]\nrequire " + read + " == 42 else => $abort(\"value\")", "drop\n");
 
+    // SPEC 4.6.9, 10.2: a collection stored in a Field of a borrowed owner is read in place, also inside interpolation.
+    [Fact]
+    public void ALengthIsReadThroughAFieldOfABorrowedOwner()
+        => ScalarEmissionTest.EmitFixture("DynamicArraySharedReadFieldLength", "struct Bank\n    public var items: Array<i32>\n    public init() => self.items = [1, 2, 3]\nfunc show(b: ref/Bank) => Console.writeLine(\"\\(b.items.length)\")\nlet bank = Bank.init()\nshow(bank@ref)", "3\n");
+
     // SPEC 10.2: a Copy part below an element is lent at a fixed ref/U expectation as a new shared borrow of the element's part,
     // through the element's own borrow, never as a borrow of a copy.
     [Fact]
