@@ -24,6 +24,7 @@ The specification and implementation are not set in stone. The specification gui
 
 # Coding Guidelines
 
+- Prefer solving problems by removing code rather than adding it. Before adding new code, consider whether deleting or consolidating existing code would suffice. Judge design quality by how few concepts are needed to meet requirements, not by the amount of abstraction.
 - Minimize memory allocations and optimize code for performance wherever practical.
 - Implement Kimi's core libraries, including Iterator and Dictionary, in Kimigayo rather than hand-written LLVM IR whenever possible.
 - Update `docs/SPEC.md` and `docs/STATUS.md` as needed to reflect the changes made. Write all updates in English.
