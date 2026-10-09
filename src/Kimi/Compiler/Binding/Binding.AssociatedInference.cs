@@ -356,10 +356,10 @@ public sealed partial class Binding
         this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding) && binding.Candidates.Count == 0 &&
         this.SpecificationPart(path, identity) is null;
 
-    // SPEC 15.3.3, 15.4.4, 23.3.6.4: the part an explicit specification of an associated identity rests on, in the conformance's
-    // declaration or its conditional block: the clause when it did not bind, otherwise its specified Type, whose formation may fail
-    // only at the Definition deadline. An identity so specified is never an inference hole, and a missing binding rests on that part.
-    private Koto? SpecificationPart(BoundConformancePath path, BoundRequirement identity)
+    // SPEC 15.3.3, 15.4.4, 23.3.6.4: the explicit specification of an associated identity in the conformance's declaration or its
+    // conditional block that fixes its Type, or that did not bind. An identity so specified is never an inference hole, and a missing
+    // binding rests on the clause, or on its specified Type when that fails instead (SettleSpecificationLinks).
+    private IsKoto? SpecificationPart(BoundConformancePath path, BoundRequirement identity)
     {
         var root = path.RootPath;
         if (root.Declaration.Parent is SyntaxFormKoto syntax && TryConditionalBlock(syntax, out var block))
@@ -386,12 +386,24 @@ public sealed partial class Binding
 
         // A clause that fixes the Type, or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`)
         // fixes nothing and leaves the identity to inference.
-        Koto? Failed(Koto item)
+        IsKoto? Failed(Koto item)
             => item is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
-                ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol)
-                ? clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved || clause.BoundConstraint is null || clause.Right is null ? clause
-                : clause.BoundConstraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Error ? clause.Right : null
-                : null;
+                ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol) &&
+                (clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved || clause.BoundConstraint is not { Kind: ConstraintKind.Contract or ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not or ConstraintKind.Semantics or ConstraintKind.Callable })
+                ? clause : null;
+    }
+
+    // SPEC 23.3.6.4: a conformance resting on a specification is derived from what has failed by publication: the clause, or its
+    // specified Type when only that failed, such as a formation proven at the Definition deadline.
+    private void SettleSpecificationLinks()
+    {
+        for (var i = 0; this.specificationLinks is { } links && i < links.Count; i++)
+        {
+            if (this.partPrerequisites.TryGetValue(links[i], out var part) && part is IsKoto { BindingFailure: BindingFailure.None, BindingState: not BindingState.Invalid, Right: { BindingState: BindingState.Invalid } specified })
+            {
+                this.partPrerequisites[links[i]] = specified;
+            }
+        }
     }
 
     private void ExtractAssociatedEvidence(AssociatedInference batch, BoundConformancePath path, BoundType required, BoundType actual, FunctionKoto source)

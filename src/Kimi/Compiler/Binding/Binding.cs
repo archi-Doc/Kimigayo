@@ -1055,6 +1055,8 @@ public sealed partial class Binding
                     this.FailTypeRole(this.obligations[i]);
                 }
             }
+
+            this.SettleSpecificationLinks();
         }
 
         var resolved = 0;

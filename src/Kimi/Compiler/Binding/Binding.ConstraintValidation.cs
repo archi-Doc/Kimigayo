@@ -15,6 +15,9 @@ public sealed partial class Binding
     // The use of the first failed conformance whose failure is derived from its specification, met by a call's Constraint check (Check).
     private Koto? failedDerivedConformance;
 
+    // The conformance uses whose completeness rests on a specification, settled at publication (SettleSpecificationLinks).
+    private List<Koto>? specificationLinks;
+
     // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).
     [Flags]
     private enum TypeRoleCause : byte

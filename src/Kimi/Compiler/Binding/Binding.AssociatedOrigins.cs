@@ -49,8 +49,17 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
         {
-            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
+            return type.Origin is not null && (type.Components[0].Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.Primitive or BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice) &&
                 HasSupportedAssociatedFormation(type.Components[0]);
+        }
+
+        // SPEC 8.1.2, 8.4.3: an original, annotated or applied pair layer whose binder admits only value or valueborrow Semantics is a
+        // conditional borrow of its target, supported when its target is; object families and raw layers wait for their tracks.
+        if (type.Kind != BoundTypeKind.SemanticsAdaptation && TryPairLayer(type, out var whole, out var target) && whole.Symbol is { Scope: { } scope } pair &&
+            pair.Declaration.CodeContext.Compilation.Binding.AdmittedSemantics(whole, scope) is var admitted && admitted != SemanticsMask.None &&
+            (admitted & ~(SemanticsMask.Owner | SemanticsMask.ValueBorrow)) == 0)
+        {
+            return HasSupportedAssociatedFormation(target);
         }
 
         if (type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.AssociatedProjection ||
@@ -266,6 +275,10 @@ public sealed partial class Binding
                 if (!this.CheckAssociatedFormation(definition, node))
                 {
                     this.Fail(node, BindingFailure.InvalidOrigin);
+                    if (node is IsKoto { Right: { } specified })
+                    {
+                        this.partPrerequisites[node] = specified; // Derived when the specified occurrence's own formation fails (IsDerived).
+                    }
                 }
             }
         }

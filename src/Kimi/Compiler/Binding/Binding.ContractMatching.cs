@@ -230,7 +230,7 @@ public sealed partial class Binding
             }
 
             var proof = declarationProof;
-            Koto? specification = null;
+            IsKoto? specification = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
@@ -277,10 +277,7 @@ public sealed partial class Binding
 
             if (specification is not null)
             {
-                // The specified Type may fail only at the Definition deadline, so the link is kept whatever its state is now; the
-                // failure is derived only when the specification has failed by publication (IsDerived).
-                this.partPrerequisites[conformance.Use] = specification;
-                return Invalid(BindingFailure.InvalidAssociatedType);
+                return RestOnSpecification(specification);
             }
 
             if (inheritedProof is { } inheritedResult)
@@ -336,7 +333,7 @@ public sealed partial class Binding
                     {
                         if (clause.BindingState == BindingState.Invalid)
                         {
-                            return Invalid(BindingFailure.InvalidAssociatedType);
+                            return RestOnSpecification(clause);
                         }
 
                         if (clause.BoundConstraint is { } constraint && this.AssociatedIdentity(clause.Left.BoundType) is { } identity && shape.SeenRequirements.Contains(identity))
@@ -355,7 +352,7 @@ public sealed partial class Binding
                 {
                     if (clause.BindingState == BindingState.Invalid)
                     {
-                        return Invalid(BindingFailure.InvalidAssociatedType);
+                        return RestOnSpecification(clause);
                     }
 
                     var clauseScope = this.AssociatedFormationScope(conformance, identity, scope);
@@ -440,6 +437,16 @@ public sealed partial class Binding
             conformance.Invalid = true;
             this.Fail(conformance.Use, failure);
             return ConstraintProof.Error;
+        }
+
+        // SPEC 23.3.6.4: the conformance rests on a specification that did not bind or failed. It may fail only later, as its formation
+        // at the Definition deadline, so the link is kept whatever its state is now and settled at publication; the failure is derived
+        // only when the specification has failed (IsDerived).
+        ConstraintProof RestOnSpecification(IsKoto clause)
+        {
+            this.partPrerequisites[conformance.Use] = clause;
+            (this.specificationLinks ??= new()).Add(conformance.Use);
+            return Invalid(BindingFailure.InvalidAssociatedType);
         }
     }
 

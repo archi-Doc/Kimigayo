@@ -49,4 +49,27 @@ public class AssociatedFormationEditingTest
             throw new InvalidOperationException("Missing formation Type.");
         }
     }
+
+    // SPEC 8.1.2, 8.4.3: editing a pair-layer family's admitted set or its specification revokes its formation, and restoring the
+    // clause restores it, without any state left from the edited pass.
+    [Theory]
+    [InlineData("s is owner or ref", "s is owner or obj")]
+    [InlineData("associate Peek.Item(a) is s/T during a", "associate Peek.Item(a) is s/T during static")]
+    public void PairLayerFamilyEditRevokesAndRestoresItsFormation(string original, string edited)
+    {
+        const string Source = "contract Peek\n    associate Item(a) for ref/Self during a\nstruct H<s/T>\n    s is owner or ref\n    T is Copy\n    Self is Peek\n" +
+            "    associate Peek.Item(a) is s/T during a\n    var item: s/T\n    public init(item: s/T) => self.item = item@move\nlet h = H<i32>.init(4)";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var clause = Clause(c.Kotonoha.RootKoto, original);
+        var parent = clause.Parent!;
+        var replacement = Clause(ParseTestHelper.ParseSuccess(Source.Replace(original, edited, StringComparison.Ordinal)).RootKoto, edited);
+        Assert.True(KotoHelper.Replace(parent, clause, replacement));
+        Assert.False(c.Bind().IsComplete);
+        Assert.True(KotoHelper.Replace(parent, replacement, clause));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+
+        static Koto Clause(Koto root, string text)
+            => KotoTree.Walk(root).OfType<IsKoto>().First(x => x.ToString() == text);
+    }
 }

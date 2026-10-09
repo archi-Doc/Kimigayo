@@ -97,6 +97,13 @@ public sealed partial class Binding
                 return false;
             }
         }
+        else if (TryPairLayer(type, out _, out var target) && this.StoredSlot(type, use, out var condition) is { } slot &&
+            !this.AssociatedOriginsOutlive(target, slot, use, RequiredCondition(condition)))
+        {
+            // SPEC 8.1.2: an active slot is a conditional borrow layer whose target's Origins outlive it in its binder's borrow cases; a
+            // static slot under an admitted exclusive borrow is the occurrence's own formation failure (TypeRoleCauses).
+            return false;
+        }
 
         for (var i = 0; i < type.Components.Count; i++)
         {
@@ -109,29 +116,35 @@ public sealed partial class Binding
         return true;
     }
 
-    private bool AssociatedOriginsOutlive(BoundType type, BoundOrigin outer, Koto use)
+    // `condition` is the Semantics case in which `outer` stores `type`: the borrow cases of a pair slot (SPEC 15.6.5).
+    private bool AssociatedOriginsOutlive(BoundType type, BoundOrigin outer, Koto use, ulong condition = 0)
     {
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection)
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection && !TryPairLayer(type, out _, out _))
         {
-            return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use);
+            return this.ProveOwned(type, use) == ConstraintProof.Proven || this.ProvesAssociatedTypeLifetime(type, outer, use, condition);
         }
 
-        if (type.Origin is { } origin && !this.ProvesOriginOutlives(origin, outer, use))
+        if (this.StoredSlot(type, use, out var slot) is { } origin && !this.ProvesOriginOutlives(origin, outer, use, condition | RequiredCondition(slot)))
         {
             return false;
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (!this.ProvesOriginOutlives(type.OriginArguments[i], outer, use))
+            if (!this.ProvesOriginOutlives(type.OriginArguments[i], outer, use, condition))
             {
                 return false;
             }
         }
 
+        if (TryPairLayer(type, out _, out var target))
+        {
+            return this.AssociatedOriginsOutlive(target, outer, use, condition);
+        }
+
         for (var i = 0; i < type.Components.Count; i++)
         {
-            if (!this.AssociatedOriginsOutlive(type.Components[i], outer, use))
+            if (!this.AssociatedOriginsOutlive(type.Components[i], outer, use, condition))
             {
                 return false;
             }
@@ -166,12 +179,12 @@ public sealed partial class Binding
         return formation;
     }
 
-    private bool ProvesAssociatedTypeLifetime(BoundType type, BoundOrigin outer, Koto use)
+    private bool ProvesAssociatedTypeLifetime(BoundType type, BoundOrigin outer, Koto use, ulong condition = 0)
     {
         for (var node = use; node is not null; node = node.Parent)
         {
             var formation = IsAssociatedRequirement(node) ? AssociatedFormationType(node) : this.InheritedAssociatedFormation(node);
-            if (formation is not null && this.ProvesBorrowedTypeLifetime(formation, type, outer, use))
+            if (formation is not null && this.ProvesBorrowedTypeLifetime(formation, type, outer, use, condition))
             {
                 return true;
             }
@@ -180,7 +193,7 @@ public sealed partial class Binding
             {
                 for (var i = 0; i < InputCount(node); i++)
                 {
-                    if (this.BoundInputType(node, i) is { } input && this.ProvesBorrowedTypeLifetime(input, type, outer, use))
+                    if (this.BoundInputType(node, i) is { } input && this.ProvesBorrowedTypeLifetime(input, type, outer, use, condition))
                     {
                         return true;
                     }
@@ -192,18 +205,25 @@ public sealed partial class Binding
     }
 
     // SPEC 8.1.2, 15.3.1: a well-formed borrow `s/X during o` needs every dependency of X to outlive o, so it proves that X and
-    // each Type argument stored in X outlive `outer` when o does (an input `uniq/W<I> during step` proves I during step).
-    private bool ProvesBorrowedTypeLifetime(BoundType premise, BoundType type, BoundOrigin outer, Koto use)
+    // each Type argument stored in X outlive `outer` when o does (an input `uniq/W<I> during step` proves I during step). A pair
+    // layer's slot is such a borrow only in its binder's borrow cases, so it proves a relation required within them (SPEC 15.6.5).
+    private bool ProvesBorrowedTypeLifetime(BoundType premise, BoundType type, BoundOrigin outer, Koto use, ulong condition = 0)
     {
         if ((IsBorrow(premise.Semantics) || premise.Kind == BoundTypeKind.Slice) && premise.Origin is { } origin && premise.Components.Count != 0 &&
-            StoresTypeArgument(premise.Components[0], type) && this.ProvesOriginOutlives(origin, outer, use))
+            StoresTypeArgument(premise.Components[0], type) && this.ProvesOriginOutlives(origin, outer, use, condition))
+        {
+            return true;
+        }
+
+        if (TryPairLayer(premise, out _, out var target) && this.StoredSlot(premise, use, out var slot) is { } pairSlot && slot != ulong.MaxValue &&
+            (condition & slot) == slot && StoresTypeArgument(target, type) && this.ProvesOriginOutlives(pairSlot, outer, use, condition))
         {
             return true;
         }
 
         for (var i = 0; i < premise.Components.Count; i++)
         {
-            if (this.ProvesBorrowedTypeLifetime(premise.Components[i], type, outer, use))
+            if (this.ProvesBorrowedTypeLifetime(premise.Components[i], type, outer, use, condition))
             {
                 return true;
             }
