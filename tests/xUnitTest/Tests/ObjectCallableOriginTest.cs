@@ -41,6 +41,7 @@ public class ObjectCallableOriginTest
     [InlineData("CapturedHandle", "let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () -> i32 => n + 3)\nlet outer = func [h@move] () -> i32 => h() + 1\nrequire outer() == 8 and outer() == 8 else => $abort(\"captured\")")]
     [InlineData("EnvResult", "let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h()\nrequire r@follow == 4 else => $abort(\"result\")")]
     [InlineData("EnvResultFollow", "let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h@follow()\nrequire r@follow == 4 else => $abort(\"result\")")]
+    [InlineData("TemporaryCallees", "let n: i32 = 4\nfunc seven() -> i32 => 7\nlet count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nrequire Kimi.Intrinsics.makeRc(func [n] () -> i32 => n + 3)() == 7 and Kimi.Intrinsics.makeRc(seven)() == 7 and (Kimi.Intrinsics.makeRc(func [n] () -> i32 => n + 1)@follow@ref)() == 5 and Kimi.Intrinsics.makeObj(next@move)@follow() == 1 else => $abort(\"callee\")")]
     public void CallablePayloadsCallThroughObjectCallees(string name, string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

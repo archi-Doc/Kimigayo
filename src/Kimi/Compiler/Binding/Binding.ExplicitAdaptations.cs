@@ -230,7 +230,7 @@ public sealed partial class Binding
             (operation == ConversionBinding.ObjectUpcast && ObjectTypes.IsBorrow(target)))
         {
             var exclusive = target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
-            if (exclusive && !this.BorrowablePlace(conversion.Left, scope, true))
+            if (exclusive && !this.BorrowablePlace(conversion.Left, scope, true) && !BorrowableTemporary(conversion.Left, true, true, false))
             {
                 this.Fail(conversion, AccessFailure(conversion.Left));
                 return false;

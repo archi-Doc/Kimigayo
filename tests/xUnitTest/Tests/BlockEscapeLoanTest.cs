@@ -89,6 +89,10 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     private const string LoopItem = "func show() -> i32\n    let r = label l: loop\n        let arr: Array<i32> = [1, 2]\n        for x in arr\n            exit to l x\n        exit to l arr[0]@ref\n" +
         "    return r@follow\n\npublic func main() -> ()\n    Console.writeLine(\"\\(show())\")\n";
 
+    // SPEC 3.6.2, 13.5.5.2, 16.3.3: a temporary obj/rc/arc handle is a Loan root of the borrows lent through it, destroyed at its
+    // full-expression boundary.
+    private const string TemporaryHandle = "struct Item\n    public var id: i32 = 7\nfunc make() -> rc/Item => Kimi.Intrinsics.makeRc(Item.init())\n\npublic func main() -> ()\n";
+
     private const string TemporaryInTuple = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = (make()@ref, 1)\n    Console.writeLine(\"\\(r.0@follow)\")\n";
 
     private const string Transfer = "; the transfer cleans up the scopes it leaves before it delivers its result (SPEC 16.2.2)";
@@ -141,6 +145,11 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         { "MatchBinding", MatchBinding, "exit to b x", "match n@ref", "n@ref", "do", Escaped },
         { "LoopItem", LoopItem, "exit to l x", "for x in arr", "arr", "loop", "`arr` is destroyed here while a live value keeps the Loan of `arr`" + Transfer },
         { "TemporaryInTuple", TemporaryInTuple, "let r = (make()@ref, 1)", "(make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
+        { "TemporaryHandleView", TemporaryHandle + "    let r = make()@objref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@objref", "make()@objref", "make()@objref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@objref`" },
+        { "TemporaryHandleAnnotated", TemporaryHandle + "    let r: objref/Item = make()\n    Console.writeLine(\"\\(r.id)\")\n", "let r: objref/Item = make()", "let r: objref/Item = make()", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
+        { "TemporaryHandlePayload", TemporaryHandle + "    let r = make()@follow@ref\n    Console.writeLine(\"\\(r.id)\")\n", "let r = make()@follow@ref", "let r = make()@follow@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
+        { "TemporaryHandleField", TemporaryHandle + "    let r = make().id@ref\n    Console.writeLine(\"\\(r@follow)\")\n", "let r = make().id@ref", "let r = make().id@ref", "make()", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()`" },
+        { "TemporaryHandleSlot", TemporaryHandle + "    let r = make()@ref\n    let c = Kimi.Intrinsics.clone(r)\n", "let r = make()@ref", "make()@ref", "make()@ref", "let r", "The temporary `make()` is destroyed here while a live value keeps the Loan of `make()@ref`" },
     };
 
     [Theory]

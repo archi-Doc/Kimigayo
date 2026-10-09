@@ -27,13 +27,14 @@ public sealed partial class OwnershipAnalysis
         this.locals.Add(new(iterator, protocol.Iterator, this.registrationSequence++));
         this.Emit(OwnershipOperationKind.Declare, source, iterator);
         this.Emit(OwnershipOperationKind.Write, source, iterator, input);
-        this.Cleanup(tempMark, this.locals.Count, source, CleanupReason.ExpressionEnd);
-        this.temporaries.RemoveRange(tempMark, this.temporaries.Count - tempMark);
 
+        // SPEC 3.6.2: the iteration source's temporaries last for its required use, as a match Subject's do; they are destroyed after
+        // the iterator, which registered later, when the loop is left.
+        var loopTempMark = this.temporaries.Count;
         var head = this.Emit(OwnershipOperationKind.Branch, source);
         var exit = this.New(OwnershipOperationKind.Branch, source);
         var bindingMark = this.locals.Count;
-        this.loops.Add(new(source, head, exit, bindingMark, tempMark, Comparisons: this.comparisonDepth));
+        this.loops.Add(new(source, head, exit, bindingMark, loopTempMark, Comparisons: this.comparisonDepth));
         var next = this.Call(protocol.Next);
         if (next < 0)
         {
@@ -73,7 +74,7 @@ public sealed partial class OwnershipAnalysis
         this.Block(source.Body, out var continuation);
         this.RecordTerminalSeed(source.Body, continuation);
         this.FilterTerminalSeeds(source, seeds);
-        this.Cleanup(tempMark, bindingMark, source, CleanupReason.ScopeExit);
+        this.Cleanup(loopTempMark, bindingMark, source, CleanupReason.ScopeExit);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);
         this.locals.RemoveRange(bindingMark, this.locals.Count - bindingMark);
 
@@ -87,13 +88,14 @@ public sealed partial class OwnershipAnalysis
         this.Connect(exhausted, done, OwnershipEdgeKind.True);
         this.current = done;
         this.body.MatchArmStorage[armStart + 1] = new(matchIndex, none.Pattern, exhausted, this.body.DecompositionStorage.Count, 0, BodyEntry: done);
-        this.Cleanup(tempMark, bindingMark, source, CleanupReason.ScopeExit);
+        this.Cleanup(loopTempMark, bindingMark, source, CleanupReason.ScopeExit);
         this.Connect(this.current, exit);
-        this.temporaries.RemoveRange(tempMark, this.temporaries.Count - tempMark);
+        this.temporaries.RemoveRange(loopTempMark, this.temporaries.Count - loopTempMark);
         this.patternStorageNeeded.RemoveRange(neededStart, this.patternStorageNeeded.Count - neededStart);
         this.loops.RemoveAt(this.loops.Count - 1);
         this.current = exit;
         this.Cleanup(tempMark, localMark, source, CleanupReason.ScopeExit);
+        this.temporaries.RemoveRange(tempMark, this.temporaries.Count - tempMark);
         this.locals.RemoveRange(localMark, this.locals.Count - localMark);
     }
 }

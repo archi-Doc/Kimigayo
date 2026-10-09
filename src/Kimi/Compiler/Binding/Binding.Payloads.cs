@@ -27,7 +27,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (actual.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq) && !this.BorrowablePlace(source, scope, exclusive))
+        if (actual.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq) && !this.BorrowableHandle(source, scope, exclusive, true))
         {
             return false;
         }

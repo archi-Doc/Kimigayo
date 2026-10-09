@@ -349,6 +349,26 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 3.6.1, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
+    // lifetime. A newly owned temporary has exclusive writable capability, lent exclusively only when spelled or as a Receiver
+    // Expression (SPEC 7.3, 15.1.5), and a getter result only shared (SPEC 11.2.3). A selected referent or payload, a published
+    // Place, a user index Place (SPEC 4.6.9), a named binding and a Tuple element are Places, never temporaries.
+    private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation, bool callableValue = false)
+    {
+        var unwrapped = KotoHelper.UnwrapParentheses(source);
+        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
+            ElementAccess.IsPlaceCall(unwrapped) || (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)))
+        {
+            return false;
+        }
+
+        return (source.BoundSymbol is null || callableValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
+            (!exclusive || (spelled && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
+            !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
+            (unwrapped is not IdentifierNameKoto || callableValue) &&
+            (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
+    }
+
     // An Origin that a function's signature introduces, over its receiver or parameters, rather than a body-local borrow.
     private static bool SignatureOrigin(BoundOrigin origin)
     {
@@ -768,6 +788,11 @@ public sealed partial class Binding
     // expected adapts from its own reference Type, so the plan records the Copy read once.
     private BoundType ArgumentType(Koto source, BoundType actual) => this.ReadsReferent(source) ? source.BoundType ?? actual : actual;
 
+    // SPEC 13.5.5.1, 13.5.5.2: an owning handle lends its object or payload from a borrowable Place or from a Temporary Value
+    // materialized for the operation; the handle's own authority (shared for rc/arc) is checked by the caller.
+    private bool BorrowableHandle(Koto source, BindingScope scope, bool exclusive, bool spelled, bool fixedExpectation = false)
+        => this.BorrowablePlace(source, scope, exclusive) || BorrowableTemporary(source, exclusive, spelled, fixedExpectation);
+
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
     {
         source = KotoHelper.UnwrapParentheses(source);
@@ -796,8 +821,8 @@ public sealed partial class Binding
             {
                 SemanticsKind.ObjRef => !exclusive,
                 SemanticsKind.ObjUniq => !exclusive || !ReachedThroughShared(payload.Left),
-                SemanticsKind.Obj => this.BorrowablePlace(payload.Left, scope, exclusive),
-                _ => !exclusive && this.BorrowablePlace(payload.Left, scope, false),
+                SemanticsKind.Obj => this.BorrowableHandle(payload.Left, scope, exclusive, true),
+                _ => !exclusive && this.BorrowableHandle(payload.Left, scope, false, true),
             };
         }
 
@@ -850,7 +875,7 @@ public sealed partial class Binding
 
                 if (ObjectTypes.HandleMode(access.Left.BoundType) is { } handle)
                 {
-                    return !exclusive || (handle.PayloadAuthority == LoanRequirement.Uniq && this.BorrowablePlace(access.Left, scope, true));
+                    return !exclusive || (handle.PayloadAuthority == LoanRequirement.Uniq && this.BorrowableHandle(access.Left, scope, true, true));
                 }
 
                 return access.Left.BoundType is { Kind: BoundTypeKind.Semantics } receiver
@@ -973,7 +998,7 @@ public sealed partial class Binding
         if (receiver && pattern.Semantics == SemanticsKind.Ref && declaringType is not null &&
             IsObjectSemantics(actual.Semantics) && actual.Components.Count == 1 && ReferenceEquals(pattern.Components[0], declaringType) &&
             (projected || ReferenceEquals(actual.Components[0], declaringType)) &&
-            (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.BorrowablePlace(source, scope, false)))
+            (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.BorrowableHandle(source, scope, false, true)))
         {
             adapted = this.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
@@ -994,9 +1019,8 @@ public sealed partial class Binding
         {
             // SPEC 13.5.5.2: an explicit @ref/@uniq on a slot storing a reference or handle borrows that slot and
             // adds one layer; a temporary reference value is materialized first (SPEC 3.6.2).
-            var slotUnwrapped = KotoHelper.UnwrapParentheses(source);
-            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) &&
-                (slotUnwrapped is IdentifierNameKoto || slotUnwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || (target == SemanticsKind.Uniq && !(slotUnwrapped is InvocationKoto || IsGetterResult(source)))))
+            // A getter result is lent only shared (SPEC 11.2.3), as every Temporary Value is admitted (BorrowableTemporary).
+            if (!this.BorrowablePlace(source, scope, target == SemanticsKind.Uniq) && !BorrowableTemporary(source, target == SemanticsKind.Uniq, true, fixedExpectation))
             {
                 return false;
             }
@@ -1066,13 +1090,8 @@ public sealed partial class Binding
                     }
                 }
             }
-            else if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } || ElementAccess.IsPlaceCall(unwrapped) ||
-                (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)) || // SPEC 4.6.9: a published element Place is never a temporary.
-                (!((source.BoundSymbol is null || callableValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
-                (!exclusive || ((explicitBorrow || receiver) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
-                !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
-                (unwrapped is not IdentifierNameKoto || callableValue) && (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)))) &&
-                !(target == SemanticsKind.Ref && IsUnfittedLiteral(source))))
+            else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation, callableValue) &&
+                !(target == SemanticsKind.Ref && IsUnfittedLiteral(source)))
             {
                 return false;
             }
@@ -1141,7 +1160,7 @@ public sealed partial class Binding
             quality = exclusive ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
         }
         else if (ObjectTypes.HandleMode(actual) is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
-            this.BorrowablePlace(source, scope, exclusive))
+            this.BorrowableHandle(source, scope, exclusive, explicitOwner || receiver, fixedExpectation))
         {
             if (exclusive && !explicitOwner && !receiver)
             {

@@ -51,13 +51,6 @@ public sealed partial class Binding
     // a reference or an element, or an Exclusive call of a payload not proven Sealed.
     private Dictionary<Koto, string>? payloadCallees;
 
-    private enum ObjectCallee : byte
-    {
-        Direct,
-        Indirect,
-        Temporary,
-    }
-
     private BoundConstraint BindCallableRequirement(Koto node, BoundType subject, BindingScope scope, BindingSymbol target)
     {
         var syntax = UnwrapTypeSyntax(node);
@@ -113,20 +106,16 @@ public sealed partial class Binding
         }
     }
 
-    // Where the payload lowering reaches an object callee: directly (a binding, an owned Field path below one, or an object view value),
-    // only through a reference, an object layer or an element, or not at all for a temporary.
-    private static ObjectCallee ObjectCalleeShape(Koto handle)
+    // An object callee Place the payload lowering reaches only through a reference, an object layer or an element; a binding, an owned
+    // Field path below one, an object view value and a Temporary Value are reached directly.
+    private static bool IndirectObjectCallee(Koto handle)
     {
         var node = KotoHelper.UnwrapParentheses(handle);
-        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq } ||
+            (node is not (IdentifierNameKoto or MemberAccessKoto or IndexKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow }) &&
+                !(node is BinaryKoto element && ElementAccess.IsSyntax(element))))
         {
-            return ObjectCallee.Direct;
-        }
-
-        if (node is not (IdentifierNameKoto or MemberAccessKoto or IndexKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow }) &&
-            !(node is BinaryKoto element && ElementAccess.IsSyntax(element)))
-        {
-            return ObjectCallee.Temporary;
+            return false;
         }
 
         while (node is MemberAccessKoto member)
@@ -134,11 +123,11 @@ public sealed partial class Binding
             node = KotoHelper.UnwrapParentheses(member.Left);
             if (node.BoundType is not { } layer || (layer.Kind == BoundTypeKind.Semantics && layer.Semantics != SemanticsKind.Owner))
             {
-                return ObjectCallee.Indirect;
+                return true;
             }
         }
 
-        return node is IdentifierNameKoto ? ObjectCallee.Direct : ObjectCallee.Indirect;
+        return node is not IdentifierNameKoto;
     }
 
     private static bool CallableReceiverFits(SemanticsKind actual, SemanticsMask required)
@@ -397,9 +386,8 @@ public sealed partial class Binding
             return false;
         }
 
-        var shape = ObjectCalleeShape(handle);
-        var limit = shape == ObjectCallee.Indirect ? "a direct call through an object handle reached through a reference or an element is not implemented"
-            : shape == ObjectCallee.Temporary || (!view && !this.BorrowablePlace(handle, scope, receiver == SemanticsKind.Uniq)) ? "a direct call through a temporary object handle is not implemented"
+        var limit = IndirectObjectCallee(handle) ? "a direct call through an object handle reached through a reference or an element is not implemented"
+            : !view && !this.BorrowableHandle(handle, scope, receiver == SemanticsKind.Uniq, true) ? "a direct call through a temporary object handle is not implemented"
             : null;
         var payload = handleType.Components[0];
         var adapted = (BoundType?)null;

@@ -226,7 +226,9 @@ internal sealed partial class BodyLowering
                     ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(body.Resolve(selected.BoundType, body.ContextAt(id)), output.Components[0]) &&
                     (output.Semantics == SemanticsKind.Ref ||
                         (selected.Parent is ConversionKoto conversion && ElementAccess.ConversionKind(conversion, body, id) == ConversionBinding.Borrow &&
-                            ReferenceEquals(conversion.Left, selected) && ReferenceEquals(body.Resolve(conversion.BoundType, body.ContextAt(id)), output)));
+                            ReferenceEquals(conversion.Left, selected) && ReferenceEquals(body.Resolve(conversion.BoundType, body.ContextAt(id)), output)) ||
+                        (selected.Parent is MemberAccessKoto followedMember && MemberReceiverOperation(followedMember, output.Semantics) is { Kind: ArgumentOperationKind.Borrow } followedReceiver &&
+                            ReferenceEquals(followedReceiver.Source, selected) && ReferenceTypes.StorageMatches(body.Resolve(followedReceiver.ParameterType, body.ContextAt(id)), output)));
                 var memberProjection = operation.Source.Parent is MemberAccessKoto selectedMember &&
                     MemberReceiverOperation(selectedMember, output.Semantics) is { ObjectCompatibility: ConstraintProof.Proven } memberReceiver &&
                     ReferenceEquals(memberReceiver.Source, operation.Source) &&

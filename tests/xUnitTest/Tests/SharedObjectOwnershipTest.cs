@@ -109,6 +109,21 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 3.6.2, 8.10: a generic definition is judged with the temporary handle's Loan before any instance exists.
+    [Fact]
+    public void GenericDefinitionsKeepTheTemporaryHandleLoan()
+    {
+        const string Source = "struct Item\n    public var id: i32 = 7\nfunc keep<T>(make: () -> rc/T) -> ()\n    T is ObjectPayload\n    let r = make()@objref\n    let s = r\n()";
+        var error = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let r = make()@objref"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 3.6.2: an iteration source's temporaries, a value or a handle, last for the loop, as a match Subject's do.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void IterationSourcesKeepTheirTemporariesForTheLoop()
+        => SharedObjectRuntimeTest.WriteModes("IterationTemporary", "func values() -> Array<i32> => [1, 2]\nfunc handles() -> rc/Array<i32> => Kimi.Intrinsics.makeRc(values())\nvar sum: i32 = 0\nfor x in values()@ref\n    sum += x@follow\nfor y in handles()@follow@ref\n    sum += y@follow\nrequire sum == 6 else => $abort(\"for\")\nConsole.writeLine(\"done\")", 3, 3, 72, "done\n");
+
     // SPEC 13.5.5.2: object borrows, implicit object views and payload follows retain nothing; the run shows one release.
     [Theory]
     [InlineData(false)]
