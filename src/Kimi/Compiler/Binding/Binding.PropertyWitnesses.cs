@@ -31,7 +31,9 @@ public sealed partial class Binding
                 Input = witness.InputType,
                 Result = witness.ResultType,
             };
-            var scope = witness.Implementation.Property.Symbol.Scope;
+            // SPEC 11.4.2: a bridge is checked and executed under the premises of its conformance path, such as `when T is Copy`;
+            // its scope is that path's, which ConstraintScope gives the bridge's body, and its container the conforming declaration.
+            var scope = path.Scope;
             bridge.SelfSymbol = new("self", BindingSymbolKind.Parameter, bridge.Binder, scope) { Slot = 0, Type = bridge.Receiver };
             if (bridge.Input is not null)
             {
@@ -39,7 +41,8 @@ public sealed partial class Binding
             }
 
             var function = this.AccessorFunction(bridge);
-            function.Parent = witness.Implementation.Property.Declaration.Parent;
+            function.BoundSymbol!.Scope = scope;
+            function.Parent = path.Type.Declaration;
             var self = new IdentifierNameKoto(bridge.Binder, "self") { BoundSymbol = bridge.SelfSymbol, BoundType = bridge.Receiver, BindingState = BindingState.Resolved };
             var name = new IdentifierNameKoto(bridge.Binder, witness.Implementation.Property.Symbol.Name) { BoundSymbol = witness.Implementation.Property.Symbol, BindingState = BindingState.Resolved };
             var member = new MemberAccessKoto(bridge.Binder, self, name)

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -7,6 +8,24 @@ namespace XunitTest;
 
 public class PropertyWitnessEmissionTest
 {
+    private const string Conditional = "contract C\n    associate E\n    property item: E has get\nstruct S<T>\n    Self is C when T is Copy\n        associate C.E is T\n" +
+        "    public var item: T\n    public init(item: T) => self.item = item@move\nfunc read<X>(x: ref/X) -> X.E\n    X is C\n    return x.item\n";
+
+    // SPEC 11.4.2: a bridge is checked and executed under its conformance path's premises, so the Copy that `when T is Copy` grants
+    // holds in its body (it was TransferRequired_Kd at `has get`).
+    [Fact]
+    public void AConditionalStorageCopyBridgeUsesItsConformancePremises()
+        => ScalarEmissionTest.EmitFixture("PropertyWitnessConditional", Conditional + "let s = S.init(3)\nConsole.writeLine(\"\\(read(s@ref))\")", "3\n");
+
+    // Where the premise is refuted the conformance does not hold, so the call has no candidate and nothing is generated.
+    [Fact]
+    public void ARefutedConditionalConformanceIsNoCandidate()
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(Conditional + "let s = S.init(\"x\")\nConsole.writeLine(\"\\(read(s@ref))\")").Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.NoApplicableOverload_Kd), error.Code);
+        Assert.Contains("refuted for S<string>", error.Note, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("Stored", "public var item: i32 = 7")]
     [InlineData("Computed", "public computed item: i32\n        get() -> i32 => 7")]
