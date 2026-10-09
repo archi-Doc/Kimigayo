@@ -17,8 +17,35 @@ public sealed partial class Binding
         Error,
     }
 
+    // SPEC 10.4, 8.4.8.2: the candidates the ordinary comparison ranks; with premises, also each candidate whose applicability is unproven
+    // only by an Unknown premise after every argument and result check, ranked as the applicable candidate it would be.
+    private static bool Ranked(in EvaluatedCandidate candidate, bool premises)
+        => candidate.State is CandidateApplicability.Applicable or CandidateApplicability.Waiting || (premises && candidate is { State: CandidateApplicability.Pending, PremiseUnknown: true });
+
     private int SelectBest(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
-        => StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this));
+        => StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, false));
+
+    // SPEC 8.4.8.2: an Unknown premise cannot affect the selection when an applicable candidate is strictly best even with every
+    // premise-unproven candidate ranked as applicable; no judgment of those premises then changes the winner. The ordinary comparison
+    // decides, so a tie or an incomparable pair still defers.
+    private bool PremisesCannotAffect(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+    {
+        foreach (ref readonly var candidate in candidates)
+        {
+            if (candidate.State == CandidateApplicability.Waiting)
+            {
+                if (!ComparableCallableSlots(call, candidates, operations, stride, true))
+                {
+                    return false;
+                }
+
+                break;
+            }
+        }
+
+        var best = StrictBestCandidate.Select(candidates.Length, new CandidateOrder(candidates, operations, stride, this, true));
+        return best >= 0 && candidates[best].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+    }
 
     private readonly ref struct CandidateOrder : IStrictCandidateOrder
     {
@@ -26,16 +53,18 @@ public sealed partial class Binding
         private readonly BoundArgumentOperation[] operations;
         private readonly int stride;
         private readonly Binding binding;
+        private readonly bool premises;
 
-        internal CandidateOrder(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, Binding binding)
+        internal CandidateOrder(ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, Binding binding, bool premises)
         {
             this.candidates = candidates;
             this.operations = operations;
             this.stride = stride;
             this.binding = binding;
+            this.premises = premises;
         }
 
-        public bool IsEligible(int candidate) => this.candidates[candidate].State is CandidateApplicability.Applicable or CandidateApplicability.Waiting;
+        public bool IsEligible(int candidate) => Ranked(this.candidates[candidate], this.premises);
 
         public bool Better(int left, int right)
         {
@@ -106,7 +135,7 @@ public sealed partial class Binding
 
     // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an
     // unsolved slot or is absent (no Callable Constraint on F), compares equal there when the candidates acquire it in one mode.
-    private static bool ComparableCallableSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride)
+    private static bool ComparableCallableSlots(InvocationKoto call, ReadOnlySpan<EvaluatedCandidate> candidates, BoundArgumentOperation[] operations, int stride, bool premises = false)
     {
         for (var argument = 0; argument < call.ArgumentNodes.Count; argument++)
         {
@@ -119,7 +148,7 @@ public sealed partial class Binding
             SemanticsKind? acquisition = null;
             for (var candidate = 0; candidate < candidates.Length; candidate++)
             {
-                if (candidates[candidate].State is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
+                if (!Ranked(candidates[candidate], premises))
                 {
                     continue;
                 }
@@ -298,7 +327,7 @@ public sealed partial class Binding
 
     // A Callable signature has no declaration Symbol or own generic/default parameters. Ordinary candidates always have a Symbol.
     // ClosureReceiver: the one closure argument whose minimum call receiver is the candidate's only refuted condition (TryCandidate).
-    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null);
+    private readonly record struct EvaluatedCandidate(BindingSymbol? Symbol, CandidateApplicability State, BoundType? DeclaringType, int DefaultsUsed, bool Unsolved = false, ClosureReceiverRefutation? ClosureReceiver = null, CallArgumentMap ArgumentMap = default, bool Accessible = true, bool StableConstruction = false, bool IndependentRejection = false, ReferenceConstraintFailure? ConstraintFailure = null, bool PremiseUnknown = false);
 
     // SPEC 7.6.3, 8.6: the parameter whose Callable Constraint does not permit its closure argument's minimum call receiver.
     private readonly record struct ClosureReceiverRefutation(int Parameter, SemanticsKind Actual, SemanticsKind Required);

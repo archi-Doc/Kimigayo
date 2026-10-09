@@ -66,6 +66,21 @@ public class ImplicitBaseCallTest
         }
     }
 
+    // SPEC 8.4.8.2: an Unknown premise of a base constructor defers the omitted and the written base call alike, and only when it can
+    // affect the selection: the plain init() beats a conditional one that uses a default, and a better conditional one stays unproven.
+    [Theory]
+    [InlineData("protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()", null)]
+    [InlineData("protected init()\n        T is Equatable\n        ()\n    protected init(x: i32 = 0) => ()", "UnprovenConstraint_Kd")]
+    public void AnUnknownBasePremiseDefersOnlyASelectionItCanAffect(string declarations, string? code)
+    {
+        var source = "open struct Base<T>\n    public var count: i32 = 1\n    " + declarations + "\nstruct Leaf<U>: Base<U>\n    public init() => ()\n()";
+        foreach (var written in new[] { false, true })
+        {
+            var result = DiagnosticCorpus.Check(written ? source.Replace("public init() =>", "public init(): base() =>", StringComparison.Ordinal) : source);
+            Assert.Equal(code is null ? [] : [code], result.Diagnostics.Select(static x => x.Code));
+        }
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData(": base()")]

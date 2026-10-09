@@ -212,6 +212,28 @@ public class ConditionalMemberBindingTest
         }
     }
 
+    // SPEC 8.4.8.2: an Unknown premise defers the selection only when it can affect it. The plain f(self), still strictly best with the
+    // Unknown candidate ranked as applicable, is selected; a better or tying Unknown candidate keeps the call unproven.
+    [Theory]
+    [InlineData("public func f(self: ref/Self) -> i32 => 1\n    public func f(self: ref/Self, x: i32 = 0) -> i32\n        T is Equatable\n        return 2", true)]
+    [InlineData("public func f(self: ref/Self) -> i32\n        T is Equatable\n        return 2\n    public func f(self: ref/Self, x: i32 = 0) -> i32 => 1", false)]
+    [InlineData("public func f(self: ref/Self, x: i32 = 0) -> i32 => 1\n    public func f(self: ref/Self, x: u8 = 0) -> i32\n        T is Equatable\n        return 2", false)]
+    public void AnUnknownPremiseDefersOnlyASelectionItCanAffect(string members, bool selected)
+    {
+        var c = Parse("struct S<T>\n    public var v: i32 = 0\n    " + members + "\nfunc g<U>(s: ref/S<U>) -> i32 => s.f()");
+        Assert.True(c.Bind().IsComplete == selected, Describe(c));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
+        if (selected)
+        {
+            Assert.Single(((FunctionKoto)call.BoundCall!.Target.Declaration).Parameters);
+        }
+        else
+        {
+            Assert.Null(call.BoundCall);
+            Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        }
+    }
+
     [Fact]
     public void RefutedCandidateAllowsAnApplicableMemberOfTheCommittedGroup()
     {

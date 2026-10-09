@@ -9,6 +9,7 @@ namespace XunitTest;
 public class ConstructorTypeInferenceTest
 {
     private const string Box = "struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\n";
+    private const string UnknownPremise = "struct Box<T>\n    public var tag: i32 = 0\n    public init(value: T) => self.tag = 1\n    public init(value: T, extra: i32 = 0)\n        T is Equatable\n        self.tag = 2\nfunc make<U>(value: U) -> i32\n    let box = ";
 
     [Theory]
     [InlineData("let n: i32 = 42\nlet box = Box.init(n)", "i32")]
@@ -154,6 +155,7 @@ public class ConstructorTypeInferenceTest
     [InlineData("struct Box<T>\n    public init(value: T) => ()\nlet box = Box.init(func () => 42)")]
     [InlineData("struct C<T>\n    public init(x: ref/i32, y: ref/T) => ()\n    public init(x: ref/T, y: ref/T) => ()\nlet n: i32 = 42\nlet r = n@ref\nlet c = C.init(r@ref, n@ref)")]
     [InlineData("struct C<T>\n    public init(value: (T, i32), code: i32) => ()\n    public init(value: ref/(i64, T), name: string) => ()\nlet x: (i64, i32) = (1, 2)\nlet c = C.init(x, 0)")]
+    [InlineData(UnknownPremise + "Box.init(value@move)\n    return box.tag")]
     public void DifferentialValidationAgreesWithTheFullReference(string source)
     {
         var fast = MinimalEmissionTest.Analyze(source);
@@ -169,6 +171,19 @@ public class ConstructorTypeInferenceTest
         static string[] Constructions(Compilation compilation)
             => KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true })
                 .Select(x => Binding.DiagnosticTypeName(x.BoundCall!.DeclaringType!) + ":" + x.BoundCall.Target.Declaration.Span.Start).ToArray();
+    }
+
+    // SPEC 8.4.8.2: the fixed construction defers on an Unknown premise only as the first selection does, so the plain init, still
+    // strictly best with the conditional one ranked as applicable, is kept, as with the written Type.
+    [Theory]
+    [InlineData("Box")]
+    [InlineData("Box<U>")]
+    public void AnUnknownPremiseThatCannotAffectTheSelectionKeepsTheConstruction(string type)
+    {
+        var c = CompilationTestHelper.ParseSuccess(UnknownPremise + type + ".init(value@move)\n    return box.tag");
+        Assert.True(c.Bind().IsComplete);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true });
+        Assert.Single(((FunctionKoto)call.BoundCall!.Target.Declaration).Parameters);
     }
 
     [Fact]

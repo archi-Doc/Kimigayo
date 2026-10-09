@@ -95,6 +95,7 @@ public sealed partial class Binding
         var checkedCandidates = this.candidateScratch.Rent(count);
         var checkedOperations = this.argumentOperationScratch.Rent(count * stride);
         var selectedFunction = (FunctionKoto)original[selected].Symbol!.Declaration;
+        FunctionKoto? unproven = null;
         try
         {
             for (var i = 0; i < count; i++)
@@ -136,12 +137,14 @@ public sealed partial class Binding
                     this.inferenceFixedChecks++;
                 }
 
-                var state = this.TryCandidate(call, function, null, scope, arguments, lengths, [], mapping, previous.ArgumentMap, expected, null, origins, inputs, construction, candidateOperations, out var defaults, out var unbound, out var receiver, out _, out _, fixedConstruction: true);
-                checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap);
-                if (state is CandidateApplicability.Pending or CandidateApplicability.Error || unbound)
+                var state = this.TryCandidate(call, function, null, scope, arguments, lengths, [], mapping, previous.ArgumentMap, expected, null, origins, inputs, construction, candidateOperations, out var defaults, out var unbound, out var receiver, out _, out _, out var premiseUnknown, fixedConstruction: true);
+                checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
+                if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
                 {
                     return Reject(function, ConstructionCheck.UnprovenCandidate);
                 }
+
+                unproven ??= premiseUnknown ? function : null;
 
                 if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
                 {
@@ -173,6 +176,12 @@ public sealed partial class Binding
                     origins.AsSpan(0, originStride).CopyTo(allOrigins.AsSpan(i * originStride));
                     inputs.AsSpan(0, inputStride).CopyTo(allInputs.AsSpan(i * inputStride));
                 }
+            }
+
+            // SPEC 8.4.8.2: as at the first selection, an Unknown premise rejects the fixed construction only when it can affect it.
+            if (unproven is not null && !this.PremisesCannotAffect(call, checkedCandidates.AsSpan(0, count), checkedOperations, stride))
+            {
+                return Reject(unproven, ConstructionCheck.UnprovenCandidate);
             }
 
             var winner = this.SelectBest(checkedCandidates.AsSpan(0, count), checkedOperations, stride);
