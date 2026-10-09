@@ -523,8 +523,7 @@ public sealed partial class Binding
     // SPEC 12.4.4.1: a Function Item clause that only an OCC-X witness leaves unproven is that located limit, as at a call.
     private void RequireReferenceConstraint(Koto use, ConstraintProof proof)
     {
-        if (proof == ConstraintProof.Unknown && this.capabilityMode == BindingMode.Final && this.referenceConstraints?.TryGetValue(use, out var fact) == true &&
-            fact.Proof == ConstraintProof.Unknown && this.PendingExclusiveConformance(fact.Constraint) is not null)
+        if (proof == ConstraintProof.Unknown && this.capabilityMode == BindingMode.Final && this.referenceConstraints?.TryGetValue(use, out var fact) == true)
         {
             this.FailUnprovenReference(use, fact, false);
             return;
@@ -538,7 +537,10 @@ public sealed partial class Binding
         if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
         {
             var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
-            if (!failures.TryGetValue(use, out var previous) || (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Refuted))
+            // A refuted clause, then an Unknown one that does not wait only for OCC-X, is the reported cause (SPEC 12.4.4.1).
+            if (!failures.TryGetValue(use, out var previous) || (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Refuted) ||
+                (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Unknown && this.PendingExclusiveConformance(previous.Constraint, this.ConstraintScope(use)) is not null &&
+                    this.PendingExclusiveConformance(constraint, this.ConstraintScope(use)) is null))
             {
                 failures[use] = new(clause, constraint, proof);
             }

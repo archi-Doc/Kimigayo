@@ -304,6 +304,12 @@ public sealed partial class Binding
 
     private string? InheritedSelfMismatchNote(BoundConstraint constraint)
     {
+        // SPEC 8.4.4: a refuted and/or keeps the cause of a refuted operand; a negated operand's failure is no such cause.
+        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
+        {
+            return this.InheritedSelfMismatchNote(constraint.Left!) ?? this.InheritedSelfMismatchNote(constraint.Right!);
+        }
+
         if (constraint is not { Kind: ConstraintKind.Contract, Subject: { Symbol: { } owner } self, Contract: { } contract } || !this.conformancesByType.TryGetValue(owner, out var identities))
         {
             return null;

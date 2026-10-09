@@ -68,6 +68,25 @@ public class InheritedConformanceTest
         Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnsupportedBinding_Kd)], independent.Select(static x => x.Code).Order());
     }
 
+    // SPEC 8.7, 23.3.6.1: a clause with another unproven operand, or another unproven clause, stays a Proof failure after OCC-X, whatever
+    // the order of operands and clauses; a premise that proves that operand leaves the OCC-X limit.
+    [Theory]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n", "up(x)", "T is Bumps and Owned", false)]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Owned and Bumps\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n", "up(x)", "T is Owned and Bumps", false)]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps\n    T is Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n", "up(x)", "T is Owned", false)]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> ()\n    _ = up<GLeaf<U>>\n", "up<GLeaf<U>>", "T is Bumps and Owned", false)]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> ()\n    U is Owned\n    up(x)\n", "up(x)", null, true)]
+    public void OtherUnprovenOperandsStayProofFailures(string use, string at, string? clause, bool pending)
+    {
+        var source = Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct GLeaf<U>: Base\n    var item: U\n    public init(item: U) => self.item = item@move\n" + use + "()\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((pending ? nameof(DiagnosticCode.UnsupportedBinding_Kd) : nameof(DiagnosticCode.UnprovenConstraint_Kd), at), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        if (clause is not null)
+        {
+            Assert.Contains($"requires {clause}; this condition cannot be proven for GLeaf<U>", record.Note, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void MultipleLevelsRetainGenericWitnessesAndFunctionValues()
         => ScalarEmissionTest.EmitFixture("InheritedConformanceArithmetic", Arithmetic + "\nfunc items<T>(value: ref/T) -> i32\n    T is Addable<i32> and Owned\n    T.(Addable<i32>).Output is i32\n    let item = T.added\n    let erased: (ref/T, ref/i32) -> i32 = T.added\n    return item(value, 2) + invoke(item, value) + erased(value, 2)\nrequire items(value) == 126 else => $abort(\"inherited item\")", string.Empty);

@@ -664,19 +664,11 @@ public sealed partial class Binding
             ConstraintKind.Or => CombineProof(this.ProveConstraint(proposition.Left!, scope), this.ProveConstraint(proposition.Right!, scope), false),
             _ => !ReferenceEquals(proposition, normalized) && this.JudgeConstraintAtom(proposition, scope) == ConstraintProof.Error ? ConstraintProof.Error : this.JudgeConstraintAtom(normalized, scope),
         };
-        if (structural != ConstraintProof.Error && normalized.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+        if (structural != ConstraintProof.Error && normalized.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not &&
+            ClauseSubject(normalized) is { } whole && SemanticsPremise(normalized, whole))
         {
-            var atom = normalized;
-            while (atom.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
-            {
-                atom = atom.Left!;
-            }
-
-            if (atom.Kind == ConstraintKind.Semantics && SemanticsPremise(normalized, atom.Subject!))
-            {
-                // Universal case evidence must judge the whole set: neither disjunct alone need cover every case.
-                structural = this.JudgeConstraintAtom(this.InternConstraint(new(ConstraintKind.Semantics, atom.Subject, mask: SemanticsSet(normalized))), scope);
-            }
+            // Universal case evidence must judge the whole set: neither disjunct alone need cover every case.
+            structural = this.JudgeConstraintAtom(this.InternConstraint(new(ConstraintKind.Semantics, whole, mask: SemanticsSet(normalized))), scope);
         }
 
         positive |= structural == ConstraintProof.Proven;

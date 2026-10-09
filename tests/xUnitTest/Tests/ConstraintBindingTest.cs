@@ -209,6 +209,8 @@ public class ConstraintBindingTest
     [Theory]
     [InlineData("func need<s/T>(value: ref/(s/T))\n    s is rc or arc\n    ()\nfunc outer<s/T>(value: ref/(s/T))\n    s is borrow\n    need(value)", "s is rc or arc", "s/T")]
     [InlineData("func need<T>(value: ref/T)\n    T is not Copy or Owned\n    ()\nlet x = 1\nneed(x)", "T is not Copy or Owned", "i32")]
+    // SPEC 8.4.4: a refuted operand keeps its cause.
+    [InlineData("contract Same\n    func same(self: ref/Self, other: ref/Self) -> bool\nopen struct Shape\n    Self is Same\n    public init() => ()\n    public func same(self: ref/Self, other: ref/Self) -> bool => true\nstruct Circle: Shape\n    public init() => ()\nfunc need<T>(value: ref/T)\n    T is Same and Owned\n    ()\nlet c = Circle.init()\nneed(c)", "T is Same and Owned", "Circle. The retained implementation Shape.same keeps Shape as Self")]
     public void RefutedCompositeCandidatesNameTheirSubject(string source, string clause, string subject)
     {
         var c = MinimalEmissionTest.Analyze(source);

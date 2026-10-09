@@ -175,7 +175,7 @@ public sealed partial class Binding
             return new(OmittedBaseOutcome.Unproven);
         }
 
-        return this.PendingExclusiveConformance(constraint.Constraint) is not { } path ? new(OmittedBaseOutcome.Unproven, Cause: constraint.Clause)
+        return this.PendingExclusiveConformance(constraint.Constraint, evaluation.Scope) is not { } path ? new(OmittedBaseOutcome.Unproven, Cause: constraint.Clause)
             : path.InheritedFrom is null ? new(OmittedBaseOutcome.Dependent, Cause: path.Use)
             : new(OmittedBaseOutcome.Unsupported);
     }
