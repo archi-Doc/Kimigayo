@@ -101,7 +101,7 @@ public sealed partial class OwnershipAnalysis
     private int ReborrowReceiver(Koto source, int receiver, BoundType type)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
-        var borrow = this.Emit(OwnershipOperationKind.Borrow, source, receiver, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+        var borrow = this.Emit(OwnershipOperationKind.Borrow, source, receiver, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
         this.SetValue(borrow, OwnershipValueKind.Address, [this.Value(receiver)], constant: receiver);
         return this.RegisterTemporary(result);
     }
@@ -179,7 +179,7 @@ public sealed partial class OwnershipAnalysis
     private int BorrowPropertyPlace(Koto source, int place, BoundType type)
     {
         var result = this.Place(source, type, OwnershipPlaceKind.Temporary, false);
-        var borrow = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
+        var borrow = this.Emit(OwnershipOperationKind.Borrow, source, place, result, loanMode: type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref);
         var materialized = ScalarTypes.Supports(this.body.Places[place].Type) && this.body.Places[place].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result;
         this.SetValue(borrow, OwnershipValueKind.Address, materialized ? [this.Value(place)] : [], constant: place);
         return this.RegisterTemporary(result);
