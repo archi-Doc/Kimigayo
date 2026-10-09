@@ -887,7 +887,8 @@ public sealed partial class OwnershipBody
                         var (destination, source) = this.Operations[id] switch
                         {
                             { Kind: OwnershipOperationKind.Write or OwnershipOperationKind.PayloadPlacement or OwnershipOperationKind.InitializeSubject, Place: >= 0, Input: >= 0 } stored => (stored.Place, stored.Input),
-                            { Kind: OwnershipOperationKind.Consume, Acquisition: AcquisitionKind.Move, Place: >= 0, Input: >= 0 } moved => (moved.Input, moved.Place),
+                            // SPEC 8.4.10.4, 15.6.4: a Copy keeps the Loans its source keeps, as a Move does.
+                            { Kind: OwnershipOperationKind.Consume, Place: >= 0, Input: >= 0 } acquired => (acquired.Input, acquired.Place),
                             { Kind: OwnershipOperationKind.AcquirePattern, Place: >= 0, Input: >= 0 } bound => (bound.Input, bound.Place),
                             _ => (-1, -1),
                         };

@@ -15,10 +15,11 @@ public class EffectBoundCallerTest
     private const string Main = "public func main() => ()\n";
 
     [Theory]
-    [InlineData("func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is Source\n    let first = source.take()\n    let second = source.take()\n    return (first@move, second@move)\n", "source.take()")]
-    [InlineData("func tupled<S>(source: uniq/S) -> i32\n    S is Source\n    let pair = (source.take(), 1)\n    let second = source.take()\n    _ = pair@move\n    _ = second@move\n    return 0\n", "source.take()")]
-    [InlineData("func through<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is StableSource\n    let first = source.take()\n    let second = Helpers.again(source)\n    return (first@move, second@move)\ngroup Helpers\n    public func again<T>(value: uniq/T) -> Option<T.Item>\n        T is Source\n        return value.take()\n", null)]
-    public void RejectsEffectsOnLoansOfEarlierResults(string declarations, string? at)
+    [InlineData("func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is Source\n    let first = source.take()\n    let second = source.take()\n    return (first@move, second@move)\n", "source.take()", "first")]
+    [InlineData("func tupled<S>(source: uniq/S) -> i32\n    S is Source\n    let pair = (source.take(), 1)\n    let second = source.take()\n    _ = pair@move\n    _ = second@move\n    return 0\n", "source.take()", "pair")]
+    [InlineData("func copied<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is Source\n    S.Item is Copy\n    let first = source.take()\n    let copy = first\n    let second = source.take()\n    return (copy, second@move)\n", "source.take()", "copy")]
+    [InlineData("func through<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is StableSource\n    let first = source.take()\n    let second = Helpers.again(source)\n    return (first@move, second@move)\ngroup Helpers\n    public func again<T>(value: uniq/T) -> Option<T.Item>\n        T is Source\n        return value.take()\n", null, null)]
+    public void RejectsEffectsOnLoansOfEarlierResults(string declarations, string? at, string? holder)
     {
         var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
@@ -28,7 +29,7 @@ public class EffectBoundCallerTest
         {
             Assert.Equal(nameof(DiagnosticCode.CallEffectConflict_Kd), error.Code);
             Assert.Equal(at, error.Text);
-            Assert.Equal("take may affect a Loan that first keeps".Replace("first", declarations.Contains("pair", StringComparison.Ordinal) ? "pair" : "first", StringComparison.Ordinal), error.Label);
+            Assert.Equal($"take may affect a Loan that {holder} keeps", error.Label);
             Assert.Contains("no bound excludes it", error.Note);
             Assert.Contains("preserves results", error.Advice);
         }
