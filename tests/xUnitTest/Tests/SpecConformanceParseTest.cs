@@ -136,7 +136,7 @@ public class SpecConformanceParseTest
 
     [Theory]
     [InlineData("\\u(D83D)\\u(DE00)", "InvalidUnicodeScalar_Kd", 8)]
-    [InlineData("\\q\\q", "UnsupportedEscape_Kd", 2)]
+    [InlineData("\\q\\q", "InvalidEscape_Kd", 2)]
     public void CharAndStringLiteralsValidateEveryEscapeIndependently(string content, string code, int length)
     {
         foreach (var quote in new[] { '\'', '"' })

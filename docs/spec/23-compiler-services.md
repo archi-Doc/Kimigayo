@@ -137,8 +137,8 @@ Each diagnostic code has one severity and one **category**:
 | `Resource` | A finite compiler resource limit was reached. |
 | `Internal` | A compiler defect. |
 
-- A code accepts no free text. Its message, label and Reason come from its typed facts. A difference within one requirement is a Reason value; a different requirement or category is a different code, and wording alone never adds a code.
-- A form this specification permits but the implementation does not support is reported with an `Unsupported` code, never with a `Language` code.
+- A code accepts no free text. Its message, label and Reason come from its typed facts. A difference within one requirement is a Reason value; a different requirement or category is a different code, except for `Unsupported_Kd` below, and wording alone never adds a code.
+- A form this specification permits but the implementation does not support is reported with the single code `Unsupported_Kd` (Error, `Unsupported`), never with a `Language` code, such as a conservative conflict. Its record holds the code and the primary location only: no Reason, Note, Advice, related location or repair candidate. The first phase that cannot handle the form reports it once, and the parts that depend on it produce no records.
 - Established facts are stated in the Reason; suggested intent is a repair candidate with its conditions (§23.3.6.9), or Advice, which states its conditions in prose. A `Proof` failure is never described as a false condition, and no edit or guarantee is inferred from Note or Advice prose.
 
 #### 23.3.6.2. Records
@@ -157,7 +157,7 @@ A **diagnostic record** holds only the fields that have a basis:
 | Omissions | The parts that limits summarized or omitted, with counts when known. |
 | Display data | Lines and columns, a bounded source excerpt and the alternative text of related locations. Never used for semantic decisions. |
 
-A record whose primary location lies in [excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) has one related location with the role `excludedBy`, at the innermost excluding directive (the Condition of an `#if`, or the header of a `#case` arm); it is not a Reason fact, so a record keeps its code, primary location and Reason in every Compilation. A record holds no compiler object, analysis state or deferred computation. An essential fact is never placed only in an omissible supplement; differences between instantiations or conditions are explained with the parameter, use or Type argument that distinguishes them. The recorded inputs, configuration and reporting unit belong to the result and are not copied into records.
+A record whose primary location lies in [excluded syntax](19-compile-time-directives.md#195-diagnostics-and-excluded-syntax) has one related location with the role `excludedBy`, at the innermost excluding directive (the Condition of an `#if`, or the header of a `#case` arm); it is not a Reason fact, so a record keeps its code, primary location and Reason in every Compilation. A record holds no compiler object, analysis state or deferred computation. An essential fact is never placed only in an omissible supplement; differences between instantiations or conditions are explained with the parameter, use or Type argument that distinguishes them, except in an `Unsupported_Kd` record, which names none. The recorded inputs, configuration and reporting unit belong to the result and are not copied into records.
 
 #### 23.3.6.3. Locations and the source table
 
@@ -175,7 +175,7 @@ Lines, columns and excerpts are computed from the same immutable source when the
 
 A **problem** is one failed requirement of one subject in one context, with one code. A context, such as an instantiation, belongs to a problem only when the requirement's outcome or facts depend on it. A [Semantics case](08-generics-constraints-and-contracts.md#810-generic-body-checking-and-deferred-obligations) under which a problem was found is a Reason fact of the problem, not a context: one problem found under several cases is one record whose `case` fact names them all, and a problem that holds in every case shows no case.
 
-- Each problem is reported at most once. Repeated reports merge; two problems at the same position are both reported. A problem spanning several subjects is normalized before it is reported: for a duplicate declaration, each later declaration is a subject with the first one as a related location.
+- Each problem is reported at most once. Repeated reports merge; two problems at the same position are both reported, except that the unsupported forms at one location are one `Unsupported_Kd` problem, never divided by instantiation, Semantics case or requirement. A problem spanning several subjects is normalized before it is reported: for a duplicate declaration, each later declaration is a subject with the first one as a related location.
 - A check that cannot decide its requirement because another requirement failed names that **prerequisite** explicitly. It is a **derived** problem, reported as `PrerequisiteUnavailable_Kd` (Error, `Proof`); its Reason names the requirement and the missing condition.
 - A derived problem is suppressed only when every prerequisite leads, without an unresolved or cyclic link, to an Error of a directly established problem published in the same result. Otherwise it is published, and it never suppresses another record. A prerequisite without an Error, with only warnings or outside the result is unresolved.
 - A prerequisite identifies a check independently of its diagnostic codes and refers to every Error of that check. One directly established Error does not explain another unresolved or cyclic Error at the same check.

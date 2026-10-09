@@ -241,7 +241,7 @@ public sealed partial class Binding
                 this.partPrerequisites[use] = path.Use;
             }
 
-            return this.FailExplained(ref this.pendingExclusiveLimits, use, BindingFailure.Unsupported, path.PendingExclusive!, unresolved);
+            return this.Fail(use, BindingFailure.Unsupported, unresolved);
         }
 
         return this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnprovenConstraint, fact, unresolved);

@@ -20,7 +20,7 @@ public enum DiagnosticCode
     InvalidAssignment_Kd,
     InaccessibleBinding_Kd,
     InvalidCaptureBinding_Kd,
-    UnsupportedBinding_Kd,
+    Unsupported_Kd,
     InvalidOriginBinding_Kd,
     MissingOriginBinding_Kd,
     InvalidTypeFormation_Kd,
@@ -108,7 +108,7 @@ public enum DiagnosticCode
     ParameterNameMarker_Kd,
     DuplicateExternalParameterName_Kd,
     EmptyNamedParameterSection_Kd,
-    UnsupportedEscape_Kd,
+    InvalidEscape_Kd,
 
     MissingReturnType_Kd,
 
@@ -130,8 +130,6 @@ public enum DiagnosticCode
     UninitializedPlace_Kd,
     MovedPlace_Kd,
     ReassignedLet_Kd,
-    UnsupportedOwnership_Kd,
-    UnsupportedIntegerOperation_Kd,
     DefaultArgumentMove_Kd,
     DefaultArgumentAccess_Kd,
     DefaultArgumentBorrow_Kd,
@@ -161,7 +159,6 @@ public enum DiagnosticCode
     OuterCloserInBody_Kd,
 
     GenerationFailed_Kd,
-    UnsupportedEmission_Kd,
     GenerationResourceLimit_Kd,
     OwnershipStorageLimit_Kd,
     OwnershipCaseLimit_Kd,
@@ -182,7 +179,7 @@ public enum DiagnosticCode
     ConflictingLayout_Kd,
     InvalidLibraryImport_Kd,
     MissingNativeRequirement_Kd,
-    UnsupportedImportSignature_Kd,
+    InvalidImportSignature_Kd,
     ConflictingImportSignature_Kd,
     ConflictingRuntimeSymbol_Kd,
     ConflictingImportSupply_Kd,

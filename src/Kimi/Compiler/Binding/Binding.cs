@@ -600,7 +600,15 @@ public sealed partial class Binding
     private void ReportIssue(BindingIssue issue)
     {
         var requirement = DiagnosticRequirement.Binding(issue.Failure);
-        if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
+        if (issue.Failure == BindingFailure.Unsupported)
+        {
+            // SPEC 23.3.6.1: a form outside the implemented subset is located only: at the part its check recorded, a function at its
+            // signature.
+            var span = this.unsupportedSpans?.TryGetValue(issue.Node, out var part) == true ? part
+                : issue.Node is FunctionKoto { SignatureSpan.Length: > 0 } function ? function.SignatureSpan : (SourceSpan?)null;
+            issue.Node.Report(requirement, issue.Code, span: span);
+        }
+        else if (issue.Failure == BindingFailure.ArithmeticConformance && this.arithmeticConformanceFailures?.TryGetValue(issue.Node, out var arithmetic) == true)
         {
             issue.Node.Report(requirement, issue.Code, DiagnosticTypeName(arithmetic.Type), arithmetic.Contract.Name, evidence: [arithmetic.Condition], related: [("contract", arithmetic.Contract.Declaration, "arithmetic Contract declaration")]);
         }
@@ -853,13 +861,13 @@ public sealed partial class Binding
         {
             this.ReportVirtualEffectViolation(effectImplementation, requirement);
         }
-        else if (issue.Code is DiagnosticCode.InvalidVirtualDeclaration_Kd or DiagnosticCode.UnsupportedBinding_Kd && issue.Node is FunctionKoto virtualFunction && (virtualFunction.IsVirtual || virtualFunction.IsOverride))
+        else if (issue.Code == DiagnosticCode.InvalidVirtualDeclaration_Kd && issue.Node is FunctionKoto virtualFunction)
         {
-            this.ReportVirtualDeclaration(virtualFunction, requirement, issue.Code);
+            virtualFunction.Report(requirement, issue.Code, span: virtualFunction.DispatchModifierSpan, evidence: [this.virtualDeclarationFailures![virtualFunction]], related: [("declaration", virtualFunction, "the virtual or override declaration")]);
         }
-        else if (issue.Node is BaseReferenceKoto baseReference && issue.Code is DiagnosticCode.InvalidBaseCall_Kd or DiagnosticCode.UnsupportedBinding_Kd)
+        else if (issue.Code == DiagnosticCode.InvalidBaseCall_Kd && issue.Node is BaseReferenceKoto baseReference)
         {
-            this.ReportBaseCall(baseReference, requirement, issue.Code);
+            baseReference.Report(requirement, issue.Code, evidence: [this.baseCallFailures![baseReference]]);
         }
         else if (issue.Code == DiagnosticCode.ProtectedPlacement_Kd)
         {
@@ -943,19 +951,6 @@ public sealed partial class Binding
         {
             ReportArity(issue.Node, arity, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.originQualifierLimits?.TryGetValue(issue.Node, out var qualifierLimit) == true)
-        {
-            this.ReportOriginQualifier(issue.Node, qualifierLimit, requirement, issue.Code);
-        }
-        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.staticStorageLimits?.TryGetValue(issue.Node, out var staticType) == true)
-        {
-            issue.Node.Report(requirement, issue.Code, evidence: ["static storage with retained borrows is not implemented"], note: $"The stored Type {DiagnosticTypeName(staticType)} satisfies Owned. Static storage permits shared borrows with static Origins, but initialization and retained-borrow tracking for this storage are not yet implemented (SPEC 11.3.2, 15.4.2)");
-        }
-        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.pendingExclusiveLimits?.TryGetValue(issue.Node, out var pending) == true)
-        {
-            // SPEC 12.4.4.1: the wait is neither a proof nor a refutation of the conformance.
-            issue.Node.Report(requirement, issue.Code, evidence: [$"the exclusive receiver of {pending.Name}, reached through a base, waits for its preservation proof"], related: [("declaration", pending.Declaration, "exclusive implementation")], note: "An exclusive implementation reached through a base must preserve the conforming Type's receiver. That proof is not yet implemented, so the conformance is neither proven nor refuted (SPEC 12.4.4.1)");
-        }
         else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.invalidStaticOriginSlots?.TryGetValue(issue.Node, out var invalidSlot) == true)
         {
             issue.Node.Report(requirement, issue.Code, evidence: [$"static cannot supply uniq for Origin slot {invalidSlot.Name}"], note: $"Origin slot {invalidSlot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", invalidSlot.Origin.Binder!, invalidSlot.Span, "requires uniq")]);
@@ -1001,11 +996,6 @@ public sealed partial class Binding
             var subject = DiagnosticTypeName(erasure.Source);
             var viewTarget = DiagnosticTypeName(erasure.Target);
             issue.Node.Report(requirement, issue.Code, note: $"Erasing {subject} to the {viewTarget} object View requires {subject} is Owned", evidence: issue.Code == DiagnosticCode.UnprovenConstraint_Kd ? [subject, "Owned"] : null);
-        }
-        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.payloadCallees?.TryGetValue(issue.Node, out var payloadLimit) == true)
-        {
-            // SPEC 7.3, 13.5.5.1: an object callee is acquired through its complete payload, located at the callee.
-            issue.Node.Report(requirement, issue.Code, evidence: [payloadLimit], at: ((InvocationKoto)issue.Node).Method, note: "A direct call through an object handle or view acquires its complete payload, as p@follow@ref or p@follow@uniq would (SPEC 7.3, 13.5.5.1); this acquisition is not yet implemented here");
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.ownedConversions?.TryGetValue(issue.Node, out var owned) == true)
         {
@@ -1131,7 +1121,7 @@ public sealed partial class Binding
                     BindingFailure.ConflictingLayout => DiagnosticCode.ConflictingLayout_Kd,
                     BindingFailure.InvalidLibraryImport => DiagnosticCode.InvalidLibraryImport_Kd,
                     BindingFailure.MissingNativeRequirement => DiagnosticCode.MissingNativeRequirement_Kd,
-                    BindingFailure.UnsupportedImportSignature => DiagnosticCode.UnsupportedImportSignature_Kd,
+                    BindingFailure.InvalidImportSignature => DiagnosticCode.InvalidImportSignature_Kd,
                     BindingFailure.ConflictingImportSignature => DiagnosticCode.ConflictingImportSignature_Kd,
                     BindingFailure.ConflictingRuntimeSymbol => DiagnosticCode.ConflictingRuntimeSymbol_Kd,
                     BindingFailure.ConflictingImportSupply => DiagnosticCode.ConflictingImportSupply_Kd,
@@ -1212,7 +1202,7 @@ public sealed partial class Binding
                     BindingFailure.UnprovenOverrideCondition => DiagnosticCode.UnprovenOverrideCondition_Kd,
                     BindingFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
                     BindingFailure.BaseCall => DiagnosticCode.InvalidBaseCall_Kd,
-                    _ => DiagnosticCode.UnsupportedBinding_Kd,
+                    _ => DiagnosticCode.Unsupported_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))
                 {

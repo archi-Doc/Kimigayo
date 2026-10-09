@@ -77,7 +77,7 @@ public class ReferenceLayerAdaptationTest
         var c = MinimalEmissionTest.Analyze("func set(m: ref/(uniq/Dictionary<i32, i32> during b)) => m[1] = 42");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.SharedPathAccess_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd);
         Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
@@ -87,7 +87,7 @@ public class ReferenceLayerAdaptationTest
     {
         // STATUS boundary: indexing through several reference layers stops at Binding with one diagnostic.
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd);
         Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 }

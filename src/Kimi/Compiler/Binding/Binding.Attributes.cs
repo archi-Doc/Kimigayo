@@ -127,9 +127,9 @@ public sealed partial class Binding
                 }
             }
 
-            if (!this.TryGetImportAbi(function, ordinal++, out var signature))
+            if (this.ImportAbi(function, ordinal++, out var signature) is var failure and not BindingFailure.None)
             {
-                this.Fail(attribute, BindingFailure.UnsupportedImportSignature);
+                this.Fail(attribute, failure);
             }
             else if (signature is not null)
             {
@@ -244,8 +244,9 @@ public sealed partial class Binding
     // SPEC 22.3.2: the initial Windows C ABI accepts fixed-width integers, f32/f64 and raw
     // pointers, with Unit only as a result. The signature is one physical code per result and
     // parameter (i8/u8 share i8, every raw/T is ptr); it is null when a Type failed to bind,
-    // since that Type already has its own diagnostic.
-    private bool TryGetImportAbi(FunctionKoto function, int ordinal, out string? signature)
+    // since that Type already has its own diagnostic. A nonnull Option of a borrow is permitted
+    // but its representation is not laid out, so it is unsupported.
+    private BindingFailure ImportAbi(FunctionKoto function, int ordinal, out string? signature)
     {
         signature = null;
         if (ordinal == this.importSignatures.Count)
@@ -265,9 +266,9 @@ public sealed partial class Binding
         {
             codes[0] = 'v';
         }
-        else if ((codes[0] = this.PhysicalCode(result)) == '\0')
+        else if ((codes[0] = this.PhysicalCode(result)) is '\0' or '?')
         {
-            return false;
+            return codes[0] == '?' ? BindingFailure.Unsupported : BindingFailure.InvalidImportSignature;
         }
 
         for (var p = 1; p < count; p++)
@@ -276,9 +277,9 @@ public sealed partial class Binding
             {
                 complete = false;
             }
-            else if ((codes[p] = this.PhysicalCode(type)) == '\0')
+            else if ((codes[p] = this.PhysicalCode(type)) is '\0' or '?')
             {
-                return false;
+                return codes[p] == '?' ? BindingFailure.Unsupported : BindingFailure.InvalidImportSignature;
             }
         }
 
@@ -289,13 +290,14 @@ public sealed partial class Binding
         }
 
         this.importSignatures[ordinal] = signature;
-        return true;
+        return BindingFailure.None;
     }
 
-    // SPEC 22.3.2: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width.
+    // SPEC 22.3.2: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width. A nonnull
+    // Option of such a borrow is '?', unsupported.
     private char PhysicalCode(BoundType type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ||
-            (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && this.CExchangeable(referent, 0)) ? 'p' :
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } || this.IsImportBorrow(type) ? 'p' :
+            ReferenceEquals(type.Symbol, this.Library.Option) && type.Components is [var inner] && this.IsImportBorrow(inner) ? '?' :
             type.Kind != BoundTypeKind.Primitive ? '\0' :
             type.Underlying.Name switch
             {
@@ -307,6 +309,9 @@ public sealed partial class Binding
                 "f64" => 'd',
                 _ => '\0',
             };
+
+    private bool IsImportBorrow(BoundType type)
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && this.CExchangeable(referent, 0);
 
     // IMPL 21.1.6: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
     // eligible referents, positive-length fixed arrays of eligible elements and owned C-layout structs with eligible Fields.

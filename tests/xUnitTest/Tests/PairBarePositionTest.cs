@@ -29,9 +29,7 @@ public sealed class PairBarePositionTest
     {
         var source = "func f<s/T>(value: s/T, other: s/T) -> ()\n    s is owner or uniq\n    T is Copy\n    var arr: [2 of s/T] = [value@move, other@move]\n    let e = arr[0]\n    _ = e@follow\npublic func main() -> ()\n    var n: i32 = 1\n    var m: i32 = 2\n    f(n, m)\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics, static x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedOwnership_Kd), "arr[0]"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
-        var fact = Assert.Single(error.Reason!);
-        Assert.Equal(("case", "s = uniq"), (fact.Name, fact.Value));
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "arr[0]", null), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length), error.Reason));
     }
 
     // SPEC 13.5.5.2: an exclusive short adaptation borrows the written slot, which must be writable.

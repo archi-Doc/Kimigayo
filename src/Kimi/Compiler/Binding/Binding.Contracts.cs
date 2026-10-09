@@ -821,7 +821,7 @@ public sealed partial class Binding
             {
                 if (proof == ConstraintProof.Unknown && conformance.PendingExclusiveOnly && mode == BindingMode.Final)
                 {
-                    this.FailExplained(ref this.pendingExclusiveLimits, conformance.Use, BindingFailure.Unsupported, conformance.PendingExclusive!); // SPEC 12.4.4.1
+                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.4.4.1
                     continue;
                 }
 

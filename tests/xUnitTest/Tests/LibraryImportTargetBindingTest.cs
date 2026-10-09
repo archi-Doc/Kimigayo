@@ -147,32 +147,33 @@ public class LibraryImportTargetBindingTest
     }
 
     [Theory]
-    [InlineData("(a: i8, b: u8, c: i16, d: u16, e: i32, f: u32, g: i64, h: u64, i: f32, j: f64, k: raw/i32)", "()", false)]
-    [InlineData("()", "u8", false)]
-    [InlineData("(value: raw/u8)", "raw/u8", false)]
-    [InlineData("()", "f64", false)]
-    [InlineData("(value: bool)", "()", true)]
-    [InlineData("(value: char)", "()", true)]
-    [InlineData("(value: string)", "()", true)]
-    [InlineData("(value: isize)", "()", true)]
-    [InlineData("(value: usize)", "()", true)]
-    [InlineData("(value: i128)", "()", true)]
-    [InlineData("(value: (i32, i32))", "()", true)]
-    [InlineData("(value: ())", "i32", true)]
-    [InlineData("()", "bool", true)]
-    [InlineData("()", "u128", true)]
-    [InlineData("(value: uniq/i64)", "i32", false)]
-    [InlineData("(value: ref/[4 of u8], next: uniq/raw/u8)", "()", false)]
-    [InlineData("(value: ref/string)", "()", true)]
-    [InlineData("(value: uniq/(i32, i32))", "()", true)]
-    [InlineData("(value: ref/bool)", "()", true)]
-    [InlineData("(value: Option<ref/i32 during a>)", "()", true)]
-    public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, bool unsupported)
+    [InlineData("(a: i8, b: u8, c: i16, d: u16, e: i32, f: u32, g: i64, h: u64, i: f32, j: f64, k: raw/i32)", "()", null)]
+    [InlineData("()", "u8", null)]
+    [InlineData("(value: raw/u8)", "raw/u8", null)]
+    [InlineData("()", "f64", null)]
+    [InlineData("(value: bool)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: char)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: string)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: isize)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: usize)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: i128)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: (i32, i32))", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: ())", "i32", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("()", "bool", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("()", "u128", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: uniq/i64)", "i32", null)]
+    [InlineData("(value: ref/[4 of u8], next: uniq/raw/u8)", "()", null)]
+    [InlineData("(value: ref/string)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: uniq/(i32, i32))", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: ref/bool)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("(value: Option<ref/i32 during a>)", "()", DiagnosticCode.Unsupported_Kd)]
+    public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, DiagnosticCode? code)
     {
+        // SPEC 22.3.2 permits a nonnull Option of a borrow, whose representation is not laid out yet.
         var c = AnalyzeImport("group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> " + result, "codec");
-        Assert.Equal(unsupported, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsupportedImportSignature_Kd));
+        Assert.Equal(code, c.Binding.Issues.Select(x => (DiagnosticCode?)x.Code).FirstOrDefault(x => x is DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.Unsupported_Kd));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-        Assert.Equal(!unsupported, c.Binding.Result.IsComplete);
+        Assert.Equal(code is null, c.Binding.Result.IsComplete);
     }
 
     [Theory]
@@ -186,7 +187,7 @@ public class LibraryImportTargetBindingTest
     {
         var c = AnalyzeImport(first + "\n" + second, "codec");
         Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingImportSignature_Kd));
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
     }
 
     [Theory]
@@ -209,7 +210,7 @@ public class LibraryImportTargetBindingTest
             "group Native\n    #LibraryImport(\"" + library + "\", \"" + symbol + "\")\n    public unsafe func imported" + parameters + " -> " + result,
             requirement);
         Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingRuntimeSymbol_Kd));
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.InvalidImportSignature_Kd or
             DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.Equal(!conflict, c.Binding.Result.IsComplete);
     }
@@ -233,7 +234,7 @@ public class LibraryImportTargetBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         Assert.Equal(conflict, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.ConflictingImportSupply_Kd));
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.UnsupportedImportSignature_Kd or
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.InvalidImportSignature_Kd or
             DiagnosticCode.ConflictingImportSignature_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
     }
 

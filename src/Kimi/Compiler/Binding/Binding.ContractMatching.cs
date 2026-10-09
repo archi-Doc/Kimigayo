@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundConformancePath Conformance, BoundRequirement Requirement), BindingScope> witnessScopes = new();
-    private Dictionary<Koto, BindingSymbol>? pendingExclusiveLimits;
 
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {

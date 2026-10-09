@@ -13,7 +13,7 @@ namespace XunitTest;
 // SPEC 15.6.1, 10.1, 10.3, 10.4: candidate applicability, expected-result filtering and ranking use only the structural part of each
 // fit, so the Origin relations of a call never change its selection. The selected candidate's relations are judged after selection at
 // their own sources: each argument's fit at the argument, a substituted clause at the first input that names its longer Origin, and
-// the result at its destination. A chain between body Origins stays the located UnsupportedOwnership_Kd limit at the argument.
+// the result at its destination. A chain between body Origins stays the located Unsupported_Kd limit at the argument.
 public class CallOriginRelationTest(ITestOutputHelper output)
 {
     private const string Main = "public func main() => ()\n";

@@ -55,7 +55,7 @@ Unsupported code is a design change that needs a SPEC basis and owner approval.
 | Stage | State | Scope |
 | --- | --- | --- |
 | R0 | Active | Baselines, size and rule ratchets, disposition ledger, narrow-implementation and Advice/Note inventories, freeze |
-| R1 | Pending | Delete-first: one Unsupported code, Advice/Note reduction, library validation into tests, dead code, control-flow type flow, OCC-X waiting machinery, independent narrow implementations |
+| R1 | Active | Delete-first: one Unsupported code, Advice/Note reduction, library validation into tests, dead code, control-flow type flow, OCC-X waiting machinery, independent narrow implementations |
 | R2a | Pending | `SyntaxId`, `HirTables` behind forwarding properties, `AdtDef`, unified CallPlan type, pure fits, child-walk and operator-class consolidation, Hover move |
 | R2b | Pending | `TyCtxt`, complete HIR columns and Plans, default declarations, read-only declaration-table views, intrinsic table |
 | R3 | Pending | MIR model, descriptor table, validator, dump and builder (shadow) |

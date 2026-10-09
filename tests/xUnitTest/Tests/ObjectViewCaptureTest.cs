@@ -44,7 +44,7 @@ public class ObjectViewCaptureTest(ITestOutputHelper output)
     {
         var result = DiagnosticCorpus.Check(Cell + body);
         Assert.Contains(result.Diagnostics, x => x.Code == code);
-        Assert.DoesNotContain(result.Diagnostics, x => x.Code is "UnsupportedBinding_Kd" or "UnsupportedOwnership_Kd");
+        Assert.DoesNotContain(result.Diagnostics, x => x.Code is "Unsupported_Kd" or "Unsupported_Kd");
     }
 
     [Fact]

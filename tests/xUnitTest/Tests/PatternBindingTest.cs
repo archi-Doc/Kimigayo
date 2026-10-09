@@ -180,7 +180,6 @@ public class PatternBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var result = c.Ownership.Analyze();
         Assert.True(result.IsVerified);
-        Assert.Equal(0, result.UnsupportedCount);
     }
 
     [Theory]

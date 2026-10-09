@@ -67,7 +67,7 @@ public sealed class BlockClosureInferenceTest
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.TypeMismatch_Kd));
-        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsupportedBinding_Kd));
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
     }
 
     [Fact]

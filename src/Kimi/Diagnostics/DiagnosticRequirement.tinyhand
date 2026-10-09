@@ -544,8 +544,8 @@
   + Name="Binding.MissingNativeRequirement"
     Description="the native requirement is configured"
 
-  + Name="Binding.UnsupportedImportSignature"
-    Description="the imported signature is supported"
+  + Name="Binding.InvalidImportSignature"
+    Description="the imported signature is valid"
 
   + Name="Binding.ConflictingImportSignature"
     Description="the imports of one symbol agree on their signature"

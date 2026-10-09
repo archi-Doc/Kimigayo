@@ -187,7 +187,7 @@ public static class StringLiteralHelper
         scalar = 0;
         if (span.IsEmpty)
         {
-            koto?.AddDiagnostic(new(start, 1), DiagnosticCode.UnsupportedEscape_Kd, '\\');
+            koto?.AddDiagnostic(new(start, 1), DiagnosticCode.InvalidEscape_Kd, '\\');
             return false;
         }
 
@@ -212,7 +212,7 @@ public static class StringLiteralHelper
         };
         if (value < 0)
         {
-            koto?.AddDiagnostic(new(start, 2), DiagnosticCode.UnsupportedEscape_Kd, $"\\{escape}");
+            koto?.AddDiagnostic(new(start, 2), DiagnosticCode.InvalidEscape_Kd, $"\\{escape}");
             return false;
         }
 

@@ -82,7 +82,7 @@ public class ReferenceDiagnosticTest
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
+        Assert.Equal(nameof(DiagnosticCode.Unsupported_Kd), error.Code);
         Assert.Equal(text, error.Text);
     }
 
@@ -107,43 +107,39 @@ public class ReferenceDiagnosticTest
 
     // SPEC 15.4.4, 9.6.1.1, 23.3.6.1: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no
     // clause relates, is inferred from the call. Binding infers it only in a local initializer, for a called function that is neither
-    // generic nor a member of a generic Type, from an argument lent at a parameter's own borrow Origin, so any other such call is one located
-    // UnsupportedBinding_Kd at the qualifier. These were NoApplicableOverload_Kd, MissingOriginBinding_Kd or UnprovenConstraint_Kd (N27a).
-    // A Slice qualifier, whose slot is the Type's own Origin, was NoApplicableOverload_Kd outside an initializer and passed the check
-    // inside one, as did a generic Type or member there, and then failed generation (GenerationFailed_Kd). The Advice keeps the written
-    // Type arguments, which it dropped, and names a local initializer when that initializer would infer the slot. A set-named qualifier
-    // outside a declaration moves with its set into the Advice's declaration (it wrote a second set, `(Holder{w}{q})`, a syntax error),
-    // and a parenthesized callee is a call qualifier too (it was MissingOriginBinding_Kd without a Note).
+    // generic nor a member of a generic Type, from an argument lent at a parameter's own borrow Origin, so any other such call is one
+    // location-only Unsupported_Kd at the qualifier. These were NoApplicableOverload_Kd, MissingOriginBinding_Kd or UnprovenConstraint_Kd
+    // (N27a). A Slice qualifier, whose slot is the Type's own Origin, was NoApplicableOverload_Kd outside an initializer and passed the
+    // check inside one, as did a generic Type or member there, and then failed generation (GenerationFailed_Kd). A parenthesized callee is
+    // a call qualifier too (it was MissingOriginBinding_Kd).
     [Theory]
-    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let direct = Holder.peek(h)\n    return direct\nlet n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 3 else => $abort(\"run\")", "Holder", "Holder's Origin slot a is omitted on this qualifier, so the call to peek infers it (SPEC 15.4.4)", "Call peek through a receiver value, as in value.peek(), or name the slot with a binding set in a local declaration")]
-    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet e = Holder.peek(h@ref)\nrequire e == 3 else => $abort(\"e\")", "Holder", "Holder's Origin slot a is omitted on this qualifier", "as in let v = (Holder{q}).peek(value) followed by origin q.a == <its Origin>")]
-    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nrequire Holder.peek(h@ref) == 3 else => $abort(\"e\")", "Holder", "Holder's Origin slot a is omitted on this qualifier", "Call peek through a receiver value")]
-    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32 => Holder.peek(h)\nlet n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 3 else => $abort(\"run\")", "Holder", "so the call to peek infers it (SPEC 15.4.4); Binding infers it only in a local initializer, from arguments lent at a parameter's own borrow Origin, when neither the called function nor its Type is generic", "Call peek through a receiver value")]
-    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet e = (Holder{w}).peek(h@ref)\nrequire e == 3 else => $abort(\"e\")", "(Holder{w})", "The binding set w names Holder's Origin slot a, but no origin clause relates w.a", "or relate w.a in an origin clause under this declaration, as in origin w.a == <its Origin>")]
-    [InlineData(Helpers + "let z = Holder.zero()\nrequire z == 0 else => $abort(\"z\")", "Holder", "so the call to zero infers it", "Name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (Holder{q}).zero() followed by origin q.a == <its Origin>")]
-    [InlineData(Helpers + "let n = 3\nrequire Holder.twice(n@ref) == 6 else => $abort(\"t\")", "Holder", "so the call to twice infers it", "Bind the call in a local declaration, whose initializer infers the slot, as in let v = Holder.twice(...), or name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (Holder{q}).twice(...) followed by origin q.a == <its Origin>")]
-    [InlineData(Helpers + "let n = 3\nlet v = 1\nlet q = 2\nrequire Holder.twice(n@ref) == 6 else => $abort(\"t\")", "Holder", "so the call to twice infers it", "as in let v2 = Holder.twice(...), or name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v2 = (Holder{q2}).twice(...) followed by origin q2.a == <its Origin>")]
-    [InlineData(Helpers + "func run(n: ref/i32) -> i32\n    let f = func [n] () => Holder.twice(n)\n    return 6\nlet n = 3\nrequire run(n@ref) == 6 else => $abort(\"t\")", "Holder", "so the call to twice infers it", "Bind the call in a local declaration, whose initializer infers the slot, as in let v = Holder.twice(...)")]
-    [InlineData(Viewed + "require Slice<i32>.contains(view, 3@ref) else => $abort(\"d\")", "Slice<i32>", "Slice's Origin slot source is omitted on this qualifier, so the call to contains infers it (SPEC 15.4.4)", "Call contains through a receiver value, as in value.contains(...), or name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (Slice<i32>{q}).contains(value, ...) followed by origin q.source == <its Origin>")]
-    [InlineData(Viewed + "let c = Slice<i32>.contains(view, 2@ref)\nrequire c else => $abort(\"c\")", "Slice<i32>", "Slice's Origin slot source is omitted on this qualifier, so the call to contains infers it", "as in let v = (Slice<i32>{q}).contains(value, ...) followed by origin q.source == <its Origin>")]
-    [InlineData("func count(view: Slice<i32>) -> i32\n    var total = 0\n    for item in Slice<i32>.iterate(view@ref)\n        total += item@follow\n    return total\nlet s = [1, 2, 3]\nrequire count(s[0..]) == 6 else => $abort(\"d\")", "Slice<i32>", "so the call to iterate infers it", "Call iterate through a receiver value, as in value.iterate(), or name the slot")]
-    [InlineData(View + "require View<i32>.zero() == 0 else => $abort(\"z\")", "View<i32>", "View's Origin slot source is omitted on this qualifier, so the call to zero infers it", "Name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (View<i32>{q}).zero() followed by origin q.source == <its Origin>")]
-    [InlineData(View + "let n = 3\nlet t = View<i32>.twice(n@ref)\nrequire t == 6 else => $abort(\"t\")", "View<i32>", "when neither the called function nor its Type is generic", "Name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (View<i32>{q}).twice(...) followed by origin q.source == <its Origin>")]
-    [InlineData(View + "let n = 3\nlet u = (View<i32>{p}).twice(n@ref)\nrequire u == 6 else => $abort(\"t\")", "(View<i32>{p})", "The binding set p names View's Origin slot source, but no origin clause relates p.source", "Relate p.source in an origin clause under this declaration, as in origin p.source == <its Origin>")]
-    [InlineData(Pin + "let n = 3\nlet t = Pin.first(n@ref)\nrequire t == 5 else => $abort(\"t\")", "Pin", "Pin's Origin slot a is omitted on this qualifier, so the call to first infers it", "as in let v = (Pin{q}).first(...) followed by origin q.a == <its Origin>")]
-    [InlineData(Outer + "let n = 3\nlet t = Outer<i32>.Inner.twice(n@ref)\nrequire t == 6 else => $abort(\"t\")", "Outer<i32>.Inner", "Inner's Origin slot a is omitted on this qualifier", "as in let v = (Outer<i32>.Inner{q}).twice(...) followed by origin q.a == <its Origin>")]
-    [InlineData(Helpers + "let n = 3\nlet h = Holder.init(n@ref)\nrequire (Holder{w}).peek(h@ref) == 3 else => $abort(\"e\")", "(Holder{w})", "The binding set w names Holder's Origin slot a, but no origin clause relates w.a", "Call peek through a receiver value, as in value.peek(), or name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (Holder{w}).peek(value) followed by origin w.a == <its Origin>")]
-    [InlineData(Helpers + "let n = 3\nrequire (Holder{w2}).twice(n@ref) == 6 else => $abort(\"t\")", "(Holder{w2})", "The binding set w2 names Holder's Origin slot a, but no origin clause relates w2.a", "Name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (Holder{w2}).twice(...) followed by origin w2.a == <its Origin>")]
-    [InlineData(Helpers + "let n = 3\nrequire (Holder.twice)(n@ref) == 6 else => $abort(\"t\")", "Holder", "Holder's Origin slot a is omitted on this qualifier, so the call to twice infers it", "Bind the call in a local declaration, whose initializer infers the slot, as in let v = Holder.twice(...)")]
-    [InlineData(Helpers + "func generic<T>(x: T, n: ref/i32) -> i32\n    return Holder.twice(n)\nlet n = 3\nrequire generic(true, n@ref) == 6 else => $abort(\"g\")", "Holder", "so the call to twice infers it", "Bind the call in a local declaration, whose initializer infers the slot, as in let v = Holder.twice(...)")]
-    public void AnOpenQualifierSlotIsOneLocatedLimitAtTheQualifier(string source, string text, string note, string advice)
+    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32\n    let direct = Holder.peek(h)\n    return direct\nlet n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 3 else => $abort(\"run\")", "Holder")]
+    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet e = Holder.peek(h@ref)\nrequire e == 3 else => $abort(\"e\")", "Holder")]
+    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nrequire Holder.peek(h@ref) == 3 else => $abort(\"e\")", "Holder")]
+    [InlineData(Holder + "func run(h: ref/Holder{x}) -> i32 => Holder.peek(h)\nlet n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 3 else => $abort(\"run\")", "Holder")]
+    [InlineData(Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet e = (Holder{w}).peek(h@ref)\nrequire e == 3 else => $abort(\"e\")", "(Holder{w})")]
+    [InlineData(Helpers + "let z = Holder.zero()\nrequire z == 0 else => $abort(\"z\")", "Holder")]
+    [InlineData(Helpers + "let n = 3\nrequire Holder.twice(n@ref) == 6 else => $abort(\"t\")", "Holder")]
+    [InlineData(Helpers + "let n = 3\nlet v = 1\nlet q = 2\nrequire Holder.twice(n@ref) == 6 else => $abort(\"t\")", "Holder")]
+    [InlineData(Helpers + "func run(n: ref/i32) -> i32\n    let f = func [n] () => Holder.twice(n)\n    return 6\nlet n = 3\nrequire run(n@ref) == 6 else => $abort(\"t\")", "Holder")]
+    [InlineData(Viewed + "require Slice<i32>.contains(view, 3@ref) else => $abort(\"d\")", "Slice<i32>")]
+    [InlineData(Viewed + "let c = Slice<i32>.contains(view, 2@ref)\nrequire c else => $abort(\"c\")", "Slice<i32>")]
+    [InlineData("func count(view: Slice<i32>) -> i32\n    var total = 0\n    for item in Slice<i32>.iterate(view@ref)\n        total += item@follow\n    return total\nlet s = [1, 2, 3]\nrequire count(s[0..]) == 6 else => $abort(\"d\")", "Slice<i32>")]
+    [InlineData(View + "require View<i32>.zero() == 0 else => $abort(\"z\")", "View<i32>")]
+    [InlineData(View + "let n = 3\nlet t = View<i32>.twice(n@ref)\nrequire t == 6 else => $abort(\"t\")", "View<i32>")]
+    [InlineData(View + "let n = 3\nlet u = (View<i32>{p}).twice(n@ref)\nrequire u == 6 else => $abort(\"t\")", "(View<i32>{p})")]
+    [InlineData(Pin + "let n = 3\nlet t = Pin.first(n@ref)\nrequire t == 5 else => $abort(\"t\")", "Pin")]
+    [InlineData(Outer + "let n = 3\nlet t = Outer<i32>.Inner.twice(n@ref)\nrequire t == 6 else => $abort(\"t\")", "Outer<i32>.Inner")]
+    [InlineData(Helpers + "let n = 3\nlet h = Holder.init(n@ref)\nrequire (Holder{w}).peek(h@ref) == 3 else => $abort(\"e\")", "(Holder{w})")]
+    [InlineData(Helpers + "let n = 3\nrequire (Holder{w2}).twice(n@ref) == 6 else => $abort(\"t\")", "(Holder{w2})")]
+    [InlineData(Helpers + "let n = 3\nrequire (Holder.twice)(n@ref) == 6 else => $abort(\"t\")", "Holder")]
+    [InlineData(Helpers + "func generic<T>(x: T, n: ref/i32) -> i32\n    return Holder.twice(n)\nlet n = 3\nrequire generic(true, n@ref) == 6 else => $abort(\"g\")", "Holder")]
+    public void AnOpenQualifierSlotIsOneLocatedLimitAtTheQualifier(string source, string text)
     {
         var output = DiagnosticCorpus.Check(source);
         var error = Assert.Single(output.Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
-        Assert.Equal(DiagnosticCategory.Unsupported, error.Category);
-        Assert.Contains(note, error.Note, StringComparison.Ordinal);
-        Assert.Contains(advice, error.Advice, StringComparison.Ordinal);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), text), (error.Code, error.Span is { } span ? source.Substring(span.Start, span.Length) : string.Empty));
+        Assert.Equal((DiagnosticCategory.Unsupported, null, null, null), (error.Category, error.Note, error.Advice, error.Related));
     }
 
     // The limit leaves independent problems of the call visible: an unresolved argument keeps its own record, a missing member is
@@ -154,7 +150,7 @@ public class ReferenceDiagnosticTest
         const string Source = Holder + "let n = 3\nlet h = Holder.init(n@ref)\nlet e = Holder.peek(missing)\nlet g = Holder.peeek(h@ref)\nlet k: bool = 5";
         var output = DiagnosticCorpus.Check(Source);
         Assert.Equal(
-            [(nameof(DiagnosticCode.UnsupportedBinding_Kd), "Holder"), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing"), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "Holder.peeek"), (nameof(DiagnosticCode.TypeMismatch_Kd), "5")],
+            [(nameof(DiagnosticCode.Unsupported_Kd), "Holder"), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing"), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "Holder.peeek"), (nameof(DiagnosticCode.TypeMismatch_Kd), "5")],
             output.Diagnostics.Select(x => (x.Code, x.Span is { } span ? Source.Substring(span.Start, span.Length) : string.Empty)).ToArray());
     }
 
@@ -168,16 +164,16 @@ public class ReferenceDiagnosticTest
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), "Holder"), (error.Code, error.Text));
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "Holder"), (error.Code, error.Text));
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         var record = Assert.Single(result.Diagnostics);
         Assert.Equal(DiagnosticCategory.Unsupported, record.Category);
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
-        Assert.Contains("Holder's Origin slot a is omitted on this qualifier", console.Text, StringComparison.Ordinal);
+        Assert.Contains("This form is outside the implemented subset", console.Text, StringComparison.Ordinal);
         var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
-        Assert.Contains("\"code\":\"UnsupportedBinding_Kd\"", json, StringComparison.Ordinal);
+        Assert.Contains("\"code\":\"Unsupported_Kd\"", json, StringComparison.Ordinal);
         Assert.Contains("\"category\":\"Unsupported\"", json, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var capability in new[] { false, true })
@@ -191,7 +187,7 @@ public class ReferenceDiagnosticTest
     // SPEC 15.3.1, 23.3.6.4: `{x}` on a qualifier introduces a new set name and never applies the visible set x, so each reuse is one
     // DuplicateBinding_Kd at the set with the first declaration related and Advice that writes a new set related on the declaration. The
     // call and the reference that rest on the failed qualifier report nothing more; they were NoApplicableOverload_Kd and
-    // UnsupportedBinding_Kd.
+    // Unsupported_Kd.
     [Fact]
     public void AReusedSetOnAQualifierIsOnlyTheDuplicate()
     {
@@ -245,35 +241,28 @@ public class ReferenceDiagnosticTest
         Assert.Empty(DiagnosticCorpus.Check(Head + "    public func make(value: ref/i32 during a) -> Holder{a2}\n        origin a2.a == a\n        return Holder.init(value)\n" + Tail).Diagnostics);
     }
 
-    // SPEC 15.3.3, 7.3: the Advice offers only a form its position can hold. An instance Field's initializer relates the
-    // slot on the Field's declaration; a parameter default and a base initializer, an anonymous function inside a default too, hold no
-    // local declaration and no supported clause over their sets, so they get no Advice. Each offered a local declaration, which neither
-    // a default nor a struct body can hold (written in a struct body, it declares a Field). An anonymous function in a Field initializer
-    // has a body, which holds the local declaration. A Field's initializer has no value at the slot, so a call whose parameters name
-    // it (lent at it, or a receiver of the Type) gets no Advice there: relating the set to static left NoApplicableOverload_Kd. A
-    // member whose parameters omit the slot keeps the Field form (AFieldQualifierWhoseParametersOmitTheSlotRuns).
+    // SPEC 15.3.3, 7.3: a Field initializer, a parameter default, a base initializer and an anonymous function in either keep the limit
+    // at the qualifier.
     [Theory]
-    [InlineData("struct S\n    public var v: i32 = Holder.zero()\n\n    public init() => self.v = 1\n", "Holder", "Name the slot with a binding set and relate it in an origin clause under this declaration, as in (Holder{q}).zero() followed by origin q.a == <its Origin>")]
-    [InlineData("struct S\n    public var v: i32 = (Holder{w}).zero()\n\n    public init() => self.v = 1\n", "(Holder{w})", "Relate w.a in an origin clause under this declaration, as in origin w.a == <its Origin>")]
-    [InlineData("struct S\n    public var v: i32 = Holder.twice(5@ref)\n\n    public init() => self.v = 1\n", "Holder", null)]
-    [InlineData("struct S\n    public var v: i32 = (Holder{w}).twice(5@ref)\n\n    public init() => self.v = 1\n", "(Holder{w})", null)]
-    [InlineData("struct S\n    public var v: i32 = Holder.peek(Holder.init(5@ref)@ref)\n\n    public init() => self.v = 1\n", "Holder", null)]
-    [InlineData(Tag + "struct S\n    public var v: i32 = Tag.add(4)\n\n    public init() => self.v = 1\n", "Tag", "Name the slot with a binding set and relate it in an origin clause under this declaration, as in (Tag{q}).add(...) followed by origin q.a == <its Origin>")]
-    [InlineData(Tag + "struct S\n    public var v: i32 = (Tag{w}).add(4)\n\n    public init() => self.v = 1\n", "(Tag{w})", "Relate w.a in an origin clause under this declaration, as in origin w.a == <its Origin>")]
-    [InlineData("struct S\n    public var g: () -> i32 = func () => Holder.zero()\n\n    public init() => ()\n", "Holder", "Name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let v = (Holder{q}).zero() followed by origin q.a == <its Origin>")]
-    [InlineData("func f(k: i32 = Holder.zero()) -> i32 => k\n", "Holder", null)]
-    [InlineData("func f(n: ref/i32, k: i32 = Holder.twice(n)) -> i32 => k\n", "Holder", null)]
-    [InlineData("func f(k: i32 = (Holder{q}).zero()) -> i32 => k\n", "(Holder{q})", null)]
-    [InlineData("func f(h: ref/Holder, k: i32 = Holder.peek(h)) -> i32 => k\n", "Holder", null)]
-    [InlineData("func f(g: () -> i32 = func () => Holder.zero()) -> i32 => g()\n", "Holder", null)]
-    [InlineData("public open struct Named\n    public let k: i32\n\n    protected init(k: i32)\n        self.k = k\n\npublic struct Entry : Named\n    public let number: i32\n\n    public init(number: i32) : base(Holder.zero())\n        self.number = number\n", "Holder", null)]
-    public void AnOpenQualifierSlotOutsideABodyGetsOnlyAdviceItsPositionHolds(string declarations, string text, string? advice)
+    [InlineData("struct S\n    public var v: i32 = Holder.zero()\n\n    public init() => self.v = 1\n", "Holder")]
+    [InlineData("struct S\n    public var v: i32 = (Holder{w}).zero()\n\n    public init() => self.v = 1\n", "(Holder{w})")]
+    [InlineData("struct S\n    public var v: i32 = Holder.twice(5@ref)\n\n    public init() => self.v = 1\n", "Holder")]
+    [InlineData("struct S\n    public var v: i32 = (Holder{w}).twice(5@ref)\n\n    public init() => self.v = 1\n", "(Holder{w})")]
+    [InlineData("struct S\n    public var v: i32 = Holder.peek(Holder.init(5@ref)@ref)\n\n    public init() => self.v = 1\n", "Holder")]
+    [InlineData(Tag + "struct S\n    public var v: i32 = Tag.add(4)\n\n    public init() => self.v = 1\n", "Tag")]
+    [InlineData(Tag + "struct S\n    public var v: i32 = (Tag{w}).add(4)\n\n    public init() => self.v = 1\n", "(Tag{w})")]
+    [InlineData("struct S\n    public var g: () -> i32 = func () => Holder.zero()\n\n    public init() => ()\n", "Holder")]
+    [InlineData("func f(k: i32 = Holder.zero()) -> i32 => k\n", "Holder")]
+    [InlineData("func f(n: ref/i32, k: i32 = Holder.twice(n)) -> i32 => k\n", "Holder")]
+    [InlineData("func f(k: i32 = (Holder{q}).zero()) -> i32 => k\n", "(Holder{q})")]
+    [InlineData("func f(h: ref/Holder, k: i32 = Holder.peek(h)) -> i32 => k\n", "Holder")]
+    [InlineData("func f(g: () -> i32 = func () => Holder.zero()) -> i32 => g()\n", "Holder")]
+    [InlineData("public open struct Named\n    public let k: i32\n\n    protected init(k: i32)\n        self.k = k\n\npublic struct Entry : Named\n    public let number: i32\n\n    public init(number: i32) : base(Holder.zero())\n        self.number = number\n", "Holder")]
+    public void AnOpenQualifierSlotOutsideABodyIsOneLocatedLimit(string declarations, string text)
     {
         var source = Helpers + declarations + "let n = 3\nrequire n == 3 else => $abort(\"n\")";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), source.IndexOf(text + ".", Helpers.Length, StringComparison.Ordinal), text.Length), (error.Code, error.Span!.Value.Start, error.Span!.Value.Length));
-        Assert.Contains("so the call to", error.Note, StringComparison.Ordinal);
-        Assert.Equal(advice, error.Advice);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), source.IndexOf(text + ".", Helpers.Length, StringComparison.Ordinal), text.Length), (error.Code, error.Span!.Value.Start, error.Span!.Value.Length));
     }
 
     [Fact]
@@ -440,19 +429,6 @@ public class ReferenceDiagnosticTest
             "let r = match e\n    .Has(let k) => k.peek()\n    .Empty => 0\nlet q = match f\n    .Has(let k) => k.peek()\n    .Empty => 0\n" +
             "require s.local() == 3 and s.lent(j@ref) == 3 and s.make().peek() == 3 and s.pair() == 4 and r == 3 and q == 3 and w.h.peek() == 3 else => $abort(\"forms\")";
         ScalarEmissionTest.EmitFixture("OriginSetRepeatForms", Source, string.Empty);
-    }
-
-    // SPEC 23.3.6.5: the Note keeps the implemented subset whole within the Note limit, and leaves it out rather than cutting it when
-    // the names leave no room; it was cut in the middle ("for a fu窶ｦcs neither generic").
-    [Theory]
-    [InlineData(View + "let n = 3\nrequire (View<i32>{w3}).twice(n@ref) == 6 else => $abort(\"t\")", "The binding set w3 names View's Origin slot source, but no origin clause relates w3.source, so the call to twice infers it (SPEC 15.4.4); Binding infers it only in a local initializer, from arguments lent at a parameter's own borrow Origin, when neither the called function nor its Type is generic")]
-    [InlineData("struct Container {source}\n    public func measure(value: ref/i32 during source) -> i32 => value@follow * 2\nlet n = 3\nrequire (Container{view}).measure(n@ref) == 6 else => $abort(\"m\")", "The binding set view names Container's Origin slot source, but no origin clause relates view.source, so the call to measure infers it (SPEC 15.4.4); Binding infers it only in a local initializer, from arguments lent at a parameter's own borrow Origin, when neither the called function nor its Type is generic")]
-    [InlineData("struct LongContainerNameForTheNote {longSlotNameHere}\n    public func measureSomethingLonger(value: ref/i32 during longSlotNameHere) -> i32 => value@follow * 2\nlet n = 3\nrequire (LongContainerNameForTheNote{longSetNameHere}).measureSomethingLonger(n@ref) == 6 else => $abort(\"m\")", "The binding set longSetNameHere names LongContainerNameForTheNote's Origin slot longSlotNameHere, but no origin clause relates longSetNameHere.longSlotNameHere, so the call to measureSomethingLonger infers it (SPEC 15.4.4)")]
-    public void AnOpenQualifierSlotNoteKeepsWholeSentences(string source, string note)
-    {
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.UnsupportedBinding_Kd), error.Code);
-        Assert.Equal(note, error.Note);
     }
 
     // The counterparts run: a set related by a clause, an omitted slot lent at a parameter's own borrow Origin in a local initializer,

@@ -60,7 +60,7 @@ public class OwnershipAnalysisTest
         var c = Parse(source);
         var result = c.Ownership.Analyze();
         Assert.False(result.IsVerified);
-        Assert.True(result.UnsupportedCount > 0, Describe(c));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
         Assert.All(c.Ownership.Bodies, x => Assert.False(x.IsVerified));
     }
 
@@ -70,7 +70,6 @@ public class OwnershipAnalysisTest
         var c = Parse("func f(x: string = \"x\") => ()\nf()");
         var result = c.Ownership.Analyze();
         Assert.True(result.IsVerified, Describe(c));
-        Assert.Equal(0, result.UnsupportedCount);
         Assert.All(c.Ownership.Bodies, static body => Assert.True(body.IsVerified));
     }
 

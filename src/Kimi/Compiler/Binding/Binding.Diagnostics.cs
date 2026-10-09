@@ -88,6 +88,9 @@ public sealed partial class Binding
     // SPEC 7.6.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
     private Dictionary<Koto, (CaptureKoto Capture, BoundType Type, BindingSymbol? Source)>? captureFailures;
 
+    // SPEC 23.3.6.1: the part of an unsupported node that shows the form, such as one capture entry or a callee.
+    private Dictionary<Koto, SourceSpan>? unsupportedSpans;
+
     // SPEC 9.6.1: a Type or container named with the wrong number of its own Type arguments, or without the Type arguments of
     // the generic container that declares it (Outer), with the declared and the written counts.
     private Dictionary<Koto, (BindingSymbol Declaration, int Declared, int Written, bool Outer)>? arityFailures;
@@ -2036,7 +2039,7 @@ public sealed partial class Binding
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();
-        this.payloadCallees?.Clear();
+        this.unsupportedSpans?.Clear();
         this.objectErasures?.Clear();
         this.perCallSlots?.Clear();
         this.referenceSlotFacts?.Clear();
@@ -2051,9 +2054,6 @@ public sealed partial class Binding
         this.captureFailures?.Clear();
         this.captureRepeats?.Clear();
         this.arityFailures?.Clear();
-        this.originQualifierLimits?.Clear();
-        this.staticStorageLimits?.Clear();
-        this.pendingExclusiveLimits?.Clear();
         this.constructorAbsences?.Clear();
         this.invalidStaticOriginSlots?.Clear();
         this.rejectedCandidates?.Clear();

@@ -156,7 +156,7 @@ internal enum BindingFailure : byte
     ConflictingLayout,
     InvalidLibraryImport,
     MissingNativeRequirement,
-    UnsupportedImportSignature,
+    InvalidImportSignature,
     ConflictingImportSignature,
     ConflictingRuntimeSymbol,
     ConflictingImportSupply,

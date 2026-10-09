@@ -453,7 +453,7 @@ public sealed partial class Binding
         {
             if (entry is { } written)
             {
-                this.FailExplained(ref this.captureFailures, function, BindingFailure.Unsupported, (written, type, null));
+                this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, written.Span);
             }
             else
             {

@@ -55,7 +55,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
             Assert.Contains(records, x => x.Code == "UnresolvedBinding_Kd" && x.Text == "absent");
         }
 
-        Assert.DoesNotContain(records, x => x.Code is "UnsupportedBinding_Kd" or "CheckFaulted_Kd");
+        Assert.DoesNotContain(records, x => x.Code is "Unsupported_Kd" or "CheckFaulted_Kd");
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 
@@ -71,7 +71,7 @@ public class VirtualApplicabilityDefinitionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
-        Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "UnsupportedBinding_Kd");
+        Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "Unsupported_Kd");
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize();
         Assert.Single(result.Diagnostics);

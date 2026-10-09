@@ -152,7 +152,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
             "func select<F>(action: ref/F, other: i64 = 0) -> bool\n    F is Callable<(bool) -> bool>\n    return action(false)\nlet result = select(choose)");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     // SPEC 7.3.1: waiting slots acquired in different modes violate the group's parameter acquisition shape; the declaration
@@ -167,7 +167,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.ParameterShapeMismatch_Kd);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]
@@ -175,7 +175,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("func choose(value: bool) -> bool => value\n" + Select + "let result = select(choose)");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]

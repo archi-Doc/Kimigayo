@@ -294,3 +294,11 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   - §§9–10 (verification, completion): transferred to §§13–14.
 
   Both files are frozen and moved unchanged from Proposals to Obsolete; closure does not imply support beyond STATUS.
+
+- `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Plan.md`: 一部取り込み (R1a, 2026-10-10). Integrated and frozen scope:
+  - §6.2 rule 1 and §11 rows 1–2 (one location-only `Unsupported_Kd`): SPEC §23.3.6.1 (the single code, its location-only record, the exception to one code per requirement, the first phase reporting once), §23.3.6.2 (no instance argument) and §23.3.6.4 (one problem per location).
+  - §11 row 3, the D6 part: SPEC §8.10 Diagnostics (an instance the implementation cannot analyze or generate is the location-only `Unsupported_Kd`). The IMPL §21.3.5 outcome of a representation the profile cannot generate stays open until R5/R6.
+  - §11 row 5 (IMPL appendix A.8): a use whose ObjectCallCompatible status is not yet computed is one location-only `Unsupported_Kd`. The witness location at the implementation stays open until R1f.
+  - §6.3 renames: `UnsupportedEscape_Kd` → `InvalidEscape_Kd`, `UnsupportedImportSignature_Kd` → `InvalidImportSignature_Kd` (Language codes; no spec text named them).
+
+  Open: the remaining §11 rows, including the D3 Advice and Note audit (R1b), IMPL §21 generation-time reporting (R1, R6) and the later stages.

@@ -306,7 +306,7 @@ public class ForeignEmissionTest
         else
         {
             Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.Equal(1, c.Ownership.Result.UnsupportedCount);
+            Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
         }
 
         using var writer = new StringWriter();

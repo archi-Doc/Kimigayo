@@ -61,7 +61,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         Assert.Equal(FunctionResultMode.PlaceRef, Binding.ResultModeOf(implementation.ReturnType));
         Assert.Equal(receiver == "objref", c.Binding.Result.IsComplete);
         Assert.Equal(receiver == "objref" ? 0 : 2, c.Binding.Issues.Count);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
     }
 
     [Fact]

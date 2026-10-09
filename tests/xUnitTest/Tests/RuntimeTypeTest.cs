@@ -128,7 +128,7 @@ public class RuntimeTypeTest
         Assert.Equal(valid, Test(c).BoundRuntimeTest.HasValue);
         if (target is "Dog<T>" or "T")
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+            Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == DiagnosticCode.Unsupported_Kd);
         }
     }
 
@@ -162,7 +162,7 @@ public class RuntimeTypeTest
         var test = Test(c);
         Assert.Null(test.BoundRuntimeTest);
         Assert.Equal(BoundTypeKind.AssociatedProjection, test.Right.BoundType!.Kind);
-        Assert.Contains(c.Binding.Issues, x => x.Node == test && x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Node == test && x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]
@@ -199,7 +199,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess("struct Dog<T>\n    func f(x: objref/Self) -> bool => x is Self");
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
-        Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Fact]

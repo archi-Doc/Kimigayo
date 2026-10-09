@@ -96,7 +96,7 @@ public sealed partial class OwnershipAnalysis
         if (this.ReportUnprovenOriginObligations())
         {
             // An unchecked Origin obligation that is not a relation rejects the program with a diagnostic at its use, never silently.
-            return this.Result = new(false, 0, this.issues.Count, 0);
+            return this.Result = new(false, 0, this.issues.Count);
         }
 
         this.collector.DefaultsOnly = true;
@@ -113,21 +113,7 @@ public sealed partial class OwnershipAnalysis
 
         this.AnalyzeLibraryBodies(0);
         this.ValidateEffectBounds();
-        var errors = 0;
-        var unsupported = 0;
-        for (var i = 0; i < this.issues.Count; i++)
-        {
-            if (this.issues[i].Failure is OwnershipFailure.Unsupported or OwnershipFailure.ExpansionLimit)
-            {
-                unsupported++;
-            }
-            else
-            {
-                errors++;
-            }
-        }
-
-        var verified = this.flow.Issues.Count == 0 && this.flow.PendingBinding.Count == 0 && errors == 0 && unsupported == 0;
+        var verified = this.flow.Issues.Count == 0 && this.flow.PendingBinding.Count == 0 && this.issues.Count == 0;
         if (!verified)
         {
             // A caller cannot certify a program containing an unchecked callee or flow contract.
@@ -137,7 +123,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        return this.Result = new(verified, this.bodies.Count, errors, unsupported);
+        return this.Result = new(verified, this.bodies.Count, this.issues.Count);
     }
 
     public void ReportDiagnostics() => this.ReportDiagnostics(this.issues);
@@ -194,9 +180,10 @@ public sealed partial class OwnershipAnalysis
         {
             var issue = reportedIssues[i];
             var requirement = Requirement(issue);
-            if (issue.OperationType is { } operationType && issue.Source is BinaryKoto binary)
+            if (issue.Failure == OwnershipFailure.Unsupported)
             {
-                issue.Source.Report(requirement, issue.Code, binary.Akind == KotoKind.Slash ? "division" : "remainder", Binding.DiagnosticTypeName(operationType), note: Note(null), related: Locations(null), condition: Condition(issue));
+                // SPEC 23.3.6.1: a form outside the implemented subset is located only, in an instance too.
+                issue.Source.Report(requirement, issue.Code, condition: Condition(issue), span: SignatureSpan(issue.Source));
                 continue;
             }
 
@@ -303,8 +290,8 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(
                 requirement,
                 issue.Code,
-                note: Note(CaseNote(AcquisitionNote(issue) ?? FeatureNote(issue.Feature), found, single)),
-                evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : issue.Feature != OwnershipFeature.None ? issue.Feature : null, found),
+                note: Note(CaseNote(AcquisitionNote(issue), found, single)),
+                evidence: CaseEvidence(issue.Code, transfer ? issue.Source.ToString() : null, found),
                 advice: transfer ? Binding.TransferAdvice(issue.Source, judgment) : null,
                 related: Locations(this.WithCaseDeclarations(RelatedLocations(issue), found)),
                 condition: Condition(issue),
@@ -1620,7 +1607,7 @@ public sealed partial class OwnershipAnalysis
         if (binary.Akind is KotoKind.Slash or KotoKind.Percent && ScalarTypes.Width(this.body.Places[left].Type, this.compilation.PointerWidth) == 128)
         {
             // SPEC 8.4.7.3, IMPL 21.5.3: an instance of a generic integer body diagnoses the profile's 128-bit division.
-            this.Unsupported(binary, this.body.Places[left].Type);
+            this.Unsupported(binary);
             return -1;
         }
 
@@ -2517,10 +2504,10 @@ public sealed partial class OwnershipAnalysis
         return this.body.EdgeStorage.Count - 1;
     }
 
-    private void Unsupported(Koto source, BoundType? operationType = null)
+    private void Unsupported(Koto source)
     {
         this.Emit(OwnershipOperationKind.Unsupported, source);
-        this.body.ReportIssue(new(source, OwnershipFailure.Unsupported, OperationType: operationType));
+        this.body.ReportIssue(new(source, OwnershipFailure.Unsupported));
     }
 
     private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);

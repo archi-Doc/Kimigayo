@@ -139,7 +139,7 @@ public class CaptureDiagnosticTest
         const string Source = Holder + "func run(n: ref/i32) -> i32\n    let f = func [n] () => Holder.twice(n)\n    return f()\nlet n = 3\nrequire run(n@ref) == 6 else => $abort(\"run\")";
         var output = DiagnosticCorpus.Check(Source);
         var error = Assert.Single(output.Diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), "Holder"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span!.Value.Length)));
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), "Holder"), (error.Code, Source.Substring(error.Span!.Value.Start, error.Span!.Value.Length)));
     }
 
     // SPEC 7.6.2, 23.3.6.4: an omitted capture list captures only by Copy, so the rejected capture of a Non-Copy binding is read as

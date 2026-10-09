@@ -176,25 +176,6 @@ public enum OwnershipFailure : byte
     CaseLimit,
 }
 
-/// <summary>
-/// SPEC 3.4, 23.3.6.4: the Place route that an unsupported Place borrow lacks, the stable `feature` fact of its
-/// `UnsupportedOwnership_Kd` record (PLAN G59).
-/// </summary>
-public enum OwnershipFeature : byte
-{
-    /// <summary>No feature fact; the record names no route.</summary>
-    None,
-
-    /// <summary>A borrow of a Place selected below a runtime-selected element of an owned root.</summary>
-    RuntimeElementBorrow,
-
-    /// <summary>A borrow of a Place selected below a collection reached through a reference or Slice.</summary>
-    ReferencedElementBorrow,
-
-    /// <summary>A borrow of a part of a temporary value.</summary>
-    TemporaryPartBorrow,
-}
-
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
 {
     // Deferred bodies share syntax, but each expansion has distinct temporary storage.
@@ -250,8 +231,8 @@ public readonly record struct OwnershipLending(Koto Input, Koto Call);
 // enumeration (SPEC 8.10, 23.3.6.4); empty outside a case run and once every case found the problem.
 public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
-    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BoundType? OperationType = null, BindingObligation? Obligation = null,
-    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0, OwnershipFeature Feature = OwnershipFeature.None)
+    OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BindingObligation? Obligation = null,
+    Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
 {
     public DiagnosticCode Code => this.Failure switch
     {
@@ -276,13 +257,12 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failu
         OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         OwnershipFailure.CaseLimit => DiagnosticCode.OwnershipCaseLimit_Kd,
-        OwnershipFailure.Unsupported when this.OperationType is not null => DiagnosticCode.UnsupportedIntegerOperation_Kd,
-        _ => DiagnosticCode.UnsupportedOwnership_Kd,
+        _ => DiagnosticCode.Unsupported_Kd,
     };
 }
 
 /// <summary>Verification of the supported ownership subset, never an executable-emission certificate.</summary>
-public readonly record struct OwnershipResult(bool IsVerified, int BodyCount, int ErrorCount, int UnsupportedCount);
+public readonly record struct OwnershipResult(bool IsVerified, int BodyCount, int ErrorCount);
 
 /// <summary>Reusable per-body CFG and plans. The next analysis replaces its contents.</summary>
 public sealed partial class OwnershipBody

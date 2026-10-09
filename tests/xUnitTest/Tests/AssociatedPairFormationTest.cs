@@ -75,7 +75,7 @@ public class AssociatedPairFormationTest
     [InlineData("contract Peek\n    associate Item(a)\nstruct H<s/T, U>\n    s is value or valueborrow\n    Self is Peek\n    associate Peek.Item(a) is s/U during a\n    var item: s/T\n", new[] { "InvalidOriginBinding_Kd" })]
     [InlineData("contract Peek\n    associate Item(a) for ref/Self during a\nstruct H<s/T, U>\n    s is owner or uniq\n    Self is Peek\n    associate Peek.Item(a) is s/U during static\n    var item: s/T\n", new[] { "InvalidOriginBinding_Kd" })]
     [InlineData("contract Peek\n    associate Item(a) for ref/Self during a\nstruct H<s/T, U> {b}\n    s is owner or ref\n    Self is Peek\n    associate Peek.Item(a) is s/(ref/U during b) during a\n    var item: s/T\n    var other: ref/U during b\n", new[] { "InvalidOriginBinding_Kd" })]
-    [InlineData("contract Peek\n    associate Item(a) for ref/Self during a\nstruct H<s/T, U>\n    s is owner or obj\n    Self is Peek\n    associate Peek.Item(a) is s/U during a\n    var item: s/T\n", new[] { "UnprovenConstraint_Kd", "UnsupportedBinding_Kd" })]
+    [InlineData("contract Peek\n    associate Item(a) for ref/Self during a\nstruct H<s/T, U>\n    s is owner or obj\n    Self is Peek\n    associate Peek.Item(a) is s/U during a\n    var item: s/T\n", new[] { "UnprovenConstraint_Kd", "Unsupported_Kd" })]
     public void PairLayerFamiliesAreFormedLikeBorrows(string source, string[] codes)
     {
         var c = MinimalEmissionTest.Analyze(source);

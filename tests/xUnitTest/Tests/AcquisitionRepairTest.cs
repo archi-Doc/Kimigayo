@@ -63,7 +63,7 @@ public class AcquisitionRepairTest
     }
 
     // A field read by value through a borrowed root, as a result or an initializer, is the same bare Place: one record at the
-    // field without a repair. It was UnsupportedOwnership_Kd with UninitializedPlace_Kd at the signature for the result.
+    // field without a repair. It was Unsupported_Kd with UninitializedPlace_Kd at the signature for the result.
     [Theory]
     [InlineData("func first(p: ref/(Resource, i32)) -> Resource => p.0\n", "p.0")]
     [InlineData("func first(p: uniq/(Resource, i32)) -> Resource => p.0\n", "p.0")]
@@ -81,7 +81,7 @@ public class AcquisitionRepairTest
     }
 
     // The same holds for a selected referent read by value (SPEC 13.5.5.1): one record at `p@follow`, without the
-    // UnsupportedOwnership_Kd and UninitializedPlace_Kd records it published before.
+    // Unsupported_Kd and UninitializedPlace_Kd records it published before.
     [Theory]
     [InlineData("func first<A>(p: ref/A) -> A => p@follow\n")]
     [InlineData("func first(p: ref/Resource) -> Resource => p@follow\n")]

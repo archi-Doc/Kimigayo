@@ -13,30 +13,13 @@ public sealed partial class OwnershipAnalysis
     private static bool IsDirectExclusiveBorrow(Koto source)
         => KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq };
 
-    // SPEC 15.6.7: the value retaining a conflicting Loan and the lending point of a conflicting reservation are shown. An
-    // unsupported Place borrow relates the path segment that chose its missing route (SPEC 23.3.6.4, PLAN G59).
+    // SPEC 15.6.7: the value retaining a conflicting Loan and the lending point of a conflicting reservation are shown.
     private static (string Role, Koto At, string? Label)[]? RelatedLocations(OwnershipIssue issue) => (issue.LoanSource, issue.ConflictingReservation) switch
     {
         ({ } loan, { } reserved) => [("loan", loan, RetainedLoanLabel), ("reservation", reserved.Input, ReservationLabel)],
         ({ } loan, null) => [("loan", loan, RetainedLoanLabel)],
         (null, { } reserved) => [("reservation", reserved.Input, ReservationLabel)],
-        _ => issue is { Feature: not OwnershipFeature.None, Related: { } selector } ? [("selector", selector, FeatureLabel(issue.Feature))] : null,
-    };
-
-    // PLAN G59: the Note and selector label of an unsupported Place borrow, by the route it lacks.
-    private static string? FeatureNote(OwnershipFeature feature) => feature switch
-    {
-        OwnershipFeature.RuntimeElementBorrow => "Borrowing a Place below a runtime-selected element is not implemented yet; the borrow would take a temporary copy instead of the element (PLAN G59)",
-        OwnershipFeature.ReferencedElementBorrow => "Borrowing a Place below a collection reached through a reference is not implemented yet; the borrow would take a temporary copy instead of the element (PLAN G59)",
-        OwnershipFeature.TemporaryPartBorrow => "Borrowing a part of a temporary value is not implemented yet; the borrow would take a copy of the part (PLAN G59)",
         _ => null,
-    };
-
-    private static string FeatureLabel(OwnershipFeature feature) => feature switch
-    {
-        OwnershipFeature.RuntimeElementBorrow => "runtime-selected element",
-        OwnershipFeature.ReferencedElementBorrow => "collection reached through a reference",
-        _ => "temporary value",
     };
 
     // SPEC 15.6.7: a conflict at an implicit lending point names the acquisition; when two implicit acquisitions overlap, both,

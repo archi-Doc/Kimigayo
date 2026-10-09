@@ -42,7 +42,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     {
         var source = $"open struct Base<T>\n    public virtual func read(self: {receiver}/Self, value: ref/T) -> i32 => 1\nstruct Derived : Base<i32>\n    override func read(self: {receiver}/Self, value: ref/i32) -> i32 => 2\n()";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnsupportedBinding_Kd, x.Code));
+        Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x.Code));
         Assert.Equal(receiver == "objref" ? 0 : 2, c.Binding.Issues.Count);
         Assert.Equal(receiver == "objref", c.Binding.Result.IsComplete);
         Assert.Equal(receiver == "objref", c.Emission.WriteIr(TextWriter.Null, out _));
@@ -78,7 +78,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
 
         Assert.Equal(expected, diagnostic.Span.Start);
         Assert.Contains(fact, diagnostic.Label!, StringComparison.Ordinal);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         output.WriteLine(diagnostic.Explanation + "\n" + diagnostic.Label);
     }

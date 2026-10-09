@@ -70,7 +70,7 @@ public class InheritedAccessorEmissionTest
         var code = "open struct Base\n    public computed number: i32\n        get(self: ref/Self) -> i32 => 42\n        set(self: uniq/Self, value: i32) -> () => ()\nstruct Leaf: Base\n    public init() => ()\nvar x = " + value + "\nx.number = 3";
         var result = DiagnosticCorpus.Check(code);
         var record = Assert.Single(result.Diagnostics);
-        Assert.Equal("UnsupportedBinding_Kd", record.Code);
+        Assert.Equal("Unsupported_Kd", record.Code);
         Assert.Equal("x.number", code.Substring(record.Span!.Value.Start, record.Span.Value.Length));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(new(result.Diagnostics, result.Sources), string.Empty);

@@ -114,7 +114,7 @@ public sealed partial class Binding
         {
             if (function.BindingFailure == BindingFailure.None && ReceiverShape(function.BoundSymbol!) != SemanticsKind.ObjRef)
             {
-                this.Fail(function, BindingFailure.Unsupported, true);
+                this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, function.DispatchModifierSpan, true);
             }
             else if (function.BindingFailure == BindingFailure.Unsupported)
             {
@@ -146,18 +146,6 @@ public sealed partial class Binding
             }
 
             this.virtualEffectBounds[function] = (confined, preserves);
-        }
-    }
-
-    private void ReportVirtualDeclaration(FunctionKoto function, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        if (code == DiagnosticCode.UnsupportedBinding_Kd)
-        {
-            function.Report(requirement, code, span: function.DispatchModifierSpan, note: "Virtual declarations and structural slot correspondence are retained, but complete contract inheritance, receiver-completeness proofs and dynamic generation are not yet implemented; no static-call fallback is emitted");
-        }
-        else
-        {
-            function.Report(requirement, code, span: function.DispatchModifierSpan, evidence: [this.virtualDeclarationFailures![function]], related: [("declaration", function, "the virtual or override declaration")]);
         }
     }
 }

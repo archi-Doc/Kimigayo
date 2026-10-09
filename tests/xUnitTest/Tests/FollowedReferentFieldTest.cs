@@ -9,7 +9,7 @@ using Xunit;
 namespace XunitTest;
 
 // SPEC 13.5.5.1, 15.6.2: a field or Tuple element of an explicitly selected referent (`p@follow.x`) is reached through the
-// reference as `p.x` is, and a borrow of it depends on that reference (SPEC 13.5.5). It was UnsupportedOwnership_Kd, and
+// reference as `p.x` is, and a borrow of it depends on that reference (SPEC 13.5.5). It was Unsupported_Kd, and
 // Binding gave `p@follow.x@ref` an Origin unrelated to `p`.
 public class FollowedReferentFieldTest(ITestOutputHelper output)
 {

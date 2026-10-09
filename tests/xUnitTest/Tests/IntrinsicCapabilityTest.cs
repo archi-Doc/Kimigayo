@@ -231,7 +231,7 @@ public class IntrinsicCapabilityTest
         // Owned is a language capability; retained static-borrow initialization remains an implementation boundary.
         c.Binding.ReportDiagnostics();
         var record = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal("UnsupportedBinding_Kd", record.Code);
+        Assert.Equal("Unsupported_Kd", record.Code);
         Assert.Equal("var value: E<ref/i32 during static>", record.Text);
     }
 

@@ -49,7 +49,6 @@ public sealed partial class Binding
 
     // The unimplemented acquisition of an object callee's payload, as its reason (SPEC 7.3): a temporary handle, a handle reached through
     // a reference or an element, or an Exclusive call of a payload not proven Sealed.
-    private Dictionary<Koto, string>? payloadCallees;
 
     private BoundConstraint BindCallableRequirement(Koto node, BoundType subject, BindingScope scope, BindingSymbol target)
     {
@@ -386,23 +385,21 @@ public sealed partial class Binding
             return false;
         }
 
-        var limit = IndirectObjectCallee(handle) ? "a direct call through an object handle reached through a reference or an element is not implemented"
-            : !view && !this.BorrowableHandle(handle, scope, receiver == SemanticsKind.Uniq, true) ? "a direct call through a temporary object handle is not implemented"
-            : null;
+        var unsupported = IndirectObjectCallee(handle) || (!view && !this.BorrowableHandle(handle, scope, receiver == SemanticsKind.Uniq, true));
         var payload = handleType.Components[0];
         var adapted = (BoundType?)null;
-        if (limit is null && receiver == SemanticsKind.Ref)
+        if (!unsupported && receiver == SemanticsKind.Ref)
         {
             adapted = this.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(handle));
         }
-        else if (limit is null && !this.TryPayloadProjection(handle, this.Reference(receiver, payload), handleType, scope, out adapted))
+        else if (!unsupported && !this.TryPayloadProjection(handle, this.Reference(receiver, payload), handleType, scope, out adapted))
         {
-            limit = "an Exclusive call through an object callee whose payload Type is not proven Sealed is not implemented";
+            unsupported = true;
         }
 
-        if (limit is not null)
+        if (unsupported)
         {
-            this.FailExplained(ref this.payloadCallees, call, BindingFailure.Unsupported, limit);
+            this.FailExplained(ref this.unsupportedSpans, call, BindingFailure.Unsupported, call.Method.Span);
             return false;
         }
 

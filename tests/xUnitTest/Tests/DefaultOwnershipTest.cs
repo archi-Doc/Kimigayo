@@ -68,7 +68,7 @@ public class DefaultOwnershipTest
         var diagnostic = Assert.Single(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
         Assert.Equal(issue.Source.Span, diagnostic.Span);
         Assert.Equal(DiagnosticSeverity.Error, diagnostic.Severity);
-        Assert.DoesNotContain(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.UnsupportedOwnership_Kd));
+        Assert.DoesNotContain(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.Unsupported_Kd));
         Assert.False(c.Emission.Validate(out _));
     }
 

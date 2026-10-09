@@ -51,7 +51,7 @@ public class ClosureResultOriginTest
     // borrow of an environment binding becomes a borrow of the closure Place the call lends, and a Reborrow through a captured
     // exclusive reference also stays within it, so the result keeps that Place lent while it lives. A Consuming call that moves a
     // captured reference out returns it with its own Origin, and a returned closure that borrows the outer environment keeps that
-    // environment lent. These were UnsupportedBinding_Kd (G65).
+    // environment lent. These were Unsupported_Kd (G65).
     [Theory]
     [InlineData("SlotBorrow", "let n = 7\nlet f = func [n] () => n@ref\nlet r = f()\nrequire r == 7 else => $abort(\"r\")")]
     [InlineData("ThroughReference", "let n = 7\nlet f = func [n] () => n@ref\nlet g = f@ref\nlet r = g()\nrequire r == 7 else => $abort(\"r\")")]

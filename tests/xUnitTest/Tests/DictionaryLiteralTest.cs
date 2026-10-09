@@ -43,7 +43,7 @@ public class DictionaryLiteralTest
         c.Binding.ReportDiagnostics();
         var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
         Assert.NotEmpty(errors);
-        Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.UnsupportedBinding_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
+        Assert.DoesNotContain(errors, static x => x.Code is nameof(DiagnosticCode.Unsupported_Kd) or nameof(DiagnosticCode.PrerequisiteUnavailable_Kd));
         Assert.False(c.Emission.Validate(out _));
     }
 

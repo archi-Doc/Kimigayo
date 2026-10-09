@@ -6,7 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private Dictionary<Koto, BoundType>? staticStorageLimits;
     private Dictionary<Koto, OriginParameter>? invalidStaticOriginSlots;
 
     // Complete stored Origin identity, including declared slots and intersections; shared by fitting and diagnostics.
@@ -466,7 +465,7 @@ public sealed partial class Binding
                 this.borrowVisiting.Clear();
                 if (owned == ConstraintProof.Proven && this.RetainsBorrow(type, this.borrowVisiting))
                 {
-                    this.FailExplained(ref this.staticStorageLimits, node, BindingFailure.Unsupported, type, true);
+                    this.Fail(node, BindingFailure.Unsupported, true);
                 }
             }
         }

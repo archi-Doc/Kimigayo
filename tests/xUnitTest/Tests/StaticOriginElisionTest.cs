@@ -29,7 +29,7 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(field.BoundType, field));
         c.Binding.ReportDiagnostics();
         var record = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal("UnsupportedBinding_Kd", record.Code);
+        Assert.Equal("Unsupported_Kd", record.Code);
     }
 
     [Fact]
@@ -111,16 +111,16 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
-        var code = exclusive ? "InvalidOriginBinding_Kd" : "UnsupportedBinding_Kd";
+        var code = exclusive ? "InvalidOriginBinding_Kd" : "Unsupported_Kd";
         Assert.Equal([code, "TypeMismatch_Kd"], result.Diagnostics.Select(static x => x.Code));
         var record = result.Diagnostics[0];
         Assert.Equal(exclusive ? DiagnosticCategory.Language : DiagnosticCategory.Unsupported, record.Category);
-        var reason = exclusive ? "static cannot supply uniq for Origin slot source" : "static storage with retained borrows is not implemented";
-        Assert.Equal(reason, record.Label);
-        Assert.Equal(reason, Assert.Single(record.Reason!, static x => x.Name == "reason").Value);
-        Assert.Contains(exclusive ? "requires uniq" : "satisfies Owned", record.Note);
         if (exclusive)
         {
+            const string Reason = "static cannot supply uniq for Origin slot source";
+            Assert.Equal(Reason, record.Label);
+            Assert.Equal(Reason, Assert.Single(record.Reason!, static x => x.Name == "reason").Value);
+            Assert.Contains("requires uniq", record.Note);
             Assert.Equal(new SourceSpan(source.LastIndexOf("View", StringComparison.Ordinal), 4), record.Span);
             var related = Assert.Single(record.Related!);
             Assert.Equal("requires uniq", related.Label);
@@ -129,6 +129,7 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         else
         {
             Assert.Equal(new SourceSpan(source.IndexOf("let view", StringComparison.Ordinal), "let view: ref/i32 = make()".Length), record.Span);
+            Assert.Equal((null, null, null), (record.Reason, record.Note, record.Label));
         }
 
         Assert.Empty(record.Repairs ?? []);

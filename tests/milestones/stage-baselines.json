@@ -1,6 +1,6 @@
 [
   { "Program": 33, "Stage": "Binding", "Diagnostic": "UnresolvedBinding_Kd", "Anchor": "view.extra", "SupportedPrefixEnd": "func inspect" },
-  { "Program": 35, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "Weak", "SupportedPrefixEnd": "struct Node" },
-  { "Program": 36, "Stage": "Ownership", "Diagnostic": "UnsupportedOwnership_Kd", "Anchor": "Registry", "SupportedPrefixEnd": "public func main()" },
-  { "Program": 38, "Stage": "Binding", "Diagnostic": "UnsupportedBinding_Kd", "Anchor": "Weak", "SupportedPrefixEnd": "group Registry" }
+  { "Program": 35, "Stage": "Binding", "Diagnostic": "Unsupported_Kd", "Anchor": "Weak", "SupportedPrefixEnd": "struct Node" },
+  { "Program": 36, "Stage": "Ownership", "Diagnostic": "Unsupported_Kd", "Anchor": "Registry", "SupportedPrefixEnd": "public func main()" },
+  { "Program": 38, "Stage": "Binding", "Diagnostic": "Unsupported_Kd", "Anchor": "Weak", "SupportedPrefixEnd": "group Registry" }
 ]

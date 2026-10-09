@@ -218,12 +218,12 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     public void EscapeProblemsStayAtTheEscape(string source, string text)
     {
         var error = Assert.Single(TestDiagnostics.Of(Analyze(source)));
-        Assert.True(error.Code is nameof(DiagnosticCode.UnsupportedEscape_Kd) or nameof(DiagnosticCode.InvalidUnicodeScalar_Kd), error.ToString());
+        Assert.True(error.Code is nameof(DiagnosticCode.InvalidEscape_Kd) or nameof(DiagnosticCode.InvalidUnicodeScalar_Kd), error.ToString());
         Assert.Equal(text, error.Text);
     }
 
     [Theory]
-    [InlineData("\\q", nameof(DiagnosticCode.UnsupportedEscape_Kd))]
+    [InlineData("\\q", nameof(DiagnosticCode.InvalidEscape_Kd))]
     [InlineData("\\u", nameof(DiagnosticCode.InvalidUnicodeEscape_Kd))]
     [InlineData("\\u()", nameof(DiagnosticCode.InvalidUnicodeEscape_Kd))]
     [InlineData("\\u(1234567)", nameof(DiagnosticCode.InvalidUnicodeEscape_Kd))]
@@ -253,7 +253,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
     {
         var source = "let text = \"a\\n" + lineEnd + "\\q \\(1) b\\z\"\nlet wrong: i32 = true";
         var errors = TestDiagnostics.Of(Analyze(source));
-        Assert.Equal([nameof(DiagnosticCode.UnsupportedEscape_Kd), nameof(DiagnosticCode.UnsupportedEscape_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], errors.Select(static x => x.Code));
+        Assert.Equal([nameof(DiagnosticCode.InvalidEscape_Kd), nameof(DiagnosticCode.InvalidEscape_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], errors.Select(static x => x.Code));
         Assert.Equal(new SourceSpan(source.IndexOf("\\q", StringComparison.Ordinal), 2), errors[0].Span);
         Assert.Equal(new SourceSpan(source.IndexOf("\\z", StringComparison.Ordinal), 2), errors[1].Span);
     }
@@ -268,7 +268,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(rejected: true);
         Assert.Equal(2, result.Diagnostics.Length);
-        Assert.Equal(["The escape sequence '\\q' is not supported", "The escape sequence '\\z' is not supported"], result.Diagnostics.Select(static x => x.Message));
+        Assert.Equal(["The escape sequence '\\q' is not valid", "The escape sequence '\\z' is not valid"], result.Diagnostics.Select(static x => x.Message));
         Assert.All(result.Diagnostics, x =>
         {
             Assert.Equal(DiagnosticSeverity.Error, x.Severity);

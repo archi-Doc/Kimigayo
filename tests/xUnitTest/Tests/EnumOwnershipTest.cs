@@ -245,7 +245,6 @@ public class EnumOwnershipTest
         var c = Parse(source);
         var result = c.Ownership.Analyze();
         Assert.True(result.IsVerified, Describe(c));
-        Assert.Equal(0, result.UnsupportedCount);
     }
 
     // SPEC 10.2, 12.2: implicit borrowed payloads use the ordinary borrow/reborrow acquisition and retain their Loans.

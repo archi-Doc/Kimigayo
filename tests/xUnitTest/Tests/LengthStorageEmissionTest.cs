@@ -60,7 +60,7 @@ public class LengthStorageEmissionTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Ownership.Result.IsVerified);
         Assert.True(c.Ownership.Result.ErrorCount > 0);
-        Assert.Equal(0, c.Ownership.Result.UnsupportedCount);
+        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());

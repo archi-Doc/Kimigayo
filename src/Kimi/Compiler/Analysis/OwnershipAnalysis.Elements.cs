@@ -66,7 +66,7 @@ public sealed partial class OwnershipAnalysis
         var plan = this.body.Projections[projection];
         if (ReferenceEquals(source.BoundType, BoundType.String) && plan.Path != projection && ElementAccess.SupportsBorrowRoot(this.body.Places[plan.Root]))
         {
-            this.UnsupportedRoute(source); // PLAN G59: a string below a runtime-selected element needs the owned projection route.
+            this.Unsupported(source); // PLAN G59: a string below a runtime-selected element needs the owned projection route.
             return -1;
         }
 

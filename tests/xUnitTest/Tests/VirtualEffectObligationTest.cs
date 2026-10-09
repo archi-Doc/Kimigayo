@@ -130,6 +130,6 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         var source = "open struct Base {a}\n    let value: uniq/i32 during a\n    public virtual func read(self: objuniq/Self) -> ref/i32 during a\n        effect preserves results\n" + mutation + "        return self.value\n()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(fails, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd));
-        Assert.All(c.Binding.Issues, x => Assert.True(x.Code is DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.UnsupportedBinding_Kd, x.ToString()));
+        Assert.All(c.Binding.Issues, x => Assert.True(x.Code is DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd, x.ToString()));
     }
 }

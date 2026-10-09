@@ -68,7 +68,7 @@ public sealed class DiagnosticCatalogTest
                 Category="Language"
                 Message="Token {0}"
 
-              + Name="UnsupportedEscape_Kd"
+              + Name="InvalidEscape_Kd"
                 Category="Language"
                 Message="Token {0}"
                 Arguments="token"
@@ -87,7 +87,7 @@ public sealed class DiagnosticCatalogTest
         Assert.Contains(anomalies, static x => x == "IndentationLevelMismatch_Kd: the entry has no category.");
         Assert.Contains(anomalies, static x => x.StartsWith("InvalidCharacter_Kd: the message or label is not a valid template", StringComparison.Ordinal));
         Assert.Contains(anomalies, static x => x == "SemicolonNotAllowed_Kd: Arguments must name each message argument (1), not 0.");
-        Assert.Contains(anomalies, static x => x == "UnsupportedEscape_Kd: a fact is not written as name:Kind.");
+        Assert.Contains(anomalies, static x => x == "InvalidEscape_Kd: a fact is not written as name:Kind.");
         Assert.Contains(anomalies, static x => x == "InvalidAssignment_Kd: the label references a fact that the code does not name.");
         Assert.Contains(anomalies, static x => x == "InvalidIdentifier_Kd: the message takes more than two arguments.");
         Assert.Contains(anomalies, static x => x == "TopLevelKeywordAfterCode_Kd: a message without arguments contains a brace.");

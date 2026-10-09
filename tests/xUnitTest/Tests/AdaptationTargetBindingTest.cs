@@ -28,7 +28,7 @@ public class AdaptationTargetBindingTest
         var c = CompilationTestHelper.Parse("func box<s/T>(value: T) -> obj/T\n    " + premise + "\n    return Kimi.Intrinsics.makeObj(value@move)");
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd);
     }
 
     [Theory]
@@ -83,7 +83,7 @@ public class AdaptationTargetBindingTest
     {
         var c = CompilationTestHelper.Parse("group Container\ncontract Requirement\nlet value = 7@" + target);
         Assert.False(c.Bind().IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsupportedBinding_Kd || x.Code == DiagnosticCode.AmbiguousBinding_Kd);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.Unsupported_Kd || x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
     private static string Describe(Compilation c) => string.Join("; ", c.Binding.Issues);

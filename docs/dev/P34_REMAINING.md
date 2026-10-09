@@ -24,7 +24,7 @@ Selection passes `ref`/`uniq` layers and stops at an obj/rc/arc/objref/objuniq l
 
 - **W** Inherited (BaseBorrow) receivers through reference layers read the wrong address: getters and `ref/Self` methods through `ref/(ref/Leaf)`, `uniq/(uniq/Leaf)`, `ref/(rc|obj|objref/Leaf)`, `uniq/(obj|objref/Leaf)` (audit probes i01, i03, m01, m02, k09, k12, k13, n1, n10-n13). Cause: the receiver core is computed by duplicated one-layer expressions (`OwnershipAnalysis.Reservations` BaseBorrowTypes, `BodyLowering.StructBorrows` base check), and AdaptInput's projected branch records the unprepared SourceType.
 - **G** Payload follows through a reference to a handle: `r@follow@follow@ref`, `slot@follow.read()`, Copy read `h@follow@follow` (slot: `ref/(rc/T)`), `return h@follow@follow`, `let c = r@follow` with `r: uniq/(uniq/T)` ("Reborrow has no matching reference source"). Cause: `OwnershipAnalysis.BorrowStruct` collapses a Follow into one Borrow on the name; the stored-reference sites require an exactly equal referent.
-- **G/L** Writes through `uniq/(rc|arc/T)`: setter `slot.level = 9` and compound/increment fail generation; Field writes give `UnsupportedOwnership_Kd` instead of `SharedPathAccess_Kd`; direct setters on rc/arc lack the shared-authority Note. Cause: `Binding.PathAuthority` returns Owner for members below a held handle; the BindReference write gate reads only the outer Semantics.
+- **G/L** Writes through `uniq/(rc|arc/T)`: setter `slot.level = 9` and compound/increment fail generation; Field writes give `Unsupported_Kd` instead of `SharedPathAccess_Kd`; direct setters on rc/arc lack the shared-authority Note. Cause: `Binding.PathAuthority` returns Owner for members below a held handle; the BindReference write gate reads only the outer Semantics.
 - **L** Implicit receivers at a held handle: `slot.read()` (`NoApplicableOverload_Kd`), `h.slot.look()`/`poke()` (`TransferRequired_Kd`), getters `slot.twice`.
 - **U** Field reads `slot.id` through `ref/(rc/T)`; value-call callees reached through a reference or element (`r@follow()`, `holder.callback()`, `hs[0]()`, U7-6 limit).
 
@@ -44,7 +44,7 @@ Root fix: make the comparison value a use of both operand Places (no extra opera
 
 ### R4. obj payload content writes record no Loan on the handle
 
-- **G** `local.value = m@ref` (local: `obj/Cell`, ref Field): the implicit Field write stores without recording the borrow's Loan (`OwnershipAnalysis.WriteBorrowedField`); the explicit `local@follow.value = m@ref` is `UnsupportedOwnership_Kd`.
+- **G** `local.value = m@ref` (local: `obj/Cell`, ref Field): the implicit Field write stores without recording the borrow's Loan (`OwnershipAnalysis.WriteBorrowedField`); the explicit `local@follow.value = m@ref` is `Unsupported_Kd`.
 - **L** `var o = [4, 5]@obj; o@follow[0] = 7` is `InvalidAssignment_Kd` although a writable obj path grants Write.
 
 Exclusive-object semantics belong to P33. For P34 completion, at least report both Origin-carrying spellings as one located Unsupported and fix the element-write category; recording Loans on the handle is the root fix.
@@ -52,7 +52,7 @@ Exclusive-object semantics belong to P33. For P34 completion, at least report bo
 ### R5. Callee remainder
 
 - **L** A pair-Semantics callee `v()` with `v: s/F` is `NotCallable_Kd`; `v@follow()` with `ref/s/F` is `UnresolvedBinding_Kd`.
-- **U** A Consuming `h@follow()` of a Copy closure is `UnsupportedOwnership_Kd` (SPEC 7.3 allows Copying the referent).
+- **U** A Consuming `h@follow()` of a Copy closure is `Unsupported_Kd` (SPEC 7.3 allows Copying the referent).
 
 ### Other
 

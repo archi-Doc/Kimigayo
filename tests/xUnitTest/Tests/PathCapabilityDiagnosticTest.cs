@@ -43,7 +43,7 @@ public class PathCapabilityDiagnosticTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Code is DiagnosticCode.UnsupportedOwnership_Kd or DiagnosticCode.UninitializedPlace_Kd);
+        Assert.DoesNotContain(c.Ownership.Issues, x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.UninitializedPlace_Kd);
     }
 
     [Fact]

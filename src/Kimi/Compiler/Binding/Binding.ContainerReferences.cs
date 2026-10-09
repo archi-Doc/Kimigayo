@@ -8,11 +8,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // Only call qualifiers kept a located limit need this storage: the called member, the slot the call would infer, whether a local
-    // declaration's initializer holds the call, whether such an initializer would infer the slot (Inferable), and the scope of the call,
-    // whose visible names the Advice avoids.
-    private Dictionary<Koto, (BindingSymbol Called, int Slot, bool Initializer, bool Inferable, BindingScope Scope)>? originQualifierLimits;
-
     // Where a node lies, for the written forms an Advice may offer there (SPEC 15.3.3): a body, whose statements may declare locals
     // (the top-level runtime body and an anonymous function's body included, also inside a Field initializer); a stored Field's
     // initializer, whose declaration takes origin clauses; an expression of a function header, a parameter default or base
@@ -85,46 +80,6 @@ public sealed partial class Binding
         return null;
     }
 
-    private static TypeSemanticsKoto? QualifierBindingSet(Koto qualifier)
-    {
-        for (Koto? node = qualifier; node is not null; node = node switch { ParenthesizedTypeKoto grouped => grouped.Type, TypeSemanticsKoto { Type: { } inner } => inner, _ => null })
-        {
-            if (node is TypeSemanticsKoto { BindingSetName: not null } set)
-            {
-                return set;
-            }
-        }
-
-        return null;
-    }
-
-    // The written Type of an expression qualifier with its Type arguments, inside any grouping and without its binding set: a set on
-    // a simple name, as in Holder{w}, keeps the name in the set's own node.
-    private static string QualifierTypeText(Koto qualifier)
-    {
-        var node = qualifier;
-        while (true)
-        {
-            if (node is ParenthesizedTypeKoto { Type: { } grouped })
-            {
-                node = grouped;
-            }
-            else if (node is TypeSemanticsKoto { BindingSetName: not null } set)
-            {
-                if (set.Type is not { } named)
-                {
-                    return set.Identifier;
-                }
-
-                node = named;
-            }
-            else
-            {
-                return node.ToString() ?? string.Empty;
-            }
-        }
-    }
-
     // SPEC 15.3.3: a local declaration with an initializer holds the expression, so origin clauses can be written under it.
     private static bool InLocalInitializer(Koto node)
     {
@@ -155,7 +110,7 @@ public sealed partial class Binding
                 case FunctionKoto function:
                     if (ReferenceEquals(function.Body, current) || ReferenceEquals(function.ExpressionBody, current))
                     {
-                        // An anonymous function written in a parameter default is not supported (UnsupportedOwnership_Kd).
+                        // An anonymous function written in a parameter default is not supported (Unsupported_Kd).
                         return function.IsAnonymous && SiteOf(function) == AdviceSite.HeaderExpression ? AdviceSite.HeaderExpression : AdviceSite.Body;
                     }
 
@@ -363,7 +318,7 @@ public sealed partial class Binding
             var inferable = this.InfersQualifierSlot(called, schema, schema.Origins[i].Origin);
             if (!(initializer && inferable))
             {
-                this.FailExplained(ref this.originQualifierLimits, member.Left, BindingFailure.Unsupported, (called, i, initializer, inferable, scope));
+                this.Fail(member.Left, BindingFailure.Unsupported);
                 return true;
             }
         }
@@ -470,74 +425,6 @@ public sealed partial class Binding
         }
 
         return type;
-    }
-
-    // SPEC 15.4.4: the limit names the slot the call would infer, how the qualifier left it open, and the written forms that fix it.
-    // The forms keep the written Type arguments and use names the call's scope does not already declare.
-    private void ReportOriginQualifier(Koto qualifier, (BindingSymbol Called, int Slot, bool Initializer, bool Inferable, BindingScope Scope) limit, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        if (qualifier.BoundType?.Symbol is not { Schema: { } schema } type || (uint)limit.Slot >= (uint)schema.Origins.Count)
-        {
-            qualifier.Report(requirement, code);
-            return;
-        }
-
-        var slot = schema.Origins[limit.Slot].Name;
-        var member = limit.Called.Name;
-        var receiver = limit.Called.ReceiverIndex >= 0;
-        var more = (limit.Called.Declaration as FunctionKoto)?.Parameters.Count - (receiver ? 1 : 0) > 0;
-        var inputs = more ? "(...)" : "()";
-        var unbound = receiver ? more ? "(value, ...)" : "(value)" : inputs;
-        var set = QualifierBindingSet(qualifier)?.BindingSetName;
-        const string Implemented = "Binding infers it only in a local initializer, from arguments lent at a parameter's own borrow Origin, when neither the called function nor its Type is generic";
-        var cause = set is null
-            ? $"{type.Name}'s Origin slot {slot} is omitted on this qualifier, so the call to {member} infers it (SPEC 15.4.4)"
-            : $"The binding set {set} names {type.Name}'s Origin slot {slot}, but no origin clause relates {set}.{slot}, so the call to {member} infers it (SPEC 15.4.4)";
-
-        // The implemented subset is added only when the Note keeps it whole: a cut sentence would garble its conditions.
-        var note = cause.Length + 2 + Implemented.Length <= DiagnosticLimits.NoteLength ? $"{cause}; {Implemented}" : cause;
-        var written = QualifierTypeText(qualifier);
-        var site = SiteOf(qualifier);
-        if (site == AdviceSite.StoredInitializer && this.ParametersNameSlots(type, member))
-        {
-            // A call that lends an argument at the slot, or reads it through another parameter, cannot be completed in a Field's
-            // initializer (ParametersNameSlots), so no written form repairs it there; a constructor body can compute the value.
-            site = AdviceSite.HeaderExpression;
-        }
-
-        string? relate = null;
-        if (set is not null && (limit.Initializer || site == AdviceSite.StoredInitializer))
-        {
-            relate = $"relate {set}.{slot} in an origin clause under this declaration, as in origin {set}.{slot} == <its Origin>";
-        }
-        else if (site == AdviceSite.StoredInitializer)
-        {
-            // A Field's declaration takes origin clauses (SPEC 15.3.3); a receiver value is not available to its initializer.
-            var named = this.FreshName("q", qualifier, limit.Scope);
-            relate = $"name the slot with a binding set and relate it in an origin clause under this declaration, as in ({written}{{{named}}}).{member}{unbound} followed by origin {named}.{slot} == <its Origin>";
-        }
-        else if (site == AdviceSite.Body)
-        {
-            var local = this.FreshName("v", qualifier, limit.Scope);
-            // A written set moves with the call into the new declaration, which introduces it there.
-            var named = set ?? this.FreshName("q", qualifier, limit.Scope);
-            relate = $"name the slot with a binding set in a local declaration and relate it in an origin clause there, as in let {local} = ({written}{{{named}}}).{member}{unbound} followed by origin {named}.{slot} == <its Origin>";
-            if (limit.Inferable && !limit.Initializer && set is null)
-            {
-                // The same call in a local initializer is inferred (InfersQualifierSlot).
-                relate = $"bind the call in a local declaration, whose initializer infers the slot, as in let {local} = {written}.{member}{inputs}, or {relate}";
-            }
-        }
-
-        if (receiver && site == AdviceSite.Body)
-        {
-            relate = $"call {member} through a receiver value, as in value.{member}{inputs}, or {relate}";
-        }
-
-        // A parameter default or base initializer holds no local declaration, and a function clause over a set written there is not
-        // supported, so no written form repairs it there.
-        var advice = relate is null ? null : char.ToUpperInvariant(relate[0]) + relate[1..];
-        qualifier.Report(requirement, code, note: note, advice: advice);
     }
 
     // SPEC 15.3.1: a binding set introduces a new set name and never applies an existing Origin or set. The later set is the location

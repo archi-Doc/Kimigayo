@@ -121,16 +121,4 @@ public sealed partial class Binding
 
         return selected;
     }
-
-    private void ReportBaseCall(BaseReferenceKoto reference, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        if (code == DiagnosticCode.InvalidBaseCall_Kd)
-        {
-            reference.Report(requirement, code, evidence: [this.baseCallFailures![reference]]);
-        }
-        else
-        {
-            reference.Report(requirement, code, note: "The selected base operation's receiver or implementation proof is not yet supported");
-        }
-    }
 }

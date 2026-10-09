@@ -377,7 +377,7 @@ public sealed partial class OwnershipAnalysis
         if (this.UnroutedSelection(unwrapped) is { } selection && !this.ReborrowsStoredReference(selection, type))
         {
             this.ReadSelectionInputs(selection);
-            this.UnsupportedRoute(selection);
+            this.Unsupported(selection);
             return -1;
         }
 
@@ -419,51 +419,6 @@ public sealed partial class OwnershipAnalysis
     private bool ReborrowsStoredReference(BinaryKoto selection, BoundType type)
         => this.Resolve(selection.BoundType, this.Active) is { } part && type.Components.Count == 1 &&
             !ReferenceTypes.StorageMatches(part, this.Resolve(type.Components[0], this.Active));
-
-    // SPEC 23.3.6.4 (PLAN G59): an unsupported Place borrow names the route it lacks, which follows the root: a reference or Slice
-    // receiver on the path needs the borrowed path; otherwise a runtime selector needs the owned projection, and a value root the
-    // temporary's Place. The segment that decides it is related.
-    private void UnsupportedRoute(BinaryKoto selection)
-    {
-        var feature = OwnershipFeature.TemporaryPartBorrow;
-        Koto segment = selection;
-        Koto? runtime = null;
-        for (var level = selection; ;)
-        {
-            var receiver = ElementAccess.AccessType(level.Left);
-            if (receiver?.Kind == BoundTypeKind.Slice || ReferenceTypes.IsBorrow(receiver) || ObjectTypes.HandleMode(receiver) is not null || ObjectTypes.IsBorrow(receiver))
-            {
-                feature = OwnershipFeature.ReferencedElementBorrow;
-                segment = level;
-                break;
-            }
-
-            if (runtime is null && level is IndexKoto && ElementAccess.StaticSelector(level) < 0)
-            {
-                runtime = level;
-            }
-
-            if (KotoHelper.UnwrapParentheses(level.Left) is not BinaryKoto parent || !ElementAccess.IsSyntax(parent) || Binding.IsGetterResult(parent))
-            {
-                if (runtime is not null)
-                {
-                    feature = OwnershipFeature.RuntimeElementBorrow;
-                    segment = runtime;
-                }
-                else if (level.Left is { } root)
-                {
-                    segment = root;
-                }
-
-                break;
-            }
-
-            level = parent;
-        }
-
-        this.Emit(OwnershipOperationKind.Unsupported, selection);
-        this.body.ReportIssue(new(selection, OwnershipFailure.Unsupported, Related: segment, Feature: feature));
-    }
 
     // SPEC 23.3.6.4 (PLAN G59 U1): a rejected selection still reads its root and runtime keys in evaluation order, so their own
     // diagnostics remain; no element is located, protected or acquired, and no value is consumed as an acquisition.
