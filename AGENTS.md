@@ -32,6 +32,16 @@ The specification and implementation are not set in stone. The specification gui
 - Do not run NativeAOT tests unless explicitly specified.
 - Follow `docs/STYLE.md` when writing Kimigayo code. Rules tagged `[Kimi]` are required in `src/Kimi/Library` and in code examples under `docs/spec/`; elsewhere they are recommended.
 
+# Compiler Size and Structure
+
+- Follow [docs/dev/COMPILER_ARCHITECTURE.md](docs/dev/COMPILER_ARCHITECTURE.md): dependency rules, closed vocabularies, one location-only `Unsupported_Kd`, and the migration freeze on the old Analysis/Emission paths.
+- Fix the general rule, not one source shape. Before adding a branch for a form, a case or a diagnostic, name the general rule it departs from and change that rule; if no general rule covers the form, report the located Unsupported. Do not add `Supports*`-style gates, shape allowlists, Advice or downstream re-verification.
+- Before writing a helper, search the canonical components listed in CODEMAP and extend one instead of duplicating it.
+- State the net line change per compiler area in each commit message. A unit that grows the compiler by more than 300 lines also states what it replaced and removed. `CompilerSizeBudgetTest` and `ArchitectureRulesTest` must pass; raise a cap only on explicit owner instruction or to keep O2 performance and zero allocation, recording the reason.
+- Before completing a unit, review its diff separately for reuse, duplication and efficiency.
+- Test through public entry points (acceptance, diagnostics, IR, MIR dumps); assert internal state only in a component's own rule tests. Add size-scaling checks for analyses whose cost depends on input size.
+- At each milestone completion, record per-area line counts, change hotspots and duplication candidates under `artifacts/benchmarks/`; restructure a file that keeps growing through repeated fixes before fixing it again.
+
 # Documentation Responsibilities
 
 - Consult [docs/dev/CODEMAP.md](docs/dev/CODEMAP.md) before compiler changes. It maps features and entry points to source and representative tests. Update it in the same commit for added/moved features, changed phase responsibilities or entry points, or stale references. Keep it concise and navigation-only, without spec rules or support status.

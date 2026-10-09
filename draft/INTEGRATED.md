@@ -272,3 +272,25 @@ The earlier `docs/dev/RANGES_REVIEW.md` reference records a historical checkpoin
   - Any remaining item that depends on LLDB, lldb-dap, the build report or record directories, or that changes `DebugInfo=false` output, is rejected for the reasons above.
 
   The whole file is frozen and moved unchanged from Proposals to Obsolete; closure does not imply support beyond STATUS.
+
+## 2026-10-10 — Compiler size reduction
+
+The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Plan.md` (semantic tables, one MIR built once per definition, one location-only `Unsupported_Kd`, library algorithms in Kimigayo) and closed the two sibling plans written for the same request. The adopted plan is a working proposal; nothing is integrated into SPEC or IMPL yet, and its specification revisions are recorded here when each stage makes them. The 2026-10-09 Compiler Semantic IR and Responsibility Reorganization Plan was deleted by the user in `3f6897ab` and is replaced under decision D1; it is not restored.
+
+- `Obsolete/2026-10-10 Compiler Reduction and MIR Plan.md`: 完了 (closed 2026-10-10). Superseded by the adopted plan.
+  - §§1–5 (conclusion, survey, measurements, root causes, principles): transferred to the adopted plan §§0–4.
+  - §6 and §8 (target architecture, per-phase reorganization): transferred to §§5 and 8–9, with the changes below.
+  - §7 (MIR design): transferred to §5.4–§5.6 with changes. Statement case masks are rejected for type-directed `PairLayer`/`PairAcquire` and per-case views; the Scope interpretation context is rejected for fold-at-expansion default templates with recursive SCC evaluators (§16-15); the `CheckOnly` terminator and the `Call` abort target are rejected for the `CheckTarget` terminator attribute with a two-pass solver and abandonment through `EndBorrow` and drop trees.
+  - §§9–10 (one Unsupported, diagnostic separation and reduction): transferred to §§6–7.
+  - §11 (migration M0–M9): replaced by stages R0–R9 (§12); the D5 freeze and the shadow-then-cutover approach are transferred.
+  - §§12–13 (verification, completion): transferred to §§13–14.
+  - §14 (decisions D1–D6): transferred unchanged to §1.3 and §18.
+  - §15–§16 (risks, relationships): transferred to §§15 and 17. The 82,000-line budget is rejected for the like-for-like target of §10.
+- `Obsolete/2026-10-10 Compiler Simplification and MIR Redesign Plan A.md`: 完了 (closed 2026-10-10). Superseded by the adopted plan.
+  - §§1–3 (direction, measurements, structural problems, complexity that must remain): transferred to §§0–5; the §3.1 list of irreducible distinctions is kept by §§4–5.
+  - §§4–6 (target structure, Kimi MIR, Analysis/Emission reduction): transferred to §§5 and 8–9.
+  - §7 (one Unsupported): transferred to §6.
+  - §8 (deletion ledger and units): the incremental replacement starting from the call and update path is rejected for the shadow pipeline with a single cutover (§12); the net-reduction check after the first replacement is transferred to the stage gates and the size ratchet (§10.4, §12).
+  - §§9–10 (verification, completion): transferred to §§13–14.
+
+  Both files are frozen and moved unchanged from Proposals to Obsolete; closure does not imply support beyond STATUS.
