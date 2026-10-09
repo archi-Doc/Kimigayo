@@ -2076,7 +2076,9 @@ public sealed partial class Binding
             this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null) ||
             (node.BindingFailure == BindingFailure.InvalidOrigin && this.originDeclarations.TryGetValue(node, out var declaration) &&
             declaration.Failure is { } clause && this.partPrerequisites.TryGetValue(node, out var cause) && ReferenceEquals(cause, clause)) ||
-            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid);
+            (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid) ||
+            (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
+            this.formationCauses?.ContainsKey(read) == true);
 
     // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
     private bool RestsOnRecovery(Koto node)

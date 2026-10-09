@@ -892,6 +892,10 @@ public sealed partial class Binding
         {
             // SPEC 8.4.10.6: reported at the violating effect.
         }
+        else if (issue.Code is DiagnosticCode.MissingOriginBinding_Kd or DiagnosticCode.InvalidOriginBinding_Kd && this.ReportFormationCause(issue.Node, requirement, issue.Code))
+        {
+            // SPEC 8.1.2: a pair occurrence's Language cause, at the occurrence.
+        }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.principalOriginFailures?.TryGetValue(issue.Node, out var principal) == true)
         {
             issue.Node.Report(
@@ -1043,11 +1047,12 @@ public sealed partial class Binding
     {
         if (mode == BindingMode.Final)
         {
+            this.formationCauses?.Clear();
             for (var i = 0; i < this.obligations.Count; i++)
             {
                 if (this.obligations[i].Deadline == BindingDeadline.Definition)
                 {
-                    this.Fail(this.obligations[i].Use, BindingFailure.UnprovenConstraint);
+                    this.FailTypeRole(this.obligations[i]);
                 }
             }
         }
@@ -1079,6 +1084,11 @@ public sealed partial class Binding
                 {
                     test.BoundRuntimeTest = null;
                 }
+            }
+
+            if (mode == BindingMode.Final && node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.UnformedFieldRead(node) is { } unformed)
+            {
+                this.partPrerequisites[node] = unformed; // Derived from the Field's formation failure (IsDerived).
             }
 
             if (node.BindingState == BindingState.Unvisited)
@@ -1203,6 +1213,11 @@ public sealed partial class Binding
                 }
 
                 this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code) { Failure = node.BindingFailure });
+                if (this.formationCauses?.TryGetValue(node, out var causes) == true && (causes & TypeRoleCause.Role) != 0)
+                {
+                    // SPEC 23.3.6.4: a target role that is not proven beside a Language cause of the same occurrence is its own record.
+                    this.issues.Add(new(node, DiagnosticCode.UnprovenConstraint_Kd) { Failure = BindingFailure.UnprovenConstraint });
+                }
             }
         }
 

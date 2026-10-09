@@ -494,7 +494,7 @@ public class PairFollowTest
     // SPEC 8.1.2: an s/U nested in a Type argument gains no omitted Origin; SPEC 13.5.5.1: a followed element Place is never
     // transferred by a bare initializer, and Write with owner admitted needs an exclusively writable operand.
     [Theory]
-    [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0", DiagnosticCode.UnprovenConstraint_Kd)]
+    [InlineData("func peekFirst<s/T>(c: ref/Collection<s/Option<i32>>, marker: s/T) -> i32\n    s is value or valueborrow\n    return 0", DiagnosticCode.MissingOriginBinding_Kd)]
     [InlineData("func pick<s/T>(c: ref/Collection<s/T>, i: isize) -> i32\n    s is value or valueborrow\n    T is Loaded\n    let n = c[i]\n    return n.load()", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("func grow<s/T>(values: s/Array<i32>, m: s/T)\n    s is owner or uniq\n    values@follow.append(4)", DiagnosticCode.NoApplicableOverload_Kd)]
     public void PairPositionsReject(string source, DiagnosticCode code)

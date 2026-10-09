@@ -125,19 +125,19 @@ public class PairAnnotationBindingTest
         Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
     }
 
-    // SPEC 15.6.1: an unformed pair Field reports its formation; a fit against it derives from that failure instead of adding a Type
-    // mismatch (F17, A.11).
+    // SPEC 15.6.1, 23.3.6.4: an unformed pair Field reports its formation once; a fit against it derives from that failure instead of
+    // adding a Type mismatch, and a call that reads the Field rests on it (F17, A.11).
     [Fact]
-    public void AnUnformedPairFieldAddsNoTypeMismatch()
+    public void AnUnformedPairFieldReportsOnlyItsFormation()
     {
         var c = Parse("struct Holder<s/T, U>\n    s is value or valueborrow\n    public let first: s/T\n    public let other: s/U\n" +
             "    public init(first: s/T, other: s/U)\n        self.first = first@move\n        self.other = other@move\n" +
-            "let x: i32 = 1\nlet y: i64 = 2\nlet h = Holder<ref/i32, i64>.init(x@ref, y@ref)");
+            "let x: i32 = 1\nlet y: i64 = 2\nlet h = Holder<ref/i32, i64>.init(x@ref, y@ref)\nConsole.writeLine(\"\\(h.other)\")");
         c.Bind();
-        Assert.Equal([DiagnosticCode.UnprovenConstraint_Kd], c.Binding.Issues.Select(static x => x.Code));
+        Assert.Equal([DiagnosticCode.MissingOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
     }
 
-    // A static Origin admits no exclusive borrow, so an admitted `uniq` cannot form the Type.
+    // A static Origin admits no exclusive borrow, so an admitted `uniq` cannot form the Type: a Language cause (SPEC 8.1.2).
     [Theory]
     [InlineData("s/T during static", "uniq")]
     [InlineData("s/U during static", "owner or uniq")]
@@ -145,7 +145,26 @@ public class PairAnnotationBindingTest
     {
         var c = Parse($"func f<s/T, U>(value: {type})\n    s is {semantics}\n    ()");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
+        Assert.Equal([DiagnosticCode.InvalidOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code));
+    }
+
+    // SPEC 8.1.2, 23.3.6.4: a pair occurrence's formation publishes each independent cause, a Language cause before a target role that
+    // is not proven: a missing slot under an admitted borrow is MissingOriginBinding_Kd, as for its concrete twin, and an unproven Object
+    // Target of an admitted object binding is UnprovenConstraint_Kd beside it. An associated specification omits no slot either
+    // (SPEC 15.3.3, 15.4.4).
+    [Theory]
+    [InlineData("struct Holder<s/T, U>\n    s is ref\n    let value: s/T\n    let other: s/U\n", new[] { DiagnosticCode.MissingOriginBinding_Kd })]
+    [InlineData("struct Holder<s/T, U>\n    s is value or valueborrow\n    let value: s/T\n    let other: s/U\n", new[] { DiagnosticCode.MissingOriginBinding_Kd })]
+    [InlineData("contract Source\n    associate Element\nstruct Holder<s/T, U>\n    s is value or valueborrow\n    Self is Source\n    associate Source.Element is s/U\n    var item: s/T\n", new[] { DiagnosticCode.MissingOriginBinding_Kd })]
+    [InlineData("struct Holder<s/T, U>\n    let value: s/T\n    let other: s/U\n", new[] { DiagnosticCode.MissingOriginBinding_Kd, DiagnosticCode.UnprovenConstraint_Kd })]
+    [InlineData("struct Holder<s/T, U> {a}\n    let value: s/T\n    let other: s/U during a\n", new[] { DiagnosticCode.UnprovenConstraint_Kd })]
+    public void FormationCausesKeepTheirOwnCodes(string source, DiagnosticCode[] codes)
+    {
+        var c = Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(codes, c.Binding.Issues.Select(static x => x.Code));
+        Assert.False(c.Binding.CheckBound().IsComplete);
+        Assert.Equal(codes, c.Binding.Issues.Select(static x => x.Code));
     }
 
     [Theory]
