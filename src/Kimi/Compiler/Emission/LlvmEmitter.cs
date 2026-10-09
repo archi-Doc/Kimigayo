@@ -23,7 +23,6 @@ public sealed partial class LlvmEmitter
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundProperty, FunctionAbi> staticGetters = new(ReferenceEqualityComparer.Instance);
     private readonly List<StaticScalarEntry> staticEntries = new();
-    private readonly SourceLocationTable staticLocations = new();
     private readonly List<(string Symbol, FunctionAbi Abi)> importAbis = new();
     private bool resourceLimit;
     private string? instanceFailureContext;
@@ -165,14 +164,12 @@ public sealed partial class LlvmEmitter
 
                 var slot = this.staticEntries[slotOrdinal];
 
-                if (!StaticScalar.IsDynamic(property) || !this.staticLocations.TryGet(property.Declaration, c.Project.Directory, out var location))
+                if (!StaticScalar.IsDynamic(property))
                 {
-                    failure = "Static initializer requires a verified closed scalar declaration and source location.";
+                    failure = "Static initializer requires a verified closed scalar declaration.";
                     return false;
                 }
 
-                slot.Location = module.Constants.Intern(location, LlvmConstantKind.Location);
-                slot.Message = module.Constants.Intern("Static initialization cycle", LlvmConstantKind.Text);
                 module.Statics.Add(slot);
                 this.staticGetters.Add(property, slot.Getter);
             }

@@ -50,17 +50,9 @@ internal static partial class LlvmModuleWriter
             output.Write("\n  ret ");
             output.Write(type);
             output.Write(type == "i1" ? " %value" : " %stored");
-            output.Write("\ncycle:\n  %message = alloca %kimi.string, align 8\n  store %kimi.string { ptr @");
-            var message = module.Constants[slot.Message];
-            output.Write(message.Name);
-            output.Write(", i64 ");
-            WriteNumber(output, message.ByteLength);
-            output.Write(", i8 0 }, ptr %message, align 8\n  call void @__kimi_abort_message(ptr %message, ptr @");
-            var location = module.Constants[slot.Location];
-            output.Write(location.Name);
-            output.Write(", i64 ");
-            WriteNumber(output, location.ByteLength);
-            output.Write(")\n  unreachable\n}\n");
+            output.Write("\ncycle:\n  call void @__kimi_abort(i32 ");
+            WriteNumber(output, WindowsLowering.StaticCycleReason);
+            output.Write(", ptr %location, i64 %location_length, i64 -2)\n  unreachable\n}\n");
         }
     }
 }

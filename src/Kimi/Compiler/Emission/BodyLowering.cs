@@ -259,7 +259,13 @@ internal sealed partial class BodyLowering
                 return Fail("Static read requires a verified initializer and matching scalar storage.", out failure);
             }
 
-            function.AddCall(index, getter, []);
+            // SPEC 22.5.4: a cycle reports the start of this read's Place expression, qualifier included.
+            if (!this.TryGetLocation(operation.Source, projectDirectory, constants, out var location))
+            {
+                return Fail("Static read requires a source location.", out failure);
+            }
+
+            function.AddCall(index, getter, [new(EmissionOperandKind.ConstantAddress, location), new(EmissionOperandKind.ConstantLength, location)]);
             return true;
         }
 

@@ -24,6 +24,7 @@ internal static partial class WindowsLowering
     internal const int MissingKeyReason = 14;
     internal const int DuplicateKeyReason = 15;
     internal const int ReferenceCountReason = 16;
+    internal const int StaticCycleReason = 17;
 
     // Indices are module-local ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -48,6 +49,7 @@ internal static partial class WindowsLowering
         new(MissingKeyReason, "missing_key", "KIMI_E_MISSING_KEY: Dictionary key was not found"),
         new(DuplicateKeyReason, "duplicate_key", "KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key"),
         new(ReferenceCountReason, "ref_count", "KIMI_E_REF_COUNT: Reference count limit exceeded"),
+        new(StaticCycleReason, "static_cycle", "KIMI_E_STATIC_CYCLE: Static initialization cycle"),
     ];
 
     internal static string ExpandAbortReasons(string runtime)

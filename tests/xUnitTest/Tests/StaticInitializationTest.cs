@@ -118,15 +118,14 @@ public class StaticInitializationTest
         ScalarEmissionTest.EmitFixture("StaticInitializationUnused", Source, "done\n");
     }
 
-    [Fact]
-    public void DetectsIndirectCycle()
+    // SPEC 22.2.3, 22.5.4: reading a slot that is Initializing Aborts at the start of that read's Place expression, qualifier
+    // included, neither at the declaration nor at the first access.
+    [Theory]
+    [InlineData("StaticInitializationCycle", "")]
+    [InlineData("StaticInitializationCycleQualified", "Values.")]
+    public void DetectsIndirectCycle(string name, string qualifier)
     {
-        const string Source = """
-            group Values
-                public let first: i64 = second + 1
-                public let second: i64 = first + 1
-            let value = Values.first
-            """;
-        ScalarEmissionTest.EmitFixture("StaticInitializationCycle", Source, string.Empty, 1, "Hello.kimi:2:12: abort KIMI_E_ABORT: Static initialization cycle\n");
+        var source = $"group Values\n    public let first: i64 = {qualifier}second + 1\n    public let second: i64 = {qualifier}first + 1\nlet value = Values.first";
+        ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, "Hello.kimi:3:30: abort KIMI_E_STATIC_CYCLE: Static initialization cycle\n");
     }
 }

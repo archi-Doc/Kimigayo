@@ -7,13 +7,10 @@ internal sealed class StaticScalarEntry(FunctionAbi initializer)
 {
     internal FunctionAbi Initializer { get; } = initializer;
 
-    internal FunctionAbi Getter { get; } = new(initializer.Name + ".get", initializer.Result, []);
+    // SPEC 22.5.4: each read passes the start of its Place expression, which a cycle Abort reports.
+    internal FunctionAbi Getter { get; } = new(initializer.Name + ".get", initializer.Result, [new("ptr", "location", AbiParameterKind.Location), new("i64", "location_length", AbiParameterKind.LocationLength)]);
 
     internal string StateName { get; } = initializer.Name + ".state";
 
     internal string ValueName { get; } = initializer.Name + ".value";
-
-    internal int Location { get; set; }
-
-    internal int Message { get; set; }
 }

@@ -190,7 +190,7 @@ public class DivisionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("1 / 1");
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Equal(17, WindowsLowering.AbortReasons.Length);
+        Assert.Equal(18, WindowsLowering.AbortReasons.Length);
         var count = WindowsLowering.AbortReasons.Length;
         Assert.Equal(2, Regex.Matches(ir, $@"\[{count} x \{{ ptr, i64 \}}\]").Count);
         var codes = new HashSet<string>(StringComparer.Ordinal);
@@ -214,6 +214,8 @@ public class DivisionEmissionTest
         Assert.Equal("KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key", WindowsLowering.AbortReasons[WindowsLowering.DuplicateKeyReason].Text);
         Assert.Equal(16, WindowsLowering.ReferenceCountReason);
         Assert.Equal("KIMI_E_REF_COUNT: Reference count limit exceeded", WindowsLowering.AbortReasons[WindowsLowering.ReferenceCountReason].Text);
+        Assert.Equal(17, WindowsLowering.StaticCycleReason);
+        Assert.Equal("KIMI_E_STATIC_CYCLE: Static initialization cycle", WindowsLowering.AbortReasons[WindowsLowering.StaticCycleReason].Text);
         Assert.Contains($"%known = icmp ult i32 %reason, {count}", ir);
         Assert.DoesNotContain("{{", ir);
     }
