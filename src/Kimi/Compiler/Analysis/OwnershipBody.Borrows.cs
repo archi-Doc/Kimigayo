@@ -744,12 +744,13 @@ public sealed partial class OwnershipBody
                     if (own && ReferenceEquals(entry.Key.Declaration, origin.Binder) && (origin.Kind == OriginKind.Input ? entry.Key.Slot == origin.InputIndex : Binding.SymbolOriginSlot(entry.Key) == origin.Slot) &&
                         (origin.Kind != OriginKind.Input || entry.Key.Kind == BindingSymbolKind.Parameter))
                     {
-                        if (origin.Kind == OriginKind.Input && this.Places[declared].Type.Semantics == SemanticsKind.Owner &&
+                        if (origin.Kind == OriginKind.Input && this.Places[declared].Type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc &&
                             (origin.Occurrence is not null || this.Places[declared].Type.Kind == BoundTypeKind.Slice))
                         {
-                            // SPEC 15.2.1, 15.3.1, 4.6.5: the slot of an owned input, such as value.source or a by-value Slice's
-                            // source, names the caller's Loan, not the input's storage; a result retaining it depends on no
-                            // local root, so the input itself may be moved into that result.
+                            // SPEC 15.2.1, 15.3.1, 4.6.5, 15.6.5, 16.3.3: the slot of an owned input, such as value.source, a by-value
+                            // Slice's source or a payload slot of an owned obj, rc or arc handle, names the caller's Loan, not the
+                            // input's storage; a result retaining it depends on no local root, so the input itself may be moved into
+                            // that result, and destroying it at exit may observe the slot.
                             continue;
                         }
 

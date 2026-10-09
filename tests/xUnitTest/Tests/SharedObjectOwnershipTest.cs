@@ -13,6 +13,7 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
 {
     private const string View = "struct View {source}\n    public let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\n";
     private const string Item = "struct Item\n    public var value: i32 = 7\n    public func read(self: ref/Self) -> i32 => self.value\n    drop => Console.writeLine(\"drop\")\n";
+    private const string Observer = "struct Observer {source}\n    public let value: ref/i32 during source\n    public init(value: ref/i32 during source) => self.value = value\n    drop\n        require self.value == 7 else => $abort(\"observed\")\n        Console.writeLine(\"observed\")\n";
 
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -32,6 +33,41 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     [InlineData("Borrow", "let view = owner@objref\nlet payload = owner@follow@ref\nrequire view.value == 7 and payload.value == 7 else => $abort(\"borrow\")")]
     public void OrdinaryStorageAndBorrowPlansPreserveTheFinalRelease(string name, string use)
         => SharedObjectRuntimeTest.WriteModes("Storage" + name, Item + "let owner = Kimi.Intrinsics.makeRc(Item.init())\n" + use, 1, 1, 20, "drop\n");
+
+    // SPEC 15.6.5, 16.3.3: the payload slots of an owned handle parameter are the callee's fixed Origins, naming the caller's
+    // Loans as a by-value aggregate's slots do, so the callee may read, Move or destroy the handle and its release observes them.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Destroyed", "func consume(handle: rc/Observer)\n    Console.writeLine(\"consumed\")\nvar n = 7\nconsume(Kimi.Intrinsics.makeRc(Observer.init(n@ref)))\nn = 9\nConsole.writeLine(\"after\")", 1, "consumed\nobserved\nafter\n")]
+    [InlineData("Moved", "func consume(handle: rc/Observer)\n    let local = handle@move\n    Console.writeLine(\"consumed\")\nvar n = 7\nconsume(Kimi.Intrinsics.makeRc(Observer.init(n@ref)))\nn = 9\nConsole.writeLine(\"after\")", 1, "consumed\nobserved\nafter\n")]
+    [InlineData("Read", "func consume(handle: rc/Observer)\n    require handle.value == 7 else => $abort(\"read\")\n    Console.writeLine(\"consumed\")\nvar n = 7\nconsume(Kimi.Intrinsics.makeRc(Observer.init(n@ref)))\nn = 9\nConsole.writeLine(\"after\")", 1, "consumed\nobserved\nafter\n")]
+    [InlineData("Named", "func consume(handle: rc/Observer{a})\n    Console.writeLine(\"consumed\")\nvar n = 7\nconsume(Kimi.Intrinsics.makeRc(Observer.init(n@ref)))\nn = 9\nConsole.writeLine(\"after\")", 1, "consumed\nobserved\nafter\n")]
+    [InlineData("Retained", "func consume(handle: rc/Observer)\n    Console.writeLine(\"consumed\")\nlet n = 7\nlet h = Kimi.Intrinsics.makeRc(Observer.init(n@ref))\nlet keep = Kimi.Intrinsics.clone(h@ref)\nconsume(h@move)\nConsole.writeLine(\"after\")\n_ = keep@move", 1, "consumed\nafter\nobserved\n")]
+    [InlineData("Nested", "struct Box {s}\n    public let inner: rc/(Observer during s)\n    public init(inner: rc/(Observer during s)) => self.inner = inner@move\nfunc consume(handle: rc/Box)\n    Console.writeLine(\"consumed\")\nlet n = 7\nconsume(Kimi.Intrinsics.makeRc(Box.init(Kimi.Intrinsics.makeRc(Observer.init(n@ref)))))\nConsole.writeLine(\"after\")", 2, "consumed\nobserved\nafter\n")]
+    public void OwnedHandleParametersReleaseThroughTheirCallersLoans(string name, string use, int allocations, string stdout)
+        => SharedObjectRuntimeTest.WriteModes("Callee" + name, Observer + use, allocations, allocations, allocations * 24, stdout);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ExclusiveObjectParametersReleaseThroughTheirCallersLoans()
+        => NativeAllocationAudit.WriteFixture("SharedRcObjCallee", Observer + "func consume(handle: obj/Observer)\n    let local = handle@move\n    Console.writeLine(\"consumed\")\nvar n = 7\nconsume(Kimi.Intrinsics.makeObj(Observer.init(n@ref)))\nn = 9\nConsole.writeLine(\"after\")", 1, 1, 24, "consumed\nobserved\nafter\n");
+
+    // Borrows reached through an owned handle parameter still hold it, and the caller's Loan still protects the borrowed local.
+    [Theory]
+    [InlineData("func consume(handle: rc/Observer)\n    let r = handle@follow@ref\n    let local = handle@move\n    require r.value == 7 else => $abort(\"read\")\nlet n = 7\nconsume(Kimi.Intrinsics.makeRc(Observer.init(n@ref)))", "handle@move", "handle")]
+    [InlineData("func consume(handle: rc/Observer) => ()\nvar n = 7\nlet h = Kimi.Intrinsics.makeRc(Observer.init(n@ref))\nlet keep = Kimi.Intrinsics.clone(h@ref)\nconsume(h@move)\nn = 9\n_ = keep@move", "n = 9", "n = 9")]
+    public void OwnedHandleParametersKeepTheLoansOfTheirBorrows(string use, string anchor, string target)
+    {
+        foreach (var atomic in new[] { false, true })
+        {
+            var source = Observer + use;
+            source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
+            var error = Assert.Single(Diagnose(source).Diagnostics);
+            Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+            Assert.Equal(source.IndexOf(anchor, StringComparison.Ordinal), error.Span!.Value.Start);
+            Assert.Equal(target, source.Substring(error.Span.Value.Start, error.Span.Value.Length));
+        }
+    }
 
     // SPEC 16.3.3: a handle Moved or initialized on only some paths is released only where it is still initialized.
     [Trait("Purpose", "Allocation")]
