@@ -579,7 +579,7 @@ public sealed partial class Binding
             {
                 MemberAccessKoto member => member.Left,
                 IndexKoto index => index.Left,
-                ConversionKoto { ConversionBinding: ConversionBinding.Follow } follow => follow.Left,
+                ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PairFollow } follow => follow.Left,
                 _ => null,
             };
             if (outer is null)
@@ -588,7 +588,22 @@ public sealed partial class Binding
             }
 
             outer = KotoHelper.UnwrapParentheses(outer);
-            if (outer.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { } layer })
+            if (path is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
+            {
+                // SPEC 13.5.5.1: an outer pair layer is a reference in its borrow cases, whose slot bounds the result there; the
+                // walk goes on while an owner or exclusive case reaches further, and the meet over the cases keeps every bound.
+                var admitted = this.PairAdmitted(pair);
+                if ((admitted & SemanticsMask.Borrow) != 0 && outer.BoundType is { } pairLayer && this.OuterOrigin(pairLayer) is { } slot && SignatureOrigin(slot))
+                {
+                    origin = this.Meet(origin, slot);
+                }
+
+                if ((admitted & (SemanticsMask.Owner | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0)
+                {
+                    break;
+                }
+            }
+            else if (outer.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { } layer })
             {
                 if (SignatureOrigin(layer))
                 {
@@ -681,9 +696,8 @@ public sealed partial class Binding
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
         {
             // SPEC 13.5.5.1: an admitted owner selects the operand Place itself; with only borrows admitted, the selected
-            // referent keeps the dependencies of the stored reference, like a Reborrow: the layer's outer-Origin slot.
-            return (this.PairAdmitted(pair) & SemanticsMask.Owner) != 0 ? this.PlaceOrigin(pair.Left)
-                : (pair.Left.BoundType is { } layer ? this.OuterOrigin(layer) : null) ?? this.PlaceOrigin(pair.Left);
+            // referent keeps the dependencies of the stored reference, like a Reborrow.
+            return this.PairOrigin(pair.Left, pair.Left.BoundType, this.PairAdmitted(pair));
         }
 
         if (KotoHelper.UnwrapParentheses(source) is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected)

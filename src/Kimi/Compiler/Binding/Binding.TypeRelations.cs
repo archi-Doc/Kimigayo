@@ -492,19 +492,20 @@ public sealed partial class Binding
             {
                 // SPEC 8.1.2: the annotation binds the outer-Origin slot of a borrow binding; a value binding keeps no slot,
                 // and an abstract binding keeps it conditional.
-                projected = this.WithOrigins(projected, replacement, (BoundOrigin[])projected.OriginArguments);
+                projected = this.WithOrigins(projected, this.SubstitutePairOrigins(replacement, binder, arguments), (BoundOrigin[])projected.OriginArguments);
             }
 
             return projected;
         }
 
-        if (type.Components.Count == 0 && type.LengthArguments.Length == 0)
+        if (type.Components.Count == 0 && type.LengthArguments.Length == 0 && !type.CarriesOrigin)
         {
             return type;
         }
 
         var scratch = this.RentTypes(type.Components.Count);
         var itemLengths = this.lengthScratch.Rent(type.LengthArguments.Length);
+        BoundOrigin[]? origins = null;
         try
         {
             var length = type.Length;
@@ -568,23 +569,43 @@ public sealed partial class Binding
                     return family.Kind == BoundTypeKind.SemanticsAdaptation ? this.SubstituteFamily(family, whole) : family;
                 }
 
-                return this.ApplySemantics(whole, scratch[0], type.Origin);
+                return this.ApplySemantics(whole, scratch[0], type.Origin is { } slotOrigin ? this.SubstitutePairOrigins(slotOrigin, binder, arguments) : null);
             }
 
-            var origin = type.Origin;
-            if (origin is { Kind: OriginKind.Parameter, Occurrence: GenericParameterKoto declaration } && ReferenceEquals(origin.Binder, binder) &&
-                declaration.BoundSymbol is { } target && ContainerSlot(binder, target) is >= 0 and var pair && pair < arguments.Length && arguments[pair] is { } bound)
+            // SPEC 8.1.1, 8.1.2: every `o` of the binder's pairs, as an outer Origin, a meet operand or an Origin argument, is bound
+            // through its Type argument.
+            var origin = type.Origin is { } outer ? this.SubstitutePairOrigins(outer, binder, arguments) : null;
+            changed |= !ReferenceEquals(origin, type.Origin);
+            for (var i = 0; i < type.OriginArguments.Count; i++)
             {
-                // SPEC 8.1.1, 8.1.2: the pair's outer Origin `o` is bound through its Type argument: the outer Origin of a borrow
-                // binding, nothing for a value binding (static, which no exclusive slot accepts); an abstract binding keeps its own `o`.
-                origin = IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static;
-                changed |= !ReferenceEquals(origin, type.Origin);
+                var argument = this.SubstitutePairOrigins(type.OriginArguments[i], binder, arguments);
+                if (origins is null && !ReferenceEquals(argument, type.OriginArguments[i]))
+                {
+                    origins = this.originScratch.Rent(type.OriginArguments.Count);
+                    for (var j = 0; j < i; j++)
+                    {
+                        origins[j] = type.OriginArguments[j];
+                    }
+                }
+
+                if (origins is not null)
+                {
+                    origins[i] = argument;
+                }
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, (BoundOrigin[])type.OriginArguments, expression, type.ClosureContext, itemLengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode) : type;
+            changed |= origins is not null;
+            return changed
+                ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, origins is null ? (BoundOrigin[])type.OriginArguments : origins.AsSpan(0, type.OriginArguments.Count), expression, type.ClosureContext, itemLengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode)
+                : type;
         }
         finally
         {
+            if (origins is not null)
+            {
+                this.originScratch.Return(origins, clearArray: true);
+            }
+
             this.typeScratch.Return(scratch, clearArray: true);
             this.lengthScratch.Return(itemLengths, clearArray: true);
         }

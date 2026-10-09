@@ -197,10 +197,11 @@ public sealed partial class Binding
                     // A Slice stores its source as its own Origin; substitute through a span over it, not a new array per use.
                     origin = container.Kind == BoundTypeKind.Slice && container.Origin is { } sliceSource
                         ? this.SubstituteStoredOrigin(origin, symbol.Declaration, new ReadOnlySpan<BoundOrigin>(ref sliceSource))
-                        : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments);
+                        : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments, types: (BoundType[])container.Components);
                 }
 
-                values[i] = this.SubstituteStoredOrigin(origin, outer.Target.Declaration, outer.Origins, outer.InputOrigins);
+                // A body's Origin may name a pair's `o` (SPEC 13.5.5.1), which the instance binds through its Type arguments.
+                values[i] = this.SubstituteStoredOrigin(origin, outer.Target.Declaration, outer.Origins, outer.InputOrigins, outer.TypeArguments);
             }
         }
     }

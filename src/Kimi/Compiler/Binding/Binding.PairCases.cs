@@ -317,4 +317,51 @@ public sealed partial class Binding
     // SPEC 8.1.1 table: the complete Type of one case over the direct target; only a safe borrow keeps the outer-Origin slot.
     private BoundType Form(SemanticsKind semantics, BoundType target, BoundOrigin? origin)
         => semantics == SemanticsKind.Owner ? target : this.InternType(BoundTypeKind.Semantics, null, semantics, [target], origin: IsBorrow(semantics) ? origin : null);
+
+    /// <summary>Binds the outer Origin <c>o</c> of one of <paramref name="binder"/>'s pairs through its Type argument (SPEC 8.1.1,
+    /// 8.1.2): the outer Origin of a borrow binding, nothing for a value binding (static, the identity of a meet, which no exclusive
+    /// slot accepts), and the outer-Origin slot of an abstract binding.</summary>
+    /// <param name="origin">An Origin atom.</param>
+    /// <param name="binder">The declaration whose Type arguments are given.</param>
+    /// <param name="arguments">The Type arguments by slot.</param>
+    /// <returns>The image, or null when <paramref name="origin"/> is no bound <c>o</c> of the binder.</returns>
+    private BoundOrigin? PairOuterImage(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments)
+        => origin is { Kind: OriginKind.Parameter, Slot: < 0, Occurrence: GenericParameterKoto declaration } && ReferenceEquals(origin.Binder, binder) &&
+            declaration.BoundSymbol is { } target && ContainerSlot(binder, target) is >= 0 and var slot && slot < arguments.Length && arguments[slot] is { } bound
+            ? IsBorrow(bound.Semantics) ? bound.Origin ?? BoundOrigin.Static : this.OuterOrigin(bound) ?? BoundOrigin.Static
+            : null;
+
+    /// <summary>Binds every <c>o</c> of <paramref name="binder"/>'s pairs in an Origin, alone or as a meet operand, through the Type
+    /// arguments (SPEC 8.1.1, 8.1.2), keeping the instance when none occurs.</summary>
+    /// <param name="origin">The Origin.</param>
+    /// <param name="binder">The declaration whose Type arguments are given.</param>
+    /// <param name="arguments">The Type arguments by slot.</param>
+    /// <returns>The substituted Origin.</returns>
+    private BoundOrigin SubstitutePairOrigins(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundType?> arguments)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return this.PairOuterImage(origin, binder, arguments) ?? origin;
+        }
+
+        // A meet's operands are atoms; it is rebuilt only when one of them is bound.
+        var bound = false;
+        for (var i = 0; i < origin.Operands.Count && !bound; i++)
+        {
+            bound = this.PairOuterImage(origin.Operands[i], binder, arguments) is not null;
+        }
+
+        if (!bound)
+        {
+            return origin;
+        }
+
+        var result = BoundOrigin.Static;
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            result = this.Meet(result, this.PairOuterImage(origin.Operands[i], binder, arguments) ?? origin.Operands[i]);
+        }
+
+        return result;
+    }
 }

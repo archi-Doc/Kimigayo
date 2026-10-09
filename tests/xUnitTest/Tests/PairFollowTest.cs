@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -223,8 +225,28 @@ public class PairFollowTest
         "    let shown = node@ref\n    require view(node@ref, k, k@ref) == 3 and view(shown@ref, k@ref, k@ref) == 3 else => $abort(\"view\")\n" +
         "    Console.writeLine(\"Nested layers.\")\n";
 
+    // SPEC 13.5.5.1, 15.5: in a uniq instance of a borrow-only binder, a follow keeps its slot met with the borrows that reach it, and
+    // an instance binds `o` wherever the body names it: in a forwarded call's Origins, a meet and a local's Origin argument.
+    private const string UniqInstance = Box +
+        "struct View<T> {source}\n    public var value: uniq/T during source\n    public init(value: uniq/T during source) => self.value = value@move\n" +
+        "struct Holder<s/T> {a}\n    s is uniq\n    public var value: s/T during a\n    public init(value: s/T during a) => self.value = value@move\n" +
+        "    public func get(self: uniq/Self) -> uniq/T\n        return self.value@follow@uniq\n" +
+        "func put<T>(target: uniq/T, value: T)\n    T is Copy\n    target@follow = value\n" +
+        "func slot<s/T>(b: uniq/Box<s/T during a> during c) -> uniq/T during c\n    s is uniq\n    return b.item@follow@uniq\n" +
+        "func peek<s/T>(b: uniq/Box<s/T during a> during c) -> ref/T during c\n    s is ref or uniq\n    return b.item@follow@ref\n" +
+        "func write<s/T>(b: uniq/Box<s/T> during c, first: T, second: T)\n    s is uniq\n    T is Copy\n" +
+        "    put(b.item@follow@uniq, first)\n    var view = View.init(b.item@follow@uniq)\n    view.value@follow = second\n" +
+        "public func main()\n" +
+        "    var n: i32 = 3\n    var b = Box<uniq/i32>.init(n@uniq)\n    let r = slot(b@uniq)\n    r@follow = 5\n" +
+        "    require peek(b@uniq) == 5 else => $abort(\"slot\")\n" +
+        "    write(b@uniq, 6, 7)\n    require peek(b@uniq) == 7 else => $abort(\"write\")\n" +
+        "    let m: i32 = 4\n    var d = Box<ref/i32>.init(m@ref)\n    require peek(d@uniq) == 4 else => $abort(\"shared\")\n" +
+        "    var k: i32 = 1\n    var h = Holder.init(k@uniq)\n    let g = h.get()\n    g@follow = 8\n" +
+        "    Console.writeLine(\"\\(n) \\(m) \\(k)\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "UniqInstance", UniqInstance, "7 4 8\n" },
         { "NestedLayers", NestedLayers, "Nested layers.\n" },
         { "ExclusiveFollow", ExclusiveFollow, "Exclusive follow.\n" },
         { "FollowedIteration", FollowedIteration, "Followed iteration.\n" },
@@ -306,11 +328,67 @@ public class PairFollowTest
     [InlineData("func g<s/T>(box: ref/Box<s/T>) -> ref/(s/T) during box\n    s is value or valueborrow\n    return box.item@ref")]
     [InlineData("func g<s/T>(box: ref/Box<s/T>) -> ref/T during box\n    s is value or valueborrow\n    return box.item@follow@ref")]
     [InlineData("func g<s/T>(box: ref/Box<s/T>)\n    s is value or valueborrow\n    let r = box.item@ref")]
+    [InlineData("func g<s/T>(b: uniq/Box<s/T during a> during c) -> uniq/T during c\n    s is uniq\n    return b.item@follow@uniq")]
+    [InlineData("func g<s/T>(b: uniq/Box<s/T during a> during c) -> ref/T during c\n    s is ref or uniq\n    return b.item@follow@ref")]
+    [InlineData("struct Holder<s/T> {a}\n    s is uniq\n    public var value: s/T during a\n    public init(value: s/T during a) => self.value = value@move\n    public func get(self: uniq/Self) -> uniq/T\n        return self.value@follow@uniq")]
     public void SlotBorrowsAndFollowsVerify(string source)
     {
         var c = MinimalEmissionTest.Analyze(Box + source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
+
+    // SPEC 13.5.5.1, 15.5, 8.10: a follow through a borrow-only layer keeps the slot met with the borrows that reach the operand
+    // when uniq is admitted, and an outer pair layer on the path adds its slot, as the follow of the uniq case's concrete reference
+    // does; a result that detaches from those borrows is rejected with the concrete twin's code.
+    [Theory]
+    // A.10
+    [InlineData(
+        "func bad<s/T>(b: uniq/Box<s/T during a> during c) -> uniq/T during a\n    s is uniq\n    return b.item@follow@uniq",
+        "func bad(b: uniq/Box<uniq/i32 during a> during c) -> uniq/i32 during a\n    return b.item@follow@uniq")]
+    // A.10b: a shared follow, also bounded in the uniq case
+    [InlineData(
+        "func bad<s/T>(b: uniq/Box<s/T during a> during c) -> ref/T during a\n    s is ref or uniq\n    return b.item@follow@ref",
+        "func bad<T>(b: uniq/Box<uniq/T during a> during c) -> ref/T during a\n    return b.item@follow@ref")]
+    // g34/holder-detach2
+    [InlineData(
+        "struct Holder<s/T> {a}\n    s is uniq\n    public var value: s/T during a\n    public init(value: s/T during a) => self.value = value@move\n    public func bad(self: uniq/Self) -> uniq/T during a\n        return self.value@follow@uniq",
+        "struct Holder<T> {a}\n    public var value: uniq/T during a\n    public init(value: uniq/T during a) => self.value = value@move\n    public func bad(self: uniq/Self) -> uniq/T during a\n        return self.value@follow@uniq")]
+    // An outer pair layer on the path
+    [InlineData(
+        "func bad<s/T, t/U>(x: uniq/Box<s/Box<t/U during b> during a> during c, m: s/T, k: t/U) -> uniq/U during a\n    s is uniq\n    t is uniq\n    return x.item@follow.item@follow@uniq",
+        "func bad<U>(x: uniq/Box<uniq/Box<uniq/U during b> during a> during c) -> uniq/U during a\n    return x.item@follow.item@follow@uniq")]
+    // R3: a result premise over the slot never proves the borrows that reach it
+    [InlineData(
+        "func bad<s/T>(b: uniq/Box<s/T> during c, p: ref/i32) -> (Option<ref/Box<s/T> during p>, uniq/T during p)\n    s is uniq\n    return (.None, b.item@follow@uniq)",
+        "func bad(b: uniq/Box<uniq/i32 during a> during c, p: ref/i32) -> (Option<ref/Box<uniq/i32 during a> during p>, uniq/i32 during p)\n    return (.None, b.item@follow@uniq)")]
+    public void DetachingFollowsAreRejectedLikeTheirConcreteTwins(string pair, string concrete)
+    {
+        var generic = MinimalEmissionTest.Analyze(Box + pair);
+        var twin = MinimalEmissionTest.Analyze(Box + concrete);
+        Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], generic.Binding.Issues.Select(x => x.Code));
+        Assert.Equal([DiagnosticCode.UnprovenOriginRelation_Kd], twin.Binding.Issues.Select(x => x.Code));
+    }
+
+    // SPEC 8.1.1, 8.1.2: an instance binds `o` through its Type argument wherever a body's Type names it, also as a meet operand
+    // and inside an Origin argument, so no instance Type names the generic binder's atom.
+    [Fact]
+    public void InstancesBindTheOuterOriginInsideMeetsAndOriginArguments()
+    {
+        var c = MinimalEmissionTest.Analyze(UniqInstance);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var body = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "write");
+        var write = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "write").BoundCall!;
+        var named = KotoTree.Walk(body).Select(x => x.BoundType).OfType<BoundType>().Where(NamesOuterOrigin).Distinct().ToArray();
+        Assert.Contains(named, x => x.Origin is { Kind: OriginKind.Intersection } origin && origin.Operands.Any(IsOuterOrigin));
+        Assert.Contains(named, x => x.OriginArguments.Any(origin => origin.Operands.Prepend(origin).Any(IsOuterOrigin)));
+        Assert.All(named, x => Assert.False(NamesOuterOrigin(c.Binding.InstantiateStorageType(x, write)!)));
+    }
+
+    private static bool IsOuterOrigin(BoundOrigin origin) => origin is { Kind: OriginKind.Parameter, Slot: < 0 };
+
+    private static bool NamesOuterOrigin(BoundType type)
+        => (type.Origin is { } origin && origin.Operands.Prepend(origin).Any(IsOuterOrigin)) ||
+            type.OriginArguments.Any(argument => argument.Operands.Prepend(argument).Any(IsOuterOrigin)) || type.Components.Any(NamesOuterOrigin);
 
     private const string Collection =
         "contract Loaded\n    func load(self: ref/Self) -> i32\n" +

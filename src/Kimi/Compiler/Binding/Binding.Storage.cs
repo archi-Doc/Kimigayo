@@ -287,11 +287,21 @@ public sealed partial class Binding
         return this.SubstituteStoredOrigins(substituted, binder, (BoundOrigin[])owner.OriginArguments);
     }
 
-    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default)
+    // Substitutes a stored Origin's declared slots and inputs. A pair's outer Origin `o`, a negative slot of its binder, is bound
+    // through the Type arguments when they are given (SPEC 8.1.1, 8.1.2) and is otherwise kept.
+    private BoundOrigin SubstituteStoredOrigin(BoundOrigin origin, Koto binder, ReadOnlySpan<BoundOrigin> arguments, ReadOnlySpan<BoundOrigin> inputs = default, ReadOnlySpan<BoundType?> types = default)
     {
-        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder) && origin.Slot < arguments.Length && arguments[origin.Slot] is { } argument)
+        if (origin.Kind == OriginKind.Parameter && ReferenceEquals(origin.Binder, binder))
         {
-            return argument;
+            if ((uint)origin.Slot < (uint)arguments.Length && arguments[origin.Slot] is { } argument)
+            {
+                return argument;
+            }
+
+            if (origin.Slot < 0 && this.PairOuterImage(origin, binder, types) is { } image)
+            {
+                return image;
+            }
         }
 
         if (origin.Kind == OriginKind.Parameter && binder is DeclarationContainerKoto && binder.BoundSymbol?.Schema is { } schema)
@@ -305,17 +315,17 @@ public sealed partial class Binding
             }
         }
 
-        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && origin.Slot < inputs.Length && inputs[origin.Slot] is { } input)
+        if (origin.Kind == OriginKind.Input && ReferenceEquals(origin.Binder, binder) && (uint)origin.Slot < (uint)inputs.Length && inputs[origin.Slot] is { } input)
         {
             return input;
         }
 
         if (origin.Kind == OriginKind.Intersection && origin.Operands.Count != 0)
         {
-            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, inputs);
+            var result = this.SubstituteStoredOrigin(origin.Operands[0], binder, arguments, inputs, types);
             for (var i = 1; i < origin.Operands.Count; i++)
             {
-                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, inputs));
+                result = this.Meet(result, this.SubstituteStoredOrigin(origin.Operands[i], binder, arguments, inputs, types));
             }
 
             return result;
