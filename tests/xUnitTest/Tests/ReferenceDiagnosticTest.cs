@@ -134,6 +134,8 @@ public class ReferenceDiagnosticTest
     [InlineData(Helpers + "let n = 3\nrequire (Holder{w2}).twice(n@ref) == 6 else => $abort(\"t\")", "(Holder{w2})")]
     [InlineData(Helpers + "let n = 3\nrequire (Holder.twice)(n@ref) == 6 else => $abort(\"t\")", "Holder")]
     [InlineData(Helpers + "func generic<T>(x: T, n: ref/i32) -> i32\n    return Holder.twice(n)\nlet n = 3\nrequire generic(true, n@ref) == 6 else => $abort(\"g\")", "Holder")]
+    [InlineData(Helpers + "let n = 3\nlet t = Holder.twice(n@ref)\nrequire t == 6 else => $abort(\"t\")", "Holder")]
+    [InlineData(Helpers + "let n = 3\nlet t = (Holder.twice)(n@ref)\nrequire t == 6 else => $abort(\"t\")", "Holder")]
     public void AnOpenQualifierSlotIsOneLocatedLimitAtTheQualifier(string source, string text)
     {
         var output = DiagnosticCorpus.Check(source);
@@ -431,11 +433,10 @@ public class ReferenceDiagnosticTest
         ScalarEmissionTest.EmitFixture("OriginSetRepeatForms", Source, string.Empty);
     }
 
-    // The counterparts run: a set related by a clause, an omitted slot lent at a parameter's own borrow Origin in a local initializer,
-    // and a slot that a clause relates to static.
+    // The counterparts run: a set related by a clause and a slot that a clause relates to static.
     [Theory]
     [InlineData("Related", Holder + "func run(h: ref/Holder{x}) -> i32\n    let viaMethod = h.peek()\n    let d2 = (Holder{y}).peek(h)\n        origin y.a == x.a\n    return viaMethod + d2\nlet n = 3\nlet h = Holder.init(n@ref)\nrequire run(h@ref) == 6 else => $abort(\"run\")")]
-    [InlineData("Local", Helpers + "let n = 3\nlet h = Holder.init(n@ref)\nlet e = (Holder{w}).peek(h@ref)\n    origin w.a == h.a\nlet t = Holder.twice(n@ref)\nlet z = (Holder{q}).zero()\n    origin q.a == static\nrequire e == 3 and t == 6 and z == 0 else => $abort(\"local\")")]
+    [InlineData("Local", Helpers + "let n = 3\nlet h = Holder.init(n@ref)\nlet e = (Holder{w}).peek(h@ref)\n    origin w.a == h.a\nlet z = (Holder{q}).zero()\n    origin q.a == static\nrequire e == 3 and z == 0 else => $abort(\"local\")")]
     public void ARelatedOrLentQualifierSlotRuns(string name, string source)
         => ScalarEmissionTest.EmitFixture("OriginQualifier" + name, source, string.Empty);
 
@@ -447,37 +448,6 @@ public class ReferenceDiagnosticTest
         const string Related = "func related(v: ref/i32 during x) -> i32\n    let u = (View<i32>{p}).twice(v)\n        origin p.source == x\n    let g = (Pin{h}).first(v)\n        origin h.a == x\n    let o = (Outer<i32>.Inner{q}).twice(v)\n        origin q.a == x\n    return u + g + o\n";
         const string Body = Viewed + "let a = view.contains(2@ref)\nlet c = (Slice<i32>{q}).contains(view, 2@ref)\n    origin q.source == view.source\nlet n = 3\nlet r = n@ref\nlet w = (View<i32>{p}).twice(r)\n    origin p.source == r\nlet z = (View<i32>{e}).zero()\n    origin e.source == static\nrequire a and c and w == 6 and z == 0 and related(n@ref) == 17 else => $abort(\"generic\")";
         ScalarEmissionTest.EmitFixture("OriginQualifierGeneric", View + Pin + Outer + Related + Body, string.Empty);
-    }
-
-    // SPEC 15.4.4: a local initializer of a generic function, of a member of a generic Type or of an anonymous function inside a generic
-    // function infers the omitted qualifier slot as one of a nongeneric body does, and each instance fits the arguments through the
-    // substituted bound (InstantiateInferredType); these passed the check and then failed generation ("Call entry does not match its argument Type or
-    // call"), and the Advice of such a call outside an initializer led there. The program also runs a related set in a generic body, a
-    // set-named qualifier moved into a local declaration and a parenthesized callee in an initializer, as their Advice writes.
-    [Fact]
-    public void AnInitializerInfersTheQualifierSlotInAGenericBody()
-    {
-        const string Generic = "func generic<T>(x: T, n: ref/i32) -> i32\n    let t = Holder.twice(n)\n    return t\n";
-        const string Box = "struct Box<T>\n    public let value: T\n\n    public init(value: T) => self.value = value@move\n\n    public func doubled(self: ref/Self, n: ref/i32) -> i32\n        let t = Holder.twice(n)\n        let m = 5\n        let u = Holder.twice(m@ref)\n        return t + u\n";
-        const string Closure = "func closure<T>(x: T, n: ref/i32) -> i32\n    let f = func [n] () -> i32\n        let t = Holder.twice(n)\n        return t\n    return f()\n";
-        const string Written = "func written<T>(x: T, n: ref/i32 during p) -> i32\n    let t = (Holder{q}).twice(n)\n        origin q.a == p\n    return t\n";
-        const string Body = "let n = 3\nlet b = Box<bool>.init(true)\nlet h = Holder.init(n@ref)\nlet v = (Holder{w}).peek(h@ref)\n    origin w.a == h.a\nlet r = n@ref\nlet u = (Holder{w2}).twice(r)\n    origin w2.a == r\nlet t = (Holder.twice)(n@ref)\n" +
-            "require generic(true, n@ref) == 6 and generic(7, n@ref) == 6 and b.doubled(n@ref) == 16 and closure(\"s\", n@ref) == 6 and written(true, n@ref) == 6 and v == 3 and u == 6 and t == 6 else => $abort(\"generic\")";
-        ScalarEmissionTest.EmitFixture("OriginQualifierGenericBody", Helpers + Generic + Box + Closure + Written + Body, string.Empty);
-    }
-
-    // Inside a generic body the inferred slot keeps the checks of a nongeneric one: a borrow of a body local returned through the call's
-    // result, a read while its exclusive result is live, and a Shared and an exclusive argument at the one slot are rejected.
-    [Theory]
-    [InlineData("func leak<T>(x: T) -> ref/i32\n    let n = 3\n    let r = Holder.pick(n@ref)\n    return r\nConsole.writeLine(\"\\(leak(true)@follow)\")", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "return r", 7, 1)]
-    [InlineData("func f1<T>(x: T) -> i32\n    var m = 3\n    let r = Holder.pickU(m@uniq)\n    let k = m\n    r@follow = 5\n    return k\nConsole.writeLine(\"\\(f1(true))\")", nameof(DiagnosticCode.ComparisonLoanConflict_Kd), "let k = m", 8, 1)]
-    [InlineData("func f2<T>(x: T) -> i32\n    var m = 3\n    let t = Holder.both(m@ref, m@uniq)\n    return t\nConsole.writeLine(\"\\(f2(true))\")", nameof(DiagnosticCode.CallActivationConflict_Kd), "Holder.both(m@ref, m@uniq)", 0, 26)]
-    public void AnInferredSlotInAGenericBodyKeepsItsChecks(string body, string code, string anchor, int offset, int length)
-    {
-        const string Picks = "struct Holder {a}\n    public let item: ref/i32 during a\n\n    public init(item: ref/i32 during a) => self.item = item\n\n    public func pick(value: ref/i32 during a) -> ref/i32 during a => value\n\n    public func pickU(value: uniq/i32 during a) -> uniq/i32 during a => value\n\n    public func both(x: ref/i32 during a, y: uniq/i32 during a) -> i32 => x@follow\n";
-        var source = Picks + body;
-        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, new SourceSpan(source.IndexOf(anchor, StringComparison.Ordinal) + offset, length)), (error.Code, error.Span!.Value));
     }
 
     // SPEC 15.3.1: like a value, a local's binding set is visible only to the declarations after it, so a function's set is not a repeat

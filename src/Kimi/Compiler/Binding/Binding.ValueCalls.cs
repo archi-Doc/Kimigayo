@@ -467,6 +467,7 @@ public sealed partial class Binding
         // Fresh input Origins and fixed shared capture results retain their complete call contracts. A result over the
         // per-call inputs alone takes the arguments' Origins, as an ordinary call's does (SPEC 15.6.4). A per-call input is one
         // bound by the callee's own binder; an input or result written over a fixed Origin of the calling body is fitted as written.
+        // A result over the closure's environment depends on the call receiver (SPEC 15.8.2), which needs region inference.
         var ownBinder = CalleeBinder(call.Method.BoundType, signature);
         var inputBinder = (Koto?)null;
         var dependent = false;
@@ -476,7 +477,7 @@ public sealed partial class Binding
         }
         else if (!PerCallSignature(signature, ownBinder) && !this.ResultFixedForCall(signature.Components[1], call.Method, call))
         {
-            dependent = true; // SPEC 15.8.2: a result over the closure's environment depends on the call receiver.
+            dependent = true;
         }
 
         var operations = this.argumentOperationScratch.Rent(count + 1);
@@ -568,25 +569,16 @@ public sealed partial class Binding
             var result = signature.Components[1];
             if (dependent || (inputBinder is not null && HasEnvironmentOrigin(result, inputBinder)))
             {
-                // The receiver binds the environment's Origins; the callee's own inputs are substituted below.
-                if (this.ReceiverDependentResult(result, call.Method, receiver, call, receiverOperation.AdaptedType?.Origin) is not { } bound)
-                {
-                    return this.Fail(call, BindingFailure.Unsupported);
-                }
-
-                result = bound;
+                return this.Fail(call, BindingFailure.Unsupported);
             }
 
             if (inputBinder is not null)
             {
                 result = this.SubstituteStoredOrigins(result, inputBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
-            }
-
-            // The receiver Origin of a temporary closure is bound to the closure literal itself, which is no per-call input; only an
-            // unsubstituted input or a remaining environment binding is unsupported.
-            if ((inputBinder is not null && HasUnsubstitutedInput(result, inputBinder)) || (ownBinder is not null && HasEnvironmentOrigin(result, ownBinder)))
-            {
-                return this.Fail(call, BindingFailure.Unsupported);
+                if (HasUnsubstitutedInput(result, inputBinder))
+                {
+                    return this.Fail(call, BindingFailure.Unsupported);
+                }
             }
 
             if (conditioned is not null)

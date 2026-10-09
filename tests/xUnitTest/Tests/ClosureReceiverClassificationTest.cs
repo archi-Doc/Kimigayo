@@ -81,8 +81,8 @@ public class ClosureReceiverClassificationTest
     [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet a = h()", "InvalidAssignment_Kd", "h", "The call is Consuming (SPEC 7.6.3)", false, "Call a Consuming closure through an owned closure value")]
     [InlineData("let text = \"abc\"\nvar h = Kimi.Intrinsics.makeObj(func [text@move] () -> string => text@move)\nlet u = h@objuniq\nlet a = u()", "InvalidAssignment_Kd", "u", "The call is Consuming (SPEC 7.6.3)", false, "Call a Consuming closure through an owned closure value")]
     [InlineData("func call(r: ref/(() -> i32)) -> i32 => 1\nlet n: i32 = 4\nlet f = func [n] () -> i32 => n@move\nlet r = f@ref\nlet a = r()", "InvalidAssignment_Kd", "r", "The call is Consuming (SPEC 7.6.3)", false, "Write r@follow() to call a Copy of a Copy closure, or call an owned closure value")]
-    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "ComparisonLoanConflict_Kd", "h", null, false, null)]
-    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h@follow()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "ComparisonLoanConflict_Kd", "h", null, false, null)]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "Unsupported_Kd", "h()", null, false, null)]
+    [InlineData("let n: i32 = 4\nlet h = Kimi.Intrinsics.makeRc(func [n] () => n@ref)\nlet r = h@follow()\nlet moved = h@move\nrequire r@follow == 4 else => $abort(\"result\")", "Unsupported_Kd", "h@follow()", null, false, null)]
     [InlineData("func call<F>(v: objuniq/F) -> i32\n    F is Callable<uniq, () -> i32> and ObjectPayload\n    return v()\n()", "Unsupported_Kd", "v", null, false, null)]
     [InlineData("struct Holder\n    public var callback: rc/(() -> i32)\n    public init(callback: rc/(() -> i32)) => self.callback = callback@move\nfunc call(holder: ref/Holder) -> i32 => holder.callback()\nlet f: () -> i32 = func [] () -> i32 => 7\nlet holder = Holder.init(Kimi.Intrinsics.makeRc(f@move))\nrequire call(holder@ref) == 7 else => $abort(\"field\")", "Unsupported_Kd", "holder.callback", null, false, null)]
     [InlineData("func call(r: ref/(rc/(() -> i32))) -> i32 => r@follow()\nlet f: () -> i32 = func [] () -> i32 => 7\nlet h = Kimi.Intrinsics.makeRc(f@move)\nrequire call(h@ref) == 7 else => $abort(\"follow\")", "Unsupported_Kd", "r@follow", null, false, null)]
@@ -107,11 +107,6 @@ public class ClosureReceiverClassificationTest
     [Fact]
     public void AnExclusivePayloadCallMakesTheCaptureExclusive()
         => ScalarEmissionTest.EmitFixture("ClosureReceiverPayloadFollow", "let count = 0\nvar next = func [var count] () -> i32\n    count += 1\n    return count\nvar o = Kimi.Intrinsics.makeObj(next@move)\nvar outer = func [var o@move] () -> i32 => o@follow()\nrequire outer() == 1 and outer() == 2 else => $abort(\"captured follow\")", string.Empty);
-
-    // A shared borrow through the captured exclusive reference keeps the call Shared; its result depends on the receiver.
-    [Fact]
-    public void ASharedReborrowResultStaysShared()
-        => Assert.Empty(DiagnosticCorpus.Check(CapturedView + "    let f = func [view] () => view@follow@ref\n    let r = f()\n    require r@follow == 7 else => $abort(\"r\")\n").Diagnostics);
 
     [Fact]
     public void AScalarReadThroughACapturedExclusiveReferenceIsShared()

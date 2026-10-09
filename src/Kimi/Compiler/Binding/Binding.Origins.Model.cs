@@ -276,10 +276,6 @@ internal readonly struct CallableInstance
     }
 }
 
-// One closure call whose result is bound to its receiver (SPEC 15.8.2): the closure, its environment plan, the receiver's Place Origin
-// (none for a Consuming call), whether the result is Copy, and the call.
-internal readonly record struct ReceiverContext(FunctionKoto Function, BoundClosure Closure, BoundOrigin? Receiver, bool Copy, Koto Use);
-
 // CallQualifier: the Type expression qualifies a called member in an expression (SPEC 15.4.4), whose omitted Origin slots the call
 // infers; Member judges them once the member is known.
 internal readonly record struct TypeBindingContext(TypePosition Position, Koto Owner, int Slot = 0, bool Direct = false, bool SuppressOuter = false, bool CallQualifier = false)

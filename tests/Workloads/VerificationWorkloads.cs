@@ -61,9 +61,6 @@ internal static class VerificationWorkloads
         "func none<T>() -> Option<T> => .None\nfunc keep(o: Option<i64>) -> i32 => 1\nlet x: i32 = 3\nlet c = constant\n" +
         "require make(c, x@ref)@follow + keep(none()) == 4 else => $abort(\"warm\")";
 
-    internal const string ReceiverDependentValueCall = "func pick(a: ref/i32, b: ref/i32) -> ref/i32 => a\nvar n = 7\nlet view = n@uniq\nlet k = 3\n" +
-        "let f = func [k] (x: ref/i32) => pick(k@ref, x)\nlet m = 4\nlet r = f(m@ref)\nvar g = func [view] () => view\nlet s = g()\ns@follow = r@follow";
-
     internal const string EnvironmentBorrows = "var n = 7\nlet view = n@uniq\nlet m = 4\nvar f = func [view, var m] () -> i32\n    let r = m@ref\n" +
         "    let c = view@follow@uniq\n    c@follow = r@follow\n    m = 1\n    view@follow += m\n    return view@follow\nlet v = f()";
 

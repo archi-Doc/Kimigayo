@@ -43,14 +43,6 @@ public sealed partial class Binding
         return -1;
     }
 
-    // SPEC 15.4.4: an Origin that a local initializer inferred, such as the omitted slot of a called member's qualifier, stays an
-    // inference atom in the body's call plans, and its solution is written in the Origins of that body. A generic instance compares
-    // a call's argument, whose Origins it substituted, with the parameter Type after replacing the atom by the solution and
-    // substituting that, as the generic body compared the argument with the solution itself; instantiated is the parameter Type
-    // instantiated as written, returned when the Type holds no solved atom.
-    internal BoundType? InstantiateInferredType(BoundType type, BoundType? instantiated, BoundCall instance)
-        => this.InferredInitializerOrigins(type) is var resolved && ReferenceEquals(resolved, type) ? instantiated : this.InstantiateStorageType(resolved, instance);
-
     // SPEC 12.4.2: the member is the called function of its invocation, possibly with explicit Type arguments and inside
     // parentheses, as in (Holder.twice)(n@ref).
     private static bool IsCallee(MemberAccessKoto member)
@@ -288,13 +280,10 @@ public sealed partial class Binding
     }
 
     // SPEC 15.4.4, 9.6.1.1: an Origin slot that a called member's expression qualifier omits, or names by a binding set that no clause
-    // of its declaration relates, is inferred from the call. Binding infers it only within a local initializer, for a called function
-    // that is neither generic nor a member of a generic Type, from an argument lent at a parameter's own borrow Origin (InfersQualifierSlot);
-    // any other such call, a Slice qualifier included, waits for inference variables of the body and is a located limit at the
-    // qualifier, never a failed selection, a missing Origin or a call that passes check and then fails generation. The body that holds
-    // the call may be generic: its instances fit the arguments through the substituted bound (InstantiateInferredType). A written part
-    // of the qualifier that failed explains the member instead (SPEC 23.3.6.4).
-    private bool RejectedOriginQualifier(MemberAccessKoto member, BoundType qualified, BindingSymbol? called, BindingScope scope)
+    // of its declaration relates, is inferred from the call. Binding has no inference variables in bodies yet, so such a call is one
+    // Unsupported at the qualifier, never a failed selection or a missing Origin. A written part of the qualifier that failed
+    // explains the member instead (SPEC 23.3.6.4).
+    private bool RejectedOriginQualifier(MemberAccessKoto member, BoundType qualified, BindingSymbol? called)
     {
         if (FailedQualifierPart(member.Left) is { } failed)
         {
@@ -307,16 +296,9 @@ public sealed partial class Binding
             return false;
         }
 
-        var initializer = this.TypeContext(member.Left, scope) is { Position: TypePosition.Local, Owner: VariableKoto { InitializerKoto: not null } };
         for (var i = 0; i < schema.Origins.Count; i++)
         {
-            if (QualifierSlot(qualified, i) is not { } origin || InferenceAtom(origin) is null)
-            {
-                continue;
-            }
-
-            var inferable = this.InfersQualifierSlot(called, schema, schema.Origins[i].Origin);
-            if (!(initializer && inferable))
+            if (QualifierSlot(qualified, i) is { } origin && InferenceAtom(origin) is not null)
             {
                 this.Fail(member.Left, BindingFailure.Unsupported);
                 return true;
@@ -324,51 +306,6 @@ public sealed partial class Binding
         }
 
         return false;
-    }
-
-    // The initializer inference of a local bounds an omitted slot by each argument fitted at a borrow Origin that is the slot itself
-    // (OpenInitializerInference); every candidate names the slot only there, and at least once. Neither a generic Type nor a generic
-    // candidate is inferred: the called function's instance is formed from the call's own Types, in which the slot stays open and has
-    // no concrete storage. A parameter Type that failed leaves the call to explain its signature.
-    private bool InfersQualifierSlot(BindingSymbol called, DeclarationSchema schema, BoundOrigin slot)
-    {
-        if (schema.GenericSlots.Count != 0)
-        {
-            return false;
-        }
-
-        for (var candidate = called; candidate is not null; candidate = candidate.Next)
-        {
-            if (candidate.Declaration is not FunctionKoto { GenericArguments.Count: 0 } function)
-            {
-                return false;
-            }
-
-            this.BindHeader(candidate);
-            var bounded = false;
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                if (function.Parameters[i].Type.BoundType is not { } type)
-                {
-                    return true;
-                }
-
-                var lent = IsBorrow(type.Semantics) && ReferenceEquals(type.Origin, slot) && type.Components.Count == 1;
-                if (lent ? NamesOrigin(type.Components[0], slot) : NamesOrigin(type, slot))
-                {
-                    return false;
-                }
-
-                bounded |= lent;
-            }
-
-            if (!bounded)
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     // SPEC 15.3.3: a stored Field's initializer has no value whose Origin is a slot of a call's expression qualifier (no receiver, and
@@ -406,25 +343,6 @@ public sealed partial class Binding
         }
 
         return false;
-    }
-
-    // The Type with an atom that a completed local initializer inferred replaced by its bound; the same Type when it holds none.
-    private BoundType InferredInitializerOrigins(BoundType type)
-    {
-        if (this.initializerOrigins.Count == 0 || InferenceAtom(type) is not { Binder: { } binder } atom)
-        {
-            return type;
-        }
-
-        for (Koto? node = binder; node is not null; node = node.Parent)
-        {
-            if (this.initializerOrigins.TryGetValue(node, out var declaration) && declaration.State >= 2 && declaration.Replacements.ContainsKey(atom))
-            {
-                return this.RewriteOrigins(type, declaration);
-            }
-        }
-
-        return type;
     }
 
     // SPEC 15.3.1: a binding set introduces a new set name and never applies an existing Origin or set. The later set is the location

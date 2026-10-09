@@ -284,7 +284,7 @@ public sealed partial class Binding
 
                 typeSelection = this.LookupTypeMember(qualifiedType, right.IdentifierName, scope);
                 typeMember = typeSelection.Member ?? typeMember;
-                if (originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !typeSelection.Ambiguous ? typeSelection.Member : null, scope))
+                if (originQualifier && this.RejectedOriginQualifier(member, qualifiedType, callQualifier && !typeSelection.Ambiguous ? typeSelection.Member : null))
                 {
                     return null;
                 }
