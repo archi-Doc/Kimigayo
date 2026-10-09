@@ -56,9 +56,9 @@ Every migrated route removes its old interpretation; temporary producer adapters
 | U0 | Active | Whole-tree inventory, byte/hash baseline and dependency survey. Baseline revision: `620b2a1a`. |
 | U1a/U1b | Pending | Semantic identities, readiness and transitively closed declaration/proof contracts, per migrating domain. |
 | U2 | Active | Normalize call/update meaning end to end; remove call ancestry reconstruction and update syntax tests. |
-| U3 | Pending | Common operand/transfer facts, independent dependency and authority policies. |
+| U3 | Active | Common operand/transfer facts, independent dependency and authority policies. |
 | U4 | Pending | One semantic body constructor for all supported forms; remove duplicate construction paths. |
-| U5 | Pending | Independent analysis result ownership, explicit convergence and diagnostic publication. |
+| U5 | Active | Borrow liveness owns its result/workspace; remaining dependency, authority, conflict and diagnostic ownership is pending. |
 | U6 | Pending | Decompose Binding internals behind closed contracts; remove persistent semantic fields from syntax. |
 | U7 | Pending | Semantic default/case/instance templates; remove downstream source replay. |
 | U8 | Pending | Close representation/lowering inputs and the physical module, including construction queues/maps. |
@@ -75,6 +75,14 @@ read/retention capability. Result ancestry and call retention use those records,
 they no longer reconstruct input correspondence by walking preceding operations or reading invocation syntax.
 `CallAt` uses the recorded target, with no source fallback. These records still contain BoundCall/BoundType and therefore
 do not establish U1b closure. Physical argument validation and remaining source-based consumers are still open U2 work.
+
+`OwnershipFlow` owns operation/value flow categories and compact source/destination ranges. Abstract-effect dependency
+propagation and retained-authority propagation share that correspondence while selecting their own applicable transfers
+and joins. Prepared payloads of abandoned constructions retain their existing dependency treatment.
+`BorrowLiveness` owns the live-holder table and holder index; it reads the body, converged dependencies and explicit
+runtime/checking edges without modifying dependencies or diagnosing conflicts. Cleanup observation is a Place fact
+computed during semantic construction. The body still coordinates dependency/authority convergence and conflict checks,
+and the remaining analysis inputs are not yet transitively closed.
 
 U1b closure is a prerequisite for each migrated consumer. Moving all Binding internals need not precede a vertical
 slice, but an existing syntax-bearing record cannot be called closed merely because it is exposed read-only.

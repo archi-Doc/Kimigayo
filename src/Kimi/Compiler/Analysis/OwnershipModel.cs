@@ -201,6 +201,8 @@ public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type
     internal int DeferredExecution { get; init; } = -1;
 
     internal int DefaultContext { get; init; } = -1;
+
+    internal bool CleanupObservesBorrows { get; init; }
 }
 
 /// <summary>One CFG program point; Place/Input are IDs in its body's Place table.</summary>
@@ -397,6 +399,18 @@ public sealed partial class OwnershipBody
 
     // A case or instance plan carries its substitution from the start, so every phase that reads a declared Type through
     // Concrete, from building and solving to lowering, sees the substituted Type.
+    internal OwnershipTransfers TransfersAt(int operation)
+    {
+        var entry = this.Operations[operation];
+        return OwnershipFlow.FlowOf(entry.Kind) switch
+        {
+            OwnershipFlow.OperationFlow.Construction => OwnershipFlow.Transfers(this.Constructions[this.OperationSteps[operation]]),
+            OwnershipFlow.OperationFlow.Decomposition => OwnershipFlow.Transfers(this.Decompositions[this.OperationSteps[operation]], decompose: true),
+            OwnershipFlow.OperationFlow.DictionaryEntry => new(entry.Place, entry.Input, 2, SourceStep: this.OperationSteps[operation] - entry.Input),
+            _ => OwnershipFlow.Transfers(entry),
+        };
+    }
+
     internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.ResetResolvedCalls();

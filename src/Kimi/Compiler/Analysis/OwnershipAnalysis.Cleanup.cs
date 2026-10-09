@@ -6,6 +6,59 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    private static bool CleanupObservesBorrows(BoundType type, int depth = 0)
+    {
+        if (depth > 64)
+        {
+            return true; // Conservatively retain a dependency through recursive destruction.
+        }
+
+        if (StructStorage.IsStruct(type))
+        {
+            if (StructStorage.Destructor(type) is not null)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < StructStorage.Count(type); i++)
+            {
+                if (StructStorage.FieldType(type, i) is not { } field || CleanupObservesBorrows(field, depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            if (type.StoredBase is { } parent && CleanupObservesBorrows(parent, depth + 1))
+            {
+                return true;
+            }
+        }
+
+        if (ObjectTypes.HandleMode(type) is not null || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (CleanupObservesBorrows(type.Components[i], depth + 1))
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (type.StoredCases is { } cases)
+        {
+            foreach (var payload in cases)
+            {
+                if (CleanupObservesBorrows(payload, depth + 1))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
     private void ExecuteDeferred(DeferredBlockKoto deferred)
     {
         // The caller has already advanced past this registration. Self-exit cleans only

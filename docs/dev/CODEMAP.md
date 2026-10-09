@@ -12,6 +12,9 @@ Whole-value updates share `OwnershipAnalysis.Updates.WholeValueUpdate`; the dist
 `BodyLowering.Updates`. `WholeValueTest` checks storage-form agreement and source-independent initialization.
 Call inputs and result-source rules are recorded by `OwnershipAnalysis.Calls` and retained in `OwnershipBody.Calls`;
 `CallArgumentMappingTest` and `ReturnedBorrowAncestryTest` cover parameter order and source-independent queries.
+`OwnershipFlow` supplies transfer correspondence to dependency/authority policies; `BorrowLiveness` owns live-holder
+results. `OwnershipAnalysis.Cleanup` records cleanup observation, and `SharedEngineTotalityTest` covers the flow table
+and runtime/checking edge distinction.
 
 Paths below are relative to [src/Kimi](../../src/Kimi/).
 

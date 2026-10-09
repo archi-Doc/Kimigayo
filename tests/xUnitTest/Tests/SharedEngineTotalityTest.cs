@@ -62,8 +62,33 @@ public class SharedEngineTotalityTest
     [Fact]
     public void EveryKindHasAFlowRow()
     {
-        Assert.All(Enum.GetValues<OwnershipOperationKind>(), static kind => Assert.NotEqual(OwnershipBody.OperationFlow.Unclassified, OwnershipBody.FlowOf(kind)));
-        Assert.All(Enum.GetValues<OwnershipValueKind>(), static kind => Assert.NotEqual(OwnershipBody.ValueFlow.Unclassified, OwnershipBody.FlowOf(kind)));
+        Assert.All(Enum.GetValues<OwnershipOperationKind>(), static kind => Assert.NotEqual(OwnershipFlow.OperationFlow.Unclassified, OwnershipFlow.FlowOf(kind)));
+        Assert.All(Enum.GetValues<OwnershipValueKind>(), static kind => Assert.NotEqual(OwnershipFlow.ValueFlow.Unclassified, OwnershipFlow.FlowOf(kind)));
+    }
+
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void LivenessConsumesCleanupFactsAndDistinguishesCheckingFromAbort(bool observes, bool checking)
+    {
+        var source = CompilationTestHelper.Parse("()").Kotonoha.RootKoto;
+        var body = new OwnershipBody();
+        body.PlaceStorage.Add(new(0, source, BoundType.Unit, OwnershipPlaceKind.Local, false, AcquisitionKind.Copy) { CleanupObservesBorrows = observes });
+        body.OperationStorage.AddRange([new(OwnershipOperationKind.Entry, source), new(OwnershipOperationKind.Cleanup, source, 0), new(OwnershipOperationKind.Read, source, 0), new(OwnershipOperationKind.Exit, source)]);
+        body.Values.AddRange(new OwnershipValue[4]);
+        body.EdgeHeads.AddRange([0, 2, 3, -1]);
+        body.EdgeStorage.AddRange([new(0, 1, OwnershipEdgeKind.Normal, 1), new(0, 2, OwnershipEdgeKind.Abort, -1), new(1, 3, OwnershipEdgeKind.Normal, -1), new(2, 3, OwnershipEdgeKind.Normal, -1)]);
+        var dependencies = new PackedAnalysisTable(2);
+        dependencies.Reset(1);
+        dependencies[0] = LoanRequirement.Ref;
+        var liveness = new BorrowLiveness();
+        liveness.Solve(body, dependencies, new[] { 0 }, new[] { checking ? 0 : -1, -1, -1, -1 }, new[] { (To: 2, Next: -1) });
+        Assert.Equal(observes || checking, liveness.IsLive(0, 0));
+        Assert.Equal(observes, liveness.IsLive(1, 0));
+        Assert.True(liveness.IsLive(2, 0));
+        Assert.False(liveness.IsLive(3, 0));
+        Assert.Equal(LoanRequirement.Ref, dependencies[0]);
     }
 
     private static string Text(string source, Kimi.Diagnostics.SourceSpan? span)
