@@ -27,9 +27,10 @@ public sealed partial class Binding
             return (string)value;
         }
 
+        // SPEC 23.3.6.5: a pair target is shown as its pair, `s/T`, which an ordinary diagnostic writes without its outer Origin.
         if (type.Kind is BoundTypeKind.Primitive or BoundTypeKind.Parameter && (!complete || (!type.CarriesOrigin && type.Symbol?.Kind != BindingSymbolKind.SemanticsTarget)))
         {
-            return type.Name;
+            return type.Symbol is { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } pair } && type.Kind == BoundTypeKind.Parameter ? pair.Name + "/" + type.Name : type.Name;
         }
 
         var budget = complete ? new HoverBudget() : null;
@@ -41,7 +42,7 @@ public sealed partial class Binding
         {
             using var guard = budget?.Enter();
             budget?.Charge(current.Name.Length);
-            if (complete && current is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } semantics } })
+            if (current is { Kind: BoundTypeKind.Parameter, Symbol: { Kind: BindingSymbolKind.SemanticsTarget, Pair: { } semantics } })
             {
                 text.Append(semantics.Name).Append('/');
             }

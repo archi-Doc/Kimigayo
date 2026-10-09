@@ -1526,9 +1526,10 @@ public sealed partial class Binding
         }
 
         OriginRelationFact? first = null;
-        // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
-        if (actual.Origin is { } outer && expected.Origin is { } required && (actual.ContainsPairLayer ? this.PairSlotCondition(actual, use) : 0) is { } slotCondition &&
-            this.FailedOriginPart(outer, required, expected, use, polarity, judged, all, verified, RequiredCondition(slotCondition)) is { } layer)
+        // SPEC 8.1.2, 15.6.5: the outer Origins as the fit relates them; a pair layer's slot exists only in its binder's borrow cases,
+        // whose premises the relation may use.
+        if (FitOuterOrigins(actual, expected, this, use, out var outer, out var required) == OuterOriginFit.Relation &&
+            this.FailedOriginPart(outer, required, expected, use, polarity, judged, all, verified, SlotCondition(actual, this, use)) is { } layer)
         {
             if (all is null)
             {

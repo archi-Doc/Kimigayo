@@ -173,7 +173,7 @@ public sealed partial class Binding
     {
         var operation = operations[index];
         if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } || ReferenceEquals(adapted, parameter) ||
-            !adapted.CarriesOrigin || !parameter.CarriesOrigin)
+            !adapted.StoresOrigin || !parameter.StoresOrigin)
         {
             return;
         }
@@ -204,11 +204,10 @@ public sealed partial class Binding
             pattern = null;
         }
 
-        if (actual.Origin is { } longer && expected.Origin is { } shorter &&
-            (actual.ContainsPairLayer ? this.PairSlotCondition(actual, context.At) : 0) is { } condition)
+        if (FitOuterOrigins(actual, expected, this, context.At, out var longer, out var shorter) == OuterOriginFit.Relation)
         {
-            // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases.
-            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern?.Origin, null, context: context, slot: slot, condition: RequiredCondition(condition));
+            // SPEC 8.1.2, 15.6.5: a pair layer's slot, `o` included, exists only in its binder's borrow cases.
+            this.JudgeCallPosition(context.At, longer, shorter, invariant, pattern is null ? null : this.OuterOrigin(pattern), null, context: context, slot: slot, condition: SlotCondition(actual, this, context.At));
         }
 
         var exclusive = IsInvariantLayer(actual, this);

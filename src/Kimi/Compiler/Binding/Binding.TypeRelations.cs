@@ -88,6 +88,19 @@ public sealed partial class Binding
         }
     }
 
+    // How a fit treats the outer Origins of two Types of one shape (FitOuterOrigins).
+    private enum OuterOriginFit : byte
+    {
+        // Nothing to relate: equal Origins, a slot that no admitted case stores, or an unformed pair layer.
+        None,
+
+        // `longer` outlives `shorter` in the pair slot's Semantics cases.
+        Relation,
+
+        // A difference in presence that no relation explains.
+        Mismatch,
+    }
+
     // `own` is the declaration whose own per-call inputs the root actual signature names (SPEC 8.6); a nested Function Type's own
     // syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation that already fixed it; `instance` is the
     // SPEC 15.3.5: the layers invariant in their target: an exclusive borrow, a writable object handle, a raw pointer, and a pair
@@ -132,8 +145,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!skipOrigin && !ReferenceEquals(actual.Origin, expected.Origin) && !InactiveOuterOrigin(actual, binding, use) && (actual.Origin is null || expected.Origin is null ||
-            (!structural && (!OriginFits(actual.Origin, expected.Origin, SlotCondition()) || (invariant && !OriginFits(expected.Origin, actual.Origin, SlotCondition()))))))
+        if (!skipOrigin && FitOuterOrigins(actual, expected, binding, use, out var longer, out var shorter) is var outer && outer != OuterOriginFit.None &&
+            (outer == OuterOriginFit.Mismatch || (!structural && (!OriginFits(longer, shorter, SlotCondition(actual, binding, use)) || (invariant && !OriginFits(shorter, longer, SlotCondition(actual, binding, use)))))))
         {
             return false;
         }
@@ -193,10 +206,47 @@ public sealed partial class Binding
 
         bool OriginFits(BoundOrigin a, BoundOrigin b, ulong condition = 0) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
             binding is null ? OriginOutlives(a, b) : binding.FitOriginOutlives(a, b, use!, condition);
-
-        // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
-        ulong SlotCondition() => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use)) : 0;
     }
+
+    // SPEC 8.1.2, 15.6.1: the outer Origins of a fit's two Types of one shape. Two written Origins relate. Two pair layers of one binder
+    // relate their slots, the implicit `o` of an original `s/T` included, so the original `W` fits `s/T during a` when `o` outlives `a`. A
+    // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is
+    // declared, so the fit derives from that failure instead of adding a mismatch. Any other difference in presence is structural.
+    // Without a Binding no failure is visible, so only written Origins relate and every other difference stays a mismatch.
+    // FitsTypeCore, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision.
+    private static OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter)
+    {
+        longer = shorter = null!;
+        if (ReferenceEquals(actual.Origin, expected.Origin) || InactiveOuterOrigin(actual, binding, use))
+        {
+            return OuterOriginFit.None;
+        }
+
+        if (actual.Origin is { } a && expected.Origin is { } b)
+        {
+            longer = a;
+            shorter = b;
+            return OuterOriginFit.Relation;
+        }
+
+        if (binding is null || !TryPairLayer(actual, out _, out _))
+        {
+            return OuterOriginFit.Mismatch;
+        }
+
+        if (binding.OuterOrigin(actual) is not { } slot || binding.OuterOrigin(expected) is not { } other)
+        {
+            return OuterOriginFit.None;
+        }
+
+        longer = slot;
+        shorter = other;
+        return OuterOriginFit.Relation;
+    }
+
+    // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
+    private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use)
+        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use)) : 0;
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
     private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
@@ -387,14 +437,13 @@ public sealed partial class Binding
             return false; // SPEC 10.7, 15.6.1: a conversion compares whole contracts, so its failure is one record (RecordMismatch).
         }
 
-        if (!ReferenceEquals(actual.Origin, expected.Origin) && !InactiveOuterOrigin(actual, this, use))
+        switch (FitOuterOrigins(actual, expected, this, use, out var longer, out var shorter))
         {
-            if (actual.Origin is null || expected.Origin is null)
-            {
+            case OuterOriginFit.Mismatch:
                 return false;
-            }
-
-            this.AddOriginFit(actual.Origin, expected.Origin, expected, use, polarity, actual.ContainsPairLayer ? RequiredCondition(this.PairSlotCondition(actual, use)) : 0);
+            case OuterOriginFit.Relation:
+                this.AddOriginFit(longer, shorter, expected, use, polarity, SlotCondition(actual, this, use));
+                break;
         }
 
         for (var i = 0; i < actual.OriginArguments.Count; i++)

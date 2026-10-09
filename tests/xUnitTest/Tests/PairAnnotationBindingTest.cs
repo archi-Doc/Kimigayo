@@ -95,6 +95,48 @@ public class PairAnnotationBindingTest
         ScalarEmissionTest.EmitFixture("PairConditionalOuterOrigin", Source, "conditional slot\n");
     }
 
+    // SPEC 8.1.2, 15.6.1: the original `W` fits an annotated occurrence when its implicit `o` outlives the annotation, in owner and ref
+    // instances alike, and a common element Type meets two annotated occurrences (F16).
+    [Fact]
+    public void TheOriginalPairFitsAnAnnotatedOccurrence()
+    {
+        const string Source = "struct Holder<s/T>\n    s is owner or ref\n    T is Copy\n    var item: s/T\n    public init(item: s/T) => self.item = item@move\n" +
+            "    public func peek(self: ref/Self during a) -> s/T during a\n        return self.item\n" +
+            "func k<s/T>(x: ref/(s/T) during a) -> s/T during a\n    s is owner or ref\n    T is Copy\n    return x@follow\n" +
+            "func both<s/T>(x: s/T during a, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [x, y]\n    return items.length\n" +
+            "let owned = Holder<i32>.init(4)\nlet n: i32 = 3\nlet shared = Holder<ref/i32>.init(n@ref)\nlet five: i32 = 5\nlet c = five@ref\n" +
+            "require owned.peek() == 4 and shared.peek() == 3 and k(five@ref) == 5 and k(c@ref) == 5 else => $abort(\"fit\")\n" +
+            "require both(n@ref, five@ref) == 2 and both(1, 2) == 2 else => $abort(\"meet\")\nConsole.writeLine(\"annotated fit\")";
+        ScalarEmissionTest.EmitFixture("PairAnnotatedFit", Source, "annotated fit\n");
+    }
+
+    // SPEC 8.1.2, 15.6.1: a difference in Origin presence between pair layers of one binder relates their slots, never a Type mismatch,
+    // and the relation needs a premise like any other (F16); a common element Type keeps no such difference, so the element fits it.
+    [Theory]
+    [InlineData("func widen<s/T>(x: s/T during b, q: ref/i32 during a) -> s/T during a\n    s is ref\n    origin b outlives a\n    return x@move", null)]
+    [InlineData("func widen<s/T>(x: s/T, q: ref/i32 during a) -> s/T during a\n    s is ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func back<s/T>(x: s/T during a) -> s/T\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func fwd<s/T>(x: s/T) -> s/T during a\n    s is owner or ref\n    return x@move", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func both<s/T>(x: s/T, y: s/T during b) -> isize\n    s is owner or ref\n    T is Copy\n    let items = [x, y]\n    return items.length", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    public void AnOriginPresenceDifferenceIsARelation(string source, string? code)
+    {
+        var c = Parse(source);
+        c.Bind();
+        Assert.Equal(code is null ? [] : [code], c.Binding.Issues.Select(static x => x.Code.ToString()));
+    }
+
+    // SPEC 15.6.1: an unformed pair Field reports its formation; a fit against it derives from that failure instead of adding a Type
+    // mismatch (F17, A.11).
+    [Fact]
+    public void AnUnformedPairFieldAddsNoTypeMismatch()
+    {
+        var c = Parse("struct Holder<s/T, U>\n    s is value or valueborrow\n    public let first: s/T\n    public let other: s/U\n" +
+            "    public init(first: s/T, other: s/U)\n        self.first = first@move\n        self.other = other@move\n" +
+            "let x: i32 = 1\nlet y: i64 = 2\nlet h = Holder<ref/i32, i64>.init(x@ref, y@ref)");
+        c.Bind();
+        Assert.Equal([DiagnosticCode.UnprovenConstraint_Kd], c.Binding.Issues.Select(static x => x.Code));
+    }
+
     // A static Origin admits no exclusive borrow, so an admitted `uniq` cannot form the Type.
     [Theory]
     [InlineData("s/T during static", "uniq")]
