@@ -18,6 +18,16 @@ public class OriginPremiseCatalogTest
 
     private const string Box = "public struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\n";
 
+    private const string PairHolder = "struct Holder<s/T>\n    s is ref or uniq\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n";
+
+    private const string Peek = "func peek<s/T>(b: ref/Box<s/T>) -> ref/T\n    s is ref or uniq\n    return b.item@follow@ref\n";
+
+    // A.1c: `o` relates to `c` only through the borrowed input `y`.
+    private const string Pick = "func f<s/T>(x: s/T, y: ref/Box<s/T> during c) -> ref/T during c\n    s is ref\n    return x@follow@ref\n";
+
+    // R3: the result's well-formedness relates `o` to `p`.
+    private const string Leak = "func leak<s/T>(p: ref/i32, x: s/T) -> (Option<ref/Box<s/T> during p>, ref/T during p)\n    s is ref\n    return (.None, x@follow@ref)\n";
+
     // Seven pair binders, the last one's slot stored below a borrow; six admit one Semantics each.
     private const string Seven = "func f<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(x: ref/Box<h/H during q> during r, y: ref/i32 during q) -> ref/i32 during r\n" +
         "    a is ref\n    b is ref\n    c is ref\n    d is ref\n    e is ref\n    g is ref\n";
@@ -97,6 +107,35 @@ public class OriginPremiseCatalogTest
     {
         var codes = Check(body + Main).Codes;
         Assert.Equal(valid ? [] : [nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], codes);
+    }
+
+    // SPEC 8.1.1, 15.3.7, 15.6.5: the implicit outer Origin `o` of an original pair layer below a borrow layer is stored there in its
+    // binder's borrow cases, so its relation to that layer is a premise of the definition (F14, A.9) and an obligation of each use, both
+    // through a concrete argument (A.1c) and through a result premise; a pair without an enclosing borrow relates `o` to nothing, and a
+    // binder admitting no borrow stores no `o`. A Field below a borrow proves the relation as its concrete twin does.
+    [Theory]
+    [InlineData(PairHolder + "    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
+    [InlineData(PairHolder + "    public func get(self: ref/Self, q: ref/i32) -> ref/T during q\n        return self.value@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("struct Holder<s/T>\n    s is ref\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n", null)]
+    [InlineData(Box + Peek, null)]
+    [InlineData(Box + "func peek<s/T>(b: ref/Box<s/T>, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return b.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func peek<s/T>(b: ref/(s/T, i32)) -> ref/T\n    s is ref or uniq\n    return b.0@follow@ref\n", null)]
+    [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData("func g<s/T>(x: s/T, q: ref/i32) -> ref/T during q\n    s is ref or uniq\n    return x@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Box + Peek + "func outer<t/U>(b: ref/Box<t/U>) -> ref/U\n    t is ref or uniq\n    return peek(b)\n", null)]
+    [InlineData(Box + Peek + "func outer<t/U>(b: ref/Box<t/U>, q: ref/i32) -> ref/U during q\n    t is ref or uniq\n    return peek(b)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Box + Pick, null)]
+    [InlineData(Box + Pick + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return f(m@ref, q)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
+    [InlineData(Box + Leak, null)]
+    [InlineData(Box + Leak + "func g(q: ref/i32) -> i32\n    let m: i32 = 5\n    let pair = leak(q, m@ref)\n    return 0\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd))]
+    [InlineData(Box + "struct View<s/T> {a}\n    s is owner\n    public let b: ref/Box<s/T> during a\n", null)]
+    [InlineData(Box + "struct View<s/T> {a}\n    s is ref\n    public let b: ref/Box<s/T> during a\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Box + "struct View<s/T> {a}\n    s is owner or ref\n    public let b: ref/Box<s/T> during a\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd))]
+    [InlineData(Box + "struct View<s/T> {a, q}\n    s is ref\n    origin q outlives a\n    public let b: ref/Box<s/T during q> during a\n", null)]
+    public void TheImplicitOuterOriginIsAPremiseBelowABorrowLayer(string body, string? code)
+    {
+        var codes = Check(body + Main).Codes;
+        Assert.Equal(code is null ? [] : [code], codes);
     }
 
     // SPEC 15.3.3, 15.6.1: a local's clause is an obligation, never a premise: it does not prove itself, and the enclosing clause

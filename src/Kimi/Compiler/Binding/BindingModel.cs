@@ -345,6 +345,7 @@ public sealed record BoundType : ControlFlowType
 
     // Whole-subtree summaries, computed once at construction (see the constructor).
     private readonly bool carriesOrigin;
+    private readonly bool storesOrigin;
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
@@ -369,16 +370,20 @@ public sealed record BoundType : ControlFlowType
         var found = origin is not null || originArguments is { Length: > 0 };
         var slot = found || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
-        var pair = (kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget) || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+        var original = kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget;
+        var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+        var stores = found || original;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
+            stores |= components[i].storesOrigin;
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
         }
 
         this.carriesOrigin = found;
+        this.storesOrigin = stores;
         this.carriesOriginOrSlot = slot;
         foreach (var argument in this.LengthArguments)
         {
@@ -492,6 +497,12 @@ public sealed record BoundType : ControlFlowType
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin.</summary>
     /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
     internal bool CarriesOrigin => this.carriesOrigin;
+
+    /// <summary>Gets a value indicating whether this Type or any nested component stores an Origin in some Semantics case (SPEC 8.1.1,
+    /// 15.3.7): a written Origin or Origin argument, or the implicit outer Origin <c>o</c> of an original pair layer <c>s/T</c>, which no
+    /// Type writes (<see cref="Binding.OuterOrigin"/>).</summary>
+    /// <remarks>Gates the well-formedness walks, premises and obligations; inference, fits and Loans read only written Origins.</remarks>
+    internal bool StoresOrigin => this.storesOrigin;
 
     /// <summary>Gets a value indicating whether this subtree carries an Origin or a Type Parameter.</summary>
     /// <remarks>Requirement accumulation only reads those two, so everything else is skippable.</remarks>

@@ -283,15 +283,16 @@ public sealed partial class Binding
     }
 
     // `discharge` applies to the Origins stored directly in `inner`; those of its components are judged. `condition` is the Semantics
-    // case in which `outer` stores `inner`; a pair layer's own slot is stored only in its binder's borrow cases (SPEC 15.6.5).
+    // case in which `outer` stores `inner`; a pair layer's own slot, the implicit `o` of an original `s/T` included, is stored only in
+    // its binder's borrow cases (SPEC 15.6.5).
     private void RetainInnerOutlives(BoundType inner, BoundOrigin outer, Koto use, OriginDischarge discharge = OriginDischarge.Judgment, ulong condition = 0)
     {
-        if (!inner.CarriesOrigin)
+        if (!inner.StoresOrigin)
         {
             return;
         }
 
-        if (inner.Origin is { } origin && !OriginOutlives(origin, outer) && (inner.ContainsPairLayer ? this.PairSlotCondition(inner, use) : 0) is { } slot)
+        if (this.StoredSlot(inner, use, out var slot) is { } origin && !OriginOutlives(origin, outer))
         {
             this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, inner, origin, outer, Discharge: discharge, Condition: condition | RequiredCondition(slot)));
         }

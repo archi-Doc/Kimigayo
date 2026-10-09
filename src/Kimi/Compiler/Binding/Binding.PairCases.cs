@@ -184,6 +184,30 @@ public sealed partial class Binding
         }
     }
 
+    /// <summary>Gets the outer Origin a Type stores at a use and the Semantics case it is stored in (SPEC 8.1.2, 15.6.5): a pair layer's
+    /// slot, the implicit <c>o</c> of an original <c>s/T</c> included, in its binder's borrow cases (<see cref="PairSlotCondition"/>), and
+    /// any other Type's written Origin in every case.</summary>
+    /// <param name="type">A Type, such as a pattern's layer or its substitution at a use.</param>
+    /// <param name="use">The use whose binders give the condition's bits.</param>
+    /// <param name="condition">The Semantics case of the storage, 0 for every case.</param>
+    /// <returns>The stored outer Origin, or null when no case stores one.</returns>
+    internal BoundOrigin? StoredSlot(BoundType type, Koto use, out ulong condition)
+    {
+        condition = 0;
+        if (!type.ContainsPairLayer)
+        {
+            return type.Origin;
+        }
+
+        if (this.PairSlotCondition(type, use) is not { } slot)
+        {
+            return null;
+        }
+
+        condition = slot;
+        return this.OuterOrigin(type);
+    }
+
     /// <summary>Forms the complete Type a Type takes in one Semantics case (SPEC 8.10): every pair layer of a binder in
     /// <paramref name="cases"/> becomes the Type of that binder's Semantics over its direct target with the layer's outer-Origin
     /// slot (<c>U</c> for owner, <c>s/U during o</c> for a borrow, <c>s/U</c> otherwise), other Types map their components, and

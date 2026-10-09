@@ -216,8 +216,8 @@ public sealed partial class Binding
     // SPEC 15.3.4, 15.3.7, 8.1.1: a well-formed input Type's own clauses substituted with its Origin arguments, and the Origins stored
     // below each borrow or slice layer outliving that layer's Origin. In the admitted borrow cases a pair layer is a borrow of its
     // target within its outer-Origin slot, whose well-formedness makes the target's Origins outlive that slot; in the value cases no
-    // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). Each Type is visited
-    // once per environment.
+    // Type denotes the slot, so those edges hold only in the borrow cases (SPEC 15.6.5, PairSlotCondition). The stored Origins include
+    // the implicit `o` of an original pair layer below a borrow layer (StoresOrigin). Each Type is visited once per environment.
     private void AddTypePremises(OriginPremiseEnvironment environment, BoundType type, OriginPremiseRule rule)
     {
         if (!environment.Types.Add(type))
@@ -237,7 +237,7 @@ public sealed partial class Binding
 
         if (TryPairLayer(type, out var whole, out var target))
         {
-            if (target.CarriesOrigin && this.OuterOrigin(type) is { } slot &&
+            if (target.StoresOrigin && this.OuterOrigin(type) is { } slot &&
                 (this.AdmittedSemantics(whole, environment.Scope ??= this.ConstraintScope(environment.Use)) & SemanticsMask.Borrow) != 0 &&
                 this.PairSlotCondition(type, environment.Use) is { } condition)
             {
@@ -251,7 +251,7 @@ public sealed partial class Binding
         for (var i = 0; i < type.Components.Count; i++)
         {
             var inner = type.Components[i];
-            if (inner.CarriesOrigin && (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer)
+            if (inner.StoresOrigin && (IsBorrow(type.Semantics) || type.Kind == BoundTypeKind.Slice) && type.Origin is { } outer)
             {
                 this.AddStoredPremises(environment, inner, this.PremiseNode(environment, outer), rule, false);
             }
@@ -265,7 +265,7 @@ public sealed partial class Binding
     // inside it stays an obligation of the definition.
     private void AddResultPremises(OriginPremiseEnvironment environment, BoundType type)
     {
-        if (!type.CarriesOrigin || type.Kind == BoundTypeKind.Function || !environment.Results.Add(type))
+        if (!type.StoresOrigin || type.Kind == BoundTypeKind.Function || !environment.Results.Add(type))
         {
             return;
         }
@@ -283,16 +283,16 @@ public sealed partial class Binding
     }
 
     // Every Origin stored in `type` outlives the node `shorter`; with `result`, Origins inside a nested Function Type are not stored.
-    // `condition` is the Semantics case of the storage itself; a pair layer's own slot is stored only in its binder's borrow cases,
-    // while its target is stored in every case (SPEC 15.6.5).
+    // `condition` is the Semantics case of the storage itself; a pair layer's own slot, the implicit `o` of an original `s/T` included
+    // (SPEC 8.1.1), is stored only in its binder's borrow cases, while its target is stored in every case (SPEC 15.6.5).
     private void AddStoredPremises(OriginPremiseEnvironment environment, BoundType type, int shorter, OriginPremiseRule rule, bool result, ulong condition = 0)
     {
-        if (result && type.Kind == BoundTypeKind.Function)
+        if ((result && type.Kind == BoundTypeKind.Function) || !type.StoresOrigin)
         {
             return;
         }
 
-        if (type.Origin is { } origin && (type.ContainsPairLayer ? this.PairSlotCondition(type, environment.Use) : 0) is { } slot)
+        if (this.StoredSlot(type, environment.Use, out var slot) is { } origin)
         {
             environment.Closure.AddEdge(this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }

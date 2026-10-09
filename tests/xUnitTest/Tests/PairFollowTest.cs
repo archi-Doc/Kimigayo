@@ -244,8 +244,30 @@ public class PairFollowTest
         "    var k: i32 = 1\n    var h = Holder.init(k@uniq)\n    let g = h.get()\n    g@follow = 8\n" +
         "    Console.writeLine(\"\\(n) \\(m) \\(k)\")\n";
 
+    // SPEC 8.1.1, 15.3.7: a borrow-only pair's `o` below a borrow layer bounds a follow in ref and uniq instances: a struct getter, a
+    // Box and a Tuple Field, a generic caller forwarding its own pair, a premise through another input, and a generic Item with such a
+    // result erased to a Function Type in its owner instance, where the slot is vacuous.
+    private const string ImplicitOuterOrigin = Box +
+        "struct Holder<s/T>\n    s is ref or uniq\n    public let value: s/T\n    public init(value: s/T) => self.value = value@move\n" +
+        "    public func get(self: ref/Self) -> ref/T\n        return self.value@follow@ref\n" +
+        "func peek<s/T>(b: ref/Box<s/T>) -> ref/T\n    s is ref or uniq\n    return b.item@follow@ref\n" +
+        "func forward<t/U>(b: ref/Box<t/U>) -> ref/U\n    t is ref or uniq\n    return peek(b)\n" +
+        "func first<s/T>(b: ref/(s/T, i32)) -> ref/T\n    s is ref or uniq\n    return b.0@follow@ref\n" +
+        "func pick<s/T>(x: s/T, y: ref/Box<s/T> during c) -> ref/T during c\n    s is ref\n    return x@follow@ref\n" +
+        "func erased<s/T>(p: ref/i32, x: s/T) -> (Option<ref/Box<s/T> during p>, ref/i32 during p)\n    s is owner or ref\n    return (.None, p)\n" +
+        "func call(p: ref/i32) -> i32\n    let h: (ref/i32 during p, i32) -> (Option<ref/Box<i32> during p>, ref/i32 during p) = erased\n    let pair = h(p, 7)\n    return pair.1\n" +
+        "public func main()\n" +
+        "    let n: i32 = 3\n    var m: i32 = 4\n    let h = Holder<ref/i32>.init(n@ref)\n    let k = Holder<uniq/i32>.init(m@uniq)\n" +
+        "    require h.get() == 3 and k.get() == 4 else => $abort(\"holder\")\n" +
+        "    let b = Box<ref/i32>.init(n@ref)\n    var u: i32 = 5\n    let c = Box<uniq/i32>.init(u@uniq)\n" +
+        "    require peek(b@ref) == 3 and forward(b@ref) == 3 and forward(c@ref) == 5 else => $abort(\"box\")\n" +
+        "    let t = (n@ref, 1)\n    require first(t@ref) == 3 else => $abort(\"tuple\")\n" +
+        "    require pick(n@ref, b@ref) == 3 and call(n@ref) == 3 else => $abort(\"pick\")\n" +
+        "    Console.writeLine(\"Implicit outer Origin.\")\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
+        { "ImplicitOuterOrigin", ImplicitOuterOrigin, "Implicit outer Origin.\n" },
         { "UniqInstance", UniqInstance, "7 4 8\n" },
         { "NestedLayers", NestedLayers, "Nested layers.\n" },
         { "ExclusiveFollow", ExclusiveFollow, "Exclusive follow.\n" },
