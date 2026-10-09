@@ -250,6 +250,7 @@ This section retains unresolved findings, not completed repair history. D0–D5/
 | --- | --- | --- |
 | Flow refinement is an implementation limit reported with `Language` codes (`UnresolvedBinding_Kd` and `TypeMismatch_Kd` after `is` tests, Programs 33 and 38). Telling a refined use from a genuinely missing member needs the refinement analysis itself. | 3 | P33 |
 | `MovedPlace_Kd` and `UninitializedPlace_Kd` still need the earlier Move or missing initialization; short-lived inspection conflicts also need their formation site. Retained borrow conflicts now relate the value keeping the conflicting Loan live (`StoredReferenceLoanTest`, 2026-10-01), including call activation, ordinary safe stores and conflicting parent Copy reads. The common loan-conflict message covers any active Loan rather than enumerating only inspection/argument/element loans. | Related locations | Open (remaining ownership evidence) |
+| A Copy element read of a dynamic Array stored in a Field through a reference (`h.items[0]` with `h: ref/Holder`, `self.items[i]` with `self: ref/Self`) is rejected with `TransferRequired_Kd`, which states that the read moves the Place; through an owned local the read is `UnsupportedOwnership_Kd`, and a later `holder.items.length` adds a derived `MovedPlace_Kd` (PLAN G87). An implementation limit reported with a `Language` code. | 3 | Open |
 
 ### Inherited review findings
 
