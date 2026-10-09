@@ -124,6 +124,20 @@ public class PatternBindingTest
         Assert.True(c.Binding.CheckBound().IsComplete);
     }
 
+    // SPEC 14.8.4: an arm is unreachable only when a preceding unguarded arm covers it, also in a match bound more than once.
+    [Theory]
+    [InlineData("let a = 1\nlet b = match a\n    1 => 10\n    2 => 20", 0)]
+    [InlineData("enum E\n    A\n    B\n    C\nlet e = E.A\nlet b = match e\n    .A => 1\n    .A => 2\n    .B => 3", 1)]
+    public void RepeatedBindingKeepsOneArmPerWrittenArm(string source, int warnings)
+    {
+        var c = Parse(source);
+        Assert.False(c.Bind().IsComplete);
+        Assert.Equal(source.Split(" => ").Length - 1, Plan(c).Arms.Count);
+        Assert.Equal(warnings, c.Binding.PatternWarnings.Count);
+        Assert.All(c.Binding.PatternWarnings, x => Assert.Equal(0, x.CoveringArm));
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
+    }
+
     [Fact]
     public void GuardedPatternsDoNotCoverAndGuardTransfersAreVisited()
     {

@@ -196,6 +196,7 @@ public sealed partial class Binding
     private BoundType? BindMatch(MatchKoto match, BindingScope scope, BoundType? expected)
     {
         var plan = this.matches[match];
+        plan.Reset(match); // A match deferred and bound again in one pass (an unannotated initializer) starts from its written arms.
         var subject = this.BindNode(match.Expression, scope);
         if (match is TryKoto propagation)
         {
