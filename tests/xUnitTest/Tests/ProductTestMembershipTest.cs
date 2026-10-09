@@ -54,6 +54,17 @@ public class ProductTestMembershipTest
         Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.InvalidTestDefinition_Kd);
     }
 
+    // SPEC 23.3.3: a Test marker on a parameter is one problem, published once at the marker; its function rests on it.
+    [Fact]
+    public void AMarkerOnAParameterIsReportedOnce()
+    {
+        var compilation = MinimalEmissionTest.Analyze("func ordinary(#Test value: i32) => ()\nConsole.writeLine(\"product\")");
+        compilation.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(compilation), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+        Assert.Equal(nameof(DiagnosticCode.InvalidTestDefinition_Kd), error.Code);
+        Assert.Equal("#Test", error.Text);
+    }
+
     // DIAGNOSTICS.md §4.4: a Test marker before a binding is a misplaced attribute. The parser reports it once, it attaches to
     // nothing, and the binding is an ordinary product item, so no test definition remains to be judged.
     [Theory]

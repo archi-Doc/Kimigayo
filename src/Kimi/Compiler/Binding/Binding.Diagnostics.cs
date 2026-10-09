@@ -2129,7 +2129,9 @@ public sealed partial class Binding
             (node.BindingFailure == BindingFailure.InvalidAssociatedType && this.partPrerequisites.TryGetValue(node, out var specification) &&
             (specification.BindingFailure != BindingFailure.None || specification.BindingState == BindingState.Invalid)) ||
             (node.BindingFailure is BindingFailure.NoApplicableCandidate or BindingFailure.TypeMismatch && this.partPrerequisites.TryGetValue(node, out var read) &&
-            this.formationCauses?.ContainsKey(read) == true);
+            this.formationCauses?.ContainsKey(read) == true) ||
+            (node.BindingFailure == BindingFailure.InvalidTestDefinition && this.partPrerequisites.TryGetValue(node, out var marker) &&
+            marker.BindingFailure == BindingFailure.InvalidTestDefinition);
 
     // The walk reuses the prerequisite storage of PrerequisiteKeys; both run only at publication.
     private bool RestsOnRecovery(Koto node)

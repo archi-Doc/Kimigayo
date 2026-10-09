@@ -1658,6 +1658,7 @@ public sealed partial class Binding
                 if (AttributeTarget(invalidTest) is { } invalidTarget)
                 {
                     binding.Fail(invalidTarget, BindingFailure.InvalidTestDefinition);
+                    binding.partPrerequisites[invalidTarget] = node; // The target is invalid because of this one misplaced marker (IsDerived).
                 }
 
                 if (invalidTest.AttributeChain is { } precedingMarker)
