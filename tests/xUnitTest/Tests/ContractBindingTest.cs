@@ -345,12 +345,14 @@ public class ContractBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
+    // SPEC 23.3.6.4: the cyclic specifications are invalid, and the conformance's completeness rests on them (G34-8).
     [Fact]
     public void AssociatedIdentityCyclesCannotValidateAnImplementation()
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    associate E\n    associate F\nstruct S\n    Self is C\n    associate C.E is S.C.F\n    associate C.F is S.C.E");
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidConstraint_Kd && x.Node.ToString() == "associate C.E is S.C.F");
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidAssociatedType_Kd);
     }
 
     [Fact]

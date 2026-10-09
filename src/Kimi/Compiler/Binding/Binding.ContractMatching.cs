@@ -167,6 +167,11 @@ public sealed partial class Binding
         if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.Constraints?.Invalid == true || InvalidDeclarationContext(conformance.Contract.Declaration) || InvalidDeclarationContext(conformance.Type.Declaration))
         {
             conformance.IsVerified = false;
+            if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
+            {
+                this.failedDerivedConformance ??= conformance.Use; // A use rests on a conformance that rests on its specification.
+            }
+
             return ConstraintProof.Error;
         }
 
@@ -225,11 +230,20 @@ public sealed partial class Binding
             }
 
             var proof = declarationProof;
+            Koto? specification = null;
             for (var i = 0; i < shape.AssociatedTypes.Count; i++)
             {
                 if (!conformance.AssociatedStorage.TryGetValue(shape.AssociatedTypes[i], out var associated))
                 {
                     var identity = shape.AssociatedTypes[i];
+                    if (this.SpecificationPart(conformance, identity) is { } part)
+                    {
+                        // SPEC 23.3.6.4: an identity whose explicit specification did not bind is never inferred; its absence rests on
+                        // that specification, while every other missing identity still reports.
+                        specification ??= part;
+                        continue;
+                    }
+
                     if (this.InferenceHole(conformance, identity))
                     {
                         var binding = this.associatedBindings[(conformance.RootPath, identity)];
@@ -259,6 +273,14 @@ public sealed partial class Binding
                     // Projection normalization may erase an invalid constructed qualifier.
                     proof = CombineProof(proof, this.CheckTypeConstraints(inputs[input], formationScope), true);
                 }
+            }
+
+            if (specification is not null)
+            {
+                // The specified Type may fail only at the Definition deadline, so the link is kept whatever its state is now; the
+                // failure is derived only when the specification has failed by publication (IsDerived).
+                this.partPrerequisites[conformance.Use] = specification;
+                return Invalid(BindingFailure.InvalidAssociatedType);
             }
 
             if (inheritedProof is { } inheritedResult)

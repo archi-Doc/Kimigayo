@@ -722,6 +722,7 @@ public sealed partial class Binding
                 PremisesOnly = true,
             };
             this.acquisitionFailure = null;
+            this.failedDerivedConformance = null;
             foreach (var candidate in candidates)
             {
                 this.EvaluateCallCandidate(ref evaluation, candidate);
@@ -732,8 +733,9 @@ public sealed partial class Binding
             boundStarts[count] = this.candidateBounds.Count;
             if (evaluation.Error)
             {
-                // A candidate in a failed declaration cannot be judged, so the selection rests on that failure (SPEC 23.3.6.4).
-                return evaluation.InvalidDeclaration is { } invalidDeclaration ? this.CompleteDependent(call, invalidDeclaration) : this.Fail(call, BindingFailure.InvalidConstraint);
+                // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
+                // associated specification, so the selection rests on that failure (SPEC 23.3.6.4).
+                return (evaluation.InvalidDeclaration ?? this.failedDerivedConformance) is { } cause ? this.CompleteDependent(call, cause) : this.Fail(call, BindingFailure.InvalidConstraint);
             }
 
             if (!this.CheckCallShapeContracts(call, generic, scope, expected, evaluated.AsSpan(0, count), allMaps, maxGenerics))

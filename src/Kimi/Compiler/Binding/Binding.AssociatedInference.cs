@@ -353,7 +353,46 @@ public sealed partial class Binding
 
     private bool InferenceHole(BoundConformancePath path, BoundRequirement identity)
         => path.InheritedFrom is null && this.AssociatedParameters(identity.Symbol.Declaration).Length == 0 &&
-        this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding) && binding.Candidates.Count == 0;
+        this.associatedBindings.TryGetValue((path.RootPath, identity), out var binding) && binding.Candidates.Count == 0 &&
+        this.SpecificationPart(path, identity) is null;
+
+    // SPEC 15.3.3, 15.4.4, 23.3.6.4: the part an explicit specification of an associated identity rests on, in the conformance's
+    // declaration or its conditional block: the clause when it did not bind, otherwise its specified Type, whose formation may fail
+    // only at the Definition deadline. An identity so specified is never an inference hole, and a missing binding rests on that part.
+    private Koto? SpecificationPart(BoundConformancePath path, BoundRequirement identity)
+    {
+        var root = path.RootPath;
+        if (root.Declaration.Parent is SyntaxFormKoto syntax && TryConditionalBlock(syntax, out var block))
+        {
+            for (var i = 0; i < block.Items.Count; i++)
+            {
+                if (Failed(block.Items[i]) is { } conditional)
+                {
+                    return conditional;
+                }
+            }
+        }
+
+        var container = (DeclarationContainerKoto)root.Type.Declaration;
+        for (var i = 0; i < container.Members.Count; i++)
+        {
+            if (Failed(container.Members[i]) is { } member)
+            {
+                return member;
+            }
+        }
+
+        return null;
+
+        // A clause that fixes the Type, or one that did not bind and so cannot be told apart; a capability-only clause (`is Copy`)
+        // fixes nothing and leaves the identity to inference.
+        Koto? Failed(Koto item)
+            => item is IsKoto { IsAssociatedConstraint: true } clause && SpecifiesContract(clause, root.RootContract) &&
+                ReferenceEquals(clause.Left.BoundSymbol ?? AssociatedHead(clause)?.BoundSymbol, identity.Symbol)
+                ? clause.BindingFailure != BindingFailure.None || clause.BindingState != BindingState.Resolved || clause.BoundConstraint is null || clause.Right is null ? clause
+                : clause.BoundConstraint.Kind is ConstraintKind.TypeIdentity or ConstraintKind.Error ? clause.Right : null
+                : null;
+    }
 
     private void ExtractAssociatedEvidence(AssociatedInference batch, BoundConformancePath path, BoundType required, BoundType actual, FunctionKoto source)
     {

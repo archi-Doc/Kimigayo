@@ -12,6 +12,9 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
 
+    // The use of the first failed conformance whose failure is derived from its specification, met by a call's Constraint check (Check).
+    private Koto? failedDerivedConformance;
+
     // The independent causes of an unproven Type role or pair formation (TypeRoleCauses).
     [Flags]
     private enum TypeRoleCause : byte
