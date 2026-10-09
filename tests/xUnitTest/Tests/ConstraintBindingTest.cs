@@ -173,6 +173,22 @@ public class ConstraintBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
     }
 
+    // SPEC 8.10: a composite clause that a caller's premises cannot prove reports the subject named by its operands.
+    [Theory]
+    [InlineData("s is ref or uniq", "s is borrow")]
+    [InlineData("s is not owner and not obj", "s is owner or borrow")]
+    public void CompositeClausesReportTheirSubjectAtTheCall(string required, string premise)
+    {
+        var source = $"func need<s/T>(value: ref/(s/T))\n    {required}\n    ()\nfunc outer<s/T>(value: ref/(s/T))\n    {premise}\n    need(value)";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+        Assert.Equal("need(value)", error.Text);
+        Assert.Contains($"requires {required}; this condition cannot be proven for s/T", error.Note, StringComparison.Ordinal);
+    }
+
     // SPEC 7.4: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
     public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()

@@ -536,13 +536,20 @@ public sealed partial class Binding
     {
         var call = fact.Declaration is not null;
         var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
-        var subject = fact.Constraint.Subject is { } type ? DiagnosticTypeName(type) : null;
+        // A composite clause (`s is rc or arc`) names its subject in its operands.
+        var atom = fact.Constraint;
+        while (atom.Subject is null && atom.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
+        {
+            atom = atom.Left!;
+        }
+
+        var subject = atom.Subject is { } type ? DiagnosticTypeName(type) : null;
         var clause = fact.Clause.ToString();
         var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
         use.Report(
             requirement,
             code,
-            evidence: [subject, member, clause],
+            evidence: subject is null ? null : [subject, member, clause],
             note: $"{(call ? "Call" : "Function Item")} {member} requires {clause}; this condition {outcome}" + (subject is null ? " under the supplied bindings" : $" for {subject}"),
             related: [("constraint", fact.Clause, call ? "required by the called declaration" : "required by the referenced declaration")],
             advice: call ? "Provide arguments or declared premises that establish the required constraint" : "Choose Type arguments that satisfy the referenced declaration's constraints");

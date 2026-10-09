@@ -36,6 +36,23 @@ public class SharedObjectBindingTest
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
     }
 
+    // SPEC 8.10, 13.5.8: without a premise that proves `s is rc or arc`, a generic clone is an ordinary unproven call.
+    [Theory]
+    [InlineData("func dup<T>(value: ref/T) -> T => Kimi.Intrinsics.clone(value)", "T")]
+    [InlineData("func dup<s/T>(value: ref/(s/T)) -> s/T => Kimi.Intrinsics.clone(value)", "s/T")]
+    [InlineData("func dup<s/T>(value: ref/(s/T)) -> s/T\n    s is object\n    return Kimi.Intrinsics.clone(value)", "s/T")]
+    [InlineData("func dup<s/T>(value: ref/(s/T)) -> s/T\n    s is rc or obj\n    return Kimi.Intrinsics.clone(value)", "s/T")]
+    public void GenericCloneWithoutTheModePremiseIsUnproven(string source, string subject)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+        Assert.Equal("Kimi.Intrinsics.clone(value)", error.Text);
+        Assert.Contains("requires s is rc or arc; this condition cannot be proven for " + subject, error.Note, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("Rc")]
     [InlineData("Arc")]
