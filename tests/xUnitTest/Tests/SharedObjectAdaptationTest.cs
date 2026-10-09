@@ -42,8 +42,14 @@ public class SharedObjectAdaptationTest
     [InlineData("arc")]
     public void SharedViewAdaptationDoesNotUpcast(string mode)
     {
-        var c = CompilationTestHelper.Parse($"struct Base\n    public let id: i32 = 7\nstruct Child is Base\nfunc inspect(value: objref/Base) => ()\nfunc run(owner: {mode}/Child) => inspect(owner)");
-        Assert.False(c.Bind().IsComplete);
+        const string Types = "open struct Base\n    public let id: i32 = 7\n    protected init() => ()\nstruct Child: Base\n    public init() => ()\nfunc inspect(value: objref/Base) => ()\n";
+        var argument = CompilationTestHelper.Parse(Types + $"func run(owner: {mode}/Child) => inspect(owner)");
+        Assert.False(argument.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.NoApplicableOverload_Kd, Assert.Single(argument.Binding.Issues).Code);
+        var annotation = CompilationTestHelper.Parse(Types + $"func run(owner: {mode}/Child)\n    let view: objref/Base = owner");
+        Assert.False(annotation.Bind().IsComplete);
+        Assert.Equal(DiagnosticCode.TypeMismatch_Kd, Assert.Single(annotation.Binding.Issues).Code);
+        Assert.True(CompilationTestHelper.Parse(Types + $"func run(owner: {mode}/Child) => inspect(owner@objref/Base)").Bind().IsComplete);
     }
 
     [Trait("Purpose", "Allocation")]

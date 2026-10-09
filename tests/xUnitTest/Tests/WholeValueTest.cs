@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Tinyhand;
@@ -33,17 +34,24 @@ public class WholeValueTest
         Assert.Equal(expected ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveSealed(f.Parameters[0].Type.BoundType!, f));
     }
 
+    // A body-local projection isolates the capability: rc/arc have no outer Origin for a `during x` result.
     [Theory]
     [InlineData("objref", "ref", true)]
     [InlineData("objuniq", "ref", true)]
     [InlineData("objuniq", "uniq", true)]
+    [InlineData("rc", "ref", true)]
+    [InlineData("arc", "ref", true)]
     [InlineData("objref", "uniq", false)]
     [InlineData("rc", "uniq", false)]
     [InlineData("arc", "uniq", false)]
     public void GenericPayloadProjectionRequiresCapability(string source, string target, bool expected)
     {
-        var c = CompilationTestHelper.Parse($"func project<T>(x: {source}/T) -> {target}/T during x\n    T is Sealed and ObjectPayload\n    return x@follow@{target}");
+        var c = CompilationTestHelper.Parse($"func project<T>(x: {source}/T)\n    T is Sealed and ObjectPayload\n    let p = x@follow@{target}\n    ()");
         Assert.Equal(expected, c.Bind().IsComplete);
+        if (!expected)
+        {
+            Assert.Equal(DiagnosticCode.SharedPathAccess_Kd, Assert.Single(c.Binding.Issues).Code);
+        }
     }
 
     [Theory]
