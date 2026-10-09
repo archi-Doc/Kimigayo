@@ -106,8 +106,10 @@ public sealed partial class Binding
     // reports one; `source` is `fit` for a fit, `declared` for a relation clause and `wellFormed` for a Type occurrence.
     internal static (object[] Evidence, string Advice, (string Role, Koto At, string? Label)[]? Related) OriginRelationFacts(OriginRelationFact relation, string source)
     {
-        // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location.
-        var borrow = BorrowSource(relation.At, relation.Longer);
+        // SPEC 15.6.5: a local initialized by a Borrow shows that Borrow, which is also the related location. An input's well-formedness
+        // fails over an Origin that another input of the call supplied, so its Borrow is found in that call.
+        var borrow = BorrowSource(relation.At, relation.Longer) ??
+            (relation.WellFormed && EnclosingCall(relation.At) is { } call ? BorrowSource(call, relation.Longer) : null);
         // A clause of a Field or Case names its Type's own slots as written there, without `self.`; a Type's clause substituted at
         // a use in a body names the substituted Origins as that body does.
         var typeLevel = relation.Clause is not null && !relation.Substituted && TypeLevelClause(relation.At);
@@ -155,6 +157,20 @@ public sealed partial class Binding
 
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
+
+    // The call whose argument or receiver `at` is.
+    private static InvocationKoto? EnclosingCall(Koto at)
+    {
+        for (var node = at.Parent; node is not null and not (FunctionKoto or CodeBlockKoto); node = node.Parent)
+        {
+            if (node is InvocationKoto call)
+            {
+                return call;
+            }
+        }
+
+        return null;
+    }
 
     // SPEC 15.6.1: conditional Advice, never a repair candidate. A Refuted relation is not repaired by an annotation; an omitted end is
     // named by a set first; bounding the result is offered only at a result source, and binding to static never for an exclusive input.
@@ -901,7 +917,7 @@ public sealed partial class Binding
 
     private static void ReportOriginRelation(Koto node, OriginRelationFact relation, DiagnosticRequirement requirement, DiagnosticCode code, string? note, ushort condition = 0)
     {
-        var (evidence, advice, related) = OriginRelationFacts(relation, relation.Clause is null ? "fit" : "declared");
+        var (evidence, advice, related) = OriginRelationFacts(relation, relation.Clause is not null ? "declared" : relation.WellFormed ? "wellFormed" : "fit");
         if (relation.Shorter is { Kind: OriginKind.Projection, Slot: CallResultSlot, Binder: FunctionKoto { IsAnonymous: true } closure })
         {
             // SPEC 23.3.6.5: a closure end is related at the anonymous function's header, from `func` through the parameter list.

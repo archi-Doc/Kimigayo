@@ -1999,6 +1999,7 @@ public sealed partial class Binding
                 {
                     originInference ??= this.BeginOriginInference(call, function);
                     this.CollectOriginInference(pattern, actual, originInference, known: quantifier);
+                    this.CollectInputPremises(pattern, originInference, call);
                 }
 
                 pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));

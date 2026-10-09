@@ -22,6 +22,8 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
     private const string Refuted = "Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body";
 
+    private const string Box = "public struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\n";
+
     // q35: the clause is related with the role `relation`, and its source is `declared`.
     private const string Clause = "func needs(a: ref/i32) -> i32\n    origin a outlives static\n    return 1\n\nfunc caller(p: ref/i32) -> i32 => needs(p)\n";
 
@@ -251,6 +253,63 @@ public class CallOriginRelationTest(ITestOutputHelper output)
 
         var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
+    }
+
+    // SPEC 15.3.7, 15.6.4 step 3: the call proves its inputs' instantiated Types well formed. Where `c` cannot shorten, being fixed by
+    // the invariant third input, the input whose Type is not well formed is the record, with the shared Origin's Borrow related.
+    [Theory]
+    [InlineData("    f(m@ref, q, w)\n")]
+    [InlineData("    let h = f\n    h(m@ref, q, w)\n")]
+    public void AnInputsWellFormednessIsJudgedAtThatInput(string call)
+    {
+        var source = Box + "func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c, z: uniq/(ref/i32 during c)) -> ()\n    z@follow = x\n" +
+            "func g(q: ref/Box<ref/i32 during s> during t, w: uniq/(ref/i32 during t)) -> ()\n    let m: i32 = 5\n" + call + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "q", "requires the borrow m@ref outlives t, which is false"), (error.Code, Text(source, error.Span), error.Label));
+        Assert.Equal("wellFormed", error.Reason![3].Value);
+        Assert.Equal(["relation", "longer", "shorter", "source"], error.Reason.Select(static x => x.Name));
+        var related = Assert.Single(error.Related!);
+        Assert.Equal(("origin", "m@ref"), (related.Role, Text(source, related.Span)));
+    }
+
+    // SPEC 15.6.4 step 3: an Origin shared with an input's inner position bounds the call's solution, so the result over it is shortened
+    // to the borrow and fails at its destination (PLAN G85: these programs read a dead local before).
+    [Theory]
+    [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "", "f(m@ref, q)")]
+    [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n", "    let h = f\n", "h(m@ref, q)")]
+    [InlineData("func f<s/T>(x: s/T during a, y: ref/Box<s/T during a> during c) -> ref/T during c\n    s is ref\n    return x@follow@ref\n", "", "f(m@ref, q)")]
+    public void ASharedInputOriginBoundsTheResult(string callee, string prefix, string call)
+    {
+        var source = Box + callee + "func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n" + prefix + "    return " + call + "\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), call, "requires the borrow m@ref outlives t, which is false"), (error.Code, Text(source, error.Span), error.Label));
+        Assert.Equal("fit", error.Reason![3].Value);
+    }
+
+    // The valid twins: a shared Origin that every input supplies, an owner instance whose pair slot does not exist, a generic caller
+    // whose own input premise proves the shortened result, and a conformance whose requirement shares the Origin too.
+    [Theory]
+    [InlineData("func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\nfunc g() -> i32\n    let n: i32 = 3\n    let b = Box.init(n@ref)\n    return f(n@ref, b@ref)@follow\n")]
+    [InlineData("func f<s/T>(x: s/T during a, y: ref/Box<s/T during a> during c, z: ref/i32 during a) -> i32\n    s is owner or ref\n    return 1\nfunc g(q: ref/Box<i32>) -> i32\n    let m: i32 = 5\n    let k: i32 = 6\n    return f(k, q, m@ref)\n")]
+    [InlineData("func f<E>(x: ref/E during a, y: ref/Box<ref/E during a> during c) -> ref/E during c\n    return x\nfunc g<E>(q: ref/Box<ref/E during s> during t, v: ref/E during s) -> ref/E during t\n    return f(v, q)\n")]
+    [InlineData("contract Picker\n    func pick(self: ref/Self, x: ref/i32 during p, y: ref/Box<ref/i32 during p> during r) -> ref/i32 during r\nstruct Chooser\n    Self is Picker\n    public init() => ()\n    public func pick(self: ref/Self, x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c => x\n")]
+    public void AWellFormedInstanceIsAccepted(string body)
+    {
+        var check = DiagnosticCorpus.Check(Box + body + Main);
+        Assert.True(check.Accepted, string.Join("\n", check.Diagnostics.Select(static x => $"{x.Code}: {x.Label}")));
+    }
+
+    // SPEC 15.3.7: a whole-contract comparison proves the implementation's instantiated inputs well formed wherever its solve replaced a
+    // required Origin, here one the required contract keeps apart from the shared one: a Function Item argument, a conversion and a
+    // conformance witness.
+    [Theory]
+    [InlineData("func apply(h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t, y: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let m: i32 = 5\n    return h(m@ref, y)\nfunc g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t => apply(f, q)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("func g(q: ref/Box<ref/i32 during s> during t) -> ref/i32 during t\n    let h: (ref/i32, ref/Box<ref/i32 during s> during t) -> ref/i32 during t = f\n    let m: i32 = 5\n    return h(m@ref, q)\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    [InlineData("contract Picker\n    func pick(self: ref/Self, x: ref/i32 during p, y: ref/Box<ref/i32 during q> during r) -> ref/i32 during r\nstruct Chooser\n    Self is Picker\n    public init() => ()\n    public func pick(self: ref/Self, x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c => x\n", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
+    public void AComparisonProvesTheImplementationsInputs(string body, string code)
+    {
+        var source = Box + "func f(x: ref/i32 during a, y: ref/Box<ref/i32 during a> during c) -> ref/i32 during c\n    return x\n" + body + Main;
+        Assert.Equal([code], DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
     [Trait("Purpose", "Allocation")]

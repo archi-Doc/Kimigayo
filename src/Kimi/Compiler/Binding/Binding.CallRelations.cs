@@ -118,6 +118,11 @@ public sealed partial class Binding
             this.JudgeCallFit(selected, operations, argumentCount, i);
         }
 
+        for (var i = 0; i <= argumentCount; i++)
+        {
+            this.RequireInputPremises(operations[i]);
+        }
+
         this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
         this.PublishCallRelations();
     }
@@ -252,7 +257,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.5: judges `longer outlives shorter` (and the reverse for `==`) at `at`. A meet at the longer end decomposes, so each
     // failing operand is its own record (SPEC 15.3.6).
-    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null)
+    private void JudgeCallPosition(Koto at, BoundOrigin longer, BoundOrigin shorter, bool equality, BoundOrigin? variable, Koto? clause, bool declared = false, in CallFit context = default, BoundType? slot = null, bool wellFormed = false)
     {
         if (ReferenceEquals(longer, shorter))
         {
@@ -263,7 +268,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < longer.Operands.Count; i++)
             {
-                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context, slot);
+                this.JudgeCallPosition(at, longer.Operands[i], shorter, false, variable, clause, declared, context, slot, wellFormed);
             }
 
             return;
@@ -274,7 +279,7 @@ public sealed partial class Binding
         var backwardProven = !equality || this.FitOriginOutlives(shorter, longer, at);
         if (!FixedOrigin(longer) || !FixedOrigin(shorter))
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, Equality: equality, Clause: declared ? clause : null, WellFormed: wellFormed));
             return; // Local bounds are judged after every assignment and selected call has contributed its constraints.
         }
 
@@ -288,19 +293,19 @@ public sealed partial class Binding
                 : variable is not null ? this.EqualitySource(context, variable, shorter)
                 : slot is not null ? SlotEqualitySource(context, slot, shorter) : null;
             var refuted = forward == OriginJudgment.Refuted || backward == OriginJudgment.Refuted;
-            this.callRelationScratch.Add((at, new(at, longer, shorter, equality, declared ? null : context.Parameter, refuted, declared ? clause : null, Substituted: declared, FixedBy: fixedBy)));
+            this.callRelationScratch.Add((at, new(at, longer, shorter, equality, declared ? null : context.Parameter, refuted, declared ? clause : null, Substituted: declared, FixedBy: fixedBy, WellFormed: wellFormed)));
             return;
         }
 
         // A chain between body Origins needs region inference over Loan edges: ownership reports it as the located limit at `at`.
         if (forward == OriginJudgment.Unrepresentable)
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, longer, shorter, WellFormed: wellFormed));
         }
 
         if (backward == OriginJudgment.Unrepresentable)
         {
-            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, shorter, longer));
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, at, BindingDeadline.BodyOrigins, declared ? null : context.Parameter, shorter, longer, WellFormed: wellFormed));
         }
     }
 
@@ -342,6 +347,19 @@ public sealed partial class Binding
         }
 
         return null;
+    }
+
+    private bool HasCallRelation(Koto node)
+    {
+        for (var i = 0; i < this.callRelationScratch.Count; i++)
+        {
+            if (ReferenceEquals(this.callRelationScratch[i].Node, node))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // Fails each node with its first record and keeps the others for publication with it.

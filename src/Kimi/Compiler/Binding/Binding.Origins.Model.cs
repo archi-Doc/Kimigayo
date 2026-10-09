@@ -68,8 +68,8 @@ public enum OriginDischarge : byte
     /// chain judged with region inference (SPEC 15.6.5).</summary>
     Judgment,
 
-    /// <summary>The well-formedness of a direct borrowed input: its stored Origins outlive the borrow at each call, where borrow
-    /// formation checks the concrete dependencies (SPEC 8.1.2, 15.6.4).</summary>
+    /// <summary>The well-formedness of a direct borrowed input: its stored Origins outlive the borrow at each call, which judges the
+    /// instantiated input's well-formedness (SPEC 8.1.2, 15.6.4 step 3).</summary>
     CallBorrows,
 }
 
@@ -154,8 +154,9 @@ public sealed class BoundOrigin
 /// <summary>A retained semantic requirement, independent of successful name resolution. An <see cref="BindingObligationKind.OriginOutlives"/>
 /// obligation with <c>Equality</c> requires <c>Longer == Shorter</c>, the relation at an invariant position (SPEC 15.6.1); one with a
 /// <c>Clause</c> is a substituted declaration clause at its supplying argument or Type occurrence <c>Use</c> (SPEC 15.3.3, 15.6.1); one with
-/// <c>WellFormed</c> is a callee's result premise substituted at the call <c>Use</c>, the well-formedness of its result (SPEC 15.3.7), which
-/// classifies the record's source and is discharged by judgment. <c>Discharge</c> names the check responsible for the obligation.</summary>
+/// <c>WellFormed</c> is a callee's result premise substituted at the call <c>Use</c>, the well-formedness of its result, or the intrinsic
+/// relation of an input's instantiated Type at that input (SPEC 15.3.7, 15.6.4 step 3), which classifies the record's source and is
+/// discharged by judgment. <c>Discharge</c> names the check responsible for the obligation.</summary>
 public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment);
 
 internal enum TypePosition : byte

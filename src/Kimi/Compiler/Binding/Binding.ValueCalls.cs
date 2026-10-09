@@ -460,10 +460,20 @@ public sealed partial class Binding
                 operations[i] = operations[i] with { ParameterType = parameter };
             }
 
-            if (conditioned is not null)
+            if (ownBinder is not null)
             {
+                // SPEC 15.6.4 step 3: as at a selected call, each input's instantiated Type is well formed and each clause holds.
                 this.callRelationScratch.Clear();
-                this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
+                for (var i = 0; i < count; i++)
+                {
+                    this.RequireInputPremises(operations[i]);
+                }
+
+                if (conditioned is not null)
+                {
+                    this.JudgeCallClauses(call, conditioned, operations.AsSpan(0, count + 1), count, origins, argumentOrigins, null);
+                }
+
                 this.PublishCallRelations();
             }
 

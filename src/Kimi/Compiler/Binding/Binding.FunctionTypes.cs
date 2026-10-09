@@ -1193,7 +1193,8 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) || !this.FitsTypeAt(parameters.Components[i], parameter, use))
+            if (HasUnsubstitutedOrigin(parameter, function) || !this.FitsTypeAt(parameters.Components[i], parameter, use) ||
+                !this.ProvesInputPremises(parameter, parameters.Components[i], use))
             {
                 return false;
             }

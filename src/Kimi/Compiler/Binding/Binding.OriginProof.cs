@@ -305,7 +305,7 @@ public sealed partial class Binding
     // SPEC 15.3.3, 15.6.1: a Type's own clauses are premises of its definition and obligations of each use, so a local annotation
     // proves them substituted with the Origins its Type binds, also for a Type nested in it. Each is an obligation at the Type
     // occurrence that ownership judges and reports as a declared relation with the Type's clause related; it is never a premise of
-    // the body. A Function Type's inputs are its callee's premises, proven by each call's argument fit, so they are not entered.
+    // the body. A Function Type's inputs are its callee's premises, judged at each call's input (RequireInputPremises), so they are not entered.
     private void AddTypeClauseObligations(BoundType type, Koto occurrence, int depth = 0)
     {
         if (depth > 64)

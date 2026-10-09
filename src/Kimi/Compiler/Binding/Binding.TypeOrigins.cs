@@ -185,7 +185,8 @@ public sealed partial class Binding
             if (origin is not null && type.Components.Count != 0 && !InactiveOuterOrigin(type, this, use))
             {
                 // SPEC 8.1.2, 15.6.4: a direct borrowed input of a struct, or a pair layer whose outer slot is active only for a borrow
-                // binding, guarantees its own stored Origins outlive the borrow: each call's borrow formation checks them.
+                // binding, guarantees its own stored Origins outlive the borrow: each call judges them as the instantiated input's
+                // well-formedness (RequireInputPremises), whether its argument is a Borrow formed there or an existing reference.
                 var discharge = context is { Position: TypePosition.Parameter, Direct: true, Owner: FunctionKoto function } &&
                     origin is { Kind: OriginKind.Input } && ReferenceEquals(origin.Binder, function) && origin.Slot == context.Slot &&
                     (ReferenceTypes.IsStruct(type) || TryPairLayer(type, out _, out _)) ? OriginDischarge.CallBorrows : OriginDischarge.Judgment;

@@ -661,4 +661,5 @@ internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, 
 // is its failing operand and `Meet` the whole meet, which a result bound must name. At a selected call, `Substituted` marks a callee's
 // clause in `Clause` that is judged at the caller's input, where the caller's premises cannot remove it, and `FixedBy` is the input
 // whose equality made a fresh Origin of the call equal to a fixed one, related with the role `relation` (SPEC 15.6.1, Location).
-internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, BoundOrigin? Meet = null, bool Substituted = false, Koto? FixedBy = null);
+// `WellFormed` marks the intrinsic relation of an input's instantiated Type (source `wellFormed`, SPEC 15.3.7, 15.6.4 step 3).
+internal readonly record struct OriginRelationFact(Koto At, BoundOrigin Longer, BoundOrigin Shorter, bool Equality, BoundType? Destination, bool Refuted, Koto? Clause = null, BoundOrigin? Meet = null, bool Substituted = false, Koto? FixedBy = null, bool WellFormed = false);
