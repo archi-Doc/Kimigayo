@@ -35,6 +35,35 @@ public class InheritedConformanceTest
         require value + 2 == 42 and sum(value, 2) == 42 else => $abort("inherited call")
         """;
 
+    private const string Bumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\n";
+
+    // SPEC 12.4.4.1: an exclusive implementation reached through a base waits for the receiver-preservation proof of OCC-X. The wait is
+    // one located UnsupportedBinding_Kd, never an unproven Constraint: at an explicit conformance, whose uses derive from it, and at the
+    // use of an inherited one, which has no declaration record; an inherited one without a use says nothing.
+    [Theory]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "up(x@uniq)", "bump")]
+    [InlineData(Bumps + "open struct Base\n    public var count: i32 = 1\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    Self is Bumps\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "Self is Bumps", "bump")]
+    [InlineData("contract Counted\n    property count: i32 has get, set\nopen struct Base\n    var raw: i32 = 1\n    public computed count: i32\n        get(self: ref/Self) -> i32 => self.raw\n        set(self: uniq/Self, value: i32) -> () => self.raw = value\nstruct Leaf: Base\n    Self is Counted\n    public init() => ()\nvar x = Leaf.init()\n", "Self is Counted", "count")]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nvar x = Leaf.init()\n", null, null)]
+    public void APendingExclusiveWitnessIsOneLocatedLimit(string source, string? at, string? implementation)
+    {
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        if (at is null)
+        {
+            Assert.Empty(diagnostics);
+            return;
+        }
+
+        var record = Assert.Single(diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsupportedBinding_Kd), at), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        Assert.Equal($"the exclusive receiver of {implementation}, reached through a base, waits for its preservation proof", record.Label);
+        Assert.Equal("exclusive implementation", Assert.Single(record.Related!).Label);
+
+        // The limit is published from its recorded cause only; an independent error is still reported.
+        var independent = DiagnosticCorpus.Check(source + "let bad: bool = 1\n").Diagnostics;
+        Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.UnsupportedBinding_Kd)], independent.Select(static x => x.Code).Order());
+    }
+
     [Fact]
     public void MultipleLevelsRetainGenericWitnessesAndFunctionValues()
         => ScalarEmissionTest.EmitFixture("InheritedConformanceArithmetic", Arithmetic + "\nfunc items<T>(value: ref/T) -> i32\n    T is Addable<i32> and Owned\n    T.(Addable<i32>).Output is i32\n    let item = T.added\n    let erased: (ref/T, ref/i32) -> i32 = T.added\n    return item(value, 2) + invoke(item, value) + erased(value, 2)\nrequire items(value) == 126 else => $abort(\"inherited item\")", string.Empty);

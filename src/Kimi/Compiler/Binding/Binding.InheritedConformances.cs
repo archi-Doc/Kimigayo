@@ -127,6 +127,8 @@ public sealed partial class Binding
         path.WitnessMap.Clear();
         path.PropertyWitnessStorage.Clear();
         path.PropertyWitnessMap.Clear();
+        path.PendingExclusive = null;
+        path.PendingExclusiveOnly = false;
         try
         {
             var proof = ConstraintProof.Proven;
@@ -244,6 +246,7 @@ public sealed partial class Binding
                 }
             }
 
+            proof = PendingExclusiveProof(path, proof);
             path.IsVerified = proof == ConstraintProof.Proven;
             return proof;
         }

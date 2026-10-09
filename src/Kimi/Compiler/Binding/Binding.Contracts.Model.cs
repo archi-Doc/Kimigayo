@@ -193,6 +193,12 @@ public sealed class BoundConformancePath
 
     internal BoundType? InheritedBase { get; set; }
 
+    // SPEC 12.4.4.1: the first implementation whose exclusive receiver, projected to its base, waits for the preservation proof of
+    // OCC-X, and whether that is the only part of this verification that is not Proven; reset with the witnesses.
+    internal BindingSymbol? PendingExclusive { get; set; }
+
+    internal bool PendingExclusiveOnly { get; set; }
+
     internal BindingSymbol? RejectedSelfSignature { get; set; }
 
     internal List<BoundWitness> WitnessStorage { get; } = new();

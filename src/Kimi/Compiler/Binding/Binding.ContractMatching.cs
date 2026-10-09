@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundConformancePath Conformance, BoundRequirement Requirement), BindingScope> witnessScopes = new();
+    private Dictionary<Koto, BindingSymbol>? pendingExclusiveLimits;
 
     private static bool SameGenericShape(FunctionKoto requirement, FunctionKoto implementation)
     {
@@ -138,6 +139,19 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 12.4.4.1: a verification whose witnesses wait for OCC-X is not Proven; when nothing else is unproven, its only cause is that
+    // wait, which the conformance and its uses report as a located limit rather than an unproven Constraint.
+    private static ConstraintProof PendingExclusiveProof(BoundConformancePath path, ConstraintProof proof)
+    {
+        if (path.PendingExclusive is null)
+        {
+            return proof;
+        }
+
+        path.PendingExclusiveOnly = proof == ConstraintProof.Proven;
+        return CombineProof(proof, ConstraintProof.Unknown, true);
+    }
+
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
         if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && batch.State != 2)
@@ -177,6 +191,8 @@ public sealed partial class Binding
         conformance.WitnessMap.Clear();
         conformance.PropertyWitnessStorage.Clear();
         conformance.PropertyWitnessMap.Clear();
+        conformance.PendingExclusive = null;
+        conformance.PendingExclusiveOnly = false;
         try
         {
             var shape = conformance.Contract.Contract!;
@@ -388,6 +404,7 @@ public sealed partial class Binding
                 conformance.WitnessMap.Add(identity, witness);
             }
 
+            proof = PendingExclusiveProof(conformance, proof);
             conformance.IsVerified = proof == ConstraintProof.Proven;
             return proof;
         }
@@ -559,6 +576,13 @@ public sealed partial class Binding
             witness.ImplementationReceiver = implementation.BoundSymbol!.ReceiverIndex is var implementationIndex && implementationIndex >= 0 ? this.CallType(implementation.Parameters[implementationIndex].Type.BoundType!, implementation, arguments, premises, null, origins, inputs, selection.DeclaringType) : null;
             witness.SetOrigins(origins.AsSpan(0, implementation.Origins.Count), inputs.AsSpan(0, InputOriginCount(implementation)));
             witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
+            if (witness.ObjectCompatibility == ConstraintProof.Unknown)
+            {
+                // SPEC 12.4.4.1: an exclusive receiver projected to its base waits for OCC-X; the verification adds it as its own cause.
+                conformance.PendingExclusive ??= implementation.BoundSymbol;
+                return proof;
+            }
+
             return CombineProof(proof, witness.ObjectCompatibility, true);
         }
         finally

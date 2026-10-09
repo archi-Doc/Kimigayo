@@ -193,11 +193,41 @@ public sealed partial class Binding
         return this.FailExplained(ref this.callableConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
     }
 
-    // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused.
+    // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused. A conformance whose only
+    // unproven part waits for OCC-X (SPEC 12.4.4.1) is a located limit: an explicit one reports it at its declaration, from which the
+    // use derives, and an inherited one, which has no declaration record, at the use.
     private BoundType? FailPendingConstraint(InvocationKoto call, ReferenceConstraintFailure fact)
     {
         this.MarkWaitingHeaders(call);
+        if (fact.Proof == ConstraintProof.Unknown && this.PendingExclusiveConformance(fact.Constraint) is { } path)
+        {
+            if (path.InheritedFrom is null)
+            {
+                this.partPrerequisites[call] = path.Use;
+            }
+
+            return this.FailExplained(ref this.pendingExclusiveLimits, call, BindingFailure.Unsupported, path.PendingExclusive!, true);
+        }
+
         return this.FailExplained(ref this.referenceConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+    }
+
+    private BoundConformancePath? PendingExclusiveConformance(BoundConstraint constraint)
+    {
+        if (constraint is not { Kind: ConstraintKind.Contract, Subject.Symbol: { } symbol, Contract: { } contract } || !this.conformances.TryGetValue((symbol, contract), out var identity))
+        {
+            return null;
+        }
+
+        foreach (var path in identity.PathStorage)
+        {
+            if (path.PendingExclusiveOnly)
+            {
+                return path;
+            }
+        }
+
+        return null;
     }
 
     private ReferenceConstraintFailure? CandidateConstraintFailure(FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType, ConstraintProof outcome)

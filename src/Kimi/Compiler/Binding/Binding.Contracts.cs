@@ -212,6 +212,8 @@ public sealed partial class Binding
             conformance.WitnessMap.Clear();
             conformance.PropertyWitnessStorage.Clear();
             conformance.PropertyWitnessMap.Clear();
+            conformance.PendingExclusive = null;
+            conformance.PendingExclusiveOnly = false;
             conformance.AssociatedStorage.Clear();
             conformance.InferenceStorage.Clear();
             conformance.Scope.Reset();
@@ -817,6 +819,12 @@ public sealed partial class Binding
             var proof = this.VerifyConformance(conformance);
             if (final && conformance.InheritedFrom is null)
             {
+                if (proof == ConstraintProof.Unknown && conformance.PendingExclusiveOnly && mode == BindingMode.Final)
+                {
+                    this.FailExplained(ref this.pendingExclusiveLimits, conformance.Use, BindingFailure.Unsupported, conformance.PendingExclusive!); // SPEC 12.4.4.1
+                    continue;
+                }
+
                 this.RequireConstraint(conformance.Use, proof, mode);
             }
         }

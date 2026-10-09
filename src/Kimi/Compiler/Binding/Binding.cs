@@ -941,6 +941,11 @@ public sealed partial class Binding
         {
             issue.Node.Report(requirement, issue.Code, evidence: ["static storage with retained borrows is not implemented"], note: $"The stored Type {DiagnosticTypeName(staticType)} satisfies Owned. Static storage permits shared borrows with static Origins, but initialization and retained-borrow tracking for this storage are not yet implemented (SPEC 11.3.2, 15.4.2)");
         }
+        else if (issue.Code == DiagnosticCode.UnsupportedBinding_Kd && this.pendingExclusiveLimits?.TryGetValue(issue.Node, out var pending) == true)
+        {
+            // SPEC 12.4.4.1: the wait is neither a proof nor a refutation of the conformance.
+            issue.Node.Report(requirement, issue.Code, evidence: [$"the exclusive receiver of {pending.Name}, reached through a base, waits for its preservation proof"], related: [("declaration", pending.Declaration, "exclusive implementation")], note: "An exclusive implementation reached through a base must preserve the conforming Type's receiver. That proof is not yet implemented, so the conformance is neither proven nor refuted (SPEC 12.4.4.1)");
+        }
         else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.invalidStaticOriginSlots?.TryGetValue(issue.Node, out var invalidSlot) == true)
         {
             issue.Node.Report(requirement, issue.Code, evidence: [$"static cannot supply uniq for Origin slot {invalidSlot.Name}"], note: $"Origin slot {invalidSlot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", invalidSlot.Origin.Binder!, invalidSlot.Span, "requires uniq")]);
