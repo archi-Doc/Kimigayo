@@ -228,21 +228,39 @@ public sealed partial class Binding
     private BoundType? FailPendingConstraint(InvocationKoto call, ReferenceConstraintFailure fact)
     {
         this.MarkWaitingHeaders(call);
+        return this.FailUnprovenReference(call, fact, true);
+    }
+
+    // A call or Function Item whose unproven clause waits only for OCC-X shares that located limit.
+    private BoundType? FailUnprovenReference(Koto use, ReferenceConstraintFailure fact, bool unresolved)
+    {
         if (fact.Proof == ConstraintProof.Unknown && this.PendingExclusiveConformance(fact.Constraint) is { } path)
         {
             if (path.InheritedFrom is null)
             {
-                this.partPrerequisites[call] = path.Use;
+                this.partPrerequisites[use] = path.Use;
             }
 
-            return this.FailExplained(ref this.pendingExclusiveLimits, call, BindingFailure.Unsupported, path.PendingExclusive!, true);
+            return this.FailExplained(ref this.pendingExclusiveLimits, use, BindingFailure.Unsupported, path.PendingExclusive!, unresolved);
         }
 
-        return this.FailExplained(ref this.referenceConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
+        return this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnprovenConstraint, fact, unresolved);
     }
 
     private BoundConformancePath? PendingExclusiveConformance(BoundConstraint constraint)
     {
+        // SPEC 8.7, 12.4.4.1: an Unknown composite clause rests on its atoms, which share its subject; one whose conformance waits
+        // only for OCC-X is that limit.
+        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
+        {
+            return this.PendingExclusiveConformance(constraint.Left!) ?? this.PendingExclusiveConformance(constraint.Right!);
+        }
+
+        if (constraint.Kind == ConstraintKind.Not)
+        {
+            return this.PendingExclusiveConformance(constraint.Left!);
+        }
+
         if (constraint is not { Kind: ConstraintKind.Contract, Subject.Symbol: { } symbol, Contract: { } contract } || !this.conformances.TryGetValue((symbol, contract), out var identity))
         {
             return null;

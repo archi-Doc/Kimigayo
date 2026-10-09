@@ -291,7 +291,7 @@ public sealed partial class Binding
         var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container, failureUse: use);
         if (proof != ConstraintProof.Proven)
         {
-            this.RequireConstraint(use, proof, this.capabilityMode);
+            this.RequireReferenceConstraint(use, proof);
             return null;
         }
 
@@ -410,7 +410,7 @@ public sealed partial class Binding
             var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths, use);
             if (proof != ConstraintProof.Proven)
             {
-                this.RequireConstraint(use, proof, this.capabilityMode);
+                this.RequireReferenceConstraint(use, proof);
                 return null;
             }
 
@@ -520,6 +520,19 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 12.4.4.1: a Function Item clause that only an OCC-X witness leaves unproven is that located limit, as at a call.
+    private void RequireReferenceConstraint(Koto use, ConstraintProof proof)
+    {
+        if (proof == ConstraintProof.Unknown && this.capabilityMode == BindingMode.Final && this.referenceConstraints?.TryGetValue(use, out var fact) == true &&
+            fact.Proof == ConstraintProof.Unknown && this.PendingExclusiveConformance(fact.Constraint) is not null)
+        {
+            this.FailUnprovenReference(use, fact, false);
+            return;
+        }
+
+        this.RequireConstraint(use, proof, this.capabilityMode);
+    }
+
     private void RecordReferenceConstraint(Koto use, IsKoto clause, BoundConstraint constraint, ConstraintProof proof)
     {
         if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
@@ -536,14 +549,7 @@ public sealed partial class Binding
     {
         var call = fact.Declaration is not null;
         var member = fact.Declaration?.Name ?? use.BoundSymbol?.Name ?? "the referenced function";
-        // A composite clause (`s is rc or arc`) names its subject in its operands.
-        var atom = fact.Constraint;
-        while (atom.Subject is null && atom.Kind is ConstraintKind.And or ConstraintKind.Or or ConstraintKind.Not)
-        {
-            atom = atom.Left!;
-        }
-
-        var subject = atom.Subject is { } type ? DiagnosticTypeName(type) : null;
+        var subject = ClauseSubject(fact.Constraint) is { } type ? DiagnosticTypeName(type) : null;
         var clause = fact.Clause.ToString();
         var outcome = fact.Proof == ConstraintProof.Refuted ? "is refuted" : "cannot be proven";
         use.Report(

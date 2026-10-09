@@ -189,6 +189,36 @@ public class ConstraintBindingTest
         Assert.Contains($"requires {required}; this condition cannot be proven for s/T", error.Note, StringComparison.Ordinal);
     }
 
+    [Theory]
+    [InlineData("func need<T>(value: ref/T)\n    T is Copy or Owned\n    ()\nfunc outer<T>(value: ref/T) => need(value)", "need(value)", "T is Copy or Owned", "T")]
+    [InlineData("func need<T>(value: ref/T)\n    T is Copy and Owned\n    ()\nfunc outer<T>(value: ref/T) => need(value)", "need(value)", "T is Copy and Owned", "T")]
+    [InlineData("func need<T>(value: ref/T)\n    T is not Copy\n    ()\nfunc outer<T>(value: ref/T) => need(value)", "need(value)", "T is not Copy", "T")]
+    [InlineData("contract Describe\n    func describe(self: ref/Self) -> i64\nstruct Box<T>\n    var value: T\n    Self is Describe when T is Copy and Owned\n        public func describe(self: ref/Self) -> i64 => 1\nfunc outer<T>(b: ref/Box<T>) -> i64 => b.describe()", "b.describe()", "T is Copy and Owned", "T")]
+    public void CompositeContractClausesReportTheirSubjectAtTheUse(string source, string use, string clause, string subject)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("UnprovenConstraint_Kd", error.Code);
+        Assert.Equal(use, error.Text);
+        Assert.Contains($"requires {clause}; this condition cannot be proven for {subject}", error.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 8.7, 10.5: a candidate refuted by a composite clause names the subject that its operands share.
+    [Theory]
+    [InlineData("func need<s/T>(value: ref/(s/T))\n    s is rc or arc\n    ()\nfunc outer<s/T>(value: ref/(s/T))\n    s is borrow\n    need(value)", "s is rc or arc", "s/T")]
+    [InlineData("func need<T>(value: ref/T)\n    T is not Copy or Owned\n    ()\nlet x = 1\nneed(x)", "T is not Copy or Owned", "i32")]
+    public void RefutedCompositeCandidatesNameTheirSubject(string source, string clause, string subject)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal("NoApplicableOverload_Kd", error.Code);
+        Assert.Contains($"requires {clause}; this condition is refuted for {subject}", error.Note, StringComparison.Ordinal);
+    }
+
     // SPEC 7.4: a member function may constrain its declaring Type's parameters (a conditional member).
     [Fact]
     public void AMemberFunctionCanConstrainItsDeclaringTypeParameter()

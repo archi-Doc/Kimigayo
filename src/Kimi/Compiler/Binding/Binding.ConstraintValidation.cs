@@ -84,6 +84,16 @@ public sealed partial class Binding
             _ => SemanticsMask.All & ~SemanticsSet(constraint.Left!),
         };
 
+    /// <summary>Gets the subject of one clause's proposition (SPEC 8.7): every atom of `T is A or B`, `T is A and B` or `T is not A`
+    /// carries the clause's subject and the composite only its operands; an Error or Unresolved atom has none.</summary>
+    private static BoundType? ClauseSubject(BoundConstraint constraint)
+        => constraint.Kind switch
+        {
+            ConstraintKind.And or ConstraintKind.Or => ClauseSubject(constraint.Left!) ?? ClauseSubject(constraint.Right!),
+            ConstraintKind.Not => ClauseSubject(constraint.Left!),
+            _ => constraint.Subject,
+        };
+
     private static bool InvalidConstraintRequirement(BoundConstraint constraint)
         => (constraint.Contract is { } contract && InvalidDeclarationContext(contract.Declaration)) ||
         (constraint.RequiredType is { } required && InvalidConstraintType(required)) ||

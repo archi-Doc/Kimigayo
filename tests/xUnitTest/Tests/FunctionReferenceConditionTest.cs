@@ -73,6 +73,10 @@ public class FunctionReferenceConditionTest(ITestOutputHelper output)
     [InlineData("func pair<T>(value: T) -> (T, T)\n    T is Copy\n    return (value, value)\nlet f: (string) -> (string, string) = pair", "T is Copy", "UnsatisfiedConstraint_Kd")]
     // Owned needs a static Origin proof; an unproven condition also precedes the met binding's Origin conflict.
     [InlineData("func firstOf<T>(a: T, b: ref/i32) -> T\n    T is Owned\n    return a@move\nlet f: (ref/i32, ref/i32) -> ref/i32 = firstOf", "T is Owned", "UnprovenConstraint_Kd")]
+    // A composite clause names the subject its operands share.
+    [InlineData("func need<T>(value: T)\n    T is not Copy\n    ()\nlet f: (i32) -> () = need", "T is not Copy", "UnsatisfiedConstraint_Kd")]
+    [InlineData("func need<T>(value: T)\n    T is string or bool\n    ()\nlet f = need<i32>", "T is string or bool", "UnsatisfiedConstraint_Kd")]
+    [InlineData("func need<T>(value: ref/T)\n    T is Copy or Owned\n    ()\nfunc outer<T>(value: ref/T)\n    _ = need<T>\n()", "T is Copy or Owned", "UnprovenConstraint_Kd")]
     public void FailedGenericConditionsKeepTheirConcreteObligation(string source, string clause, string code)
     {
         var c = MinimalEmissionTest.Analyze(source);

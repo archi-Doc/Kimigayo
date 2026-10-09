@@ -794,7 +794,7 @@ public sealed partial class Binding
                 advice ??= candidate.ObjectClone ? StrongCloneAdvice : null;
                 if (candidate.ConstraintFailure is { } condition)
                 {
-                    var subject = condition.Constraint.Subject is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
+                    var subject = ClauseSubject(condition.Constraint) is { } type ? DiagnosticTypeName(type) : "the supplied bindings";
                     var conditionNote = $"{candidate.Function.Name} requires {condition.Clause}; this condition is refuted for {subject}";
                     if (this.InheritedSelfMismatchNote(condition.Constraint) is { } inherited)
                     {
