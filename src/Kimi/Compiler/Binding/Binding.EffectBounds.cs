@@ -45,6 +45,20 @@ public sealed partial class Binding
     // Cleanup extraction may run while a transitive effect check requests a library body; keep its scratch independent.
     private EffectSummary? cleanupCollector;
 
+    /// <summary>SPEC 4.7.5: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
+    /// Type parameters, as its published row permits: the parameter-dependent requirement the row names is covered.</summary>
+    /// <param name="operation">The operation.</param>
+    /// <param name="confined">Whether the summary is judged under confined.</param>
+    /// <param name="preserves">Whether the summary is judged under preserves results.</param>
+    /// <param name="published">The requirement whose effects the row publishes, such as `K` equality, or null.</param>
+    /// <returns>Whether the body stays within the bounds, and the first effect that does not.</returns>
+    internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, bool confined, bool preserves, BindingSymbol? published)
+    {
+        var summary = this.effectSummary ??= new(this);
+        var valid = summary.Check(confined, preserves, operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published);
+        return (valid, summary.Violation, summary.ViolationNode);
+    }
+
     internal void CollectCaseDestructions(OwnershipBody source, OwnershipBody target, ulong cases)
         => (this.cleanupCollector ??= new(this)).CollectDestructions(source, target, cases);
 
@@ -175,6 +189,7 @@ public sealed partial class Binding
         private Koto? last;
         private bool valid;
         private bool destructions;
+        private BindingSymbol? published;
         private OwnershipBody? cleanupSource;
         private OwnershipBody? subjectBody;
         private InterpretationContext subjectContext;
@@ -324,10 +339,11 @@ public sealed partial class Binding
         // SPEC 8.4.8.2: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
         // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
         // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
-        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false)
+        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
         {
             this.confined = confined;
             this.preserves = preserves;
+            this.published = published;
             this.scope = scope;
             this.valid = true;
             this.destructions = destructions;
@@ -1230,6 +1246,11 @@ public sealed partial class Binding
             var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
                 ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
             var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
+            if (ReferenceEquals(requirement.BoundSymbol, this.published))
+            {
+                return; // SPEC 4.7.5: the parameter-dependent effect the operation's row publishes.
+            }
+
             if (this.stepUse is { } use && (!confined || !preserves))
             {
                 var (local, held) = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract);

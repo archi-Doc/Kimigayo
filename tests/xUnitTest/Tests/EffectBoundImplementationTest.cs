@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -70,6 +71,40 @@ public class EffectBoundImplementationTest
             };
             Assert.True(expected == Binding.ClassifyCompilerFunction(kind), kind.ToString());
         }
+    }
+
+    // SPEC 4.7.5: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
+    // under confined and under preserves results; `K` equality is the only parameter-dependent requirement a row publishes, and the
+    // capacity and clear rows publish none at Binding (destructions are checked after ownership analysis). indexUniq lends `uniq/V`
+    // from its exclusive receiver, so its own input access affects the Loans earlier results keep and preserves results never holds.
+    [Fact]
+    public void PublishedOperationBodiesStayWithinTheirRows()
+    {
+        var c = MinimalEmissionTest.Analyze(Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var equals = ((ContractKoto)c.Library.GetSymbol(KimiDeclarationId.Equatable)!.Declaration).Members.OfType<FunctionKoto>().Single(static x => x.Name == "equals").BoundSymbol;
+        var operations = 0;
+        foreach (var entry in KimiLibraryCatalog.Entries)
+        {
+            if (!entry.PublishedSummary)
+            {
+                continue;
+            }
+
+            var operation = c.Library.GetSymbol(entry.Id)!;
+            Assert.True(KimiLibraryCatalog.PublishesSummary(operation));
+            var published = entry.Id is KimiDeclarationId.DictionaryReserve or KimiDeclarationId.DictionaryShrinkToFit or KimiDeclarationId.DictionaryClear ? null : equals;
+            foreach (var (confined, preserves) in new[] { (true, false), (false, true) })
+            {
+                var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, confined, preserves, published);
+                var lends = preserves && entry.Id == KimiDeclarationId.DictionaryIndexUniq;
+                Assert.True(valid != lends && (!lends || violation == Binding.EffectViolation.ResultLoan), $"{entry.Name} (confined {confined}, preserves {preserves}): {violation} at {node}");
+            }
+
+            operations++;
+        }
+
+        Assert.Equal(8, operations);
     }
 
     // SPEC 8.4.10.2, 22.3.1: a foreign call accesses only what its arguments permit, so preserves results admits it.
