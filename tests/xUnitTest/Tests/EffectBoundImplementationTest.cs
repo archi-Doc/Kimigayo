@@ -40,6 +40,9 @@ public class EffectBoundImplementationTest
     [InlineData("struct DeviceSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        unsafe\n            let register = 0x40000000@raw/i32\n            *register = value\n        return .Ok(())\n", false)]
     [InlineData("group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\nstruct ForeignSink\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        let output: raw/i64 = null\n        unsafe => _ = Native.query(output)\n        return .Ok(())\n", false)]
     [InlineData("struct Counter\n    var count: isize = 0\n    public func increment(self: uniq/Self) => self.count += 1\ncontract Tally\n    func add(self: ref/Self, total: uniq/Counter)\n        effect confined\nstruct Adder\n    Self is Tally\n    public func add(self: ref/Self, total: uniq/Counter)\n        total.increment()\n", true)]
+    [InlineData("contract Maker\n    func make(self: ref/Self) -> Array<i32>\n        effect confined\nstruct M\n    Self is Maker\n    var n: i32 = 4\n    public func make(self: ref/Self) -> Array<i32>\n        var result = Array<i32>.init(capacity: 2)\n        result.appendCopies([self.n, self.n][..])\n        return result@move\n", true)]
+    [InlineData("contract Maker\n    func make(self: ref/Self) -> Array<i32>\n        effect confined\nstruct M\n    Self is Maker\n    var n: i32 = 4\n    public func make(self: ref/Self) -> Array<i32>\n        let values: [2 of i32] = [self.n, self.n]\n        return values.slice().toArray()\n", true)]
+    [InlineData("contract Filler\n    func fill(self: ref/Self, values: uniq/Array<i32>)\n        effect confined\nstruct F\n    Self is Filler\n    public func fill(self: ref/Self, values: uniq/Array<i32>)\n        var view = values.sliceUniq()\n        view[0] = 7\n", true)]
     public void ConfinedClassifiesAuthorityByItsSource(string declarations, bool valid)
     {
         var c = MinimalEmissionTest.Analyze(Sink + declarations + Main);
@@ -47,6 +50,25 @@ public class EffectBoundImplementationTest
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        }
+    }
+
+    // SPEC 8.4.10.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
+    // allocator; Console output and the test temporary directory are environment effects; formatting dispatch is followed to its
+    // witness before classification. A new kind is unclassified until it is placed here.
+    [Fact]
+    public void EveryCompilerFunctionHasOneEffectClass()
+    {
+        foreach (var kind in Enum.GetValues<CompilerFunctionKind>())
+        {
+            var expected = kind switch
+            {
+                CompilerFunctionKind.None => Binding.CompilerFunctionEffect.Unclassified,
+                CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => Binding.CompilerFunctionEffect.Environment,
+                CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => Binding.CompilerFunctionEffect.Formatting,
+                _ => Binding.CompilerFunctionEffect.Inputs,
+            };
+            Assert.True(expected == Binding.ClassifyCompilerFunction(kind), kind.ToString());
         }
     }
 

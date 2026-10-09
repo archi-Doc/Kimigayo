@@ -6,6 +6,37 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    /// <summary>How an effect summary classifies a compiler function (SPEC 8.4.10.2).</summary>
+    internal enum CompilerFunctionEffect : byte
+    {
+        /// <summary>The kind names no compiler function, or one the summary cannot classify.</summary>
+        Unclassified,
+
+        /// <summary>The function acts only on its acquired inputs and the allocator, and may Abort.</summary>
+        Inputs,
+
+        /// <summary>The function obtains authority from the environment, which confined excludes.</summary>
+        Environment,
+
+        /// <summary>The function runs a selected formatting witness, which the summary follows before classifying.</summary>
+        Formatting,
+    }
+
+    // SPEC 8.4.10.2: the Storage and Raw families act only on their inputs and the allocator (SPEC 5.6, 22.1.2.5), so they are classified
+    // as families; a storage kind that obtained environment authority would have to be split out of its family. Console output and the
+    // test temporary directory are environment effects. Comparison, formatting and destruction callbacks are summarized separately.
+    internal static CompilerFunctionEffect ClassifyCompilerFunction(CompilerFunctionKind kind) => kind switch
+    {
+        CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 or CompilerFunctionKind.TestTempDirectory => CompilerFunctionEffect.Environment,
+        CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat => CompilerFunctionEffect.Formatting,
+        CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
+            >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
+            CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
+            >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
+            CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic => CompilerFunctionEffect.Inputs,
+        _ => KimiLibraryCatalog.IsStorageOperation(kind) || KimiLibraryCatalog.IsRawOperation(kind) ? CompilerFunctionEffect.Inputs : CompilerFunctionEffect.Unclassified,
+    };
+
     private EffectSummary? effectSummary;
 
     // The pass after ownership analysis keeps its own call pool: its contexts differ from the Binding pass (SPEC 8.4.5).
@@ -1084,9 +1115,10 @@ public sealed partial class Binding
             symbol = call?.Target ?? symbol;
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
-                if (!this.Allows(symbol.CompilerFunction))
+                var effect = ClassifyCompilerFunction(symbol.CompilerFunction);
+                if (effect != CompilerFunctionEffect.Inputs && (effect != CompilerFunctionEffect.Environment || this.confined))
                 {
-                    this.Violate(symbol.CompilerFunction is CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 ? EffectViolation.ExternalOperation : EffectViolation.UnclassifiedCall, null);
+                    this.Violate(effect == CompilerFunctionEffect.Environment ? EffectViolation.ExternalOperation : EffectViolation.UnclassifiedCall, null);
                 }
 
                 return;
@@ -1179,23 +1211,6 @@ public sealed partial class Binding
                 }
             }
         }
-
-        // These operations act only on their acquired inputs and the allocator; comparison, formatting and destruction
-        // callbacks are summarized separately. Console output is an environment effect, outside confined (SPEC 8.4.10.2).
-        private bool Allows(CompilerFunctionKind kind) => kind switch
-        {
-            CompilerFunctionKind.WriteLine or CompilerFunctionKind.WriteLineUtf8 => !this.confined,
-            CompilerFunctionKind.Abort or CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap or CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc or CompilerFunctionKind.Clone or
-                >= CompilerFunctionKind.ArrayReserve and <= CompilerFunctionKind.TextHeap or
-                CompilerFunctionKind.TextWriter or CompilerFunctionKind.TextUtf8 or CompilerFunctionKind.TextValidateUtf8 or
-                >= CompilerFunctionKind.TextRelease and <= CompilerFunctionKind.WindowCommit or CompilerFunctionKind.WriterStatus or CompilerFunctionKind.BuiltinFormat or
-                CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare or CompilerFunctionKind.BuiltinArithmetic or
-                CompilerFunctionKind.StorageBorrowShared or CompilerFunctionKind.StorageBorrowExclusive or
-                CompilerFunctionKind.StorageOwn or
-                >= CompilerFunctionKind.StorageBorrowDictionary and <= CompilerFunctionKind.StorageTransferBytes or
-                >= CompilerFunctionKind.RawAllocate and <= CompilerFunctionKind.RawSlice => true, // SPEC 5.6: an allocation and raw accesses.
-            _ => false,
-        };
 
         // SPEC 8.4.10.4: a requirement call has the effects that the bounds available under its premises leave. With preserves
         // results, a call of the one delegated requirement on the one stored value is covered (SPEC 8.4.10.5). Without
