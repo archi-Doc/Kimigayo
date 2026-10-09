@@ -190,16 +190,22 @@ public sealed class HoverProjectionTest
         Assert.Equal(-1, document.Find(30000));
     }
 
-    [Fact]
-    public void GeneratedConstructorDoesNotInventADeclarationLocationOrComment()
+    [Theory]
+    [InlineData("/// The type.\nstruct Empty\nfunc make() -> Empty => Empty.init()\n")]
+    [InlineData("open struct Base\n    protected init() => ()\n/// The type.\nstruct Empty: Base\nfunc make() -> Empty => Empty.init()\n")]
+    public void GeneratedConstructorDoesNotInventADeclarationLocationOrComment(string text)
     {
-        const string text = "/// The type.\nstruct Empty\nfunc make() -> Empty => Empty.init()\n";
         var snapshot = Project(text);
-        var call = At(snapshot, text.IndexOf("init", StringComparison.Ordinal));
+        var call = At(snapshot, text.IndexOf("init()", StringComparison.Ordinal) is var at && text.StartsWith("open", StringComparison.Ordinal) ? text.LastIndexOf("init", StringComparison.Ordinal) : at);
         var declaration = Assert.Single(call.Declarations);
         Assert.Contains("init(", declaration.Header);
         Assert.Empty(declaration.Origins);
         Assert.Empty(declaration.Documentation);
+        if (text.Contains(": Base", StringComparison.Ordinal))
+        {
+            // The synthesized base call is located at the base clause, yet the clause still shows its Type.
+            Assert.Contains("struct Base", Assert.Single(At(snapshot, text.IndexOf(": Base", StringComparison.Ordinal) + 2).Declarations).Header);
+        }
     }
 
     [Fact]

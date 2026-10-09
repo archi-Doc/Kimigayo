@@ -12,7 +12,15 @@ public sealed class StructKoto : DeclarationContainerKoto
 {
     private FunctionKoto? implicitConstructor;
 
-    internal FunctionKoto? ImplicitConstructor { get; private set; }
+    /// <summary>Gets the synthesized constructor once it exists: at once without a base, and for a structure with a base only
+    /// after its omitted base clause selects a base constructor (SPEC 6.2.3.6).</summary>
+    internal FunctionKoto? ImplicitConstructor => this.ImplicitConstructorPending ? null : this.SynthesizedConstructor;
+
+    /// <summary>Gets the synthesized constructor the declarations admit, available or still pending; the indexer visits it.</summary>
+    internal FunctionKoto? SynthesizedConstructor { get; private set; }
+
+    /// <summary>Gets a value indicating whether <see cref="SynthesizedConstructor"/> waits for its omitted base selection.</summary>
+    internal bool ImplicitConstructorPending { get; private set; }
 
     internal ConstructorAvailability ConstructorAvailability { get; private set; }
 
@@ -20,11 +28,12 @@ public sealed class StructKoto : DeclarationContainerKoto
     /// <see cref="ConstructorAvailability.MissingInitializer"/>.</summary>
     internal PropertyKoto? UninitializedField { get; private set; }
 
-    // SPEC 6.2.3.6: decided from the merged, selected members every pass. Base construction requires its own verified invocation
-    // plan, so a structure with a base receives no synthesized constructor yet.
+    // SPEC 6.2.3.6: decided from the merged, selected members every pass. A structure with a base keeps its synthesized constructor
+    // pending until Binding completes the omitted base selection (CompleteImplicitConstructor).
     internal void PrepareImplicitConstructor(bool compilerManaged)
     {
-        this.ImplicitConstructor = null;
+        this.SynthesizedConstructor = null;
+        this.ImplicitConstructorPending = false;
         this.UninitializedField = null;
         var availability = compilerManaged ? ConstructorAvailability.CompilerManaged : ConstructorAvailability.Eligible;
         for (var i = 0; i < this.Members.Count; i++)
@@ -45,16 +54,29 @@ public sealed class StructKoto : DeclarationContainerKoto
         }
 
         this.ConstructorAvailability = availability;
-        if (availability == ConstructorAvailability.Eligible && this.Bases.Count == 0)
+        if (availability == ConstructorAvailability.Eligible)
         {
-            this.ImplicitConstructor = this.implicitConstructor ??= new(this);
+            this.SynthesizedConstructor = this.implicitConstructor ??= new(this);
+            this.ImplicitConstructorPending = this.Bases.Count != 0;
+        }
+    }
+
+    /// <summary>Ends the pending state: the constructor exists when the omitted base clause selected a base constructor, and is
+    /// withdrawn otherwise.</summary>
+    /// <param name="exists">Whether the omitted base clause selected a base constructor.</param>
+    internal void CompleteImplicitConstructor(bool exists)
+    {
+        this.ImplicitConstructorPending = false;
+        if (!exists)
+        {
+            this.SynthesizedConstructor = null;
         }
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
     {
         base.VisitChildrenCore(visitor);
-        if (this.ImplicitConstructor is { } constructor)
+        if (this.SynthesizedConstructor is { } constructor)
         {
             visitor.Visit(constructor);
         }

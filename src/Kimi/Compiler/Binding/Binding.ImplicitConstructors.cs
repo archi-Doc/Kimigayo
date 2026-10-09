@@ -39,6 +39,9 @@ internal readonly record struct OmittedBaseSelection(OmittedBaseOutcome Outcome,
 
 public sealed partial class Binding
 {
+    private readonly Dictionary<StructKoto, OmittedBaseSelection> implicitConstructorDecisions = new(ReferenceEqualityComparer.Instance);
+    private readonly List<FunctionKoto> judgedConstructors = new();
+    private readonly List<FunctionKoto> withdrawnConstructors = new();
     private Dictionary<FunctionKoto, OmittedBaseSelection>? omittedBaseQueries;
 
     /// <summary>Gets or sets a value indicating whether each declaration pass records the omitted base query of every explicit
@@ -175,6 +178,141 @@ public sealed partial class Binding
         return this.PendingExclusiveConformance(constraint.Constraint) is not { } path ? new(OmittedBaseOutcome.Unproven, Cause: constraint.Clause)
             : path.InheritedFrom is null ? new(OmittedBaseOutcome.Dependent, Cause: path.Use)
             : new(OmittedBaseOutcome.Unsupported);
+    }
+
+    // SPEC 6.2.3.6: decides each pending synthesized constructor of a derived structure once the declarations are bound, base first.
+    // A selected base constructor makes it a member of the structure's `init` group; any other outcome withdraws it from the pass.
+    private void CompleteImplicitConstructors()
+    {
+        this.implicitConstructorDecisions.Clear();
+        this.judgedConstructors.Clear();
+        this.withdrawnConstructors.Clear();
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is StructKoto { ImplicitConstructorPending: true } structure)
+            {
+                this.CompleteImplicitConstructor(structure);
+            }
+        }
+
+        if (this.withdrawnConstructors.Count != 0)
+        {
+            this.PurgeWithdrawnConstructors();
+        }
+    }
+
+    private OmittedBaseSelection CompleteImplicitConstructor(StructKoto structure)
+    {
+        if (this.implicitConstructorDecisions.TryGetValue(structure, out var decided))
+        {
+            return decided;
+        }
+
+        // An invalid base graph, including a cycle, or base clause Constraints that are not Proven leave the decision resting on the
+        // base clause, whose own check reports them.
+        var clause = structure.Bases[0];
+        var constructor = structure.SynthesizedConstructor!;
+        var selection = new OmittedBaseSelection(OmittedBaseOutcome.Dependent, Cause: clause);
+        this.implicitConstructorDecisions.Add(structure, selection);
+        if (this.inheritanceStates.TryGetValue(structure.BoundSymbol!, out var state) && state == 2 && clause.BoundType is { } baseType &&
+            this.CheckTypeConstraints(baseType, this.scopes[structure]) == ConstraintProof.Proven)
+        {
+            // A base synthesized constructor that does not exist for a reason other than absence leaves this one resting on that reason.
+            if (baseType.Symbol?.Declaration is StructKoto parent && (parent.ImplicitConstructorPending || this.implicitConstructorDecisions.ContainsKey(parent)) &&
+                this.CompleteImplicitConstructor(parent) is { Outcome: OmittedBaseOutcome.Unproven or OmittedBaseOutcome.Dependent or OmittedBaseOutcome.Unsupported } inherited)
+            {
+                selection = inherited;
+            }
+            else
+            {
+                selection = this.SelectOmittedBaseConstructor(constructor);
+                this.judgedConstructors.Add(constructor);
+            }
+        }
+
+        this.implicitConstructorDecisions[structure] = selection;
+        var exists = selection.Outcome == OmittedBaseOutcome.Selected;
+        structure.CompleteImplicitConstructor(exists);
+        if (exists)
+        {
+            var scope = this.scopes[structure];
+            var symbol = constructor.BoundSymbol!;
+            symbol.Next = scope.Values.GetValueOrDefault("init");
+            scope.Values["init"] = symbol;
+        }
+        else
+        {
+            this.withdrawnConstructors.Add(constructor);
+        }
+
+        return selection;
+    }
+
+    // A withdrawn constructor and its syntax, which follow it contiguously in visit order, leave the pass's nodes, and the obligations
+    // raised under them are removed.
+    private void PurgeWithdrawnConstructors()
+    {
+        var kept = 0;
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            var node = this.nodes[i];
+            if (node is FunctionKoto { IsImplicitConstructor: true } constructor && this.withdrawnConstructors.Contains(constructor))
+            {
+                while (i + 1 < this.nodes.Count && IsWithin(this.nodes[i + 1], constructor))
+                {
+                    i++;
+                }
+
+                continue;
+            }
+
+            this.nodes[kept++] = node;
+        }
+
+        this.nodes.RemoveRange(kept, this.nodes.Count - kept);
+        kept = 0;
+        for (var i = 0; i < this.obligations.Count; i++)
+        {
+            var obligation = this.obligations[i];
+            if (this.WithinWithdrawnConstructor(obligation.Use))
+            {
+                this.obligationSet.Remove(obligation);
+                continue;
+            }
+
+            this.obligations[kept++] = obligation;
+        }
+
+        this.obligations.RemoveRange(kept, this.obligations.Count - kept);
+    }
+
+    private bool WithinWithdrawnConstructor(Koto use)
+    {
+        foreach (var constructor in this.withdrawnConstructors)
+        {
+            if (IsWithin(use, constructor))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 6.2.3.6: the declaration-time decisions must hold after bodies. The selection is judged again, and an existing synthesized
+    // constructor's bound base call selected the same constructor; a disagreement fails closed at the base clause.
+    private void RevalidateImplicitConstructors()
+    {
+        foreach (var constructor in this.judgedConstructors)
+        {
+            var structure = (StructKoto)constructor.Parent!;
+            var decision = this.implicitConstructorDecisions[structure];
+            if (this.SelectOmittedBaseConstructor(constructor) != decision ||
+                (decision.Winner is { } winner && constructor.BaseInitializer?.BoundCall is { } bound && !ReferenceEquals(bound.Target.Declaration, winner)))
+            {
+                this.Fail(structure.Bases[0], BindingFailure.Unsupported);
+            }
+        }
     }
 
     // Records the omitted base query of every explicit constructor whose base clause is omitted (CaptureOmittedBaseQueries).

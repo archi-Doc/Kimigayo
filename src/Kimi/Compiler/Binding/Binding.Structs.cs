@@ -9,7 +9,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
-    private Dictionary<Koto, BoundType>? constructorAbsences;
+    private Dictionary<Koto, ConstructorAbsence>? constructorAbsences;
     private ulong storageVersion;
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
@@ -229,25 +229,69 @@ public sealed partial class Binding
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
-    // SPEC 6.2.3.6, 22.1: a Type without constructors is a located absence at its construction or base call. A derived structure that
-    // admits a synthesized constructor waits for the omitted base selection, and a Type parameter under an identity premise for its
-    // substitution; both remain unsupported, as does a qualifier that did not bind.
+    // SPEC 6.2.3.6, 22.1: a Type without constructors is a located absence at its construction or base call. A derived structure whose
+    // omitted base clause selects no base constructor has none either; an Unknown premise that can change that selection leaves it
+    // unproven, and a selection resting on another failure is derived from it. A Type parameter under an identity premise waits for
+    // its substitution and remains unsupported, as does a qualifier that did not bind.
     private BoundType? FailConstructorAbsence(Koto node, BoundType? type)
     {
-        if (type is null || (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto structure } &&
-            structure.ConstructorAvailability is not (ConstructorAvailability.MissingInitializer or ConstructorAvailability.CompilerManaged)) ||
+        var structure = type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ? declaration : null;
+        if (structure is { ConstructorAvailability: ConstructorAvailability.Eligible } && this.implicitConstructorDecisions.TryGetValue(structure, out var decision))
+        {
+            return decision.Outcome switch
+            {
+                OmittedBaseOutcome.NoBaseConstructor or OmittedBaseOutcome.NoneApplicable or OmittedBaseOutcome.Ambiguous =>
+                    this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, new ConstructorAbsence(type!, decision)),
+                OmittedBaseOutcome.Unproven => this.FailExplained(ref this.constructorAbsences, node, BindingFailure.UnprovenConstraint, new ConstructorAbsence(type!, decision)),
+                OmittedBaseOutcome.Dependent when decision.Cause is { } cause => this.CompleteDependent(node, cause),
+                _ => this.Fail(node, BindingFailure.Unsupported),
+            };
+        }
+
+        if (type is null || structure is { ConstructorAvailability: not (ConstructorAvailability.MissingInitializer or ConstructorAvailability.CompilerManaged) } ||
             (type.Kind == BoundTypeKind.Parameter && HasParameterIdentity(this.ConstraintScope(node))))
         {
             return this.Fail(node, BindingFailure.Unsupported);
         }
 
-        return this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, type);
+        return this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, new ConstructorAbsence(type, null));
     }
 
-    private void ReportConstructorAbsence(Koto node, BoundType type, DiagnosticRequirement requirement, DiagnosticCode code)
+    private void ReportConstructorAbsence(Koto node, ConstructorAbsence absence, DiagnosticRequirement requirement, DiagnosticCode code)
     {
+        var type = absence.Type;
         var name = DiagnosticTypeName(type);
-        if (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto { ConstructorAvailability: ConstructorAvailability.MissingInitializer, UninitializedField: { } field } })
+        if (absence.Decision is { } decision && type.Symbol?.Declaration is StructKoto { Bases: [var clause, ..] })
+        {
+            // The decision is made once, from the derived declaration, so its Types are the declaration's own.
+            var declared = DiagnosticTypeName(this.SelfType(type.Symbol));
+            var baseName = clause.BoundType is { } baseType ? DiagnosticTypeName(baseType) : clause.ToString();
+            var omitted = declared == name ? "its omitted base clause" : $"the omitted base clause of {declared}";
+            if (decision.Outcome == OmittedBaseOutcome.Unproven)
+            {
+                // SPEC 6.2.3.6, 8.4.8.2: the synthesized constructor is decided once, generically, from the derived declaration.
+                var note = $"{name} has a synthesized constructor only when {omitted} selects a constructor of {baseName}; an Unknown premise of a candidate can change that selection, and the constructor is decided once for every {declared} (SPEC 6.2.3.6, 8.4.8.2)";
+                if (decision.Cause is { } premise)
+                {
+                    node.Report(requirement, code, evidence: [name, "init", premise.ToString()], note: note, related: [("constraint", premise, "unproven premise"), ("declaration", clause, "omitted base clause")]);
+                }
+                else
+                {
+                    node.Report(requirement, code, evidence: [name, "init"], note: note, related: [("declaration", clause, "omitted base clause")]);
+                }
+
+                return;
+            }
+
+            var reason = decision.Outcome switch
+            {
+                OmittedBaseOutcome.NoBaseConstructor => $"{baseName} has no constructor",
+                OmittedBaseOutcome.NoneApplicable => $"no constructor of {baseName} applies without arguments",
+                _ => $"more than one constructor of {baseName} applies without arguments",
+            };
+            node.Report(requirement, code, note: $"{name} has no constructor: {omitted} selects none, since {reason} (SPEC 6.2.3.6)", related: [("declaration", clause, "omitted base clause")]);
+        }
+        else if (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto { ConstructorAvailability: ConstructorAvailability.MissingInitializer, UninitializedField: { } field } })
         {
             node.Report(requirement, code, note: $"{name} has no constructor: its Field {field.NameKoto.IdentifierName} has no initializer, so none is synthesized (SPEC 6.2.3.6)", related: [("declaration", field.NameKoto, "no initializer")]);
         }
@@ -261,6 +305,9 @@ public sealed partial class Binding
             node.Report(requirement, code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.2.3)");
         }
     }
+
+    // A construction or base call of a Type without constructors: the Type, and for a derived structure its omitted base selection.
+    private readonly record struct ConstructorAbsence(BoundType Type, OmittedBaseSelection? Decision);
 
     private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping)
     {

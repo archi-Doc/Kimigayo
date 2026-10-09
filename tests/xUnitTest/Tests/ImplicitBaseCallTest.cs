@@ -66,6 +66,108 @@ public class ImplicitBaseCallTest
         }
     }
 
+    // SPEC 6.2.3.6: a derived structure without an explicit constructor whose Fields all have initializers receives init() when its
+    // omitted base clause selects a base constructor; it runs that constructor once, then the own initializers, and drops derived first.
+    [Theory]
+    [InlineData("Public", "open struct Base\n    public var count: i32 = 1\n    public init() => Console.writeLine(\"base\")\nstruct Leaf: Base\n    public let extra: i32 = 2\nlet leaf = Leaf.init()\nrequire leaf.count == 1 and leaf.extra == 2 else => $abort(\"fields\")", "base\n")]
+    [InlineData("Implicit", "open struct Base\n    public var count: i32 = 1\nstruct Leaf: Base\n    public let extra: i32 = 2\nlet leaf = Leaf.init()\nConsole.writeLine(\"\\(leaf.count) \\(leaf.extra)\")", "1 2\n")]
+    [InlineData("Protected", "open struct Base\n    public var count: i32 = 1\n    protected init() => Console.writeLine(\"base\")\nstruct Leaf: Base\n    public let extra: i32 = 2\nlet leaf = Leaf.init()", "base\n")]
+    [InlineData("AllDefault", "open struct Base\n    protected init(x: i32 = 3) => Console.writeLine(\"base \\(x)\")\nstruct Leaf: Base\nlet leaf = Leaf.init()", "base 3\n")]
+    [InlineData("OwnedDefault", "open struct Named\n    public let name: string\n    protected init(name: string = \"base\")\n        self.name = name@move\n    drop => Console.writeLine(\"named drop\")\nstruct Entry: Named\n    public let number: i32 = 4\n    drop => Console.writeLine(\"entry drop\")\nlet e = Entry.init()\nConsole.writeLine(\"\\(e.name) \\(e.number)\")", "base 4\nentry drop\nnamed drop\n")]
+    [InlineData("Generic", "open struct Base<T>\n    public var count: i32 = 1\n    protected init() => Console.writeLine(\"base\")\nstruct Leaf: Base<i64>\n    public let extra: i32 = 2\nstruct GLeaf<U>: Base<U>\n    public let extra: i32 = 3\nlet l = Leaf.init()\nlet g = GLeaf<i32>.init()\nConsole.writeLine(\"\\(l.extra) \\(g.extra)\")", "base\nbase\n2 3\n")]
+    [InlineData("ThreeLevels", "group Order\n    public func mark(name: string) -> i32\n        Console.writeLine(name)\n        return 1\nopen struct A\n    public var a: i32 = Order.mark(\"a\")\n    drop => Console.writeLine(\"drop a\")\nopen struct B: A\n    public var b: i32 = Order.mark(\"b\")\n    drop => Console.writeLine(\"drop b\")\nstruct C: B\n    public let c: i32 = Order.mark(\"c\")\n    drop => Console.writeLine(\"drop c\")\nlet x = C.init()", "a\nb\nc\ndrop c\ndrop b\ndrop a\n")]
+    [InlineData("Refuted", "struct NoEq\n    public var v: i32 = 0\nopen struct Base<T>\n    public var count: i32 = 1\n    protected init()\n        T is Equatable\n        Console.writeLine(\"cond\")\n    protected init(x: i32 = 0) => Console.writeLine(\"plain\")\nstruct Leaf: Base<NoEq>\nlet l = Leaf.init()", "plain\n")]
+    [InlineData("Chain", "open struct Base\n    public var a: i32 = 1\n    public init() => ()\nopen struct Mid: Base\n    public var b: i32 = 2\nstruct Leaf: Mid\n    public var c: i32 = 3\n    public init() => ()\nlet x = Leaf.init()\nConsole.writeLine(\"\\(x.a + x.b)\")", "3\n")]
+    [InlineData("Virtual", "open struct Base\n    public virtual func score(self: objref/Self, bonus: i32 = 1) -> i32\n        effect confined\n        return bonus\nstruct Derived: Base\n    override func score(self: objref/Self, bonus: i32) -> i32\n        return base.score(bonus) + 10\nlet d = Derived.init()@obj\nlet a = d.score()\nlet b = Base.score(d@objref/Base)\nlet operation = Derived.score\nlet c = operation(d@objref/Base, 1)\nrequire a == 11 and b == 11 and c == 11 else => $abort(\"dispatch\")\nConsole.writeLine(\"\\(a)\")", "11\n")]
+    public void DerivedStructuresSynthesizeTheirConstructor(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture("ImplicitBaseDerived" + name, source, stdout);
+
+    // A base default keeps its own location: an Abort it raises is reported where the default is written.
+    [Fact]
+    public void ASynthesizedConstructorEvaluatesTheBaseDefaults()
+        => ScalarEmissionTest.EmitFixture("ImplicitBaseDerivedAbort", "group Helpers\n    public func fail() -> i32 => $abort(\"default\")\nopen struct Base\n    protected init(x: i32 = Helpers.fail()) => ()\nstruct Leaf: Base\nlet leaf = Leaf.init()\nConsole.writeLine(\"after\")", string.Empty, 1, "Hello.kimi:2:34: abort KIMI_E_ABORT: default\n");
+
+    // SPEC 6.2.3.6: without a selected base constructor a derived structure has no constructor. A construction reports the reason, an
+    // Unknown premise that can change the selection, or the base clause failure the decision rests on; an unused Type says nothing, and
+    // the decision does not depend on declaration order.
+    [Theory]
+    [InlineData("open struct Base\n    private init() => ()\nstruct Leaf: Base\nlet leaf = Leaf.init()", "UnresolvedBinding_Kd", "Leaf.init", "Leaf has no constructor: its omitted base clause selects none, since no constructor of Base applies without arguments")]
+    [InlineData("open struct Base\n    protected init(a: i32 = 1) => ()\n    protected init(b: string = \"x\") => ()\nstruct Leaf: Base\nlet leaf = Leaf.init()", "UnresolvedBinding_Kd", "Leaf.init", "Leaf has no constructor: its omitted base clause selects none, since more than one constructor of Base applies without arguments")]
+    [InlineData("open struct Base\n    public var count: i32\nstruct Leaf: Base\nlet leaf = Leaf.init()", "UnresolvedBinding_Kd", "Leaf.init", "Leaf has no constructor: its omitted base clause selects none, since Base has no constructor")]
+    [InlineData("struct NoEq\n    public var v: i32 = 0\nopen struct Base<T>\n    protected init()\n        T is Equatable\n        ()\nstruct Leaf: Base<NoEq>\nlet leaf = Leaf.init()", "UnresolvedBinding_Kd", "Leaf.init", "Leaf has no constructor: its omitted base clause selects none, since no constructor of Base<NoEq> applies without arguments")]
+    [InlineData("open struct Base<T>\n    protected init()\n        T is Equatable\n        ()\n    protected init(x: i32 = 0) => ()\nstruct Leaf<U>: Base<U>\nlet leaf = Leaf<i32>.init()", "UnprovenConstraint_Kd", "Leaf<i32>.init", "Leaf<i32> has a synthesized constructor only when the omitted base clause of Leaf<U> selects a constructor of Base<U>")]
+    [InlineData("open struct Base<T>\n    protected init()\n        T is Equatable\n        ()\n    protected init(x: i32 = 0) => ()\nopen struct GLeaf<U>: Base<U>\nstruct Leaf: GLeaf<i32>\n    public init() => ()\nlet leaf = Leaf.init()", "UnprovenConstraint_Kd", "init()", "GLeaf<i32> has a synthesized constructor only when the omitted base clause of GLeaf<U> selects a constructor of Base<U>")]
+    [InlineData("open struct Base\n    public init() => ()\nstruct Leaf: Base\n    private init() => ()\nlet leaf = Leaf.init()", "NoApplicableOverload_Kd", "Leaf.init()", null)]
+    [InlineData("open struct Base\n    private init() => ()\nstruct Leaf: Base\n()", null, null, null)]
+    [InlineData("open struct Base\n    protected init(a: i32 = 1) => ()\n    protected init(b: string = \"x\") => ()\nstruct Leaf: Base\n()", null, null, null)]
+    [InlineData("open struct Base\n    public var count: i32\nstruct Leaf: Base\n()", null, null, null)]
+    [InlineData("open struct Base<T>\n    protected init()\n        T is Equatable\n        ()\n    protected init(x: i32 = 0) => ()\nstruct Leaf<U>: Base<U>\n()", null, null, null)]
+    [InlineData("struct Leaf: Base\n    public let extra: i32 = 2\nopen struct Base\n    protected init() => ()\nlet leaf = Leaf.init()", null, null, null)]
+    public void ADerivedStructureWithoutASelectedBaseConstructorHasNone(string source, string? code, string? at, string? note)
+    {
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        if (code is null)
+        {
+            Assert.Empty(diagnostics);
+            return;
+        }
+
+        var record = Assert.Single(diagnostics);
+        Assert.Equal((code, at), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        if (note is not null)
+        {
+            Assert.StartsWith(note, record.Note, StringComparison.Ordinal);
+            Assert.Contains(record.Related!, static x => x.Label == "omitted base clause");
+        }
+    }
+
+    // SPEC 6.2.3.6: base clause Constraints that are not Proven leave the decision resting on the clause, whose check reports them; the
+    // construction adds no record of its own.
+    [Fact]
+    public void AnUnsatisfiedBaseClauseLeavesTheConstructionDerived()
+    {
+        const string Source = "struct NoEq\n    public var v: i32 = 0\nopen struct Base<T>\n    T is Equatable\n    protected init() => ()\nstruct Leaf: Base<NoEq>\nlet leaf = Leaf.init()";
+        var diagnostics = DiagnosticCorpus.Check(Source).Diagnostics;
+        Assert.Contains(diagnostics, static x => x.Code == nameof(DiagnosticCode.UnsatisfiedConstraint_Kd));
+        Assert.DoesNotContain(diagnostics, x => x.Span!.Value.Start >= Source.IndexOf("Leaf.init", StringComparison.Ordinal));
+    }
+
+    // The base clause may be written in another source or another fragment of the structure; the synthesized constructor's base call
+    // is located at that clause.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void TheBaseClauseMayBeInAnotherFragment(bool reversed)
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var first = new SourceDocument("leaf.kimi", "struct Leaf\n    public let extra: i32 = 2\nlet leaf = Leaf.init()\nrequire leaf.extra == 2 else => $abort(\"extra\")");
+        var second = new SourceDocument("base.kimi", "open struct Base\n    protected init() => ()\nstruct Leaf: Base");
+        c.Kotonoha.AddSource(reversed ? second : first);
+        c.Kotonoha.AddSource(reversed ? first : second);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        var leaf = c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>().Single(static x => x.Name == "Leaf");
+        var initializer = leaf.ImplicitConstructor!.BaseInitializer!;
+        Assert.Equal(("base.kimi", leaf.Bases[0].Span), (initializer.CodeContext.SourceDocument!.Path, initializer.Span));
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void SynthesisReusesItsDecisionsWithoutAllocating()
+    {
+        const string Source = "open struct Base<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()\nstruct Leaf<U>: Base<U>\n    public let extra: i32 = 2\nstruct Absent: Base<i32>\n    public var other: i32 = 1\nopen struct Closed\n    private init() => ()\nstruct Unused: Closed\nlet leaf = Leaf<i64>.init()";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Ownership.Analyze().IsVerified));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Emission.WriteIr(TextWriter.Null, out _)));
+        Assert.True(valid);
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
+    }
+
     // SPEC 6.2.3.6: the omitted base query, which publishes nothing, decides as the bound base call does: the same selected
     // constructor or the same class of failed selection. It leaves the obligations and diagnostics of the pass unchanged.
     [Theory]
@@ -107,11 +209,11 @@ public class ImplicitBaseCallTest
     }
 
     // SPEC 6.2.3.6: a base without constructors is one Language absence at the base call target, omitted or written, placed alike by the
-    // CLI and the language server; a base that would receive a synthesized constructor remains unsupported until it is synthesized.
+    // CLI and the language server, whether the base lacks an initializer or its own omitted base clause selects no constructor.
     [Theory]
-    [InlineData("open struct Base\n    public var count: i32\n", "UnresolvedBinding_Kd")]
-    [InlineData("open struct Root\n    public init() => ()\nopen struct Base: Root\n    public var count: i32 = 1\n", "UnsupportedBinding_Kd")]
-    public void ABaseWithoutConstructorsIsOneLocatedProblem(string bases, string code)
+    [InlineData("open struct Base\n    public var count: i32\n", "Base has no constructor: its Field count has no initializer")]
+    [InlineData("open struct Root\n    private init() => ()\nopen struct Base: Root\n    public var count: i32 = 1\n", "Base has no constructor: its omitted base clause selects none, since no constructor of Root applies")]
+    public void ABaseWithoutConstructorsIsOneLocatedProblem(string bases, string note)
     {
         const string Leaf = "struct Leaf: Base\n    public init() => ()\n()";
         foreach (var written in new[] { false, true })
@@ -119,11 +221,8 @@ public class ImplicitBaseCallTest
             var source = bases + (written ? Leaf.Replace("public init() =>", "public init(): base() =>", StringComparison.Ordinal) : Leaf);
             var result = DiagnosticCorpus.Check(source);
             var record = Assert.Single(result.Diagnostics);
-            Assert.Equal((code, written ? "base" : "init()"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
-            if (code == nameof(DiagnosticCode.UnresolvedBinding_Kd))
-            {
-                Assert.StartsWith("Base has no constructor: its Field count has no initializer", record.Note, StringComparison.Ordinal);
-            }
+            Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), written ? "base" : "init()"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+            Assert.StartsWith(note, record.Note, StringComparison.Ordinal);
 
             var identity = SourceIdentity.FromPath(result.Sources[record.Source].Path);
             var sent = Assert.Single(WorkspaceCheck.Place(result, [identity], identity, true)[identity]);

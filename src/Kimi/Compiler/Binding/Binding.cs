@@ -496,6 +496,7 @@ public sealed partial class Binding
         this.ValidateConformances(mode, false);
         this.ValidateConstraintEnvironments();
         this.PrepareSpecializations();
+        this.CompleteImplicitConstructors();
         if (this.CaptureOmittedBaseQueries)
         {
             this.CaptureOmittedBases();
@@ -547,6 +548,7 @@ public sealed partial class Binding
         this.ValidateApiAccess(mode);
         // Base constraints need capability evidence; propagate failures before certificates.
         this.ValidateBaseDeclarations(mode);
+        this.RevalidateImplicitConstructors();
         // Property certificates must include final Origin and declaration API validity.
         this.ValidateProperties(mode);
         this.ValidateConformances(mode, true);
@@ -1023,7 +1025,7 @@ public sealed partial class Binding
                 : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
             issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
         }
-        else if (issue.Code == DiagnosticCode.UnresolvedBinding_Kd && this.constructorAbsences?.TryGetValue(issue.Node, out var absent) == true)
+        else if (issue.Code is DiagnosticCode.UnresolvedBinding_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.constructorAbsences?.TryGetValue(issue.Node, out var absent) == true)
         {
             this.ReportConstructorAbsence(issue.Node, absent, requirement, issue.Code);
         }
@@ -1239,7 +1241,9 @@ public sealed partial class Binding
         }
 
         symbol.Scope = scope;
-        if ((name == "_" && node.Parent is ForKoto) || (kind == BindingSymbolKind.Function && node is FunctionKoto { IsOverride: true }))
+        // A pending synthesized constructor is declared in its structure but joins the `init` group only once it exists (SPEC 6.2.3.6).
+        if ((name == "_" && node.Parent is ForKoto) || (kind == BindingSymbolKind.Function && node is FunctionKoto { IsOverride: true }) ||
+            node is FunctionKoto { IsImplicitConstructor: true, Parent: StructKoto { ImplicitConstructorPending: true } })
         {
             node.BoundSymbol = symbol;
             return symbol;

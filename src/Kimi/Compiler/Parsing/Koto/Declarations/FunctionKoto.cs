@@ -249,6 +249,9 @@ public sealed class FunctionKoto : DeclarationKoto
 
     private InvocationKoto? implicitBaseInitializer;
 
+    /// <summary>Gets a value indicating whether this is a structure's synthesized constructor (SPEC 6.2.3.6).</summary>
+    internal bool IsImplicitConstructor { get; }
+
     /// <summary>Gets a value indicating whether <see cref="BaseInitializer"/> is the retained call of an omitted base clause.</summary>
     internal bool HasOmittedBaseInitializer => this.BaseInitializer is not null && ReferenceEquals(this.BaseInitializer, this.implicitBaseInitializer);
 
@@ -260,15 +263,19 @@ public sealed class FunctionKoto : DeclarationKoto
         }
 
         this.BaseInitializer = null;
-        if (this.IsConstructor && this.Parent is StructKoto { Bases.Count: > 0 })
+        if (this.IsConstructor && this.Parent is StructKoto { Bases: [var clause, ..] })
         {
             if (this.implicitBaseInitializer is null)
             {
                 var target = new SyntaxFormKoto(this);
-                this.implicitBaseInitializer = new(this, target, []) { Span = this.SignatureSpan };
+                this.implicitBaseInitializer = new(this, target, []);
                 target.Parent = this.implicitBaseInitializer;
             }
 
+            // A synthesized constructor's base call is located at the structure's base clause (SPEC 6.2.2), in that clause's
+            // fragment; its target keeps an empty span.
+            this.implicitBaseInitializer.CodeContext = this.IsImplicitConstructor ? clause.CodeContext : this.CodeContext;
+            this.implicitBaseInitializer.Span = this.IsImplicitConstructor ? clause.Span : this.SignatureSpan;
             this.SetBaseInitializer(this.implicitBaseInitializer);
         }
     }
@@ -389,6 +396,7 @@ public sealed class FunctionKoto : DeclarationKoto
     {
         this.Name = "init";
         this.IsConstructor = true;
+        this.IsImplicitConstructor = true;
         this.Modifier = ModifierKind.Public;
         this.Parent = owner;
         this.Body = new CodeBlockKoto(owner.CodeContext) { Parent = this };

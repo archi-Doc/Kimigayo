@@ -380,8 +380,7 @@ public sealed partial class Binding
             };
             var owner = Owner(syntax);
             var source = syntax.CodeContext.SourceDocument;
-            var generated = syntax is FunctionKoto { IsGenerated: true } ||
-                (syntax.Parent is StructKoto container && ReferenceEquals(container.ImplicitConstructor, syntax));
+            var generated = syntax is FunctionKoto { IsGenerated: true } or FunctionKoto { IsImplicitConstructor: true };
             var origins = generated ? [] : this.origins.TryGetValue(syntax, out var fragments)
                 ? fragments.ToArray()
                 : source is null ? [] : new HoverOrigin[] { this.Origin(syntax, source, syntax.Span) };
