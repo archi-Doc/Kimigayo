@@ -32,16 +32,16 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.TestTempDirectory, "tempDirectory", KimiLibraryContainer.Test, Function: CompilerFunctionKind.TestTempDirectory),
         new(KimiDeclarationId.Option, "Option"),
         new(KimiDeclarationId.Result, "Result"),
-        new(KimiDeclarationId.Array, "Array"),
+        new(KimiDeclarationId.Array, "Array", ManagedRepresentation: true),
         new(KimiDeclarationId.FromEnd, "FromEnd"),
-        new(KimiDeclarationId.Wrapping, "Wrapping"),
+        new(KimiDeclarationId.Wrapping, "Wrapping", ManagedRepresentation: true),
         new(KimiDeclarationId.ResolvedRange, "ResolvedRange"),
         new(KimiDeclarationId.Range, "Range"),
         new(KimiDeclarationId.ClosedRange, "ClosedRange"),
-        new(KimiDeclarationId.Slice, "Slice"),
-        new(KimiDeclarationId.UniqSlice, "UniqSlice"),
+        new(KimiDeclarationId.Slice, "Slice", ManagedRepresentation: true),
+        new(KimiDeclarationId.UniqSlice, "UniqSlice", ManagedRepresentation: true),
         new(KimiDeclarationId.StorageBorrowUniqSlice, "borrowStorageUniq", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageBorrowUniqSlice, Overload: 3),
-        new(KimiDeclarationId.Dictionary, "Dictionary"),
+        new(KimiDeclarationId.Dictionary, "Dictionary", ManagedRepresentation: true),
         new(KimiDeclarationId.Equatable, "Equatable"),
         new(KimiDeclarationId.Comparable, "Comparable"),
         new(KimiDeclarationId.Addable, "Addable"),
@@ -74,7 +74,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.Upgrade, "upgrade", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.MakeRcCyclic, "makeRcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
         new(KimiDeclarationId.MakeArcCyclic, "makeArcCyclic", KimiLibraryContainer.Intrinsics, SourceExpected: false),
-        new(KimiDeclarationId.Weak, "Weak", SourceExpected: false),
+        new(KimiDeclarationId.Weak, "Weak", SourceExpected: false, ManagedRepresentation: true),
         // SPEC 4.7.2, 4.7.4: compiler-implemented Array mutation operations declared inside the Array struct.
         new(KimiDeclarationId.ArrayReserve, "reserve", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayReserve),
         new(KimiDeclarationId.ArrayAppend, "append", KimiLibraryContainer.Array, Function: CompilerFunctionKind.ArrayAppend),
@@ -180,7 +180,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.RawInitialize, "initialize", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawInitialize),
         new(KimiDeclarationId.RawSlice, "slice", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawSlice),
         // SPEC 15.3.5: the zero-sized dependency Field Core.
-        new(KimiDeclarationId.Loan, "Loan"),
+        new(KimiDeclarationId.Loan, "Loan", ManagedRepresentation: true),
         // Ordinary source bodies carry private diagnostic context; their public signatures remain ordinary source.
         new(KimiDeclarationId.StorageArgumentOutOfRange, "argumentOutOfRange", KimiLibraryContainer.Storage, Function: CompilerFunctionKind.StorageArgumentOutOfRange),
         new(KimiDeclarationId.FromEndResolve, "resolve", SourceFunction: true, CallerLocation: true, Owner: "FromEnd"),
@@ -231,6 +231,10 @@ internal static class KimiLibraryCatalog
     internal static bool RequiresCallerLocation(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].CallerLocation;
 
+    // SPEC 22.1: a Kimi Type whose representation the compiler manages has exactly the constructors its declaration declares.
+    internal static bool ManagesRepresentation(BindingSymbol? symbol)
+        => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].ManagedRepresentation;
+
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 
     /// <summary>Gets a value indicating whether a name is a cataloged declaration that the library does not yet declare in source (PLAN G4).</summary>
@@ -268,7 +272,7 @@ internal static class KimiLibraryCatalog
         return result;
     }
 
-    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false, bool CallerLocation = false, string? Owner = null)
+    internal readonly record struct Entry(KimiDeclarationId Id, string Name, KimiLibraryContainer Container = KimiLibraryContainer.Root, IntrinsicKind Intrinsic = IntrinsicKind.None, CompilerFunctionKind Function = CompilerFunctionKind.None, bool SourceExpected = true, int Overload = -1, bool SourceFunction = false, bool CallerLocation = false, string? Owner = null, bool ManagedRepresentation = false)
     {
         internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics;
     }

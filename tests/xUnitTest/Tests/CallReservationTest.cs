@@ -214,7 +214,7 @@ public class CallReservationTest(ITestOutputHelper output)
     [Theory]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(4)\nlet n = it.next()", "values.append(4)", null, "var it", "`values` implicitly borrowed exclusively as the receiver of `append`")]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\n(values).append(4)\nlet n = it.next()", "(values).append(4)", null, "var it", "`(values)` implicitly borrowed exclusively as the receiver of `append`")]
-    [InlineData("var table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\ntable.clear()\nlet n = it.next()", "table.clear()", null, "var it", "`table` implicitly borrowed exclusively as the receiver of `clear`")]
+    [InlineData("var table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\ntable.clear()\nlet n = it.next()", "table.clear()", null, "var it", "`table` implicitly borrowed exclusively as the receiver of `clear`")]
     [InlineData(Drain + "public func main()\n    var values = [1, 2, 3]\n    var drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let first = drain.take()\n    drain.reset(values.iterateUniq())\n    let second = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()", "values.iterateUniq()", "values.iterateUniq())\n    let second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
     [InlineData(Drain + "var values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\ndrain.reset(values.iterateUniq())\nlet second = drain.take()", "values.iterateUniq()", "values.iterateUniq())\nlet second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
     [InlineData(Drain + "func replace<J>(drain: uniq/Drain<J>, fresh: J)\n    J is Iterator\n    drain.reset(fresh@move)\nvar values = [1, 2, 3]\nvar drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\nreplace(drain@uniq, values.iterateUniq())\nlet second = drain.take()", "values.iterateUniq()", "values.iterateUniq())\nlet second", "var drain", "`values` implicitly borrowed exclusively as the receiver of `iterateUniq`")]
@@ -227,14 +227,14 @@ public class CallReservationTest(ITestOutputHelper output)
     // input keeps the Note naming the implicit acquisition.
     [Theory]
     [InlineData("func consume<I>(it: I) -> i32 => 4\nvar values = [1, 2, 3]\nvar it = values.iterateUniq()\nvalues.append(consume(it@move))", "values", "values.append", "var it", "`values` implicitly borrowed exclusively as the receiver of `append`")]
-    [InlineData("func consume<I>(it: I) -> i32 => 4\nvar table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\ntable.insertOrReplace(consume(it@move), 1)", "table", "table.insert", "var it", "`table` implicitly borrowed exclusively as the receiver of `insertOrReplace`")]
+    [InlineData("func consume<I>(it: I) -> i32 => 4\nvar table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\ntable.insertOrReplace(consume(it@move), 1)", "table", "table.insert", "var it", "`table` implicitly borrowed exclusively as the receiver of `insertOrReplace`")]
     public void AnImplicitReceiverMeetingALoanEndingDuringPreparationConflictsAtTheInput(string body, string input, string at, string holder, string note)
         => this.AssertOneConflict(Cell + body, "ComparisonLoanConflict_Kd", input, "This operation conflicts with an active loan", note, related: holder, at: at);
 
     // The valid counterparts: every holder of the Loan is last used before the receiver is acquired again.
     [Theory]
     [InlineData("var values = [1, 2, 3]\nvar it = values.iterateUniq()\nlet n = it.next()\nvalues.append(4)")]
-    [InlineData("var table = Dictionary<i32, i32>.init()\nvar it = table.iterateUniq()\nlet n = it.next()\ntable.clear()")]
+    [InlineData("var table: Dictionary<i32, i32> = [:]\nvar it = table.iterateUniq()\nlet n = it.next()\ntable.clear()")]
     [InlineData(Drain + "public func main()\n    var values = [1, 2, 3]\n    var drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let first = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()\n    var again = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let second = again.take()")]
     [InlineData(Keeper + "var s = Store.init()\nvar keeper = Keeper.init(s.lend())\nlet n = keeper.peek()\nvar again = Keeper.init(s.lend())\nlet m = again.peek()")]
     public void AReceiverLoanEndingBeforeTheCallIsAccepted(string body)

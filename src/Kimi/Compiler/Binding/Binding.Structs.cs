@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -8,6 +9,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
+    private Dictionary<Koto, BoundType>? constructorAbsences;
     private ulong storageVersion;
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
@@ -161,7 +163,7 @@ public sealed partial class Binding
         if (type is not { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto declaration } ||
             !this.scopes[declaration].Values.TryGetValue("init", out var constructor))
         {
-            this.Fail(member, BindingFailure.Unsupported);
+            this.FailConstructorAbsence(member, type);
             return null;
         }
 
@@ -211,9 +213,47 @@ public sealed partial class Binding
             {
                 return this.BindReference(node, initializer, scope);
             }
+
+            if (parent is not null)
+            {
+                return this.FailConstructorAbsence(node, parent);
+            }
         }
 
         return this.Fail(node, BindingFailure.InvalidTypeFormation);
+    }
+
+    // SPEC 6.2.3.6, 22.1: a Type without constructors is a located absence at its construction or base call. A derived structure that
+    // admits a synthesized constructor waits for the omitted base selection, and a Type parameter under an identity premise for its
+    // substitution; both remain unsupported, as does a qualifier that did not bind.
+    private BoundType? FailConstructorAbsence(Koto node, BoundType? type)
+    {
+        if (type is null || (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto structure } &&
+            structure.ConstructorAvailability is not (ConstructorAvailability.MissingInitializer or ConstructorAvailability.CompilerManaged)) ||
+            (type.Kind == BoundTypeKind.Parameter && HasParameterIdentity(this.ConstraintScope(node))))
+        {
+            return this.Fail(node, BindingFailure.Unsupported);
+        }
+
+        return this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, type);
+    }
+
+    private void ReportConstructorAbsence(Koto node, BoundType type, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        var name = DiagnosticTypeName(type);
+        if (type is { Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto { ConstructorAvailability: ConstructorAvailability.MissingInitializer, UninitializedField: { } field } })
+        {
+            node.Report(requirement, code, note: $"{name} has no constructor: its Field {field.NameKoto.IdentifierName} has no initializer, so none is synthesized (SPEC 6.2.3.6)", related: [("declaration", field.NameKoto, "no initializer")]);
+        }
+        else if (type.IsWrappingInteger || type.Symbol?.Declaration is StructKoto { ConstructorAvailability: ConstructorAvailability.CompilerManaged })
+        {
+            node.Report(requirement, code, note: $"{name} is a Kimi Type whose representation the compiler manages; it has only the constructors its declaration declares (SPEC 22.1)", advice: type.Symbol?.LibraryDeclaration == KimiDeclarationId.Dictionary ? "Write [:] for an empty Dictionary" : null);
+        }
+        else
+        {
+            var subject = type.Kind == BoundTypeKind.Parameter ? "The Type parameter " + name : name;
+            node.Report(requirement, code, note: $"{subject} declares no constructor; only a structure declares constructors (SPEC 6.2.3)");
+        }
     }
 
     private BoundType? ConstructorType(InvocationKoto call, FunctionKoto function, BindingScope scope, ReadOnlySpan<int> mapping)

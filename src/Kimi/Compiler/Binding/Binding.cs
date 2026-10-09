@@ -1019,6 +1019,10 @@ public sealed partial class Binding
                 : $"If both boundaries are meant to be integers of one Type, require {start} is PrimitiveInteger and {end} is {start}, or convert the boundaries explicitly";
             issue.Node.Report(requirement, issue.Code, note: $"Range iteration requires both boundaries to have one integer Type; the boundary Types {start} and {end} are not proven to be one integer Type", advice: repair);
         }
+        else if (issue.Code == DiagnosticCode.UnresolvedBinding_Kd && this.constructorAbsences?.TryGetValue(issue.Node, out var absent) == true)
+        {
+            this.ReportConstructorAbsence(issue.Node, absent, requirement, issue.Code);
+        }
         else if (issue.Code == DiagnosticCode.InaccessibleBinding_Kd && issue.Node is MemberAccessKoto { BoundSymbol: { } inaccessible })
         {
             issue.Node.Report(requirement, issue.Code, related: [("declaration", inaccessible.Declaration, $"inaccessible declaration '{inaccessible.Name}'")]);
@@ -1752,11 +1756,6 @@ public sealed partial class Binding
                     this.Scope.ConformancePath = null;
                     break;
                 case DeclarationContainerKoto container:
-                    if (container is StructKoto structure)
-                    {
-                        structure.PrepareImplicitConstructor();
-                    }
-
                     if (!container.IsRoot)
                     {
                         var kind = container is GroupKoto ? BindingSymbolKind.Container : BindingSymbolKind.Type;
@@ -1765,6 +1764,9 @@ public sealed partial class Binding
                         {
                             symbol.Type ??= binding.InternType(BoundTypeKind.Nominal, symbol, SemanticsKind.Owner, []);
                         }
+
+                        // The declared symbol carries the Kimi catalog identity (SPEC 22.1).
+                        (container as StructKoto)?.PrepareImplicitConstructor(KimiLibraryCatalog.ManagesRepresentation(symbol));
                     }
 
                     this.Scope = container.IsRoot ? binding.ModuleScope(node) : binding.GetScope(node, this.Scope);

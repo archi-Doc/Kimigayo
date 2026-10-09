@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Tinyhand;
 using Xunit;
 
@@ -41,6 +43,28 @@ public class BorrowStructEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified && !c.Diagnostics.HasSyntaxErrors(c.Kotonoha));
         Assert.False(c.Emission.Validate(out _));
+    }
+
+    // SPEC 6.2.3.6, 22.1: a construction of a Type without constructors is one Language absence at T.init whose Note names the reason:
+    // an own Field without an initializer (related), a Kimi Type whose representation the compiler manages, or a Type that is no
+    // structure. Generic Wrapping<T> no longer receives a synthesized constructor that generation cannot lower.
+    [Theory]
+    [InlineData("struct S\n    let n: i32\nlet s = S.init()", "S.init", "S has no constructor: its Field n has no initializer")]
+    [InlineData("open struct Base\n    public var count: i32 = 1\nstruct Leaf: Base\n    public let extra: i32\nlet x = Leaf.init()", "Leaf.init", "Leaf has no constructor: its Field extra has no initializer")]
+    [InlineData("enum E\n    A\n    B\nlet e = E.init()", "E.init", "E declares no constructor")]
+    [InlineData("let x = Option<i32>.init()", "Option<i32>.init", "Option<i32> declares no constructor")]
+    [InlineData("func make<T>() -> i32\n    let x = T.init()\n    return 1\nlet y = make<i32>()", "T.init", "The Type parameter T declares no constructor")]
+    [InlineData("let x = Wrapping<i32>.init()", "Wrapping<i32>.init", "Wrapping<i32> is a Kimi Type whose representation the compiler manages")]
+    [InlineData("func make<T>() -> Wrapping<T>\n    T is PrimitiveInteger\n    return Wrapping<T>.init()\nlet w = make<i32>()", "Wrapping<T>.init", "Wrapping<T> is a Kimi Type whose representation the compiler manages")]
+    [InlineData("let x = Slice<i32>.init()", "Slice<i32>.init", "Slice<i32> is a Kimi Type whose representation the compiler manages")]
+    [InlineData("let x = Dictionary<i32, i32>.init()", "Dictionary<i32, i32>.init", "Dictionary<i32, i32> is a Kimi Type whose representation the compiler manages")]
+    public void AConstructionWithoutAConstructorIsOneLanguageAbsence(string source, string at, string note)
+    {
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), DiagnosticCategory.Language, at), (record.Code, record.Category, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        Assert.StartsWith(note, record.Note, StringComparison.Ordinal);
+        Assert.Equal(note.Contains("Field", StringComparison.Ordinal) ? "no initializer" : null, record.Related?.SingleOrDefault()?.Label);
+        Assert.Equal(at.StartsWith("Dictionary", StringComparison.Ordinal) ? "Write [:] for an empty Dictionary" : null, record.Advice);
     }
 
     [Theory]

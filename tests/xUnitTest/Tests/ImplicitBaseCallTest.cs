@@ -66,6 +66,31 @@ public class ImplicitBaseCallTest
         }
     }
 
+    // SPEC 6.2.3.6: a base without constructors is one Language absence at the base call target, omitted or written, placed alike by the
+    // CLI and the language server; a base that would receive a synthesized constructor remains unsupported until it is synthesized.
+    [Theory]
+    [InlineData("open struct Base\n    public var count: i32\n", "UnresolvedBinding_Kd")]
+    [InlineData("open struct Root\n    public init() => ()\nopen struct Base: Root\n    public var count: i32 = 1\n", "UnsupportedBinding_Kd")]
+    public void ABaseWithoutConstructorsIsOneLocatedProblem(string bases, string code)
+    {
+        const string Leaf = "struct Leaf: Base\n    public init() => ()\n()";
+        foreach (var written in new[] { false, true })
+        {
+            var source = bases + (written ? Leaf.Replace("public init() =>", "public init(): base() =>", StringComparison.Ordinal) : Leaf);
+            var result = DiagnosticCorpus.Check(source);
+            var record = Assert.Single(result.Diagnostics);
+            Assert.Equal((code, written ? "base" : "init()"), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+            if (code == nameof(DiagnosticCode.UnresolvedBinding_Kd))
+            {
+                Assert.StartsWith("Base has no constructor: its Field count has no initializer", record.Note, StringComparison.Ordinal);
+            }
+
+            var identity = SourceIdentity.FromPath(result.Sources[record.Source].Path);
+            var sent = Assert.Single(WorkspaceCheck.Place(result, [identity], identity, true)[identity]);
+            Assert.Equal((record.Display!.Range, record.Code), (sent.Range, sent.Code));
+        }
+    }
+
     // SPEC 8.4.8.2: an Unknown premise of a base constructor defers the omitted and the written base call alike, and only when it can
     // affect the selection: the plain init() beats a conditional one that uses a default, and a better conditional one stays unproven.
     [Theory]

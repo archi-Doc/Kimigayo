@@ -14,25 +14,41 @@ public sealed class StructKoto : DeclarationContainerKoto
 
     internal FunctionKoto? ImplicitConstructor { get; private set; }
 
-    internal void PrepareImplicitConstructor()
+    internal ConstructorAvailability ConstructorAvailability { get; private set; }
+
+    /// <summary>Gets the first own Field without an initializer when <see cref="ConstructorAvailability"/> is
+    /// <see cref="ConstructorAvailability.MissingInitializer"/>.</summary>
+    internal PropertyKoto? UninitializedField { get; private set; }
+
+    // SPEC 6.2.3.6: decided from the merged, selected members every pass. Base construction requires its own verified invocation
+    // plan, so a structure with a base receives no synthesized constructor yet.
+    internal void PrepareImplicitConstructor(bool compilerManaged)
     {
         this.ImplicitConstructor = null;
-        // Base construction requires its own verified invocation plan.
-        if (this.Bases.Count != 0)
-        {
-            return;
-        }
-
+        this.UninitializedField = null;
+        var availability = compilerManaged ? ConstructorAvailability.CompilerManaged : ConstructorAvailability.Eligible;
         for (var i = 0; i < this.Members.Count; i++)
         {
-            if (this.Members[i] is FunctionKoto { IsConstructor: true } ||
-                this.Members[i] is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var, InitializerKoto: null })
+            if (this.Members[i] is FunctionKoto { IsConstructor: true })
             {
+                this.ConstructorAvailability = ConstructorAvailability.Explicit;
+                this.UninitializedField = null;
                 return;
+            }
+
+            if (availability == ConstructorAvailability.Eligible &&
+                this.Members[i] is PropertyKoto { DeclarationKind: PropertyDeclarationKind.Let or PropertyDeclarationKind.Var, InitializerKoto: null } field)
+            {
+                availability = ConstructorAvailability.MissingInitializer;
+                this.UninitializedField = field;
             }
         }
 
-        this.ImplicitConstructor = this.implicitConstructor ??= new(this);
+        this.ConstructorAvailability = availability;
+        if (availability == ConstructorAvailability.Eligible && this.Bases.Count == 0)
+        {
+            this.ImplicitConstructor = this.implicitConstructor ??= new(this);
+        }
     }
 
     protected override void VisitChildrenCore(KotoVisitor visitor)
