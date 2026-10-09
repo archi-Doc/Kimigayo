@@ -1553,7 +1553,8 @@ public sealed class ControlFlowAnalysis
             this.Error(node, DiagnosticCode.NonExhaustiveMatch_Kd, evidence: [coverage.Requirement], note: coverage.Describe());
         }
 
-        var normal = exhaustive != true;
+        // SPEC 14.8, 14.9.2: every match is exhaustive, so an unmatched completion exists only beside that Error and adds no other.
+        var normal = exhaustive is null;
         var pendingCompletion = subject.Pending || exhaustive is null;
         var transfers = subject.Transfers;
         for (var index = 0; index < node.Arms.Count; index++)

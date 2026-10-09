@@ -59,6 +59,14 @@ public class RequireRecoveryDiagnosticTest
         Assert.Equal(body, Assert.Single(published, static x => x.Code == nameof(DiagnosticCode.RequireFallthrough_Kd)).Text);
     }
 
+    // SPEC 14.8.4, 14.11.2: a Result-requiring match in the failure body completes only through its arms; its missing
+    // coverage is the one Error.
+    [Theory]
+    [InlineData("require a == 1 else => match a\n    0 => $abort(\"x\")", new[] { nameof(DiagnosticCode.NonExhaustiveMatch_Kd) })]
+    [InlineData("require a == 1 else => match a\n    0 => $abort(\"x\")\n    _ => ()", new[] { nameof(DiagnosticCode.RequireFallthrough_Kd) })]
+    public void AFailureBodyMatchCompletesOnlyThroughItsArms(string statement, string[] codes)
+        => Assert.Equal(codes, Publish(MinimalEmissionTest.Analyze("let a = 1\n" + statement)).Select(static x => x.Code));
+
     [Theory]
     [InlineData("require a == 1 and a == 2 else => $abort(\"x\")")]
     [InlineData("require a == 1 or not (a == 2) else\n    $abort(\"x\")")]
