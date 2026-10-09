@@ -71,6 +71,20 @@ public class PairAnnotationBindingTest
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
+    // SPEC 8.1.2: so is a struct Field's conditional slot, whatever the pair binder of the struct admits.
+    [Theory]
+    [InlineData("s/T during a", "owner")]
+    [InlineData("s/T during a", "owner or ref")]
+    [InlineData("s/U during a", "value or valueborrow")]
+    [InlineData("s/Option<U> during a", "owner or uniq")]
+    [InlineData("Array<s/U during a>", "value or valueborrow")]
+    public void AFieldOuterOriginIsInactiveForValueBindings(string type, string semantics)
+    {
+        var c = Parse($"struct Holder<s/T, U> {{a}}\n    s is {semantics}\n    let anchor: ref/i32 during a\n    let value: {type}\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
+    }
+
     // The same signature serves a value and a borrow: the slot binds `a` only for the borrow instance.
     [Fact]
     public void OneAnnotatedSignatureServesValueAndBorrowInstances()

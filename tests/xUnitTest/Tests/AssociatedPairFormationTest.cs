@@ -18,9 +18,19 @@ public class AssociatedPairFormationTest
         "func peekOf<C>(c: ref/C during b) -> C.(Peek).Item(b)\n    C is Peek\n    return c.peek()\n" +
         "let h = Holder<i32>.init(7)\nrequire h.peek() == 7 and peekOf(h@ref) == 7 else => $abort(\"peek\")\nConsole.writeLine(\"ok\")";
 
+    private const string BorrowUses =
+        "func peekOf<C>(c: ref/C during b) -> C.(Peek).Item(b)\n    C is Peek\n    return c.peek()\n" +
+        "let n: i32 = 7\nvar m: i32 = 8\nlet h = Holder<ref/i32>.init(n@ref)\nlet u = Holder<uniq/i32>.init(m@uniq)\n" +
+        "require h.peek() == 7 and peekOf(h@ref) == 7 and u.peek() == 8 and peekOf(u@ref) == 8 else => $abort(\"peek\")\nConsole.writeLine(\"ok\")";
+
     [Fact]
     public void PairTargetFamilyExecutes()
         => ScalarEmissionTest.EmitFixture("AssociatedPairTarget", Formed + Holder + Uses, "ok\n");
+
+    // The family over a borrowed target: the stored reference's own Origin outlives the borrow of the Holder.
+    [Fact]
+    public void PairTargetFamilyExecutesForBorrowInstances()
+        => ScalarEmissionTest.EmitFixture("AssociatedPairTargetBorrows", Formed + Holder + BorrowUses, "ok\n");
 
     // Without the formation condition nothing proves that the stored target outlives `a`.
     [Fact]
