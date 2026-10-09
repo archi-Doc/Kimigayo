@@ -33,6 +33,19 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
     public void OrdinaryStorageAndBorrowPlansPreserveTheFinalRelease(string name, string use)
         => SharedObjectRuntimeTest.WriteModes("Storage" + name, Item + "let owner = Kimi.Intrinsics.makeRc(Item.init())\n" + use, 1, 1, 20, "drop\n");
 
+    // SPEC 16.3.3: a handle Moved or initialized on only some paths is released only where it is still initialized.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("Moves", "func local(source: ref/rc/Item, flag: bool)\n    let copy = Kimi.Intrinsics.clone(source)\n    if flag => sink(copy@move)\n    Console.writeLine(\"local\")\nfunc parameter(handle: rc/Item, flag: bool)\n    if flag => sink(handle@move)\n    Console.writeLine(\"parameter\")\nfunc arm(source: ref/rc/Item, flag: bool)\n    let copy = Kimi.Intrinsics.clone(source)\n    match flag\n        true => sink(copy@move)\n        false => ()\n    Console.writeLine(\"arm\")\nfunc parts(source: ref/rc/Item, flag: bool)\n    let tuple = (Kimi.Intrinsics.clone(source), 5)\n    let option: Option<rc/Item> = .Some(Kimi.Intrinsics.clone(source))\n    let wrap = Wrap.init(Kimi.Intrinsics.clone(source))\n    if flag\n        _ = tuple@move\n        _ = option@move\n        _ = wrap@move\n    Console.writeLine(\"parts\")\nfunc cycle(owner: ref/rc/Item, flag: bool)\n    local(owner, flag)\n    parameter(Kimi.Intrinsics.clone(owner), flag)\n    arm(owner, flag)\n    parts(owner, flag)\nlet owner = Kimi.Intrinsics.makeRc(Item.init())\ncycle(owner@ref, true)\ncycle(owner@ref, false)\nConsole.writeLine(\"alive\")", 1, "sunk\nlocal\nsunk\nparameter\nsunk\narm\nparts\nlocal\nparameter\narm\nparts\nalive\ndrop\n")]
+    [InlineData("Initialization", "func fill(source: ref/rc/Item, flag: bool)\n    var slot: rc/Item\n    if flag => slot = Kimi.Intrinsics.clone(source)\n    Console.writeLine(\"filled\")\nfunc refill(source: ref/rc/Item, flag: bool)\n    var slot = Kimi.Intrinsics.clone(source)\n    if flag => sink(slot@move)\n    slot = Kimi.Intrinsics.makeRc(Item.init())\n    Console.writeLine(\"refilled\")\nfunc cycle(owner: ref/rc/Item, flag: bool)\n    fill(owner, flag)\n    refill(owner, flag)\nlet owner = Kimi.Intrinsics.makeRc(Item.init())\ncycle(owner@ref, true)\ncycle(owner@ref, false)\nConsole.writeLine(\"alive\")", 3, "filled\nsunk\nrefilled\ndrop\nfilled\nrefilled\ndrop\nalive\ndrop\n")]
+    public void PathDependentHandlesReleaseOnlyWhereInitialized(string name, string use, int allocations, string stdout)
+        => SharedObjectRuntimeTest.WriteModes("Path" + name, Item + "struct Wrap\n    public let handle: rc/Item\n    public init(handle: rc/Item) => self.handle = handle@move\nfunc sink(handle: rc/Item) => Console.writeLine(\"sunk\")\n" + use, allocations, allocations, allocations * 20, stdout);
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ExclusiveObjectsShareThePathDependentRelease()
+        => NativeAllocationAudit.WriteFixture("SharedRcObjPath", Item + "func sink(handle: obj/Item) => Console.writeLine(\"sunk\")\nfunc run(flag: bool)\n    let owner = Kimi.Intrinsics.makeObj(Item.init())\n    if flag => sink(owner@move)\n    Console.writeLine(\"run\")\nrun(true)\nrun(false)", 2, 2, 40, "sunk\ndrop\nrun\nrun\ndrop\n");
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void EmptyCasesNeverReleaseAnInactiveHandle()
