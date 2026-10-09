@@ -73,6 +73,66 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         Assert.False(c.Emission.Validate(out _));
     }
 
+    // SPEC 13.5.5.2: object borrows, implicit object views and payload follows retain nothing; the run shows one release.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ViewsAndPayloadFollowsChangeNoCount(bool atomic)
+    {
+        var source = Item + "func inspect(view: objref/Item) -> i32 => view.value\nlet owner = Kimi.Intrinsics.makeRc(Item.init())\nlet view = owner@objref\nlet adapted: objref/Item = owner\nlet pair = (owner@objref, 1)\nlet payload = owner@follow@ref\n" +
+            "require view.value + adapted.value + pair.0.value + payload.value + inspect(owner) + owner.read() == 42 else => $abort(\"views\")";
+        var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(atomic ? SharedObjectRuntimeTest.ArcSource(source) : source));
+        Assert.Contains("define internal void @__kimi_clone_" + (atomic ? "arc(" : "rc("), ir, StringComparison.Ordinal);
+        Assert.DoesNotContain("call void @__kimi_clone_", ir, StringComparison.Ordinal);
+    }
+
+    // SPEC 13.5.8, 15.1: strong duplication is only clone, so a bare handle is never implicitly duplicated, and a Moved
+    // handle is never reused; reading, moving or cloning it again reports the Move.
+    [Theory]
+    [InlineData("let alias = first", "TransferRequired_Kd", true)]
+    [InlineData("let moved = first@move\nlet again = first@move", "MovedPlace_Kd", true)]
+    [InlineData("let moved = first@move\nlet value = first.value", "MovedPlace_Kd", true)]
+    [InlineData("let moved = first@move\nlet copy = Kimi.Intrinsics.clone(first@ref)", "MovedPlace_Kd", false)]
+    public void HandlesAreNeitherDuplicatedNorReusedAfterAMove(string use, string code, bool alone)
+    {
+        foreach (var atomic in new[] { false, true })
+        {
+            var source = Item + "let first = Kimi.Intrinsics.makeRc(Item.init())\n" + use;
+            source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
+            var result = Diagnose(source);
+            var error = alone ? Assert.Single(result.Diagnostics) : Assert.Single(result.Diagnostics, x => x.Code == code);
+            Assert.Equal(code, error.Code);
+            Assert.Equal(source.LastIndexOf("first", StringComparison.Ordinal), error.Span!.Value.Start);
+        }
+    }
+
+    // SPEC 13.5.5.1, 13.5.8, 16.2.2: a payload follow, a Field borrow and a receiver-borrow result keep a Loan on the handle,
+    // and a handle whose payload borrows a local keeps that local's Loan wherever it goes.
+    [Theory]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet moved = owner@move\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nsink(owner@move)\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nowner = Kimi.Intrinsics.makeRc(Item.init())\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner = Kimi.Intrinsics.makeRc(Item.init())", 0)]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet payload = owner@follow@ref\nlet slot = owner@uniq\nrequire payload.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@uniq", 5)]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet field = owner.value@ref\nlet moved = owner@move\nrequire field == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
+    [InlineData("var owner = Kimi.Intrinsics.makeRc(Item.init())\nlet result = owner.view()\nlet moved = owner@move\nrequire result == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "owner@move", 5)]
+    [InlineData("let kept = label out: do\n    let owner = Kimi.Intrinsics.makeRc(Item.init())\n    exit to out owner@follow@ref\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "exit to out owner@follow@ref", 0)]
+    [InlineData("let kept = label out: do\n    let n = 7\n    exit to out Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "exit to out Kimi.Intrinsics.makeRc(View.init(n@ref))", 0)]
+    [InlineData("let kept = label out: do\n    let n = 7\n    let local = Kimi.Intrinsics.makeRc(View.init(n@ref))\n    exit to out Kimi.Intrinsics.clone(local@ref)\nrequire kept.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "exit to out Kimi.Intrinsics.clone(local@ref)", 0)]
+    [InlineData("let m = 1\nvar slot = Kimi.Intrinsics.makeRc(View.init(m@ref))\ndo\n    let n = 7\n    slot = Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire slot.value == 7 else => $abort(\"live\")", "ComparisonLoanConflict_Kd", "let n = 7\n    slot = Kimi.Intrinsics.makeRc(View.init(n@ref))", 0)]
+    [InlineData("func leak() -> rc/View\n    let n = 7\n    return Kimi.Intrinsics.makeRc(View.init(n@ref))\nrequire leak().value == 7 else => $abort(\"live\")", "UnsatisfiedOriginRelation_Kd", "Kimi.Intrinsics.makeRc(View.init(n@ref))", 0)]
+    public void HandlesKeepTheLoansOfTheirBorrowsAndPayloads(string use, string code, string target, int length)
+    {
+        foreach (var atomic in new[] { false, true })
+        {
+            var source = View + Item + "    public func view(self: ref/Self) -> ref/i32 during self => self.value@ref\nfunc sink(handle: rc/Item) => ()\n" + use;
+            source = atomic ? SharedObjectRuntimeTest.ArcSource(source) : source;
+            target = atomic ? SharedObjectRuntimeTest.ArcSource(target) : target;
+            var error = Assert.Single(Diagnose(source).Diagnostics);
+            Assert.Equal(code, error.Code);
+            Assert.Equal(target[..(length == 0 ? target.Length : length)], source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        }
+    }
+
     [Theory]
     [InlineData(false, false)]
     [InlineData(false, true)]
@@ -112,5 +172,16 @@ public class SharedObjectOwnershipTest(ITestOutputHelper output)
         {
             Assert.Empty(result.Diagnostics);
         }
+    }
+
+    private static DiagnosticResult Diagnose(string source)
+    {
+        var path = Path.GetFullPath("shared-object-ownership.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.False(c.Emission.Validate(out _));
+        c.Binding.ReportDiagnostics();
+        c.Ownership.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        return c.Diagnostics.Finalize();
     }
 }

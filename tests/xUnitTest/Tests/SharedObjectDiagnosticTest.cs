@@ -29,6 +29,27 @@ public class SharedObjectDiagnosticTest(ITestOutputHelper output)
         this.CheckOutputs(result);
     }
 
+    // SPEC 13.5.5.1, 13.5.8: a counted payload grants Read only, even from a writable handle slot at strong count one.
+    [Theory]
+    [InlineData("let u = owner@follow@uniq", "owner@follow@uniq")]
+    [InlineData("let taken = owner@follow@move", "owner@follow@move")]
+    [InlineData("owner@follow = Item.init(2)", "owner@follow")]
+    [InlineData("owner.value = 9", "owner.value")]
+    [InlineData("owner.value += 1", "owner.value")]
+    [InlineData("owner@follow.value = 9", "owner@follow.value")]
+    [InlineData("let old = Kimi.Intrinsics.replace(owner@follow@uniq, with: Item.init(2))", "owner@follow@uniq")]
+    [InlineData("var other = Item.init(2)\nKimi.Intrinsics.exchange(owner@follow@uniq, other@uniq)", "owner@follow@uniq")]
+    public void CountedPayloadsGrantSharedAccessOnly(string operation, string target)
+    {
+        foreach (var factory in new[] { "makeRc", "makeArc" })
+        {
+            var text = $"struct Item\n    public var value: i32\n    public init(value: i32) => self.value = value\nvar owner = Kimi.Intrinsics.{factory}(Item.init(1))\n{operation}";
+            var error = Assert.Single(Report(text).Diagnostics);
+            Assert.Equal("SharedPathAccess_Kd", error.Code);
+            Assert.Equal(target, text.Substring(error.Span!.Value.Start, error.Span.Value.Length));
+        }
+    }
+
     [Theory]
     [InlineData("rc")]
     [InlineData("arc")]

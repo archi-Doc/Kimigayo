@@ -86,6 +86,9 @@ public class CopyOperationTest
     [InlineData("struct Node\n    public var v: i32 = 0\nlet h = Kimi.Intrinsics.makeObj(Node.init())\nlet g = h@obj", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: rc/Node)\n    let g = h@rc", DiagnosticCode.TransferRequired_Kd)]
     [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: arc/Node)\n    let g = h@arc", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc take(h: rc/Node) => ()\nfunc f(h: rc/Node) => take(h)", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: rc/Node)\n    let alias = h@copy", DiagnosticCode.NonCopyOperand_Kd)]
+    [InlineData("struct Node\n    public var v: i32 = 0\nfunc f(h: arc/Node)\n    let alias = h@copy", DiagnosticCode.NonCopyOperand_Kd)]
     public void InvalidCopiesAndBareOwningShorthandsAreDiagnosed(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
