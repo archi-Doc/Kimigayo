@@ -24,8 +24,9 @@ public sealed partial class OwnershipBody
     internal void HoldReservedElementWrite(int projection, OwnershipIssue issue)
         => (this.reservedElementWrites ??= new()).Add((projection, issue));
 
-    // SPEC 15.6.7: the completed plan reports a write during preparation once, as a conflict with the reservation it relates. The
-    // held record stands when no such record exists for the write, such as for an incomplete plan or a write the plan accepts.
+    // SPEC 15.6.7: the completed plan reports a write during preparation once, as a conflict with the reservation it relates. A
+    // write whose static path is disjoint from every reserved one is no conflict (SPEC 15.6.2). Otherwise the held record stands
+    // when no such record exists for the write, such as for an incomplete plan or a write the plan accepts.
     internal void ReportReservedElementWrites(bool completed)
     {
         if (this.reservedElementWrites is not { Count: > 0 } held)
@@ -37,6 +38,11 @@ public sealed partial class OwnershipBody
         {
             var (projection, issue) = held[i];
             var write = completed ? this.Projections[projection].Write : -1;
+            if (write >= 0 && !this.ElementWriteLoanConflicts(this.Projections[projection].Exclusive, paths: true))
+            {
+                continue;
+            }
+
             var stated = false;
             for (var j = 0; write >= 0 && j < this.IssueStorage.Count && !stated; j++)
             {

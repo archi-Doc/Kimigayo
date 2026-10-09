@@ -397,6 +397,7 @@ public sealed partial class OwnershipBody
     {
         this.ResetResolvedCalls();
         this.ResetCleanupEffects();
+        this.borrowDefinitionsPrepared = -1;
         this.Function = function;
         this.DefaultParameter = -1;
         this.Instance = instance;

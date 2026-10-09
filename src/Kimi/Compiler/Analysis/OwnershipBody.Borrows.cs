@@ -35,6 +35,10 @@ public sealed partial class OwnershipBody
     private bool[] borrowRootLoss = [];
     private int[] borrowDefinitions = [];
 
+    // The operation count the borrow tables were prepared for by VerifyBorrows, or -1 after Reset; a plan's operations only grow
+    // while it is built. A disjointness proof reads them only when they describe the current plan.
+    private int borrowDefinitionsPrepared = -1;
+
     // Per operation, the carrying definition whose value reaches its input, or -1 (LoanCarryingDefinition).
     private int[] carryingFrom = [];
     private int[] slicePaths = [];
@@ -1414,6 +1418,8 @@ public sealed partial class OwnershipBody
                 definition = definition == -1 ? id : -2;
             }
         }
+
+        this.borrowDefinitionsPrepared = this.Operations.Count;
     }
 
     // SPEC 15.6.3, 15.8.2: an exclusive reference held by a body input, a parameter or an environment binding of the closure being

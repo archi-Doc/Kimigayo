@@ -50,6 +50,7 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData("GenericArgument", "func use<T>(c: uniq/T, n: i32) => ()\nvar c = Cell.init()\nuse(c@uniq, read(c))")]
     [InlineData("ExplicitCallable", "func inspect<T>(value: ref/T) -> i32 => 2\nlet n: i32 = 0\nvar f = func [var n] (x: i32) => ++n + x\nrequire (f@uniq)(inspect(f)) == 3 else => $abort(\"callable\")")]
     [InlineData("ImplicitCallable", "func inspect<T>(value: ref/T) -> i32 => 2\nlet n: i32 = 0\nvar f = func [var n] (x: i32) => ++n + x\nrequire f@uniq(inspect(f)) == 3 else => $abort(\"callable\")")]
+    [InlineData("DisjointWrite", "var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.1.value = 2\n    exit to scope 3\n))\nrequire pair.0.value == 3 and pair.1.value == 2 else => $abort(\"disjoint\")")]
     [InlineData("DisjointReborrow", "func two(a: uniq/Cell, b: uniq/Cell)\n    a.value = 2\n    b.value = 3\nvar pair = (Cell.init(), Cell.init())\nlet u = pair@uniq\ntwo(u.0@uniq, u.1@uniq)")]
     [InlineData("MultipleDefaults", "func next(c: uniq/Cell, n: i32 = c.value, m: i32 = c.value + n) => c.value = m\nvar c = Cell.init()\nnext(c@uniq)\nnext(c@uniq)\nrequire c.value == 4 else => $abort(\"defaults\")")]
     [InlineData("Object", "func put(o: objuniq/Cell, n: i32) => set(o@follow@uniq, n)\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nput(o@objuniq, read(o@follow@ref) + 1)\nrequire read(o@follow@ref) == 2 else => $abort(\"object\")")]
@@ -102,6 +103,7 @@ public class CallReservationTest(ITestOutputHelper output)
     [InlineData("func put(o: objuniq/Cell, n: i32) => ()\nvar o = Kimi.Intrinsics.makeObj(Cell.init())\nlet u = o@objuniq\nput(u@objuniq, read(o@follow@ref))")]
     [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    c.value = 2\n    exit to scope 3))")]
     [InlineData("var c = Cell.init()\nset(c@uniq, (label scope: do\n    defer => c.value = 2\n    exit to scope 3))")]
+    [InlineData("func both(p: uniq/(Cell, Cell), n: i32) => ()\nvar pair = (Cell.init(), Cell.init())\nboth(pair@uniq, (label scope: do\n    pair.1.value = 2\n    exit to scope 3\n))")]
     public void RejectsConflictsAndBoundaries(string body)
     {
         var c = MinimalEmissionTest.Analyze(Cell + body);

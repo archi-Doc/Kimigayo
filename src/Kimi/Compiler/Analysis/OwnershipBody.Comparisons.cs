@@ -45,7 +45,7 @@ public sealed partial class OwnershipBody
         if (loan.Reservation >= 0)
         {
             var reservation = this.CallReservations[loan.Reservation];
-            if (reservation.Place >= 0 && this.borrowDefinitions.Length >= this.Places.Count && this.IsDisjointProjection(id, reservation.Place))
+            if (reservation.Place >= 0 && this.IsDisjointFromReservation(id, reservation.Place))
             {
                 return false;
             }
@@ -87,14 +87,18 @@ public sealed partial class OwnershipBody
         return ConflictsWithComparison(operation.Kind, operation.Place, operation.Input, operation.Acquisition, loan.Place, loan.Mode, operation.LoanMode);
     }
 
-    internal bool ElementWriteLoanConflicts(int loanId, bool reservations = true)
+    // An element write conflicts with each enclosing Loan of its root whose path it overlaps. While the plan is built a reservation
+    // Loan protects its whole root; a completed plan (paths) compares the write's static path with the reserved one (SPEC 15.6.2).
+    internal bool ElementWriteLoanConflicts(int loanId, bool reservations = true, bool paths = false)
     {
         var loan = this.ComparisonLoans[loanId];
         for (var head = loan.Parent; head >= 0; head = this.ComparisonLoans[head].Parent)
         {
             var existing = this.ComparisonLoans[head];
             if ((reservations || existing.Reservation < 0) && existing.Place == loan.Place &&
-                (existing.Projection < 0 || this.ElementPathsOverlap(loan.Projection, existing.Projection)))
+                (existing.Projection < 0 || this.ElementPathsOverlap(loan.Projection, existing.Projection)) &&
+                !(paths && existing.Reservation >= 0 && loan.Projection >= 0 && this.CallReservations[existing.Reservation].Place is >= 0 and var reserved &&
+                    this.IsDisjointFromReservation(loan.Read, reserved)))
             {
                 return true;
             }
@@ -280,6 +284,10 @@ public sealed partial class OwnershipBody
         return true;
     }
 
+    // SPEC 15.6.2: only a proof over the current plan's prepared borrow tables shows a path disjoint from a reserved one.
+    private bool IsDisjointFromReservation(int access, int reserved)
+        => this.borrowDefinitionsPrepared == this.Operations.Count && this.IsDisjointProjection(access, reserved);
+
     private bool CheckingSeedLoansMatch(int operation, int replay, int entry)
     {
         if (replay < -1 || replay >= this.CheckingReplays.Count)
@@ -370,7 +378,7 @@ public sealed partial class OwnershipBody
             return false;
         }
 
-        return !this.ElementWriteLoanConflicts(id);
+        return !this.ElementWriteLoanConflicts(id, paths: true);
     }
 
     private bool ValidElementBorrowLoan(int id)
