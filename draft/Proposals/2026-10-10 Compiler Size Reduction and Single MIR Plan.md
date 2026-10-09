@@ -4,9 +4,9 @@
 
 調査基点：`419e8e79`（`dev`）。行数は同コミットの `wc -l`（コメントと空行を含む）。本文の `path:line` は、断りがなければ `src/Kimi/Compiler/` からの相対パスで、基点での位置を示す目印である。
 
-前提：2026-10-10 の利用者判断 D1〜D6 を拘束条件とする（§1.3）。D1〜D6 は同じ依頼に対する兄弟計画 [2026-10-10 Compiler Reduction and MIR Plan](<../2026-10-10 Compiler Reduction and MIR Plan.md>) の §14 に記録されている。本計画はその本文には依存しない独立の案であり、相違点は §17.2 にまとめる。
+前提：2026-10-10 の利用者判断 D1〜D6 を拘束条件とする（§1.3）。D1〜D6 は同じ依頼に対する兄弟計画 [2026-10-10 Compiler Reduction and MIR Plan](<2026-10-10 Compiler Reduction and MIR Plan.md>) の §14 に記録されている。本計画はその本文には依存しない独立の案であり、相違点は §17.2 にまとめる。
 
-本書は計画である。言語規則の変更、実装、ビルド、テストは行っていない。SPEC・IMPL の改訂案は §11 にまとめ、採用後に該当する段階の単位で行う。本書は利用者の指示で `draft/Proposals/ultra` に置いた。`draft` のフォルダーは `draft` の直下に置く規約（[INTEGRATED](../../INTEGRATED.md)）と異なるので、閉じて `draft/Changes` か `draft/Obsolete` へ移すときは相対リンクを 1 段浅く直すか、採用時に `draft/Proposals` へ移す。
+本書は計画である。言語規則の変更、実装、ビルド、テストは行っていない。SPEC・IMPL の改訂案は §11 にまとめ、採用後に該当する段階の単位で行う。
 
 本文の記号：肥大の要因は F1〜F10（§3）、相は P1〜P13（§5.1）、MIR 上の解析は A0〜A6（§5.5）、Binding に残す Origin の判定は OJ1〜OJ7（§5.5）、受理の差分は C1〜C6、T1〜T4、X1〜X3（付録 B）、移行の段階は R0〜R9（§12）とする。O0／O2 は最適化レベルを指す。
 
@@ -64,9 +64,9 @@
 | 利用者判断 D4 | 借用検査は SPEC §15 から作り直す。受理範囲の変化は、差分を一件ずつ SPEC に照らして分類すれば許容する。 |
 | 利用者判断 D5 | 移行中は旧経路（旧 Analysis／Emission）への機能追加を凍結する。 |
 | 利用者判断 D6 | Unsupported の記録は位置だけを持つ。Reason も構文の種類も付けない。 |
-| 仕様 | [SPEC](../../../docs/SPEC.md) と [IMPL](../../../docs/IMPL.md) が要求動作を定める。弱めるのは、§11 に理由を書いた意図的な改訂に限る。 |
-| 確定事項 | [SETTLED](../../../docs/SETTLED.md) を守る。特に「Instance-evaluated generic defaults」（既定値はインライン複製）と「Pair-slot premises in every Semantics case」（前提は Semantics ケースごと）。前者の理由の記述が変わる箇所は §5.6.2 と §11 で扱う。 |
-| 実装規則 | [AGENTS.md](../../../AGENTS.md)：割り当てを最小にする、ゼロアロケーションと再利用の回帰を緩めない、コアライブラリは手書き IR ではなく Kimigayo で書く、コードは足すより消す、概念の少なさで設計を評価する。 |
+| 仕様 | [SPEC](../../docs/SPEC.md) と [IMPL](../../docs/IMPL.md) が要求動作を定める。弱めるのは、§11 に理由を書いた意図的な改訂に限る。 |
+| 確定事項 | [SETTLED](../../docs/SETTLED.md) を守る。特に「Instance-evaluated generic defaults」（既定値はインライン複製）と「Pair-slot premises in every Semantics case」（前提は Semantics ケースごと）。前者の理由の記述が変わる箇所は §5.6.2 と §11 で扱う。 |
+| 実装規則 | [AGENTS.md](../../AGENTS.md)：割り当てを最小にする、ゼロアロケーションと再利用の回帰を緩めない、コアライブラリは手書き IR ではなく Kimigayo で書く、コードは足すより消す、概念の少なさで設計を評価する。 |
 
 ---
 
@@ -643,7 +643,7 @@ defer の本体は、出口の行き先ごとの drop 木として 1 回だけ�
 
 ### 12.1 共通の規則
 
-- 各単位は「再現 → 実装 → 焦点テスト」で進め、Unit 検証を通してコミットし、プッシュする。各作業セッションの終わりに Session 検証を 1 回走らせる（段階の終わりのセッションを含む。[VERIFICATION](../../../docs/dev/VERIFICATION.md)）。
+- 各単位は「再現 → 実装 → 焦点テスト」で進め、Unit 検証を通してコミットし、プッシュする。各作業セッションの終わりに Session 検証を 1 回走らせる（段階の終わりのセッションを含む。[VERIFICATION](../../docs/dev/VERIFICATION.md)）。
 - 証跡は `artifacts/verify/reduction-<段階>`、差分台帳は `artifacts/verify/mir-diff`、計測は `artifacts/benchmarks` に置く。
 - **新経路の切替。** R5 までは、既定の経路を旧経路のままにする。新経路は、R3 で加える切替（`Compilation` の内部プロパティ）でだけ動かし、R3〜R5 の間だけ環境変数 `KIMI_PIPELINE=mir` でその既定値を変える。xUnit、ネイティブフィクスチャ、マイルストーンハーネスはこの環境変数で新経路を選ぶ。経路（`legacy`／`mir`）は実効構成の一部として扱い、`kimi check` の JSON の `compiler` 識別とテスト成果物の ArtifactId の manifest に含める（SPEC §23.3.1、§23.3.6.8、testing-profile）。言語サーバーは起動時の値を固定して使う。切替と環境変数は R6 の単位 b で削除する。
 - **差分ハーネス。** 入力は、xUnit が作る全コンパイル、`DiagnosticCorpus` と構文コーパス、同梱ライブラリ、全マイルストーン、SPEC の ```kimi の例。比べる項目は、受理、(code, 主位置, Reason の事実)、ネイティブの stdout と exit code。台帳は 1 差分 1 行とし、全件を次の 5 つに分類する。
@@ -800,7 +800,7 @@ D1〜D6 で決まっていないものだけを挙げる。各項目に推奨と
 
 ### 17.2 兄弟計画との相違
 
-同じ依頼に対する兄弟計画 [2026-10-10 Compiler Reduction and MIR Plan](<../2026-10-10 Compiler Reduction and MIR Plan.md>) とは、目的、MIR を一度だけ構築する方針、未対応の一本化、D1〜D6 を共有する。本計画の検証で根拠を確かめた相違点は次のとおりである。
+同じ依頼に対する兄弟計画 [2026-10-10 Compiler Reduction and MIR Plan](<2026-10-10 Compiler Reduction and MIR Plan.md>) とは、目的、MIR を一度だけ構築する方針、未対応の一本化、D1〜D6 を共有する。本計画の検証で根拠を確かめた相違点は次のとおりである。
 
 | 論点 | 兄弟計画 | 本計画 | 理由 |
 | --- | --- | --- | --- |
@@ -814,7 +814,7 @@ D1〜D6 で決まっていないものだけを挙げる。各項目に推奨と
 
 - **PLAN。** 現在位置（再編は 2026-10-10 に一時停止）と実装順は、本計画の採用時に調整する（§16-14）。
 - **STATUS。** 本計画は支持境界を広げない。D2 による後退は、それを生じた段階（R1 か R6）の単位で記録する。
-- **Kimi Debug Adapter 計画。** [2026-10-09 Kimi Debug Adapter Plan](<../2026-10-09 Kimi Debug Adapter Plan.md>)（方針決定済み）が求めるデバッグ情報（文の開始、変数の置き場所とデバッグ名、スコープ、生成補助関数の artificial 印）は、MIR の `SourceInfo`（文の開始の印）と `LocalDecl`（ソース名）、`FunctionCodegen` の出力として R5 で設計に入れる。KD1 以降の実装は R6 の後に新しいバックエンドの上で行い、旧 Emission には加えない（D5）。
+- **Kimi Debug Adapter 計画。** [2026-10-09 Kimi Debug Adapter Plan](<2026-10-09 Kimi Debug Adapter Plan.md>)（方針決定済み）が求めるデバッグ情報（文の開始、変数の置き場所とデバッグ名、スコープ、生成補助関数の artificial 印）は、MIR の `SourceInfo`（文の開始の印）と `LocalDecl`（ソース名）、`FunctionCodegen` の出力として R5 で設計に入れる。KD1 以降の実装は R6 の後に新しいバックエンドの上で行い、旧 Emission には加えない（D5）。
 
 ---
 
