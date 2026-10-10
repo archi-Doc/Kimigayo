@@ -273,6 +273,23 @@ public class KimiLibraryShapeTest
         Assert.True(Enum.GetValues<IntrinsicId>().Length <= 30);
     }
 
+    // R3 decision 5: the builder-only rows serve a dynamic Array literal, a built-in slicing and a direct interpolation as existing compiler
+    // functions, a Body or an intrinsic other than Fail, whose declarations the library gives by kind; MIR states the metadata itself.
+    [Fact]
+    public void BuiltinFormsAreServedByExistingCompilerFunctions()
+    {
+        var library = Library.Value.Library;
+        var rows = Enum.GetValues<BuiltinForm>().Select(static x => (Form: x, Function: IntrinsicDisposition.Serving(x))).Where(static x => x.Function != CompilerFunctionKind.None).ToArray();
+        Assert.Equal([(BuiltinForm.ArrayLiteral, CompilerFunctionKind.ArrayAppend), (BuiltinForm.Slice, CompilerFunctionKind.RawSlice), (BuiltinForm.DirectBuffer, CompilerFunctionKind.TextFixed)], rows);
+        Assert.All(rows, static x => Assert.NotEqual(IntrinsicId.Fail, IntrinsicDisposition.Of(x.Function).Id));
+        foreach (var entry in KimiLibraryCatalog.Entries)
+        {
+            Assert.True(entry.Function == CompilerFunctionKind.None || ReferenceEquals(library.Function(entry.Function), library.GetSymbol(entry.Id)), entry.Id.ToString());
+        }
+
+        Assert.Null(library.Function(CompilerFunctionKind.None));
+    }
+
     [Theory]
     [MemberData(nameof(CompilerFunctions))]
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)

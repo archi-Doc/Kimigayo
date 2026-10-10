@@ -6,6 +6,16 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // SPEC 4.6.1, 4.6.3, 4.7.4: the metadata member of a sequence a member access names, by its spelling; None for another name.
+    internal static BuiltinForm SequenceMember(MemberAccessKoto source) => (source.Right as IdentifierNameKoto)?.IdentifierName switch
+    {
+        "length" => BuiltinForm.Length,
+        "isEmpty" => BuiltinForm.IsEmpty,
+        "indices" => BuiltinForm.Indices,
+        "capacity" => BuiltinForm.Capacity,
+        _ => BuiltinForm.None,
+    };
+
     // A Range<S, E> or ClosedRange<S, E>, whose iteration condition is `S is PrimitiveInteger` and `E is S` (SPEC 4.6.3.4).
     private static bool IsRangeShape(BoundType subject)
         => subject is { Symbol.LibraryDeclaration: KimiDeclarationId.Range or KimiDeclarationId.ClosedRange, Components.Count: 2 };
@@ -13,7 +23,8 @@ public sealed partial class Binding
     private bool BindSequenceMember(MemberAccessKoto source, BindingScope scope, out BoundType? result)
     {
         result = null;
-        if (source.Right is not IdentifierNameKoto name || name.IdentifierName is not ("indices" or "length" or "isEmpty" or "capacity"))
+        var member = SequenceMember(source);
+        if (member == BuiltinForm.None)
         {
             return false;
         }
@@ -35,13 +46,12 @@ public sealed partial class Binding
 
         // SPEC 4.6.1, 4.7.2 and 4.7.4: fixed arrays and Array expose length and indices, Slice and Array add isEmpty, Array
         // adds capacity.
-        var valid = name.IdentifierName switch
+        var valid = member switch
         {
-            "indices" => !utf8 && receiver!.Kind != BoundTypeKind.Dictionary,
-            "length" => true,
-            "isEmpty" => receiver!.Kind is BoundTypeKind.Slice or BoundTypeKind.Array,
-            "capacity" => receiver!.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary,
-            _ => false,
+            BuiltinForm.Indices => !utf8 && receiver!.Kind != BoundTypeKind.Dictionary,
+            BuiltinForm.IsEmpty => receiver!.Kind is BoundTypeKind.Slice or BoundTypeKind.Array,
+            BuiltinForm.Capacity => receiver!.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary,
+            _ => true,
         };
         if (!valid || layers > 1)
         {
@@ -50,8 +60,8 @@ public sealed partial class Binding
             return true;
         }
 
-        result = name.IdentifierName == "indices" ? this.ResolvedRangeType : name.IdentifierName == "isEmpty" ? BoundType.Boolean : BoundType.ISize;
-        Complete(name, result);
+        result = member == BuiltinForm.Indices ? this.ResolvedRangeType : member == BuiltinForm.IsEmpty ? BoundType.Boolean : BoundType.ISize;
+        Complete(source.Right, result);
         Complete(source, result);
         return true;
     }

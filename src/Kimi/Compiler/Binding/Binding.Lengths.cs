@@ -40,6 +40,40 @@ public sealed partial class Binding
         return (function is not null && IsSignatureLength(obligation.Use, function)) || this.ProveLength(length, function);
     }
 
+    internal BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
+    {
+        if (expression.Parameter is { } parameter)
+        {
+            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
+        }
+
+        if (expression.IsConstant)
+        {
+            return expression;
+        }
+
+        var left = this.SubstituteLength(expression.Left!, binder, arguments);
+        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, arguments) : null;
+        if (left is null || (expression.Right is not null && right is null))
+        {
+            return null;
+        }
+
+        if (!left.IsConstant || right is { IsConstant: false })
+        {
+            return this.InternLength(expression.Operation, left: left, right: right);
+        }
+
+        if (expression.Operation == KotoKind.PrefixMinus)
+        {
+            var minimum = this.compilation.PointerWidth == 64 ? long.MinValue : int.MinValue;
+            return left.Value == minimum ? null : this.InternLength(KotoKind.NumberLiteral, -left.Value);
+        }
+
+        return TryLengthArithmetic(expression.Operation, BoundType.ISize, this.compilation.PointerWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
+            ? this.InternLength(KotoKind.NumberLiteral, unchecked((long)value)) : null;
+    }
+
     private static bool IsSignatureLength(Koto node, FunctionKoto function)
     {
         for (Koto? current = node; current is not null && !ReferenceEquals(current, function); current = current.Parent)
@@ -221,40 +255,6 @@ public sealed partial class Binding
         }
 
         return name is not null && this.Lookup(name, scope, syntax, false) is { Kind: BindingSymbolKind.LengthParameter or BindingSymbolKind.Local or BindingSymbolKind.Property or BindingSymbolKind.Parameter };
-    }
-
-    private BoundLength? SubstituteLength(BoundLength expression, Koto binder, ReadOnlySpan<BoundLength?> arguments)
-    {
-        if (expression.Parameter is { } parameter)
-        {
-            return ReferenceEquals(parameter.Scope.Owner, binder) ? arguments[parameter.Slot] : expression;
-        }
-
-        if (expression.IsConstant)
-        {
-            return expression;
-        }
-
-        var left = this.SubstituteLength(expression.Left!, binder, arguments);
-        var right = expression.Right is { } operand ? this.SubstituteLength(operand, binder, arguments) : null;
-        if (left is null || (expression.Right is not null && right is null))
-        {
-            return null;
-        }
-
-        if (!left.IsConstant || right is { IsConstant: false })
-        {
-            return this.InternLength(expression.Operation, left: left, right: right);
-        }
-
-        if (expression.Operation == KotoKind.PrefixMinus)
-        {
-            var minimum = this.compilation.PointerWidth == 64 ? long.MinValue : int.MinValue;
-            return left.Value == minimum ? null : this.InternLength(KotoKind.NumberLiteral, -left.Value);
-        }
-
-        return TryLengthArithmetic(expression.Operation, BoundType.ISize, this.compilation.PointerWidth, unchecked((UInt128)(Int128)left.Value), unchecked((UInt128)(Int128)right!.Value), out var value)
-            ? this.InternLength(KotoKind.NumberLiteral, unchecked((long)value)) : null;
     }
 
     private bool InferLength(BoundType pattern, BoundType actual, Koto binder, BoundLength?[] arguments)

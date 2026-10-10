@@ -8,6 +8,12 @@ public sealed partial class Binding
 {
     private PropertyTypeVisitor? propertyTypeVisitor;
 
+    internal static BoundAccessor Accessor(PropertyAccessorKoto syntax)
+    {
+        var property = ((PropertyKoto)syntax.Parent!).BoundSymbol!.Property!;
+        return syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
+    }
+
     private static bool NarrowerAccess(ModifierKind inner, ModifierKind outer) => outer switch
     {
         ModifierKind.Public => inner is ModifierKind.ProtectedOrInternal or ModifierKind.Protected or ModifierKind.Internal or ModifierKind.ProtectedAndInternal or ModifierKind.Private,
@@ -16,12 +22,6 @@ public sealed partial class Binding
         ModifierKind.ProtectedAndInternal => inner == ModifierKind.Private,
         _ => false,
     };
-
-    private static BoundAccessor Accessor(PropertyAccessorKoto syntax)
-    {
-        var property = ((PropertyKoto)syntax.Parent!).BoundSymbol!.Property!;
-        return syntax.AccessorKind == PropertyAccessorKind.Get ? property.Getter : property.Setter;
-    }
 
     private static Koto? PropertySignatureOwner(Koto use)
     {

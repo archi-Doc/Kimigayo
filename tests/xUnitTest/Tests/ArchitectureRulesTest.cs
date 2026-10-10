@@ -13,13 +13,15 @@ public class ArchitectureRulesTest
     // The semantic slots on Koto classes, read as members.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
-    // The Binding types the MIR builder may name: the published tables, plans and declaration facts. Frozen at the R2b exit; only
-    // the declaration views deferred to their first reader (ImplTable, VTableDef, UniversalRelations, EffectBoundTable, AvailableBounds; R4/R5) join it.
+    // The Binding types the MIR builder may name: the published tables, plans and declaration facts. Frozen at the R2b exit; R3 U1 adds
+    // the builder's gaps (BuiltinForm, the key of the builder-only intrinsic rows, and CompilerFunctionKind, the intrinsic table's own key);
+    // only the declaration views deferred to their first reader (ImplTable, VTableDef, UniversalRelations, EffectBoundTable, AvailableBounds;
+    // R4/R5) join it.
     private static readonly string[] PublishedBindingTypes =
     [
         "AdtDef", "BindingSymbol", "BindingSymbolKind", "BoundCapture", "BoundClosure", "BoundDefaultArgument", "BoundEnumCase",
         "BoundEnumConstruction", "BoundLength", "BoundMatch", "BoundMatchArm", "BoundOrigin", "BoundPattern", "BoundPatternKind",
-        "BoundType", "BoundTypeKind", "CallPlan", "CalleeKind", "ConversionBinding", "DispositionKind", "ExpansionKind", "ExpansionPlan", "FunctionResultMode", "HirAcquire",
+        "BoundType", "BoundTypeKind", "BuiltinForm", "CallPlan", "CalleeKind", "CompilerFunctionKind", "ConversionBinding", "DispositionKind", "ExpansionKind", "ExpansionPlan", "FunctionResultMode", "HirAcquire",
         "HirAdaptation", "HirAdjust", "HirCompletion", "HirOp", "HirPlace", "HirPlaceKind", "HirRes", "HirTables", "IntrinsicDisposition", "IntrinsicId", "KimiLibrary",
         "PairBinder", "PairCase", "PatternLiteral", "PatternLiteralKind", "PlanRow", "Subst", "TyCtxt",
     ];

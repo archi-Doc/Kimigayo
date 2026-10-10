@@ -186,24 +186,32 @@ public sealed partial class Binding
         {
             for (var i = 0; i < source.Length; i++)
             {
-                if (source[i] is not { } origin)
-                {
-                    values[i] = null!;
-                    continue;
-                }
-
-                if (outer.DeclaringType is { Symbol: { } symbol } container)
-                {
-                    // A Slice stores its source as its own Origin; substitute through a span over it, not a new array per use.
-                    origin = container.Kind == BoundTypeKind.Slice && container.Origin is { } sliceSource
-                        ? this.SubstituteStoredOrigin(origin, symbol.Declaration, new ReadOnlySpan<BoundOrigin>(ref sliceSource))
-                        : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments, types: (BoundType[])container.Components);
-                }
-
-                // A body's Origin may name a pair's `o` (SPEC 13.5.5.1), which the instance binds through its Type arguments.
-                values[i] = this.SubstituteStoredOrigin(origin, outer.Target.Declaration, outer.Origins, outer.InputOrigins, outer.TypeArguments);
+                values[i] = source[i] is { } origin ? this.ForwardOrigin(origin, outer.Target, outer.DeclaringType, outer.Origins, outer.InputOrigins, outer.TypeArguments) : null!;
             }
         }
+    }
+
+    /// <summary>Gets an Origin of a generic body in the instance a call's substitution makes (TyCtxt.Compose too): through the stored
+    /// Origins of the Type declaring the callee, then the call's Origins and inputs and the pair Origins its Type arguments bind.</summary>
+    /// <param name="origin">The body's Origin.</param>
+    /// <param name="target">The callee.</param>
+    /// <param name="declaring">The instantiated Type declaring the callee.</param>
+    /// <param name="origins">The substitution of the callee's declared Origins.</param>
+    /// <param name="inputs">The input Origins in parameter-slot order.</param>
+    /// <param name="types">The Type arguments by slot.</param>
+    /// <returns>The Origin in the instance.</returns>
+    internal BoundOrigin ForwardOrigin(BoundOrigin origin, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs, ReadOnlySpan<BoundType?> types)
+    {
+        if (declaring is { Symbol: { } symbol } container)
+        {
+            // A Slice stores its source as its own Origin; substitute through a span over it, not a new array per use.
+            origin = container.Kind == BoundTypeKind.Slice && container.Origin is { } sliceSource
+                ? this.SubstituteStoredOrigin(origin, symbol.Declaration, new ReadOnlySpan<BoundOrigin>(ref sliceSource))
+                : this.SubstituteStoredOrigin(origin, symbol.Declaration, (BoundOrigin[])container.OriginArguments, types: (BoundType[])container.Components);
+        }
+
+        // A body's Origin may name a pair's `o` (SPEC 13.5.5.1), which the instance binds through its Type arguments.
+        return this.SubstituteStoredOrigin(origin, target.Declaration, origins, inputs, types);
     }
 
     /// <summary>Lists the verified specializations of a generic original (SPEC 8.8).</summary>

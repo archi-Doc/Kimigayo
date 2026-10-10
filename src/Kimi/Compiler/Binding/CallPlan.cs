@@ -184,6 +184,25 @@ public sealed class CallPlan
         }
     }
 
+    /// <summary>Gets the function that executes a custom accessor (SPEC 11.2), which its calls target: its Type is the accessor's result,
+    /// and its parameters (<see cref="Parameter"/>) are the receiver <c>self</c>, then the input <c>value</c>.</summary>
+    /// <param name="accessor">An accessor with a body.</param>
+    /// <returns>The executing function's symbol.</returns>
+    internal static BindingSymbol Accessor(PropertyAccessorKoto accessor)
+        => accessor.CodeContext.Compilation.Binding.AccessorFunction(Binding.Accessor(accessor)).BoundSymbol!;
+
+    /// <summary>Gets a function's parameter as its body reads it: slot <paramref name="index"/>, an accessor's <c>self</c> and <c>value</c>
+    /// included, or at -1 the receiver <c>self</c> a constructor initializes or a destructor destroys (SPEC 6.2.3).</summary>
+    /// <param name="function">A function, a closure or an accessor's executing function.</param>
+    /// <param name="index">The parameter slot, or -1.</param>
+    /// <returns>The parameter, or null at -1 of another function.</returns>
+    internal static BindingSymbol? Parameter(BindingSymbol function, int index)
+    {
+        var declaration = (FunctionKoto)function.Declaration;
+        var binding = declaration.CodeContext.Compilation.Binding;
+        return index < 0 ? binding.SpecialReceiver(declaration) : binding.ParameterSymbol(declaration, index);
+    }
+
     internal void SetReceiverProjection(BoundArgumentOperation operation, BoundMemberPath path)
     {
         this.BasePath = path;

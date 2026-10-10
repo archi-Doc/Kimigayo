@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Compiler-owned identity vocabulary.
@@ -184,7 +186,43 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
+    // The builder-only rows (R3 decision 5): the existing compiler function that serves a built-in form, whose own row is its disposition
+    // (a Body R8 writes over the representation structs, which the legacy helpers serve until then); None where MIR states the form itself
+    // (Len, Len == 0, the ResolvedRange aggregate) or, for Capacity, the backend reads the handle's capacity Field until R8.
+    internal static CompilerFunctionKind Serving(BuiltinForm form) => form switch
+    {
+        BuiltinForm.ArrayLiteral => CompilerFunctionKind.ArrayAppend, // Each element into the empty Array, after ArrayReserve of their count.
+        BuiltinForm.Slice => CompilerFunctionKind.RawSlice, // From the start its range resolves to against Len.
+        BuiltinForm.DirectBuffer => CompilerFunctionKind.TextFixed, // Over a stack region where the instance bounds the writes, else Text.heap.
+        _ => CompilerFunctionKind.None,
+    };
+
+    // The built-in form of a published node: a sequence's metadata by its member, a dynamic Array literal, a built-in slicing (an Index
+    // whose Place is a value) and a direct interpolation.
+    internal static BuiltinForm FormOf(Koto node) => HirTables.Op(node) switch
+    {
+        HirOp.PrimitiveOp when node is MemberAccessKoto member => Binding.SequenceMember(member),
+        HirOp.Aggregate when node is ArrayLiteralKoto { BoundType.Kind: BoundTypeKind.Array } => BuiltinForm.ArrayLiteral,
+        HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value => BuiltinForm.Slice,
+        HirOp.Interpolation when ExpansionPlan.Of(node) is { Direct: true } => BuiltinForm.DirectBuffer,
+        _ => BuiltinForm.None,
+    };
+
     private static IntrinsicDisposition Intrinsic(IntrinsicId id) => new(DispositionKind.Intrinsic, id);
 
     private static IntrinsicDisposition Fail(string code) => new(DispositionKind.Intrinsic, IntrinsicId.Fail, code);
+}
+
+/// <summary>A built-in form with neither a call Binding selected nor an intrinsic of its own (R3 decision 5):
+/// <see cref="IntrinsicDisposition.FormOf"/> gives a node's, <see cref="IntrinsicDisposition.Serving"/> its builder-only row.</summary>
+internal enum BuiltinForm : byte
+{
+    None,
+    Length, // A sequence's length (SPEC 4.6.1).
+    IsEmpty,
+    Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.3).
+    Capacity, // An Array's or a Dictionary's capacity (SPEC 4.7.4).
+    ArrayLiteral, // An Array literal (SPEC 4.7.4, 12.3.2).
+    Slice, // A built-in range indexing of a sequence (SPEC 4.6.1, 4.6.5).
+    DirectBuffer, // An interpolation passed directly to writeLine (utf8-formatting 6.1).
 }

@@ -13,10 +13,17 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
     private readonly Dictionary<int, List<BoundType>> types = new();
     private readonly Dictionary<int, List<Subst>> substs = new();
 
+    // Compose's bindings before interning, reused.
+    private BoundType?[] composedTypes = [];
+    private BoundLength?[] composedLengths = [];
+    private BoundOrigin[] composedOrigins = [];
+
     // SPEC 3.4.1, 13.5.5.1: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
-    // pair layer, with the Type below it; Value, below which is the Type itself, for any other Type.
-    internal static HirPlaceKind Layer(BoundType? type, out BoundType? below)
+    // pair layer, with the Type below it and the pair binder whose Semantics case decides the PairLayer (its SemanticsTarget, the
+    // PairBinder.Target); Value, below which is the Type itself, for any other Type.
+    internal static HirPlaceKind Layer(BoundType? type, out BoundType? below, out BindingSymbol? binder)
     {
+        binder = null;
         if (type is { Kind: BoundTypeKind.Semantics, Components: [var referent], Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
         {
             below = referent;
@@ -25,13 +32,16 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
 
         if (Binding.TryPairLayer(type, out _, out var target))
         {
-            below = target;
+            (below, binder) = (target, type!.Symbol);
             return HirPlaceKind.PairLayer;
         }
 
         below = type;
         return HirPlaceKind.Value;
     }
+
+    // SPEC 23.3.6.5: a Type as diagnostics spell it, which the MIR dump writes.
+    internal static string Name(BoundType type) => Binding.DiagnosticTypeName(type);
 
     internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
     {
@@ -181,6 +191,53 @@ internal sealed class TyCtxt(Binding binding, KimiLibrary library)
     // here; the identity keeps the Type.
     internal BoundType? Apply(BoundType type, Subst subst)
         => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst.Target, subst.Declaring, subst.Types, subst.Lengths, subst.Origins, subst.Inputs);
+
+    // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
+    // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of
+    // a generic body (InstantiateForwardedCall), so Apply(t, Compose(inner, outer)) is that call's instantiation of t. Null when the outer
+    // instance does not substitute an inner Type or the declaring Type.
+    internal Subst? Compose(Subst inner, Subst outer)
+    {
+        if (outer.IsIdentity)
+        {
+            return inner;
+        }
+
+        var types = Fit(ref this.composedTypes, inner.Types.Length);
+        var lengths = Fit(ref this.composedLengths, inner.Lengths.Length);
+        var origins = Fit(ref this.composedOrigins, inner.Origins.Length + inner.Inputs.Length);
+        var declaring = inner.Declaring is { } owner ? this.Apply(owner, outer) : null;
+        var failed = declaring is null && inner.Declaring is not null;
+        for (var i = 0; i < types.Length; i++)
+        {
+            types[i] = inner.Types[i] is { } type ? this.Apply(type, outer) : null;
+            failed |= types[i] is null && inner.Types[i] is not null;
+        }
+
+        for (var i = 0; i < lengths.Length; i++)
+        {
+            lengths[i] = inner.Lengths[i] is { } length ? binding.SubstituteLength(length, outer.Binder, outer.Lengths) : null;
+            failed |= lengths[i] is null && inner.Lengths[i] is not null;
+        }
+
+        for (var i = 0; i < origins.Length; i++)
+        {
+            origins[i] = (i < inner.Origins.Length ? inner.Origins[i] : inner.Inputs[i - inner.Origins.Length]) is { } origin
+                ? binding.ForwardOrigin(origin, outer.Target, outer.Declaring, outer.Origins, outer.Inputs, outer.Types) : null!;
+        }
+
+        return failed ? null : this.Intern(inner.Target, inner.Self is { } self ? this.Apply(self, outer) : null, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
+
+        static Span<T> Fit<T>(ref T[] scratch, int length)
+        {
+            if (scratch.Length < length)
+            {
+                scratch = new T[length * 2];
+            }
+
+            return scratch.AsSpan(0, length);
+        }
+    }
 
     private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
     {

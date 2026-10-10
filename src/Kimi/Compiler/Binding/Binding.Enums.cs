@@ -41,6 +41,11 @@ public sealed class BoundEnumConstruction
 
     internal bool IsValid { get; set; }
 
+    /// <summary>Gets the construction of the enum Case value a node with the Aggregate Op makes, or null for another node.</summary>
+    /// <param name="use">The node.</param>
+    /// <returns>The construction the latest pass selected.</returns>
+    internal static BoundEnumConstruction? Of(Koto use) => use.CodeContext.Compilation.Binding.TryGetEnumConstruction(use, out var construction) ? construction : null;
+
     internal void Set(BoundEnumCase enumeration, BoundType type, ReadOnlySpan<BoundArgumentOperation> operations)
     {
         this.Case = enumeration;
