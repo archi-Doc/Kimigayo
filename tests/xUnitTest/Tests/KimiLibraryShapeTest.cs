@@ -253,6 +253,26 @@ public class KimiLibraryShapeTest
         Assert.Equal(expected, CompilerFunctionShapes.Select(x => x.Id));
     }
 
+    // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
+    // which carries a fixed SPEC 22.5.4 code; there are at most 30 intrinsics.
+    [Fact]
+    public void EveryCompilerFunctionHasOneDisposition()
+    {
+        var spec = File.ReadAllText(System.IO.Path.Combine(Repository.Root, "docs", "spec", "22-core-execution-and-foreign-functions.md"));
+        var rows = Enum.GetValues<CompilerFunctionKind>().Select(static x => (Kind: x, Row: IntrinsicDisposition.Of(x))).ToArray();
+        foreach (var (kind, row) in rows)
+        {
+            var coded = row.Code is null ? row.Id != IntrinsicId.Fail
+                : row.Id == IntrinsicId.Fail && (spec.Contains($"{row.Code} (", StringComparison.Ordinal) || spec.Contains($"`{row.Code}: ", StringComparison.Ordinal));
+            Assert.True((row.Kind == DispositionKind.Intrinsic) == (row.Id != IntrinsicId.None) && coded, kind.ToString());
+        }
+
+        var served = rows.Select(static x => x.Row.Id).Where(static x => x is not (IntrinsicId.None or IntrinsicId.Fail)).ToArray();
+        Assert.Equal(served.Distinct(), served);
+        Assert.Equal(DispositionKind.Body, IntrinsicDisposition.Of(CompilerFunctionKind.None).Kind);
+        Assert.True(Enum.GetValues<IntrinsicId>().Length <= 30);
+    }
+
     [Theory]
     [MemberData(nameof(CompilerFunctions))]
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)

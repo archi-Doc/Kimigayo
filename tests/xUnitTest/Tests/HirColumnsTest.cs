@@ -9,8 +9,8 @@ namespace XunitTest;
 /// <summary>The published HIR columns (docs/dev/COMPILER_ARCHITECTURE.md, R2b) over the Kimi library and every milestone program:
 /// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
 /// prepared slot, every jump its target, every evaluated node its completion and its Place, every consumed child its Adjust, every
-/// match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration and every body
-/// its pair binders; publishing changes no other result and allocates nothing again.</summary>
+/// match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration, every body
+/// its pair binders and every call target its disposition; publishing changes no other result and allocates nothing again.</summary>
 public sealed class HirColumnsTest
 {
     // Virtual bodies over a generic base whose applicability has premises, and over a closed base.
@@ -312,8 +312,8 @@ public sealed class HirColumnsTest
     // parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated node its completion;
     // every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a call that takes them,
     // unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a match, a try and a user loop have their
-    // Pattern plan, a closure its environment, signature and substitution, an expansion Op its plan with the calls it names, and a
-    // requirement call its Contract.
+    // Pattern plan, a closure its environment, signature and substitution, an expansion Op its plan with the calls it names, a
+    // requirement call its Contract unless its target is a built-in witness (a Shim), and an Abort or Fail call diverges.
     private static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
@@ -412,9 +412,11 @@ public sealed class HirColumnsTest
 
             for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
             {
-                if (call.Kind == CalleeKind.Requirement && call.RequirementContract is null && call.Target.CompilerFunction == CompilerFunctionKind.None)
+                var disposition = call.Kind == CalleeKind.Value ? default : IntrinsicDisposition.Of(call.Target.CompilerFunction);
+                if ((call.Kind == CalleeKind.Requirement && call.RequirementContract is null && disposition.Kind != DispositionKind.Shim) ||
+                    (disposition.Id is IntrinsicId.Abort or IntrinsicId.Fail && !ReferenceEquals(call.ReturnType, BoundType.Never)))
                 {
-                    problems.Add($"{where} calls {call.Target.Name} without its Contract");
+                    problems.Add($"{where} calls {call.Target.Name} without its Contract or as {disposition}");
                 }
 
                 foreach (ref readonly var omitted in call.DefaultArguments)

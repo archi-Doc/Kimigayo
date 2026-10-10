@@ -18,9 +18,9 @@ public class ArchitectureRulesTest
     [
         "AdtDef", "BindingSymbol", "BindingSymbolKind", "BoundCapture", "BoundClosure", "BoundDefaultArgument", "BoundEnumCase",
         "BoundEnumConstruction", "BoundLength", "BoundMatch", "BoundMatchArm", "BoundOrigin", "BoundPattern", "BoundPatternKind",
-        "BoundType", "BoundTypeKind", "CallPlan", "CalleeKind", "ConversionBinding", "ExpansionKind", "ExpansionPlan", "FunctionResultMode", "HirAcquire", "HirAdaptation",
-        "HirAdjust", "HirCompletion", "HirOp", "HirPlace", "HirPlaceKind", "HirRes", "HirTables", "KimiLibrary", "PairBinder", "PairCase", "PatternLiteral",
-        "PatternLiteralKind", "PlanRow", "Subst", "TyCtxt",
+        "BoundType", "BoundTypeKind", "CallPlan", "CalleeKind", "ConversionBinding", "DispositionKind", "ExpansionKind", "ExpansionPlan", "FunctionResultMode", "HirAcquire",
+        "HirAdaptation", "HirAdjust", "HirCompletion", "HirOp", "HirPlace", "HirPlaceKind", "HirRes", "HirTables", "IntrinsicDisposition", "IntrinsicId", "KimiLibrary",
+        "PairBinder", "PairCase", "PatternLiteral", "PatternLiteralKind", "PlanRow", "Subst", "TyCtxt",
     ];
 
     private static readonly Regex LineComment = new(@"//[^\n]*");
