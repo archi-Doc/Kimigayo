@@ -10,7 +10,8 @@ public class CompilerSizeBudgetTest
 {
     // R2a exit (2026-10-11): an area may grow by at most 2% over its size at the R2a exit (Core, which grew in R2a,
     // keeps its lower R1 cap). R2b (a parallel stage, plan section 10.4) checks the R2b ceiling as the total and lets
-    // Binding, which builds the HIR columns and plans, take the whole stage room (55,155 + 2,389 lines).
+    // Binding, which builds the HIR columns and plans, take the whole stage room (55,155 + 2,389 lines). The R2b exit
+    // (2026-10-11, 127,815 lines) keeps the ceiling and every area cap; the unused 1,185 lines pass to R3 (decision D11).
     private const int TotalCap = 129_000;
 
     private static readonly Dictionary<string, int> Caps = new(StringComparer.Ordinal)

@@ -13,7 +13,8 @@ public class ArchitectureRulesTest
     // The semantic slots on Koto classes, read as members.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
-    // The Binding types the MIR builder may name: the published tables, plans and declaration facts.
+    // The Binding types the MIR builder may name: the published tables, plans and declaration facts. Frozen at the R2b exit; only
+    // the declaration views deferred to their first reader (ImplTable, VTableDef, UniversalRelations, EffectBoundTable, AvailableBounds; R4/R5) join it.
     private static readonly string[] PublishedBindingTypes =
     [
         "AdtDef", "BindingSymbol", "BindingSymbolKind", "BoundCapture", "BoundClosure", "BoundDefaultArgument", "BoundEnumCase",
@@ -72,6 +73,14 @@ public class ArchitectureRulesTest
     [InlineData("Kimi.Compiler.EmissionOpcode", 49)]
     [InlineData("Kimi.Compiler.CompilerFunctionKind", 76)]
     [InlineData("Kimi.Compiler.BindingFailure", 89)]
+    [InlineData("Kimi.Compiler.HirOp", 40)]
+    [InlineData("Kimi.Compiler.HirRes", 9)]
+    [InlineData("Kimi.Compiler.HirAcquire", 7)]
+    [InlineData("Kimi.Compiler.HirAdaptation", 9)]
+    [InlineData("Kimi.Compiler.HirPlaceKind", 11)]
+    [InlineData("Kimi.Compiler.HirCompletion", 3)]
+    [InlineData("Kimi.Compiler.ExpansionKind", 7)]
+    [InlineData("Kimi.Compiler.IntrinsicId", 30)]
     public void VocabularyDoesNotGrow(string type, int limit)
     {
         var members = typeof(Compilation).Assembly.GetType(type) is { } enumeration ? Enum.GetNames(enumeration).Length : 0;

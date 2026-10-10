@@ -45,8 +45,10 @@ Unsupported code is a design change that needs a SPEC basis and owner approval.
   allowlists, Advice or downstream re-verification.
 - `CompilerSizeBudgetTest` and `ArchitectureRulesTest` hold the size caps and the no-growth ratchets below; caps fall
   when a reduction stage exits. A cap rises only on owner instruction, or to keep O2 performance and zero allocation
-  (plan §18 P5), with the reason recorded. During R2b the total cap is the R2b ceiling and only the Binding cap holds the
-  stage room (plan §10.4); `ArchitectureRulesTest.MirReadsNoBindingInternals` enforces the MIR builder row above.
+  (plan §18 P5), with the reason recorded. In the parallel stages R2b–R5 the total cap is the stage's cumulative ceiling
+  (plan §10.4, §12.2): the R2b ceiling of 129,000 holds until R3 sets its own, and only the Binding cap held the R2b room;
+  `ArchitectureRulesTest.MirReadsNoBindingInternals` enforces the MIR builder row above over a frozen list of published
+  Binding types, which only the deferred declaration views join.
 - O2 run time and zero allocation (compiler warm paths and native allocation counts) may not regress; O0 run time and
   compiler processing time may, and are recorded. A regression is a change beyond the variation of repeated runs under
   identical conditions.
@@ -76,8 +78,8 @@ Components the reduction has created, under `src/Kimi/Compiler`. Extend one of t
 | R0 | Done (timing baselines carried to before R5) | Baselines, size and rule ratchets, disposition ledger, narrow-implementation and Advice/Note inventories, freeze |
 | R1 | Done 2026-10-10 (closed by user instruction at 129,482 lines, above its 127,000 ceiling) | Delete-first: one Unsupported code, Advice/Note reduction, library validation into tests, dead code, control-flow type flow, OCC-X waiting machinery, independent narrow implementations |
 | R2a | Done 2026-10-11 (closed at 126,611 lines, above its 125,000 ceiling, by the stage decision to close at the measured size) | `SyntaxId`, `HirTables` behind forwarding properties, `AdtDef`, unified CallPlan type, pure fits, child-walk and operator-class consolidation, Hover move |
-| R2b | Active | `TyCtxt`, complete HIR columns and Plans, default declarations, intrinsic table; the read-only declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`, `AvailableBounds`) are built with their first reader in R4/R5 |
-| R3 | Pending | MIR model, descriptor table, validator, dump and builder (shadow) |
+| R2b | Done 2026-10-11 (closed at 127,815 lines, within its 129,000 ceiling; the unused 1,185 lines pass to R3) | `TyCtxt` and `Subst`; the published HIR columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and their publisher; `CallPlan.Of`, `ExpansionPlan`, the Pattern plans and closure definitions as views; `DefaultDecl` and `PreparedParam`; the pair-binder view; the intrinsic table. The five read-only declaration-table views (`ImplTable`, `VTableDef`, `UniversalRelations`, `EffectBoundTable`, `AvailableBounds`) are deferred to their first readers in R4/R5 |
+| R3 | Active | MIR model, descriptor table, validator, dump and builder (shadow) |
 | R4 | Pending | MIR analyses A1–A6 and the difference ledger (shadow) |
 | R5 | Pending | Monomorphization, shims, layout/ABI, code generation, capability table (shadow) |
 | R6 | Pending | Switch the default to MIR, then delete the old Analysis/Emission paths |
