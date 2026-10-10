@@ -46,9 +46,9 @@ public class InheritedReceiverBindingTest
         var access = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single();
         Assert.True(c.Binding.TryGetReceiverOperation(access, out var plan));
         Assert.NotNull(plan.BasePath!.Parent);
-        Assert.Same(access.BoundType!.Origin, plan.BasePath.Type.Components[0].Origin);
-        Assert.Same(access.BoundType.Origin, plan.BasePath.Parent!.Type.Components[0].Origin);
-        Assert.Equal("i32", access.BoundType.Components[0].Name);
+        Assert.Same(access.TypeOf()!.Origin, plan.BasePath.Type.Components[0].Origin);
+        Assert.Same(access.TypeOf()!.Origin, plan.BasePath.Parent!.Type.Components[0].Origin);
+        Assert.Equal("i32", access.TypeOf()!.Components[0].Name);
     }
 
     [Theory]
@@ -132,7 +132,7 @@ public class InheritedReceiverBindingTest
         Assert.True(c.Binding.TryGetReceiverOperation(access, out var plan));
         Assert.Equal(ArgumentOperationKind.StorageProjection, plan.Kind);
         Assert.Equal(ConstraintProof.Proven, plan.ObjectCompatibility);
-        Assert.Equal("i32", access.BoundType!.Name);
+        Assert.Equal("i32", access.TypeOf()!.Name);
     }
 
     [Theory]
@@ -404,7 +404,7 @@ public class InheritedReceiverBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract A\n    func f() -> i32\ncontract C: A\nopen struct Base<T>\n    public func f() -> i32 => 1\nstruct D<U>: Base<U>\n    Self is A when U is Copy\n    Self is C when U is Owned");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var d = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D").BoundType!;
+        var d = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D").TypeOf()!;
         var a = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "A").BoundSymbol!;
         var paths = c.Binding.GetConformanceDefinition(d, a)!.Paths;
         Assert.Equal(2, paths.Count);
@@ -482,7 +482,7 @@ public class InheritedReceiverBindingTest
 
     private static BoundConformancePath Path(Compilation c, string type, string contract)
     {
-        var t = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == type).BoundType!;
+        var t = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == type).TypeOf()!;
         var target = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == contract).BoundSymbol!;
         return Assert.Single(c.Binding.GetConformanceDefinition(t, target)!.Paths, x => x.InheritedFrom is null);
     }

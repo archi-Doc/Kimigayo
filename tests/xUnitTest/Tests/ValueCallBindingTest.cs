@@ -47,7 +47,7 @@ public class ValueCallBindingTest
         var plan = Assert.IsType<CallPlan>(call.BoundValueCall);
         Assert.Null(call.BoundCall);
         Assert.Same(call.Method, plan.CalleeValue);
-        Assert.Same(call.BoundType, plan.ReturnType);
+        Assert.Same(call.TypeOf(), plan.ReturnType);
         Assert.Equal(call.ArgumentNodes.Count, plan.ArgumentOperations.Length);
     }
 

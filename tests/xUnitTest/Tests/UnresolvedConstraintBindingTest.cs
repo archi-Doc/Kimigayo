@@ -17,7 +17,7 @@ public class UnresolvedConstraintBindingTest
         var c = Parse("public struct Reading\n" + clauses + "    public let value: i32");
         Assert.False(c.Bind().IsComplete);
         var reading = Container(c, "Reading");
-        Assert.Equal(BindingState.Invalid, reading.BindingState);
+        Assert.Equal(BindingState.Invalid, reading.StateOf());
         Assert.False(Assert.IsType<PropertyKoto>(Assert.Single(reading.Members)).BoundSymbol!.Property!.IsVerified);
         Assert.Equal(ConstraintProof.Error, c.Binding.Prove(reading.ConstraintNodes.Single(x => x.Right.ToString() == "Copy").BoundConstraint!, reading));
         c.Binding.ReportDiagnostics();
@@ -52,7 +52,7 @@ public class UnresolvedConstraintBindingTest
         Assert.False(c.Bind().IsComplete);
         var reading = Container(c, "Reading");
         var marker = Container(c, "Marker");
-        Assert.False(c.Binding.GetConformanceDefinition(reading.BoundType!, marker.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(reading.TypeOf()!, marker.BoundSymbol!)!.IsVerified);
         var use = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "use");
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, use) || ReferenceEquals(x.Node, use.ExpressionBody));
         c.Binding.ReportDiagnostics();
@@ -173,7 +173,7 @@ public class UnresolvedConstraintBindingTest
         var c = Parse(source);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure is BindingFailure.MissingType or BindingFailure.InvalidConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() is BindingFailure.MissingType or BindingFailure.InvalidConstraint);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -199,10 +199,10 @@ public class UnresolvedConstraintBindingTest
         var c = Parse("public contract Marker\npublic struct Target\n    i32 is " + requirement + "\n    Self is Marker");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var target = Container(c, "Target");
-        Assert.Equal(BindingState.Unresolved, target.BindingState);
-        Assert.False(c.Binding.GetConformanceDefinition(target.BoundType!, Container(c, "Marker").BoundSymbol!)!.IsVerified);
+        Assert.Equal(BindingState.Unresolved, target.StateOf());
+        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, Container(c, "Marker").BoundSymbol!)!.IsVerified);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract Future"));
-        Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.BindingFailure}:{x.Node.Span}")));
+        Assert.True(c.Bind().IsComplete, string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.FailureOf()}:{x.Node.Span}")));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -214,7 +214,7 @@ public class UnresolvedConstraintBindingTest
         var c = Parse("group G\n    func take<T>()\n        T is " + requirement + "\n        ()\n    func call() => take<i32>()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Container(c, "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "take");
-        Assert.Equal(BindingState.Unresolved, function.BindingState);
+        Assert.Equal(BindingState.Unresolved, function.StateOf());
         var call = Assert.IsType<InvocationKoto>(Container(c, "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody);
         Assert.Null(call.BoundCall);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract Future"));

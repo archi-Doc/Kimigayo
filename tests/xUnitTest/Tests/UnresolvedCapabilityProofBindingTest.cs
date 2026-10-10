@@ -21,7 +21,7 @@ public class UnresolvedCapabilityProofBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single();
-        var bound = function.Parameters[0].Type.BoundType!;
+        var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(bound, function));
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(bound, function));
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
@@ -41,7 +41,7 @@ public class UnresolvedCapabilityProofBindingTest
         var c = Parse(type);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
-        var bound = function.Parameters[0].Type.BoundType!;
+        var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(ConstraintProof.Error, c.Binding.ProveCopy(bound, function));
         Assert.Equal(ConstraintProof.Error, c.Binding.ProveOwned(bound, function));
@@ -55,7 +55,7 @@ public class UnresolvedCapabilityProofBindingTest
         var c = Parse("T", "<T>", "\n        T is Target\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
-        var bound = function.Parameters[0].Type.BoundType!;
+        var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(bound, function));
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(bound, function));
         Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).BoundConstraint!, function));
@@ -75,7 +75,7 @@ public class UnresolvedCapabilityProofBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Bad.kimi", "public struct Bad\n    string is Copy"));
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
         var function = Function(c);
-        var bound = function.Parameters[0].Type.BoundType!;
+        var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(ConstraintProof.Error, c.Binding.ProveCopy(bound, function));
         Assert.Equal(ConstraintProof.Error, c.Binding.ProveOwned(bound, function));
     }
@@ -89,7 +89,7 @@ public class UnresolvedCapabilityProofBindingTest
         var c = Parse(type);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
-        var bound = function.Parameters[0].Type.BoundType!;
+        var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(copy, c.Binding.ProveCopy(bound, function));
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(bound, function));
     }
@@ -102,7 +102,7 @@ public class UnresolvedCapabilityProofBindingTest
         var provisional = c.Binding.Bind(BindingMode.Provisional);
         Assert.Equal(0, provisional.InvalidCount);
         var function = Function(c);
-        var bound = function.Parameters[0].Type.BoundType!;
+        var bound = function.Parameters[0].Type.TypeOf()!;
         for (var i = 0; i < 100; i++)
         {
             Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(bound, function));

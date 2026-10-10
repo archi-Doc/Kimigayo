@@ -17,12 +17,12 @@ public class WrapConversionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
-        Assert.Same(BoundType.Primitives["u32"], variables["a"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u8"]), variables["b"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["u64"], variables["c"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i16"]), variables["d"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["u64"], variables["e"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["i128"], variables["f"].NameKoto.BoundType);
+        Assert.Same(BoundType.Primitives["u32"], variables["a"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u8"]), variables["b"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["u64"], variables["c"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i16"]), variables["d"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["u64"], variables["e"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["i128"], variables["f"].NameKoto.TypeOf());
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Wrap, x.ConversionBinding));
     }
 
@@ -41,7 +41,7 @@ public class WrapConversionTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
-        Assert.Same(expected, conversion.BoundType);
+        Assert.Same(expected, conversion.TypeOf());
         Assert.Equal(ConversionBinding.Wrap, conversion.ConversionBinding);
         var folded = Assert.NotNull(conversion.FoldedConstant);
         if (type == "u128")

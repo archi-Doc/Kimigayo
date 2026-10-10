@@ -45,7 +45,7 @@ public class OriginRedesignTest
         Assert.Empty(TestDiagnostics.Of(c));
         for (var pass = 0; pass < 2; pass++)
         {
-            Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Node.CodeContext.SourceDocument?.Path}: {x.Node}: {x.Node.BindingFailure}")));
+            Assert.True(c.Bind().IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Node.CodeContext.SourceDocument?.Path}: {x.Node}: {x.Node.FailureOf()}")));
         }
     }
 

@@ -22,8 +22,8 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Original + "override func choose(self: objref/Self, value: ref/i32" + annotation + ") -> ref/i32" + annotation + " => value\n()");
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out _));
-        Assert.Same(implementation.Parameters[1].Type.BoundType!.Origin, implementation.BoundSymbol!.Type!.Origin);
-        Assert.NotSame(implementation.Parameters[0].Type.BoundType!.Origin, implementation.BoundSymbol.Type.Origin);
+        Assert.Same(implementation.Parameters[1].Type.TypeOf()!.Origin, implementation.BoundSymbol!.Type!.Origin);
+        Assert.NotSame(implementation.Parameters[0].Type.TypeOf()!.Origin, implementation.BoundSymbol.Type.Origin);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -55,8 +55,8 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
         var source = "open struct Base\n    public virtual func choose(self: " + receiver + "/Self, a: ref/i32 during source, b: ref/i32 during source) -> place ref/i32 during source => a@follow\nstruct Derived : Base\n    override func choose(self: " + receiver + "/Self, a => x: ref/i32, b => y: ref/i32) -> place ref/i32 => x@follow\n()";
         var c = MinimalEmissionTest.Analyze(source);
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
-        var origin = implementation.Parameters[1].Type.BoundType!.Origin;
-        Assert.Same(origin, implementation.Parameters[2].Type.BoundType!.Origin);
+        var origin = implementation.Parameters[1].Type.TypeOf()!.Origin;
+        Assert.Same(origin, implementation.Parameters[2].Type.TypeOf()!.Origin);
         Assert.Same(origin, implementation.BoundSymbol!.Type!.Origin);
         Assert.Equal(FunctionResultMode.PlaceRef, Binding.ResultModeOf(implementation.ReturnType));
         Assert.Equal(receiver == "objref", c.Binding.Result.IsComplete);
@@ -88,7 +88,7 @@ public class VirtualOverrideContractTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> ref/i32 during b\n        origin a outlives b\n        return a\nstruct Derived : Base\n    override func choose(self: objref/Self, a: ref/i32, b: ref/i32) -> ref/i32 during b\n" + repeated + "        return a\n()");
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
-        Assert.True(c.Binding.IsVerifiedOriginObligation(new(BindingObligationKind.OriginOutlives, implementation, BindingDeadline.BodyOrigins, Longer: implementation.Parameters[1].Type.BoundType!.Origin, Shorter: implementation.Parameters[2].Type.BoundType!.Origin)));
+        Assert.True(c.Binding.IsVerifiedOriginObligation(new(BindingObligationKind.OriginOutlives, implementation, BindingDeadline.BodyOrigins, Longer: implementation.Parameters[1].Type.TypeOf()!.Origin, Shorter: implementation.Parameters[2].Type.TypeOf()!.Origin)));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 

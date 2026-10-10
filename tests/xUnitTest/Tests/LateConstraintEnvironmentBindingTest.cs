@@ -42,8 +42,8 @@ public class LateConstraintEnvironmentBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var container = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.Equal(BindingState.Invalid, container.BindingState);
-        Assert.False(c.Binding.GetConformanceDefinition(container.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.Equal(BindingState.Invalid, container.StateOf());
+        Assert.False(c.Binding.GetConformanceDefinition(container.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
     }
 
     [Theory]
@@ -54,11 +54,11 @@ public class LateConstraintEnvironmentBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Marker: Copy\n    string is Copy" + Consumers + "\n    func independent<T>(value: T)\n        T is Copy\n        take<T>()");
         c.Binding.Bind(provisional ? BindingMode.Provisional : BindingMode.Final);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "independent");
-        Assert.Equal(BindingState.Resolved, function.BindingState);
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(BindingState.Resolved, function.StateOf());
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
         var caller = Caller(c);
-        Assert.Equal(ConstraintProof.Error, c.Binding.ProveCopy(caller.Parameters[0].Type.BoundType!, caller));
+        Assert.Equal(ConstraintProof.Error, c.Binding.ProveCopy(caller.Parameters[0].Type.TypeOf()!, caller));
     }
 
     [Fact]
@@ -103,8 +103,8 @@ public class LateConstraintEnvironmentBindingTest
     private static void AssertConsumers(Compilation c, bool valid)
     {
         var caller = Caller(c);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, caller.BindingState);
-        Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(caller.Parameters[0].Type.BoundType!, caller));
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, caller.StateOf());
+        Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(caller.Parameters[0].Type.TypeOf()!, caller));
         Assert.Equal(valid, Assert.IsType<InvocationKoto>(caller.Body!.Items.Single()).BoundCall is not null);
     }
 }

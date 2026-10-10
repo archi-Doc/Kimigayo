@@ -23,9 +23,9 @@ public class AccessorReceiverBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         var accessor = (PropertyAccessorKoto)issue.Node;
-        Assert.NotNull(accessor.ReceiverType!.BoundType);
+        Assert.NotNull(accessor.ReceiverType!.TypeOf());
         Assert.False(((PropertyKoto)accessor.Parent!).BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }
@@ -44,9 +44,9 @@ public class AccessorReceiverBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"public struct Api<T>\n    public computed item: i32\n        get(self: {receiver}) -> i32 => 1\n        set(self: uniq/Self, value: i32) -> () => ()\n    public func read(self: {receiver}) -> i32 => 1");
         Assert.False(c.Binding.Result.IsComplete);
-        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.BindingFailure == BindingFailure.AccessorReceiverShape);
+        var issue = Assert.Single(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.AccessorReceiverShape);
         Assert.Equal(PropertyAccessorKind.Get, ((PropertyAccessorKoto)issue.Node).AccessorKind);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         Assert.False(Property(c).BoundSymbol!.Property!.IsVerified);
     }
 
@@ -73,7 +73,7 @@ public class AccessorReceiverBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Equal(BindingFailure.Access, Property(c).BoundSymbol!.Property!.Setter.Declaration!.BindingFailure);
+            Assert.Equal(BindingFailure.Access, Property(c).BoundSymbol!.Property!.Setter.Declaration!.FailureOf());
         }
     }
 
@@ -106,7 +106,7 @@ public class AccessorReceiverBindingTest
         Assert.True(property.BoundSymbol.Property.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.InvalidTypeFormation, original.BindingFailure);
+        Assert.Equal(BindingFailure.InvalidTypeFormation, original.FailureOf());
         Assert.False(property.BoundSymbol.Property.IsVerified);
     }
 

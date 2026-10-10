@@ -16,7 +16,7 @@ public class BaseProjectionAccessBindingTest
         var c = MinimalEmissionTest.Analyze($"public open struct Base\n{contractAccess} contract C\n    associate Element\n{sourceAccess} struct Source\n    Self is C\n    associate C.Element is Base\npublic struct Api: Source.C.Element");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -51,8 +51,8 @@ public class BaseProjectionAccessBindingTest
         var c = Check(Prefix + "public contract Marker\n" + (reverseOrder ? derived + middle : middle + derived), false);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.Equal(BindingState.Invalid, api.BindingState);
-        Assert.False(c.Binding.GetConformanceDefinition(api.BoundType!, marker.BoundSymbol!)?.IsVerified ?? false);
+        Assert.Equal(BindingState.Invalid, api.StateOf());
+        Assert.False(c.Binding.GetConformanceDefinition(api.TypeOf()!, marker.BoundSymbol!)?.IsVerified ?? false);
     }
 
     [Theory]
@@ -82,7 +82,7 @@ public class BaseProjectionAccessBindingTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(api, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.Access, api.BindingFailure);
+        Assert.Equal(BindingFailure.Access, api.FailureOf());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -113,7 +113,7 @@ public class BaseProjectionAccessBindingTest
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
             Assert.False(c.Emission.Validate(out _));
         }
 

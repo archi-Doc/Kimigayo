@@ -17,7 +17,7 @@ public class BindingTest
         var call = Assert.Single(nodes.OfType<InvocationKoto>());
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Equal(nodes, KotoTree.Walk(compilation.Kotonoha.RootKoto));
-        Assert.Equal("i32", call.BoundType!.Name);
+        Assert.Equal("i32", call.TypeOf()!.Name);
         Assert.Equal("add", call.BoundCall!.Target.Name);
         Assert.Equal(new[] { 0, 1 }, call.BoundCall.ArgumentToParameter.ToArray());
         var plan = call.BoundCall;
@@ -36,7 +36,7 @@ public class BindingTest
         var group = Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers);
         var provisional = compilation.Binding.Bind(BindingMode.Provisional);
         Assert.False(provisional.IsComplete);
-        Assert.Equal(BindingState.Unresolved, call.BindingState);
+        Assert.Equal(BindingState.Unresolved, call.StateOf());
         Assert.Empty(compilation.Binding.Issues);
         compilation.Kotonoha.CreateCodeContext().Parse(group, "func generated() -> i32 => 42");
         Assert.True(compilation.Binding.Bind(BindingMode.Final).IsComplete, Describe(compilation));
@@ -50,7 +50,7 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess("group Demo\n    func f(x: i32) -> i32 => x\n    func read() -> i32 => f(1)");
         var call = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
         compilation.Binding.Bind(BindingMode.Provisional);
-        Assert.Equal(BindingState.Resolved, call.BindingState);
+        Assert.Equal(BindingState.Resolved, call.StateOf());
         compilation.Kotonoha.CreateCodeContext().Parse(Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers), "func f(x: i64) -> i32 => 1");
         Assert.False(compilation.Binding.Bind(BindingMode.Final).IsComplete);
         Assert.Null(call.BoundCall);
@@ -110,7 +110,7 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess(source);
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var result = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "y");
-        Assert.Equal(type, result.BoundType!.Name);
+        Assert.Equal(type, result.TypeOf()!.Name);
     }
 
     [Theory]
@@ -125,8 +125,8 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess($"let x: {type} = 1\nlet y = x << {count}");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var shift = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<BinaryKoto>(), static x => x.Akind == KotoKind.LessThanLessThan);
-        Assert.Equal("i32", shift.Right.BoundType!.Name);
-        Assert.Same(shift.Left.BoundType, shift.BoundType);
+        Assert.Equal("i32", shift.Right.TypeOf()!.Name);
+        Assert.Same(shift.Left.TypeOf(), shift.TypeOf());
     }
 
     [Fact]
@@ -159,7 +159,7 @@ public class BindingTest
         Assert.Equal("i32", calls[0].BoundCall!.TypeArguments[0]!.Name);
         Assert.Equal("i64", calls[1].BoundCall!.TypeArguments[0]!.Name);
         var pair = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "pair");
-        Assert.Same(pair.TypeKoto!.BoundType, pair.InitializerKoto!.BoundType);
+        Assert.Same(pair.TypeKoto!.TypeOf(), pair.InitializerKoto!.TypeOf());
     }
 
     [Fact]
@@ -168,7 +168,7 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess("func f(x: i8) -> i8 => x\nfunc f(x: i64) -> i64 => x\nlet result = f(128)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var call = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal("i64", call.ArgumentNodes[0].BoundType!.Name);
+        Assert.Equal("i64", call.ArgumentNodes[0].TypeOf()!.Name);
     }
 
     [Fact]
@@ -285,8 +285,8 @@ public class BindingTest
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var types = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>().ToArray();
         Assert.Equal(2, types.Length);
-        Assert.Same(types[0].BoundType, types[1].BoundType);
-        Assert.Equal(2, types[0].BoundType!.Length);
+        Assert.Same(types[0].TypeOf(), types[1].TypeOf());
+        Assert.Equal(2, types[0].TypeOf()!.Length);
     }
 
     [Fact]

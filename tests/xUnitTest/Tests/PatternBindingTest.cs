@@ -168,7 +168,7 @@ public class PatternBindingTest
         var c = Parse("func f(x: bool)\n    let r = match x\n        true => 1\n        false => 2\nfunc generic<T>(x: Option<T>) => match x@move\n    .Some(let value) => ()\n    .None => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var selections = Matches(c);
-        Assert.Equal("i32", selections[0].BoundType!.Name);
+        Assert.Equal("i32", selections[0].TypeOf()!.Name);
         Assert.True(c.Binding.TryGetMatch(selections[1], out var plan));
         Assert.Equal(PatternAcquisition.CopyOrMove, Assert.Single(plan!.Positions, p => p.Kind == BoundPatternKind.Binding).Acquisition);
     }
@@ -242,7 +242,7 @@ public class PatternBindingTest
         Assert.Equal(PatternAcquisition.Borrow, binding.Acquisition);
         Assert.Equal(SemanticsKind.Ref, binding.BodySymbol!.Type!.Semantics);
         Assert.Same(BoundType.I32, binding.BodySymbol.Type.Components[0]);
-        Assert.Equal(BindingState.Resolved, plan.Syntax.Arms[0].Body.BindingState);
+        Assert.Equal(BindingState.Resolved, plan.Syntax.Arms[0].Body.StateOf());
     }
 
     [Fact]

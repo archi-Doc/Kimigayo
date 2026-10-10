@@ -264,7 +264,7 @@ public class ModuleBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.FailureOf() == BindingFailure.Access);
         }
 
         foreach (var module in c.SourceModules)
@@ -294,7 +294,7 @@ public class ModuleBindingTest
     {
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + "public func main() => ()", "public group Api\n    contract C\n        associate Element\n    public struct Source\n        Self is C\n        associate C.Element is i32\n    public enum Result\n        Item(Source.C.Element)", configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.FailureOf() == BindingFailure.Access);
     }
 
     [Theory]
@@ -346,7 +346,7 @@ public class ModuleBindingTest
             Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall is not null);
             if (!valid)
             {
-                Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.BindingFailure == BindingFailure.Access);
+                Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.FailureOf() == BindingFailure.Access);
             }
         }
     }
@@ -405,7 +405,7 @@ public class ModuleBindingTest
         {
             Assert.Equal(valid, c.Bind().IsComplete);
             var structure = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-            Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, structure.BindingState);
+            Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, structure.StateOf());
             if (!valid)
             {
                 Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, structure) && x.Code == DiagnosticCode.DuplicateBinding_Kd);
@@ -433,7 +433,7 @@ public class ModuleBindingTest
             Assert.Equal(valid, c.Bind().IsComplete);
             var structure = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
             var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.BoundType!, contract.BoundSymbol!)!.IsVerified);
+            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         }
     }
 
@@ -457,7 +457,7 @@ public class ModuleBindingTest
             Assert.Equal(valid, c.Bind().IsComplete);
             var structure = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
             var contract = c.SourceModules[1].RootKoto.NestedContainers.Single(x => x.Name == "Api").NestedContainers.Single(x => x.Name == "C");
-            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.BoundType!, contract.BoundSymbol!)!.IsVerified);
+            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         }
     }
 
@@ -482,7 +482,7 @@ public class ModuleBindingTest
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
             var test = Assert.IsType<IsKoto>(function.ExpressionBody);
             Assert.Equal(valid, test.BoundRuntimeTest is not null);
-            Assert.Equal(valid, test.BindingState == BindingState.Resolved);
+            Assert.Equal(valid, test.StateOf() == BindingState.Resolved);
         }
     }
 
@@ -588,7 +588,7 @@ public class ModuleBindingTest
             }
 
             var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-            Assert.All(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.Paths, path => Assert.Equal(valid, path.IsVerified));
+            Assert.All(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.Paths, path => Assert.Equal(valid, path.IsVerified));
         }
     }
 
@@ -651,7 +651,7 @@ public class ModuleBindingTest
                 var owner = form == 1 ? c.Kotonoha.RootKoto : c.SourceModules[1].RootKoto.NestedContainers.Single(x => x.Name == "Api");
                 var type = owner.NestedContainers.Single(x => x.Name == "S");
                 var contract = owner.NestedContainers.Single(x => x.Name == "C");
-                Assert.Equal(valid, c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+                Assert.Equal(valid, c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
             }
 
             if (pass == 0)
@@ -741,7 +741,7 @@ public class ModuleBindingTest
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
         var target = c.SourceModules[1].RootKoto.NestedContainers.Single().NestedContainers.Single(x => x.Name == "Target");
-        Assert.Equal(BindingState.Invalid, target.BindingState);
+        Assert.Equal(BindingState.Invalid, target.StateOf());
         var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
         Assert.Null(Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall);
         Assert.True(KotoHelper.Replace(clause, replacement, original));
@@ -793,7 +793,7 @@ public class ModuleBindingTest
             Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-            Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+            Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
             Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall is not null);
             foreach (var module in c.SourceModules)
             {
@@ -830,7 +830,7 @@ public class ModuleBindingTest
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-        Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         Assert.Equal(independent, Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall is not null);
         c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "public group Api\n    public struct Source\n        Self is Origin"));
         for (var pass = 0; pass < 2; pass++)
@@ -854,7 +854,7 @@ public class ModuleBindingTest
         var c = Create(consumer, "public group Api");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var child = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child");
-        Assert.Equal(BindingState.Unresolved, child.BindingState);
+        Assert.Equal(BindingState.Unresolved, child.StateOf());
         c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "public group Api\n    public contract Future"));
         VerifyImportedProjectionCertificate(c, false, true);
     }
@@ -870,7 +870,7 @@ public class ModuleBindingTest
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.Equal(!generic, c.Bind().IsComplete);
-            Assert.Equal(generic ? BindingState.Invalid : BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").BindingState);
+            Assert.Equal(generic ? BindingState.Invalid : BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child").StateOf());
             foreach (var module in c.SourceModules)
             {
                 module.OnDeserialized(c);

@@ -32,7 +32,7 @@ public class RawAddressTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var address = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "address");
-        Assert.Equal(type, Text(address.BoundType!));
+        Assert.Equal(type, Text(address.TypeOf()!));
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
@@ -87,7 +87,7 @@ public class RawAddressTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var address = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "address");
-        Assert.Equal("raw/u8", Text(address.BoundType!));
+        Assert.Equal("raw/u8", Text(address.TypeOf()!));
     }
 
     [Fact]

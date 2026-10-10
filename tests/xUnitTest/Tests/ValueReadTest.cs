@@ -55,7 +55,7 @@ public class ValueReadTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
-        Assert.Equal(SemanticsKind.Owner, result.NameKoto.BoundType?.Semantics);
+        Assert.Equal(SemanticsKind.Owner, result.NameKoto.TypeOf()?.Semantics);
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class ValueReadTest
         var c = MinimalEmissionTest.Analyze("let values: [4 of i32] = [1, 2, 3, 4]\nlet whole = values.indices\nlet w = whole@ref\nlet kept = w");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var kept = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "kept");
-        Assert.Equal(SemanticsKind.Ref, kept.NameKoto.BoundType?.Semantics);
+        Assert.Equal(SemanticsKind.Ref, kept.NameKoto.TypeOf()?.Semantics);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class ValueReadTest
         var c = MinimalEmissionTest.Analyze("var a = ^1\nlet b = ^2\nlet r = if true => a@ref\nelse => b@ref\na = ^3\nlet p: FromEnd<i32> = r");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "r");
-        Assert.Equal(SemanticsKind.Ref, result.NameKoto.BoundType?.Semantics);
+        Assert.Equal(SemanticsKind.Ref, result.NameKoto.TypeOf()?.Semantics);
         Assert.Contains(c.Ownership.Issues, x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd);
     }
 

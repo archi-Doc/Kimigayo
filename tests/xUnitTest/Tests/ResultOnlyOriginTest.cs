@@ -40,8 +40,8 @@ public class ResultOnlyOriginTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.BoundCall?.Target.Name == "none").ToArray();
         Assert.Equal(2, calls.Length);
-        var first = calls[0].BoundType!.Components[0].Origin!;
-        var second = calls[1].BoundType!.Components[0].Origin!;
+        var first = calls[0].TypeOf()!.Components[0].Origin!;
+        var second = calls[1].TypeOf()!.Components[0].Origin!;
         Assert.Equal((OriginKind.Inference, true), (first.Kind, first.Open));
         Assert.NotSame(first, second);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

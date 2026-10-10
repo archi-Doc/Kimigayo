@@ -19,14 +19,14 @@ public class LibraryImportTargetBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         var restoredType = restored.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var restoredContract = restored.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(restored.Binding.GetConformanceDefinition(restoredType.BoundType!, restoredContract.BoundSymbol!)!.IsVerified);
+        Assert.False(restored.Binding.GetConformanceDefinition(restoredType.TypeOf()!, restoredContract.BoundSymbol!)!.IsVerified);
     }
 
     [Fact]
@@ -65,7 +65,7 @@ public class LibraryImportTargetBindingTest
         var c = MinimalEmissionTest.Analyze("contract C\n" + markers + "\nstruct S\n    var n: i32\n    Self is C");
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        var definition = c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!;
+        var definition = c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
         Assert.False(definition.IsVerified);
         var import = type.AttributeChain!;
         if (import.IdentifierKoto is not IdentifierNameKoto { IdentifierName: "LibraryImport" })

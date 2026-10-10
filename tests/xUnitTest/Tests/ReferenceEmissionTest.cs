@@ -236,13 +236,13 @@ public class ReferenceEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
         var abi = pool.Get(0, c.Ownership.Bodies[1].Function);
-        var oldType = c.Ownership.Bodies[1].Function.Parameters[0].Type.BoundType;
+        var oldType = c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf();
         c = MinimalEmissionTest.Analyze(Source.Replace("same", "renamed", StringComparison.Ordinal));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Ownership.Analyze().IsVerified);
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
-        Assert.NotSame(oldType, c.Ownership.Bodies[1].Function.Parameters[0].Type.BoundType);
+        Assert.NotSame(oldType, c.Ownership.Bodies[1].Function.Parameters[0].Type.TypeOf());
         Assert.Same(abi, pool.Get(0, c.Ownership.Bodies[1].Function));
     }
 

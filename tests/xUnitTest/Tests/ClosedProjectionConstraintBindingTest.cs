@@ -37,7 +37,7 @@ public class ClosedProjectionConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(Source("struct", clause));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).StateOf());
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -51,7 +51,7 @@ public class ClosedProjectionConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).StateOf());
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -65,7 +65,7 @@ public class ClosedProjectionConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\n" + (reverse ? target + source : source + target));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Target(c).StateOf());
         Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
     }
 
@@ -78,7 +78,7 @@ public class ClosedProjectionConstraintBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         }
     }
 
@@ -92,7 +92,7 @@ public class ClosedProjectionConstraintBindingTest
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source").Members.OfType<IsKoto>().Single().Right;
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Target(c).StateOf());
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.True(c.Bind().IsComplete);
     }

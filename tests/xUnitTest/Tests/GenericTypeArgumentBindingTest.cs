@@ -26,11 +26,11 @@ public class GenericTypeArgumentBindingTest
         Assert.Empty(TestDiagnostics.Of(c));
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
-        var argument = Assert.Single(f.Parameters[0].Type.BoundType!.Components);
+        var argument = Assert.Single(f.Parameters[0].Type.TypeOf()!.Components);
         var call = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<InvocationKoto>().Single();
         Assert.Same(argument, Assert.Single(call.BoundCall!.TypeArguments.ToArray()));
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Same(argument, Assert.Single(f.Parameters[0].Type.BoundType!.Components));
+        Assert.Same(argument, Assert.Single(f.Parameters[0].Type.TypeOf()!.Components));
         Verify(CompilationTestHelper.Reload(c));
         var builder = default(IndentedStringBuilder);
         try
@@ -75,7 +75,7 @@ public class GenericTypeArgumentBindingTest
         var c = Parse($"struct Box<T>\nfunc f(value: Box<{type}>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
-        var array = Assert.Single(f.Parameters[0].Type.BoundType!.Components);
+        var array = Assert.Single(f.Parameters[0].Type.TypeOf()!.Components);
         var element = Assert.Single(array.Components);
         Assert.Equal(SemanticsKind.Ref, element.Semantics);
         Assert.Same(type.Contains("static", StringComparison.Ordinal) ? BoundOrigin.Static : f.BoundSymbol!.Schema!.Origins[0].Origin, element.Origin);
@@ -101,7 +101,7 @@ public class GenericTypeArgumentBindingTest
         var c = Parse("struct Box<T>\nfunc f(x: Box<[2 of i32]>, y: Box<([2 of i32])>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
-        Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
+        Assert.Same(f.Parameters[0].Type.TypeOf(), f.Parameters[1].Type.TypeOf());
     }
 
     [Trait("Purpose", "Allocation")]

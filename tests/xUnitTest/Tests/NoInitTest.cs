@@ -116,7 +116,7 @@ public class NoInitTest(ITestOutputHelper output)
         var directive = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NoInitKoto>());
         Assert.Equal("noinit", directive.ToString());
         Assert.Equal(6, directive.Span.Length);
-        Assert.Equal(2, directive.BoundType!.Length);
+        Assert.Equal(2, directive.TypeOf()!.Length);
         var copy = CompilationTestHelper.Reload(c);
         Assert.True(copy.Bind().IsComplete);
         Assert.Single(KotoTree.Walk(copy.Kotonoha.RootKoto).OfType<NoInitKoto>());

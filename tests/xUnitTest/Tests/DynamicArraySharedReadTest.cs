@@ -79,8 +79,8 @@ public class DynamicArraySharedReadTest
         var c = MinimalEmissionTest.Analyze(Task + "let values: Array<Task> = [Task.init(42)]\nlet view = values[..]\n" + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var element = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IndexKoto>().Single(x => x.Right is not RangeKoto);
-        Assert.Equal("Task", element.BoundType!.Name);
-        Assert.Equal(SemanticsKind.Owner, element.BoundType.Semantics);
+        Assert.Equal("Task", element.TypeOf()!.Name);
+        Assert.Equal(SemanticsKind.Owner, element.TypeOf()!.Semantics);
     }
 
     [Theory]

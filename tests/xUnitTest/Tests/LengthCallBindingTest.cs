@@ -21,9 +21,9 @@ public class LengthCallBindingTest
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nlet result = " + expression);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal(BoundTypeKind.FixedArray, call.BoundType!.Kind);
-        Assert.Equal(length, call.BoundType.Length);
-        Assert.Same(BoundType.I32, call.BoundType.Components[0]);
+        Assert.Equal(BoundTypeKind.FixedArray, call.TypeOf()!.Kind);
+        Assert.Equal(length, call.TypeOf()!.Length);
+        Assert.Same(BoundType.I32, call.TypeOf()!.Components[0]);
         Assert.NotNull(call.BoundCall);
         Assert.Null(call.BoundCall.TypeArguments[0]);
         Assert.Same(BoundType.I32, call.BoundCall.TypeArguments[1]);
@@ -126,7 +126,7 @@ public class LengthCallBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Null(call.BoundCall);
-        Assert.Equal(BindingFailure.Unsupported, call.BindingFailure);
+        Assert.Equal(BindingFailure.Unsupported, call.FailureOf());
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 

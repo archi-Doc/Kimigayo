@@ -45,9 +45,9 @@ public class GenericConstraintCertificateBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
     }
 
     [Theory]

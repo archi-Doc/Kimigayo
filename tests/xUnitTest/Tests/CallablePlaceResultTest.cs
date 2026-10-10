@@ -98,13 +98,13 @@ public class CallablePlaceResultTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Where(x => x.NameKoto.ToString() is "f" or "g" or "h").ToArray();
         Assert.Equal(3, variables.Length);
-        Assert.NotSame(variables[0].BoundType, variables[1].BoundType);
-        Assert.Equal(FunctionResultMode.Value, variables[0].BoundType!.ResultMode);
-        Assert.Equal(FunctionResultMode.PlaceRef, variables[1].BoundType!.ResultMode);
+        Assert.NotSame(variables[0].TypeOf(), variables[1].TypeOf());
+        Assert.Equal(FunctionResultMode.Value, variables[0].TypeOf()!.ResultMode);
+        Assert.Equal(FunctionResultMode.PlaceRef, variables[1].TypeOf()!.ResultMode);
         // Per-call binders belong to their written signature; repeated binding reuses that exact identity.
-        var identity = variables[1].BoundType;
+        var identity = variables[1].TypeOf();
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(identity, variables[1].BoundType);
+        Assert.Same(identity, variables[1].TypeOf());
     }
 
     [Theory]

@@ -19,17 +19,17 @@ public class ContractSelfTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var holder = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Holder");
         var take = holder.Members.OfType<FunctionKoto>().Single();
-        var self = take.Parameters[0].Type.BoundType!.Components[0];
+        var self = take.Parameters[0].Type.TypeOf()!.Components[0];
         Assert.True(Binding.IsContractSelf(self));
         Assert.Equal(BoundTypeKind.Parameter, self.Kind);
         Assert.NotSame(holder.BoundSymbol!.Type, self);
 
         // Inside the Contract, Item is Self's Item declared by Holder; in a generic body, H's Item declared by Holder.
-        Assert.Equal([self, holder.BoundSymbol.Type!], take.ReturnType!.BoundType!.Components);
+        Assert.Equal([self, holder.BoundSymbol.Type!], take.ReturnType!.TypeOf()!.Components);
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "read");
-        var projection = read.ReturnType!.BoundType!;
+        var projection = read.ReturnType!.TypeOf()!;
         Assert.Equal(BoundTypeKind.AssociatedProjection, projection.Kind);
-        Assert.Same(read.GenericArguments[0].BoundType, projection.Components[0]);
+        Assert.Same(read.GenericArguments[0].TypeOf(), projection.Components[0]);
         Assert.Same(holder.BoundSymbol.Type, projection.Components[1]);
     }
 
@@ -41,16 +41,16 @@ public class ContractSelfTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var indexable = c.Binding.Library.Indexable!;
         var index = ((ContractKoto)indexable.Declaration).Members.OfType<FunctionKoto>().Single();
-        var element = index.ReturnType!.BoundType!.Components[0];
+        var element = index.ReturnType!.TypeOf()!.Components[0];
 
         // `Element` of the requirement is Self's Element declared by Indexable<Key>, the Contract applied to its own Key.
         Assert.True(Binding.IsContractSelf(element.Components[0]));
         Assert.Equal(BoundTypeKind.Constructed, element.Components[1].Kind);
-        Assert.Same(((ContractKoto)indexable.Declaration).GenericParameterNodes[0].BoundType, element.Components[1].Components[0]);
+        Assert.Same(((ContractKoto)indexable.Declaration).GenericParameterNodes[0].TypeOf(), element.Components[1].Components[0]);
 
         var first = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "first");
-        var projection = first.ReturnType!.BoundType!;
-        Assert.Same(first.GenericArguments[0].BoundType, projection.Components[0]);
+        var projection = first.ReturnType!.TypeOf()!;
+        Assert.Same(first.GenericArguments[0].TypeOf(), projection.Components[0]);
         Assert.Same(BoundType.ISize, projection.Components[1].Components[0]);
     }
 }

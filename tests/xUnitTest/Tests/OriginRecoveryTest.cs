@@ -36,8 +36,8 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         output.WriteLine(string.Join("\n", errors.Select(static x => x.Code + " " + x.Span + " " + x.Message)));
         Assert.Equal([code, "TypeMismatch_Kd"], errors.Select(static x => x.Code));
         var function = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        Assert.Null(function.Parameters[0].Type.BoundType);
-        Assert.NotEqual(BindingState.Resolved, function.Parameters[0].Type.BindingState);
+        Assert.Null(function.Parameters[0].Type.TypeOf());
+        Assert.NotEqual(BindingState.Resolved, function.Parameters[0].Type.StateOf());
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         c.Bind();
@@ -59,14 +59,14 @@ public class OriginRecoveryTest(ITestOutputHelper output)
         Assert.Equal(["OriginRelationOperator_Kd", "TypeMismatch_Kd"], errors.Select(static x => x.Code));
         var function = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var clause = Assert.Single(OriginClauses.Get(function));
-        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.BoundType!.Origin!, function.Parameters[1].Type.BoundType!.Origin!, function));
-        Assert.NotEqual(BindingState.Resolved, clause.BindingState);
+        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.TypeOf()!.Origin!, function.Parameters[1].Type.TypeOf()!.Origin!, function));
+        Assert.NotEqual(BindingState.Resolved, clause.StateOf());
         Assert.NotNull(clause.CodeContext.RecoveryCause(clause));
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         c.Bind();
         c.Binding.ReportDiagnostics();
         Assert.Equal(errors, c.Diagnostics.Finalize(rejected: true).Diagnostics);
-        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.BoundType!.Origin!, function.Parameters[1].Type.BoundType!.Origin!, function));
+        Assert.NotEqual(OriginJudgment.Proven, c.Binding.JudgeOriginRelation(function.Parameters[0].Type.TypeOf()!.Origin!, function.Parameters[1].Type.TypeOf()!.Origin!, function));
     }
 
     [Fact]

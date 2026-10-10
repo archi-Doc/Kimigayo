@@ -18,10 +18,10 @@ public class ProvisionalContractPremiseBindingTest
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Marker: Copy\n    Source is Origin\n" + (indirect ? "public contract Child: Marker\n" : string.Empty) + "group G\n    func inspect<T>(value: T)\n        T is " + (indirect ? "Child" : "Marker") + (independent ? "\n        T is Copy" : string.Empty) + "\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
-        Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -33,7 +33,7 @@ public class ProvisionalContractPremiseBindingTest
         var constraints = reverse ? "T is Ready\n        T is Pending" : "T is Pending\n        T is Ready";
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Pending: Copy\n    Source is Origin\npublic contract Ready: Copy\ngroup G\n    func inspect<T>(value: T)\n        " + constraints + "\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(Function(c).Parameters[0].Type.BoundType!, Function(c)));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(Function(c).Parameters[0].Type.TypeOf()!, Function(c)));
     }
 
     [Fact]
@@ -41,10 +41,10 @@ public class ProvisionalContractPremiseBindingTest
     {
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Marker: Copy\n    Source is Origin\ngroup G\n    func inspect<T>(value: T)\n        T is Marker\n        T is not Copy\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(Function(c).Parameters[0].Type.BoundType!, Function(c)));
+        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(Function(c).Parameters[0].Type.TypeOf()!, Function(c)));
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(ConstraintProof.Error, c.Binding.ProveCopy(Function(c).Parameters[0].Type.BoundType!, Function(c)));
+        Assert.Equal(ConstraintProof.Error, c.Binding.ProveCopy(Function(c).Parameters[0].Type.TypeOf()!, Function(c)));
     }
 
     [Theory]
@@ -71,10 +71,10 @@ public class ProvisionalContractPremiseBindingTest
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Marker\n    Source is Origin\n    associate Element is " + requirement + "\ngroup G\n    func inspect<T>(value: T.Element)\n        T is Marker\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(requirement == "not Copy" ? ConstraintProof.Refuted : ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(requirement == "not Copy" ? ConstraintProof.Refuted : ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
     }
 
     [Trait("Purpose", "Allocation")]

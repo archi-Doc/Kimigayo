@@ -34,14 +34,14 @@ public class PairCaseTypeTest
         Assert.Same(exclusive, c.Binding.CaseType(whole, uniq));
         Assert.Same(projection, c.Binding.CaseType(whole, owner));
 
-        var shared = f.Parameters[1].Type.BoundType!;
+        var shared = f.Parameters[1].Type.TypeOf()!;
         var sharedUniq = c.Binding.CaseType(shared, uniq);
         Assert.Equal(SemanticsKind.Ref, sharedUniq.Semantics);
         Assert.Same(shared.Origin, sharedUniq.Origin);
         Assert.Same(exclusive, sharedUniq.Components[0].Components[0]);
         Assert.Same(projection, c.Binding.CaseType(shared, owner).Components[0].Components[0]);
 
-        var applied = f.Parameters[2].Type.BoundType!;
+        var applied = f.Parameters[2].Type.TypeOf()!;
         Assert.Equal(BoundTypeKind.SemanticsApplication, applied.Kind);
         var appliedUniq = c.Binding.CaseType(applied, uniq);
         Assert.Equal(SemanticsKind.Uniq, appliedUniq.Semantics);
@@ -61,7 +61,7 @@ public class PairCaseTypeTest
         var g = Function(c, "g");
         var outer = g.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
         var inner = g.BoundSymbol.Schema.GenericSlots[1].Symbol;
-        var type = g.Parameters[0].Type.BoundType!;
+        var type = g.Parameters[0].Type.TypeOf()!;
         ReadOnlySpan<PairCase> cases = [new(outer, SemanticsKind.Ref), new(inner, SemanticsKind.Uniq)];
         var formed = c.Binding.CaseType(type, cases);
         Assert.Equal(SemanticsKind.Ref, formed.Semantics);
@@ -88,11 +88,11 @@ public class PairCaseTypeTest
         Assert.True(o.Slot < 0);
         Assert.NotSame(o, c.Binding.PairOuterOrigin(gt));
         Assert.Same(o, c.Binding.OuterOrigin(ft.WholeType!));
-        Assert.Same(o, c.Binding.OuterOrigin(f.Parameters[1].Type.BoundType!));
+        Assert.Same(o, c.Binding.OuterOrigin(f.Parameters[1].Type.TypeOf()!));
         Assert.Null(ft.WholeType!.Origin);
 
         // An annotated occurrence is a pair layer whose slot is the annotation (SPEC 8.1.2).
-        var annotated = g.Parameters[0].Type.BoundType!;
+        var annotated = g.Parameters[0].Type.TypeOf()!;
         Assert.True(Binding.TryPairLayer(annotated, out var whole, out var target));
         Assert.Same(gt.WholeType, whole);
         Assert.Same(gt.Type, target);
@@ -115,7 +115,7 @@ public class PairCaseTypeTest
         var c = Parse($"func f<s/T>(value: s/T) -> ()\n    {premises}\n    ()");
         c.Bind();
         var f = Function(c, "f");
-        var type = f.Parameters[0].Type.BoundType!;
+        var type = f.Parameters[0].Type.TypeOf()!;
         Assert.Equal(failing, c.Binding.BareAcquisition(type, f.Parameters[0].Type, out var reborrowed));
         Assert.Equal(reborrow, reborrowed);
         Assert.Equal(SemanticsMask.None, c.Binding.BareAcquisition(BoundType.I32, f.Parameters[0].Type, out var none));

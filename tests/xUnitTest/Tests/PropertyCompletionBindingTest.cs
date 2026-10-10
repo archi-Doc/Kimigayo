@@ -17,7 +17,7 @@ public class PropertyCompletionBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\nstruct S\n    var value: " + type);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Property(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Property(c).IsVerified);
@@ -45,7 +45,7 @@ public class PropertyCompletionBindingTest
     {
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct S<T>\n    T is Hidden\n    var value: i32");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Property(c).IsVerified);
     }
 

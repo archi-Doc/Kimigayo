@@ -31,12 +31,12 @@ public class OriginSyntaxRevisionTest
         var c = MinimalEmissionTest.Analyze(View + $"func inspect(left: {input}, right: {input}) => ()");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var function = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single();
-        var left = Origins(function.Parameters[0].Type.BoundType!).Where(x => x.Kind == OriginKind.Input).ToArray();
-        var right = Origins(function.Parameters[1].Type.BoundType!).Where(x => x.Kind == OriginKind.Input).ToArray();
+        var left = Origins(function.Parameters[0].Type.TypeOf()!).Where(x => x.Kind == OriginKind.Input).ToArray();
+        var right = Origins(function.Parameters[1].Type.TypeOf()!).Where(x => x.Kind == OriginKind.Input).ToArray();
         Assert.NotEmpty(left);
         Assert.DoesNotContain(left, right.Contains);
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(left, Origins(function.Parameters[0].Type.BoundType!).Where(x => x.Kind == OriginKind.Input));
+        Assert.Equal(left, Origins(function.Parameters[0].Type.TypeOf()!).Where(x => x.Kind == OriginKind.Input));
     }
 
     [Theory]
@@ -121,7 +121,7 @@ public class OriginSyntaxRevisionTest
         var c = MinimalEmissionTest.Analyze(View + "group G\n    func identity<T>(value: View<T>) -> View<T>{result}\n        origin result.source == value.source\n        return value\n    specialize func identity<i32>(value: View<i32>) -> View<i32> => value");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var functions = ParseTestHelper.GetChildren(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G")).OfType<FunctionKoto>().ToArray();
-        Assert.Equal(Origins(functions[0].Parameters[0].Type.BoundType!).Select(x => x.Slot), Origins(functions[1].Parameters[0].Type.BoundType!).Select(x => x.Slot));
+        Assert.Equal(Origins(functions[0].Parameters[0].Type.TypeOf()!).Select(x => x.Slot), Origins(functions[1].Parameters[0].Type.TypeOf()!).Select(x => x.Slot));
         Assert.True(c.Bind().IsComplete);
     }
 

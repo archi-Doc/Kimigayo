@@ -337,14 +337,14 @@ public sealed class SemanticSnapshotTest
         {
             var text = this.text;
             text.Append(this.depth).Append(' ').Append(Location(node)).Append('+').Append(node.Span.Length).Append(' ').Append(node.Akind);
-            if (node.BindingState != BindingState.Unvisited)
+            if (node.StateOf() != BindingState.Unvisited)
             {
-                text.Append(' ').Append(node.BindingState);
+                text.Append(' ').Append(node.StateOf());
             }
 
-            if (node.BindingFailure != BindingFailure.None)
+            if (node.FailureOf() != BindingFailure.None)
             {
-                text.Append('/').Append(node.BindingFailure);
+                text.Append('/').Append(node.FailureOf());
             }
 
             if (node.BoundMeaning is BoundType type)

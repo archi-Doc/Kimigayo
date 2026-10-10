@@ -16,7 +16,7 @@ public class CallTypeCompletionBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + type + ">()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).BoundCall);
@@ -43,7 +43,7 @@ public class CallTypeCompletionBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group Consumer\n    func take(value: " + type + ") -> " + type + " => value\n    func call(value: " + type + ") => take(value)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);
     }
 

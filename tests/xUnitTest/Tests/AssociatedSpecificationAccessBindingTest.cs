@@ -19,7 +19,7 @@ public class AssociatedSpecificationAccessBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    associate Item\n" + declaration);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -115,12 +115,12 @@ public class AssociatedSpecificationAccessBindingTest
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Export");
-        var definition = c.Binding.GetConformanceDefinition(api.BoundType!, contract.BoundSymbol!);
+        var definition = c.Binding.GetConformanceDefinition(api.TypeOf()!, contract.BoundSymbol!);
         Assert.NotNull(definition);
         Assert.Equal(valid, definition.IsVerified);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
             Assert.False(c.Emission.Validate(out _));
         }
 

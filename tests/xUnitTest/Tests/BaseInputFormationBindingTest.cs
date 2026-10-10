@@ -18,13 +18,13 @@ public class BaseInputFormationBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix + "contract C\n" + (reverseOrder ? child + middle : middle + child));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Type(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Type(c).StateOf());
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Type(restored).BindingState);
+        Assert.Equal(BindingState.Invalid, Type(restored).StateOf());
         Assert.False(Definition(restored).IsVerified);
     }
 
@@ -103,6 +103,6 @@ public class BaseInputFormationBindingTest
     private static BoundConformance Definition(Compilation c)
     {
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(Type(c).BoundType!, contract.BoundSymbol!));
+        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.BoundSymbol!));
     }
 }

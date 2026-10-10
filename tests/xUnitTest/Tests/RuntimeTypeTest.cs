@@ -25,10 +25,10 @@ public class RuntimeTypeTest
         Assert.True(test.IsNegated);
         var plan = test.BoundRuntimeTest!.Value;
         Assert.True(plan.RequiresSharedAccess);
-        Assert.Same(test.Left.BoundType, plan.OperandType);
-        Assert.Same(test.Right.BoundType, plan.TargetType);
+        Assert.Same(test.Left.TypeOf(), plan.OperandType);
+        Assert.Same(test.Right.TypeOf(), plan.TargetType);
         Assert.Null(test.BoundConstraint);
-        Assert.Same(BoundType.Boolean, test.BoundType);
+        Assert.Same(BoundType.Boolean, test.TypeOf());
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.False(flow.Nodes.ContainsKey(test.Right));
@@ -75,7 +75,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog, flag: bool) -> bool\n    " + body);
         AssertBound(c);
-        Assert.Same(BoundType.Boolean, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "b").BoundType);
+        Assert.Same(BoundType.Boolean, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "b").TypeOf());
         Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
@@ -161,7 +161,7 @@ public class RuntimeTypeTest
         Assert.False(c.Bind().IsComplete);
         var test = Test(c);
         Assert.Null(test.BoundRuntimeTest);
-        Assert.Equal(BoundTypeKind.AssociatedProjection, test.Right.BoundType!.Kind);
+        Assert.Equal(BoundTypeKind.AssociatedProjection, test.Right.TypeOf()!.Kind);
         Assert.Contains(c.Binding.Issues, x => x.Node == test && x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
@@ -209,7 +209,7 @@ public class RuntimeTypeTest
         AssertBound(c);
         var test = Test(c);
         Assert.NotNull(test.BoundRuntimeTest!.Value.OperandType.Origin);
-        Assert.Same(BoundType.Boolean, test.BoundType);
+        Assert.Same(BoundType.Boolean, test.TypeOf());
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.False(flow.Nodes.ContainsKey(test.Right));

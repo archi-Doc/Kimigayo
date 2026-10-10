@@ -27,7 +27,7 @@ public class DependentCompoundConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    " + clause + "\npublic func use(value: Target<" + argument + ">)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -64,7 +64,7 @@ public class DependentCompoundConstraintBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var target = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(target.BoundType!, contract.BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, contract.BoundSymbol!)?.IsVerified);
     }
 
     [Theory]
@@ -87,7 +87,7 @@ public class DependentCompoundConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is " + item + "\npublic struct Target<T>\n    " + clause + "\n    T is Origin\npublic func use(value: Target<Source>)\n    return");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").BindingState);
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target").StateOf());
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -96,7 +96,7 @@ public class DependentCompoundConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze("public struct Target<T>\n    [2 of T] is Copy\n    [2 of T] is not Copy");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single().BindingState);
+        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single().StateOf());
     }
 
     [Fact]
@@ -132,7 +132,7 @@ public class DependentCompoundConstraintBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         }
     }
 

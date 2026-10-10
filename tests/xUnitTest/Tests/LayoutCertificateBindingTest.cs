@@ -21,9 +21,9 @@ public class LayoutCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, marker.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, marker.BoundSymbol!)?.IsVerified ?? false);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, marker.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, marker.BoundSymbol!)?.IsVerified ?? false);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
         var tree = restored.Kotonoha;
@@ -82,6 +82,6 @@ public class LayoutCertificateBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.BoundType!, marker.BoundSymbol!));
+        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.TypeOf()!, marker.BoundSymbol!));
     }
 }

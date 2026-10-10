@@ -25,7 +25,7 @@ public class ConstructorTypeInferenceTest
         var plan = Assert.IsType<CallPlan>(call.BoundCall);
         Assert.True(plan.TypeArguments.IsEmpty);
         Assert.Equal(name, Assert.Single(plan.DeclaringType!.Components).Name);
-        Assert.Same(plan.DeclaringType, call.BoundType);
+        Assert.Same(plan.DeclaringType, call.TypeOf());
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
     }
 
@@ -95,7 +95,7 @@ public class ConstructorTypeInferenceTest
         var c = MinimalEmissionTest.Analyze(Box + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true });
-        Assert.Equal(BoundTypeKind.Closure, call.BoundType!.Components[0].Kind);
+        Assert.Equal(BoundTypeKind.Closure, call.TypeOf()!.Components[0].Kind);
     }
 
     [Theory]
@@ -132,8 +132,8 @@ public class ConstructorTypeInferenceTest
     {
         var c = MinimalEmissionTest.Analyze($"struct Grow<T>\n    public init() => ()\n    public func make() -> Grow<{argument}> => Grow<{argument}>.init()\nlet value = Grow<i32>.init()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundType?.Components.FirstOrDefault()?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Semantics);
-        Assert.Equal(argument == "raw/T" ? "Grow<raw/T>" : "Grow<(T, T)>", Binding.DiagnosticTypeName(call.BoundType!));
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.TypeOf()?.Components.FirstOrDefault()?.Kind is BoundTypeKind.Tuple or BoundTypeKind.Semantics);
+        Assert.Equal(argument == "raw/T" ? "Grow<raw/T>" : "Grow<(T, T)>", Binding.DiagnosticTypeName(call.TypeOf()!));
     }
 
     [Theory]

@@ -116,7 +116,7 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidLiteral);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -146,8 +146,8 @@ public class NumericConversionEmissionTest
         var c = MinimalEmissionTest.Analyze($"let w = {expression}");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
-        Assert.Same(BoundType.Primitives[type], conversion.BoundType);
-        Assert.Same(BoundType.Primitives[type], Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NumberLiteralKoto>()).BoundType);
+        Assert.Same(BoundType.Primitives[type], conversion.TypeOf());
+        Assert.Same(BoundType.Primitives[type], Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NumberLiteralKoto>()).TypeOf());
         Assert.Equal(ConversionBinding.Literal, conversion.ConversionBinding);
         Assert.Equal(Int128.Parse(payload, CultureInfo.InvariantCulture), Assert.NotNull(conversion.FoldedConstant));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
@@ -169,7 +169,7 @@ public class NumericConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidLiteral);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral);
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
         Assert.Equal("InvalidNumericLiteral_Kd", error.Code);

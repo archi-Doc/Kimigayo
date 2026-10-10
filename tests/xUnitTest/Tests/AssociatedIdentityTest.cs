@@ -64,7 +64,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "S");
         var reference = Assert.Single(s.ConstraintNodes).BoundConstraint!.Contract!;
         Assert.Equal(count, reference.Contract!.AssociatedTypes.Count);
-        Assert.Equal(count, c.Binding.GetConformance(s.BoundType!, reference)!.AssociatedTypes.Count);
+        Assert.Equal(count, c.Binding.GetConformance(s.TypeOf()!, reference)!.AssociatedTypes.Count);
     }
 
     [Theory]
@@ -117,7 +117,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var derived = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "Derived");
         var reference = Assert.Single(derived.ConstraintNodes).BoundConstraint!.Contract!;
-        Assert.All(c.Binding.GetConformanceDefinition(derived.BoundType!, reference)!.Paths, path =>
+        Assert.All(c.Binding.GetConformanceDefinition(derived.TypeOf()!, reference)!.Paths, path =>
         {
             Assert.True(path.IsVerified);
             Assert.Equal(count, path.AssociatedTypes.Count);
@@ -146,7 +146,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single();
-        var mapping = c.Binding.GetConformance(s.BoundType!, q.BoundSymbol!)!;
+        var mapping = c.Binding.GetConformance(s.TypeOf()!, q.BoundSymbol!)!;
         var old = mapping.AssociatedTypes.Keys.ToArray();
         Assert.Equal(2, old.Length);
         var donor = CompilationTestHelper.ParseSuccess("contract Q: C<i64>").Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single();

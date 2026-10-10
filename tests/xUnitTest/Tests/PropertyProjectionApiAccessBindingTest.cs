@@ -16,7 +16,7 @@ public class PropertyProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic struct Api\n    {declaration}");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var property = Property(c);
-        Assert.Equal(BindingFailure.Access, property.BindingFailure);
+        Assert.Equal(BindingFailure.Access, property.FailureOf());
         Assert.False(property.BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }
@@ -28,7 +28,7 @@ public class PropertyProjectionApiAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public computed item: i32\n        {accessors}");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Property(c).BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }
@@ -130,7 +130,7 @@ public class PropertyProjectionApiAccessBindingTest
         Check(c, false, inAccessor);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var required = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Required");
-        var conformance = c.Binding.GetConformanceDefinition(api.BoundType!, required.BoundSymbol!);
+        var conformance = c.Binding.GetConformanceDefinition(api.TypeOf()!, required.BoundSymbol!);
         Assert.NotNull(conformance);
         Assert.False(conformance.IsVerified);
     }
@@ -199,7 +199,7 @@ public class PropertyProjectionApiAccessBindingTest
         Assert.Equal(valid, Property(c).BoundSymbol!.Property!.IsVerified);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access &&
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access &&
                 (accessor ? x.Node is PropertyAccessorKoto : x.Node is PropertyKoto));
             Assert.False(c.Emission.Validate(out _));
         }

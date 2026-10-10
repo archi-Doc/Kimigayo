@@ -29,7 +29,7 @@ public class FunctionTypeConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public struct Target\n    " + clause);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single().BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single().StateOf());
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
         var builder = default(IndentedStringBuilder);
@@ -78,7 +78,7 @@ public class FunctionTypeConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("internal struct Hidden\npublic struct Target\n    " + clause);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
     }
 
     [Trait("Purpose", "Allocation")]

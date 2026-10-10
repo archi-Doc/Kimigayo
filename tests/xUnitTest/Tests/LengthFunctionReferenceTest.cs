@@ -39,7 +39,7 @@ public sealed class LengthFunctionReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a = keep<2, i32>\nlet b = keep<(1 + 1), i32>\nlet c = keep<3, i32>");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var items = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Where(static x => x.BoundType?.Kind == BoundTypeKind.FunctionItem).Select(static x => x.BoundType!).ToArray();
+        var items = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Where(static x => x.TypeOf()?.Kind == BoundTypeKind.FunctionItem).Select(static x => x.TypeOf()!).ToArray();
         Assert.Equal(3, items.Length);
         Assert.Same(items[0], items[1]);
         Assert.NotSame(items[0], items[2]);

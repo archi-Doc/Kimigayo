@@ -30,7 +30,7 @@ public class StaticElementUpdateTest
     {
         var c = MinimalEmissionTest.Analyze(ExchangeSource(first, second));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.ExclusiveBorrowRequired);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.ExclusiveBorrowRequired);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 

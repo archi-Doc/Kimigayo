@@ -15,13 +15,13 @@ public class CallableRegionInvalidationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "make");
-        var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single().BoundType!;
+        var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single().TypeOf()!;
         var before = c.Binding.FunctionItemContext(item)!;
         var donor = MinimalEmissionTest.Analyze(Source.Replace("-> i32", "-> i64", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "make").ReturnType!;
         Assert.True(KotoHelper.Replace(function, function.ReturnType!, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        var updated = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single().BoundType!;
+        var updated = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<GenericsKoto>().Single().TypeOf()!;
         var after = c.Binding.FunctionItemContext(updated)!;
         Assert.NotSame(before, after);
         Assert.Equal("i64", after.ReturnType!.Name);

@@ -26,16 +26,16 @@ public class ClosedTypeConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(Source(kind, clause));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).StateOf());
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
         }
 
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(restored).BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(restored).StateOf());
     }
 
     [Theory]
@@ -45,11 +45,11 @@ public class ClosedTypeConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic struct Source\npublic struct Target" + (generic ? "<T>" : string.Empty) + "\n    Source is Origin");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Target(c).StateOf());
         var source = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Origin");
-        Assert.Null(c.Binding.GetConformanceDefinition(source.BoundType!, contract.BoundSymbol!));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+        Assert.Null(c.Binding.GetConformanceDefinition(source.TypeOf()!, contract.BoundSymbol!));
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
     }
 
     [Theory]
@@ -61,7 +61,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var target = Target(c);
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Origin");
-        Assert.False(c.Binding.GetConformanceDefinition(target.BoundType!, contract.BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, contract.BoundSymbol!)?.IsVerified);
     }
 
     [Theory]
@@ -74,11 +74,11 @@ public class ClosedTypeConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\n" + (reverse ? target + source : source + target) + "let x = Target.read()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Target(c).StateOf());
         Assert.Null(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall);
         Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Origin");
-        Assert.False(c.Binding.GetConformanceDefinition(Target(c).BoundType!, contract.BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(Target(c).TypeOf()!, contract.BoundSymbol!)?.IsVerified);
     }
 
     [Theory]
@@ -90,7 +90,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         }
     }
 
@@ -103,8 +103,8 @@ public class ClosedTypeConstraintBindingTest
         Assert.False(c.Binding.Result.IsComplete);
 
         // The parser reports the prefix whose subject the function does not permit (SPEC 7.4); Binding's own restriction rests on that Error.
-        Assert.Contains(c.Binding.DerivedIssues, x => x.BindingFailure == BindingFailure.InvalidConstraint);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidConstraint);
+        Assert.Contains(c.Binding.DerivedIssues, x => x.FailureOf() == BindingFailure.InvalidConstraint);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidConstraint);
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
     }
 
@@ -120,7 +120,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Target(c).StateOf());
     }
 
     [Trait("Purpose", "Allocation")]

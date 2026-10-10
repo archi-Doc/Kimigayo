@@ -76,7 +76,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "S");
         var reference = Assert.Single(s.ConstraintNodes).BoundConstraint!.Contract!;
         Assert.Equal(count, reference.Contract!.Requirements.Count);
-        Assert.Equal(count, c.Binding.GetConformance(s.BoundType!, reference)!.Witnesses.Count);
+        Assert.Equal(count, c.Binding.GetConformance(s.TypeOf()!, reference)!.Witnesses.Count);
     }
 
     [Theory]
@@ -159,7 +159,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Declarations("P<i32>, P<i64>"));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q").BoundSymbol!;
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "S");
-        var mapping = c.Binding.GetConformance(s.BoundType!, q)!;
+        var mapping = c.Binding.GetConformance(s.TypeOf()!, q)!;
         var previous = mapping.Witnesses.ToArray();
         Assert.Equal(2, previous.Length);
         var declaration = (ContractKoto)q.Declaration;

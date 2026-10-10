@@ -21,7 +21,7 @@ public class TempProbeTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(File.ReadAllText(path));
         foreach (var node in KotoTree.Walk(c.Kotonoha.RootKoto))
         {
-            if (node.BoundType is { } type && (type.Origin is not null || type.CarriesOrigin) && node is not TypeKoto)
+            if (node.TypeOf() is { } type && (type.Origin is not null || type.CarriesOrigin) && node is not TypeKoto)
             {
                 output.WriteLine($"{node.Span.Start}: {node.GetType().Name} `{node}` : {Show(type)}");
             }

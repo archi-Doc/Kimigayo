@@ -142,7 +142,7 @@ public class KimiLibraryShapeTest
             }
 
             Assert.Same(symbol, symbol.Declaration.BoundSymbol);
-            Assert.Equal(BindingState.Resolved, symbol.Declaration.BindingState);
+            Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf());
         }
 
         // SPEC 22.1: the Weak family is cataloged but not yet declared in source.
@@ -372,7 +372,7 @@ public class KimiLibraryShapeTest
             Assert.Equal(parameter < 0 ? 0 : 1, payload.Length);
             if (parameter >= 0)
             {
-                Assert.Same(declaration.GenericParameterNodes[parameter].BoundType, payload[0].BoundType);
+                Assert.Same(declaration.GenericParameterNodes[parameter].TypeOf(), payload[0].TypeOf());
             }
 
             ordinal++;

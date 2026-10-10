@@ -107,12 +107,12 @@ public class ContainerNestingTest
         var c = CompilationTestHelper.Parse("struct Outer<T>\n    public struct Tag\nfunc a(x: Outer<i32>.Tag) => ()\nfunc b(x: Outer<i64>.Tag) => ()\nfunc same(x: Outer<i32>.Tag) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var functions = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().ToArray();
-        var first = functions[0].Parameters[0].Type.BoundType!;
-        Assert.Same(first.Symbol, functions[1].Parameters[0].Type.BoundType!.Symbol);
-        Assert.NotSame(first, functions[1].Parameters[0].Type.BoundType);
-        Assert.Same(first, functions[2].Parameters[0].Type.BoundType);
+        var first = functions[0].Parameters[0].Type.TypeOf()!;
+        Assert.Same(first.Symbol, functions[1].Parameters[0].Type.TypeOf()!.Symbol);
+        Assert.NotSame(first, functions[1].Parameters[0].Type.TypeOf());
+        Assert.Same(first, functions[2].Parameters[0].Type.TypeOf());
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Same(first, functions[0].Parameters[0].Type.BoundType);
+        Assert.Same(first, functions[0].Parameters[0].Type.TypeOf());
     }
 
     [Fact]
@@ -137,7 +137,7 @@ public class ContainerNestingTest
         var c = CompilationTestHelper.Parse("open struct Base<T>\n    public struct Node\nstruct Derived: Base<i32>\nfunc f(a: Base<i32>.Node, b: Derived.Node) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
-        Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
+        Assert.Same(f.Parameters[0].Type.TypeOf(), f.Parameters[1].Type.TypeOf());
     }
 
     [Fact]
@@ -146,7 +146,7 @@ public class ContainerNestingTest
         var c = CompilationTestHelper.Parse("struct Outer<T>\n    public struct Tag\nfunc f(x: Outer<ref/i32 during a>.Tag) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>());
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]

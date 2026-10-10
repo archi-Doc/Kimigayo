@@ -82,7 +82,7 @@ public class GenericAdaptationTest
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => $abort(\"stop\")\nfunc run<s/T>() -> Never\n    s is object\n    return stop()@{target}\n()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
-        Assert.Same(BoundType.Never, conversion.BoundType);
+        Assert.Same(BoundType.Never, conversion.TypeOf());
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
     }
@@ -117,7 +117,7 @@ public class GenericAdaptationTest
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.Adaptation is not null);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "inspect");
-        var type = body.Resolve(conversion.BoundType, InterpretationContext.Root)!;
+        var type = body.Resolve(conversion.TypeOf(), InterpretationContext.Root)!;
         Assert.Equal(SemanticsKind.Ref, type.Semantics);
         Assert.Equal(SemanticsKind.Ref, type.Components[0].Semantics);
         NativeAllocationAudit.WriteFixture("GenericAdaptationMixedSlot", Source, 1, 1, 20);

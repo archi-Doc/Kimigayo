@@ -28,7 +28,7 @@ public class ContainerFragmentBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Duplicate);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Duplicate);
     }
 
     [Theory]
@@ -100,7 +100,7 @@ public class ContainerFragmentBindingTest
         Assert.False(c.Bind().IsComplete);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Contains(restored.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Duplicate);
+        Assert.Contains(restored.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Duplicate);
     }
 
     [Trait("Purpose", "Allocation")]

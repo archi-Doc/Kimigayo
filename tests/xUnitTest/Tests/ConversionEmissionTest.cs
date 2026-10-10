@@ -114,7 +114,7 @@ public class ConversionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure.ToString() == failure);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf().ToString() == failure);
         if (failure == "Unsupported")
         {
             Assert.Equal(0, c.Binding.Result.InvalidCount);
@@ -196,8 +196,8 @@ public class ConversionEmissionTest
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(3, nodes.Length);
         Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
-        Assert.Same(BoundType.I32, nodes[0].Left.BoundType);
-        Assert.Same(BoundType.I32, nodes[1].Left.BoundType);
+        Assert.Same(BoundType.I32, nodes[0].Left.TypeOf());
+        Assert.Same(BoundType.I32, nodes[1].Left.TypeOf());
         Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionBinding);
         foreach (var node in nodes)
         {

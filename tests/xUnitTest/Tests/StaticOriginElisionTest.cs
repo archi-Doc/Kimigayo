@@ -23,10 +23,10 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         var source = declarations + "group Values\n    public let view: " + type + " = make()\n    func make() -> " + type + " => $abort(\"unused\")\nlet present = 1";
         var c = MinimalEmissionTest.Analyze(source);
         var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.BoundSymbol?.Name == "view");
-        Assert.NotNull(field.BoundType);
-        var origin = field.BoundType!.Origin ?? Assert.Single(field.BoundType.OriginArguments);
+        Assert.NotNull(field.TypeOf());
+        var origin = field.TypeOf()!.Origin ?? Assert.Single(field.TypeOf()!.OriginArguments);
         Assert.Same(BoundOrigin.Static, origin);
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(field.BoundType, field));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(field.TypeOf()!, field));
         c.Binding.ReportDiagnostics();
         var record = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal("Unsupported_Kd", record.Code);
@@ -39,7 +39,7 @@ public class StaticOriginElisionTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.BoundSymbol?.Name == "value");
-        Assert.Same(BoundOrigin.Static, Assert.Single(field.BoundType!.OriginArguments));
+        Assert.Same(BoundOrigin.Static, Assert.Single(field.TypeOf()!.OriginArguments));
     }
 
     [Theory]

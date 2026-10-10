@@ -63,7 +63,7 @@ public class OriginFragmentBindingTest
             var c = Create();
             AddFragments(c, first, second, reverse);
             Assert.False(c.Bind().IsComplete);
-            Assert.Equal(BindingFailure.Duplicate, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BindingFailure);
+            Assert.Equal(BindingFailure.Duplicate, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").FailureOf());
             Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
         }
     }

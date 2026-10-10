@@ -26,7 +26,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
         var property = Property(c);
         Assert.Null(property.Type);
         Assert.False(property.IsVerified);
-        Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(static x => x.IdentifierName == "storage"), static x => Assert.Null(x.BoundType));
+        Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(static x => x.IdentifierName == "storage"), static x => Assert.Null(x.TypeOf()));
         this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         Assert.False(c.Bind().IsComplete);
@@ -49,7 +49,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("let item: Missing = 7\nlet next = item\nlet wrong: i32 = true");
         var variable = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "item");
-        Assert.Null(variable.BoundType);
+        Assert.Null(variable.TypeOf());
         this.AssertRecords(c, ["UnresolvedBinding_Kd", "TypeMismatch_Kd"]);
     }
 

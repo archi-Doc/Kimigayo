@@ -18,9 +18,9 @@ public class DeclarationContextCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Invalid").NestedContainers.Single();
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class DeclarationContextCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Invalid").NestedContainers.Single();
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
     }
 
     [Fact]
@@ -50,10 +50,10 @@ public class DeclarationContextCertificateBindingTest
     {
         var c = MinimalEmissionTest.Analyze("contract Marker\n#Unknown\ngroup Invalid\n    struct Bad\n        Self is Marker\n    func stillChecked() -> i32 => true\ngroup Valid\n    struct Good\n        Self is Marker\n    let value: i32 = 1");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.TypeMismatch);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.TypeMismatch);
         var valid = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Valid");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.True(c.Binding.GetConformanceDefinition(valid.NestedContainers.Single().BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.True(c.Binding.GetConformanceDefinition(valid.NestedContainers.Single().TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         Assert.True(Assert.IsType<PropertyKoto>(valid.Members.Single()).BoundSymbol!.Property!.IsVerified);
     }
 
@@ -64,7 +64,7 @@ public class DeclarationContextCertificateBindingTest
         var outer = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Outer");
         var inner = outer.NestedContainers.Single();
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        var definition = c.Binding.GetConformanceDefinition(inner.NestedContainers.Single().BoundType!, contract.BoundSymbol!)!;
+        var definition = c.Binding.GetConformanceDefinition(inner.NestedContainers.Single().TypeOf()!, contract.BoundSymbol!)!;
         var property = Assert.IsType<PropertyKoto>(inner.Members.Single()).BoundSymbol!.Property!;
         Assert.False(definition.IsVerified);
         Assert.False(property.IsVerified);
@@ -87,7 +87,7 @@ public class DeclarationContextCertificateBindingTest
         Assert.False(restored.Bind().IsComplete);
         var outer = restored.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Outer");
         var contract = restored.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.False(restored.Binding.GetConformanceDefinition(outer.NestedContainers.Single().BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(restored.Binding.GetConformanceDefinition(outer.NestedContainers.Single().TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         Assert.False(Assert.IsType<PropertyKoto>(outer.Members.Single()).BoundSymbol!.Property!.IsVerified);
     }
 

@@ -43,8 +43,8 @@ public class FunctionParameterIdentityBindingTest
         var signatures = MinimalEmissionTest.Analyze("group G\n    func f(a: " + left + ", b: " + right + ") => ()");
         Assert.True(signatures.Binding.Result.IsComplete, MinimalEmissionTest.Describe(signatures, null));
         var function = signatures.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single();
-        var a = function.Parameters[0].Type.BoundType!;
-        var b = function.Parameters[1].Type.BoundType!;
+        var a = function.Parameters[0].Type.TypeOf()!;
+        var b = function.Parameters[1].Type.TypeOf()!;
         Assert.Equal(same, Binding.SameType(a, b));
         Assert.Equal(same, Binding.FitsType(a, b));
         Assert.Equal(same, Binding.FitsType(b, a));
@@ -74,7 +74,7 @@ public class FunctionParameterIdentityBindingTest
         var c = MinimalEmissionTest.Analyze("func f(x: " + left + " -> bool) => ()\nfunc f(x: " + right + " -> bool) => ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(!duplicate, c.Binding.Result.IsComplete);
-        Assert.Equal(duplicate, c.Binding.Issues.Any(x => x.Node.BindingFailure == BindingFailure.Duplicate));
+        Assert.Equal(duplicate, c.Binding.Issues.Any(x => x.Node.FailureOf() == BindingFailure.Duplicate));
     }
 
     [Theory]

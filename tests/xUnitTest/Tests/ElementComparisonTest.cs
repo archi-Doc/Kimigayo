@@ -77,7 +77,7 @@ public class ElementComparisonTest
         Assert.True(c.Binding.TryGetAdaptation(node, out var adaptation));
         Assert.Equal(ExpectedAdaptationKind.SharedBorrow, adaptation.Kind);
         Assert.True(ReferenceTypes.IsString(adaptation.Type));
-        Assert.Equal(BoundType.String, node.BoundType);
+        Assert.Equal(BoundType.String, node.TypeOf());
     }
 
     [Fact]

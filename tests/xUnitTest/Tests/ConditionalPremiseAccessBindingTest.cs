@@ -17,7 +17,7 @@ public class ConditionalPremiseAccessBindingTest
         var c = MinimalEmissionTest.Analyze(Source("public", "public", "internal", "public", requirement));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
@@ -54,7 +54,7 @@ public class ConditionalPremiseAccessBindingTest
         var source = Source("public", "internal", "internal", "public", requirement).Replace("internal contract C", "public contract Parent\ninternal contract C: Parent", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Definition(c).IsVerified);
         Assert.False(Definition(c, "Parent").IsVerified);
     }
@@ -66,7 +66,7 @@ public class ConditionalPremiseAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze("internal struct Restricted\n" + Source("public", "public", "public", "public", requirement));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(Definition(c).IsVerified);
     }
 
@@ -92,7 +92,7 @@ public class ConditionalPremiseAccessBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
         Assert.True(Definition(c, "D").IsVerified);
-        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BindingState);
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").StateOf());
     }
 
     [Theory]
@@ -140,5 +140,5 @@ public class ConditionalPremiseAccessBindingTest
         => Assert.IsType<IsKoto>(Assert.IsType<SyntaxFormKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<SyntaxFormKoto>().Single().Operands[1]).Operands[0]);
 
     private static BoundConformance Definition(Compilation c, string contractName = "C")
-        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BoundType!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).BoundSymbol!)!;
+        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).BoundSymbol!)!;
 }

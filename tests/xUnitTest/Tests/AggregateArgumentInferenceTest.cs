@@ -36,7 +36,7 @@ public class AggregateArgumentInferenceTest
         var c = MinimalEmissionTest.Analyze(source);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingFailure.Ambiguous, call.BindingFailure);
+        Assert.Equal(BindingFailure.Ambiguous, call.FailureOf());
         Assert.Null(call.BoundCall);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
@@ -67,7 +67,7 @@ public class AggregateArgumentInferenceTest
         var c = MinimalEmissionTest.Analyze(source);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingFailure.NoApplicableCandidate, call.BindingFailure);
+        Assert.Equal(BindingFailure.NoApplicableCandidate, call.FailureOf());
         Assert.Null(call.BoundCall);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }

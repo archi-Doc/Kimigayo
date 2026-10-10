@@ -34,7 +34,7 @@ public class BorrowAcquisitionTest
     public void RejectsInvalidCaptureEntries(string source, string failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure.ToString() == failure);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf().ToString() == failure);
     }
 
     // DIAGNOSTICS.md §10: a rejected entry is located at the entry and names the initialization it stands for; an omitted

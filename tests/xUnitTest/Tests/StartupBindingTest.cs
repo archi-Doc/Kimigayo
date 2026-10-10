@@ -178,7 +178,7 @@ public class StartupBindingTest
         Assert.Equal("()", call.ReturnType.Name);
         Assert.Equal(new[] { 0 }, call.ArgumentToParameter.ToArray());
         var function = Assert.IsType<FunctionKoto>(call.Target.Declaration);
-        var parameter = Assert.Single(function.Parameters).Type.BoundType!; // SPEC 22.4: writeLine(text: ref/string) borrows its argument.
+        var parameter = Assert.Single(function.Parameters).Type.TypeOf()!; // SPEC 22.4: writeLine(text: ref/string) borrows its argument.
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (parameter.Kind, parameter.Semantics));
         Assert.Equal("string", Assert.Single(parameter.Components).Name);
         Assert.Null(function.Body);
@@ -347,7 +347,7 @@ public class StartupBindingTest
         // obligation. Console calls must still introduce no source obligations.
         Assert.DoesNotContain(c.Binding.Obligations, x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha));
         var flow = c.AnalyzeControlFlow();
-        Assert.True(flow.PendingBinding.Count == 0, string.Join("\n", flow.PendingBinding.Select(x => $"{x.Akind}: {x}, {x.BindingState}, {x.BoundType}")));
+        Assert.True(flow.PendingBinding.Count == 0, string.Join("\n", flow.PendingBinding.Select(x => $"{x.Akind}: {x}, {x.StateOf()}, {x.TypeOf()}")));
         Assert.Empty(flow.Issues);
     }
 

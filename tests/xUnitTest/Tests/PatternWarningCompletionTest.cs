@@ -15,7 +15,7 @@ public class PatternWarningCompletionTest
     {
         var c = MinimalEmissionTest.Analyze(Source("internal", first, second));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.Empty(c.Binding.PatternWarnings);
         Assert.False(c.Bind().IsComplete);
         Assert.Empty(c.Binding.PatternWarnings);
@@ -54,7 +54,7 @@ public class PatternWarningCompletionTest
     {
         var c = MinimalEmissionTest.Analyze("group Consumer\n    func inspect(value: bool) => match value\n        true => ()\n        true => ()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
         Assert.Single(c.Binding.PatternWarnings);
     }
 

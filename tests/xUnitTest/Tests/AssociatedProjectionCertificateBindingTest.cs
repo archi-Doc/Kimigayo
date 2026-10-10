@@ -67,7 +67,7 @@ public class AssociatedProjectionCertificateBindingTest
         Assert.All(Definition(c).Paths, path => Assert.False(path.IsVerified));
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "D");
-        Assert.All(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.Paths, path => Assert.True(path.IsVerified));
+        Assert.All(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.Paths, path => Assert.True(path.IsVerified));
     }
 
     [Theory]
@@ -132,6 +132,6 @@ public class AssociatedProjectionCertificateBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
     }
 }

@@ -64,7 +64,7 @@ public class TestAttributeCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Outer").NestedContainers.Single();
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
     }
 
     [Fact]
@@ -92,6 +92,6 @@ public class TestAttributeCertificateBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
     }
 }

@@ -107,7 +107,7 @@ public class CurrentControlFlowTest
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         var results = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FieldKoto>().ToArray();
-        Assert.All(results, field => Assert.Equal("i32", field.BoundType?.Name));
+        Assert.All(results, field => Assert.Equal("i32", field.TypeOf()?.Name));
         Assert.All(results, field => Assert.False(flow.Nodes[field.InitializerKoto!].CanCompleteNormally));
     }
 

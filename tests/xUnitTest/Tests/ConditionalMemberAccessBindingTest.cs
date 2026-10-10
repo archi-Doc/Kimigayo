@@ -18,7 +18,7 @@ public class ConditionalMemberAccessBindingTest
         var c = MinimalEmissionTest.Analyze(Source(property, requirement, "public"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         AssertMember(c, property, false);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
@@ -94,8 +94,8 @@ public class ConditionalMemberAccessBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         AssertMember(c, property, false);
         Assert.True(Definition(c).IsVerified);
-        Assert.Equal(BindingState.Resolved, Block(c).Items.OfType<FunctionKoto>().Single(x => x.Name == "sibling").BindingState);
-        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<FunctionKoto>().Single().BindingState);
+        Assert.Equal(BindingState.Resolved, Block(c).Items.OfType<FunctionKoto>().Single(x => x.Name == "sibling").StateOf());
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<FunctionKoto>().Single().StateOf());
     }
 
     [Theory]
@@ -145,7 +145,7 @@ public class ConditionalMemberAccessBindingTest
     private static void AssertMember(Compilation c, bool property, bool valid)
     {
         var member = Member(c);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, member.BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, member.StateOf());
         if (property)
         {
             Assert.Equal(valid, Assert.IsType<PropertyKoto>(member).BoundSymbol!.Property!.IsVerified);
@@ -159,5 +159,5 @@ public class ConditionalMemberAccessBindingTest
         => Block(c).Items.Single(x => x.BoundSymbol?.Name == "value");
 
     private static BoundConformance Definition(Compilation c)
-        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").BoundType!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C").BoundSymbol!)!;
+        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C").BoundSymbol!)!;
 }

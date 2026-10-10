@@ -76,7 +76,7 @@ public class ArrayInferenceEmissionTest
         var array = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
         array.ElementType.BoundType = BoundType.String;
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(BoundType.Primitives["u8"], array.ElementType.BoundType);
+        Assert.Same(BoundType.Primitives["u8"], array.ElementType.TypeOf());
         c.Binding.CheckStartup(OutputKind.Application);
         c.Ownership.Analyze();
         using var rebound = new StringWriter();

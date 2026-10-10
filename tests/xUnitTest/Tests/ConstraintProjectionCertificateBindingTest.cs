@@ -143,12 +143,12 @@ public class ConstraintProjectionCertificateBindingTest
         if (form == 0)
         {
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single();
-            Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, function.BindingState);
+            Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, function.StateOf());
             return;
         }
 
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.Equal(valid, c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.Equal(valid, c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
     }
 }

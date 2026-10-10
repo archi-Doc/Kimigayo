@@ -119,7 +119,7 @@ public class AssociatedInferenceTest
     {
         var c = Bound("struct S\n    Self is Iterator\n    public func next(self: uniq/Self) -> Option<i32> => Option<i32>.None");
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-        var definition = c.Binding.GetConformanceDefinition(type.BoundType!, c.Library.Iterator)!;
+        var definition = c.Binding.GetConformanceDefinition(type.TypeOf()!, c.Library.Iterator)!;
         Assert.Contains(definition.AssociatedTypes, x => x.Key.Symbol.Name == "Item" && x.Value.Name == "i32");
     }
 
@@ -134,7 +134,7 @@ public class AssociatedInferenceTest
         var c = Bound(source);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = type.NestedContainers.Single(x => x.Name == "C");
-        var bound = Assert.Single(c.Binding.GetConformanceDefinition(type.BoundType!, Assert.Single(type.ConstraintNodes).BoundConstraint!.Contract!)!.AssociatedTypes).Value;
+        var bound = Assert.Single(c.Binding.GetConformanceDefinition(type.TypeOf()!, Assert.Single(type.ConstraintNodes).BoundConstraint!.Contract!)!.AssociatedTypes).Value;
         Assert.Equal(SemanticsKind.Ref, bound.Semantics);
         Assert.Same(type, bound.Origin!.Binder);
     }
@@ -396,7 +396,7 @@ public class AssociatedInferenceTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName);
-        return c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));

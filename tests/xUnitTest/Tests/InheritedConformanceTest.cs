@@ -127,7 +127,7 @@ public class InheritedConformanceTest
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(!requireConformance, c.Bind().IsComplete);
         var derived = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "Derived");
-        Assert.NotEqual(BindingState.Invalid, derived.BindingState);
+        Assert.NotEqual(BindingState.Invalid, derived.StateOf());
         if (requireConformance)
         {
             var result = DiagnosticCorpus.Check(source);

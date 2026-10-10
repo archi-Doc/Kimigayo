@@ -82,7 +82,7 @@ public class VirtualCallSelectionTest
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride && x.BoundSymbol!.Scope.Owner is StructKoto { Name: "C" });
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "use");
         var outer = new CallPlan();
-        outer.Set(implementation.BoundSymbol!, BoundType.I32, null, [], [], declaringType: use.Parameters[0].Type.BoundType!.Components[0]);
+        outer.Set(implementation.BoundSymbol!, BoundType.I32, null, [], [], declaringType: use.Parameters[0].Type.TypeOf()!.Components[0]);
         Assert.NotNull(syntax.CallStorage);
         var concrete = c.Binding.InstantiateForwardedCall(syntax.CallStorage, outer)!;
         Assert.Same(BoundType.I32, concrete.VirtualSlot.DeclaringType.Components[0]);
@@ -98,7 +98,7 @@ public class VirtualCallSelectionTest
         var c = MinimalEmissionTest.Analyze(Types.Replace("n: i32) -> i32 => n + 10", "other: i32) -> i32 => other + 10", StringComparison.Ordinal) + "()");
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.Method is MemberAccessKoto { Left: BaseReferenceKoto }).CallStorage!;
         Assert.Equal("B", call.VirtualImplementingType!.Symbol!.Name);
-        Assert.Equal(BindingFailure.OverrideContractMismatch, call.VirtualImplementation!.BindingFailure);
+        Assert.Equal(BindingFailure.OverrideContractMismatch, call.VirtualImplementation!.FailureOf());
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 

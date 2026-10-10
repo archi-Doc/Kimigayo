@@ -400,7 +400,7 @@ public class PairFollowTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var body = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "write");
         var write = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "write").BoundCall!;
-        var named = KotoTree.Walk(body).Select(x => x.BoundType).OfType<BoundType>().Where(NamesOuterOrigin).Distinct().ToArray();
+        var named = KotoTree.Walk(body).Select(x => x.TypeOf()).OfType<BoundType>().Where(NamesOuterOrigin).Distinct().ToArray();
         Assert.Contains(named, x => x.Origin is { Kind: OriginKind.Intersection } origin && origin.Operands.Any(IsOuterOrigin));
         Assert.Contains(named, x => x.OriginArguments.Any(origin => origin.Operands.Prepend(origin).Any(IsOuterOrigin)));
         Assert.All(named, x => Assert.False(NamesOuterOrigin(c.Binding.InstantiateStorageType(x, write)!)));

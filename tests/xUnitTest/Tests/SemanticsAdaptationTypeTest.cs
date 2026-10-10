@@ -177,7 +177,7 @@ public class SemanticsAdaptationTypeTest
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
         var call = new CallPlan();
         call.Set(callee.BoundSymbol!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
-        var substituted = c.Binding.InstantiateStorageType(callee.Parameters[0].Type.BoundType!, call);
+        var substituted = c.Binding.InstantiateStorageType(callee.Parameters[0].Type.TypeOf()!, call);
         Assert.NotNull(substituted);
         ReadOnlySpan<PairCase> owner = [new(pair, SemanticsKind.Owner)];
         ReadOnlySpan<PairCase> borrow = [new(pair, SemanticsKind.ObjRef)];
@@ -195,7 +195,7 @@ public class SemanticsAdaptationTypeTest
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
         var call = new CallPlan();
         call.Set(callee.BoundSymbol!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
-        var original = callee.Parameters[0].Type.BoundType!;
+        var original = callee.Parameters[0].Type.TypeOf()!;
         var written = new BoundType(original.Name, original.Kind, original.Symbol, original.Semantics, origin: BoundOrigin.Static);
         var substituted = c.Binding.InstantiateStorageType(written, call);
         Assert.NotNull(substituted);

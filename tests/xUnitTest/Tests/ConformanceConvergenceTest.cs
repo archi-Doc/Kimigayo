@@ -111,7 +111,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         var derived = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "Derived");
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
         var p = ((IsKoto)probe.TypeConstraints[0]).BoundConstraint!.Contract!;
-        var mapping = c.Binding.GetConformance(derived.BoundType!, p)!;
+        var mapping = c.Binding.GetConformance(derived.TypeOf()!, p)!;
         Assert.Equal(2, Assert.Single(mapping.Paths).InheritedSourceCount);
         for (var i = 0; i < 4; i++)
         {
@@ -120,7 +120,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
             Assert.True(KotoHelper.Replace(derived, derived.Bases[0], donor.Bases[0]));
             Assert.False(mapping.IsVerified);
             Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-            Assert.Same(mapping, c.Binding.GetConformance(derived.BoundType!, p));
+            Assert.Same(mapping, c.Binding.GetConformance(derived.TypeOf()!, p));
             Assert.Single(mapping.Witnesses);
             Assert.Equal(argument == "i32" ? 2 : 1, Assert.Single(mapping.Paths).InheritedSourceCount);
         }

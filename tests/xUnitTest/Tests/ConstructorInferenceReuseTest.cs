@@ -34,7 +34,7 @@ public class ConstructorInferenceReuseTest
         static string Selected(Compilation c)
         {
             var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.BoundCall?.DeclaringType?.Symbol?.Name == "Box");
-            return call.BoundCall!.Target.Declaration.ToString() + Binding.DiagnosticTypeName(call.BoundType!);
+            return call.BoundCall!.Target.Declaration.ToString() + Binding.DiagnosticTypeName(call.TypeOf()!);
         }
     }
 

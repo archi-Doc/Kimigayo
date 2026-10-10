@@ -30,7 +30,7 @@ public class UserIterationTest
         var c = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init()\n    let value: i32 = item");
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(BoundType.I32, loop.Bindings[0].BoundType);
+        Assert.Equal(BoundType.I32, loop.Bindings[0].TypeOf());
     }
 
     [Fact]
@@ -42,7 +42,7 @@ public class UserIterationTest
         var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.True(KotoHelper.Replace(loop, loop.Iterable, changed.Iterable));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Same(BoundType.Boolean, loop.Bindings[0].BoundType);
+        Assert.Same(BoundType.Boolean, loop.Bindings[0].TypeOf());
         Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.EntryCall!.Method).Left);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

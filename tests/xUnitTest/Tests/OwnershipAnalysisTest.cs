@@ -323,7 +323,7 @@ public class OwnershipAnalysisTest
         => CompilationTestHelper.BindSuccess(source);
 
     private static string Describe(Compilation c)
-        => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source} {x.Source.GetType().Name} {x.Source.BoundType?.Kind}")) +
+        => string.Join("\n", c.Ownership.Issues.Select(x => $"{x.Failure}: {x.Source} {x.Source.GetType().Name} {x.Source.TypeOf()?.Kind}")) +
             string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             string.Join("\n", c.Ownership.ControlFlow?.PendingBinding.Select(x => $"pending: {x}") ?? []);
 

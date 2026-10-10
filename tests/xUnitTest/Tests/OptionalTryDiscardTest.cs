@@ -90,7 +90,7 @@ public class OptionalTryDiscardTest
         var c = MinimalEmissionTest.Analyze($"func first(value: {abbreviated}) => ()\nfunc second(value: {complete}) => ()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         var functions = Descendants(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(x => !x.IsGenerated).ToArray();
-        Assert.Same(functions[0].Parameters[0].Type.BoundType, functions[1].Parameters[0].Type.BoundType);
+        Assert.Same(functions[0].Parameters[0].Type.TypeOf(), functions[1].Parameters[0].Type.TypeOf());
     }
 
     [Theory]
@@ -283,7 +283,7 @@ public class OptionalTryDiscardTest
         var propagation = Assert.Single(Descendants(c.Kotonoha.RootKoto).OfType<TryKoto>());
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
-        Assert.Same(BoundType.I32, propagation.BoundType);
+        Assert.Same(BoundType.I32, propagation.TypeOf());
     }
 
     [Fact]
@@ -331,7 +331,7 @@ public class OptionalTryDiscardTest
     }
 
     private static string Describe(Compilation c)
-        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.BindingFailure + ":" + x.Node)) +
+        => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Node.GetType().Name + ":" + x.Node.FailureOf() + ":" + x.Node)) +
             "\n" + string.Join("\n", TestDiagnostics.Of(c, "Hello.kimi").Select(x => x.Message)) +
             "\n" + string.Join("\n", c.Ownership.ControlFlow?.Issues.Select(x => x.Message) ?? []) +
             "\nPending: " + string.Join(", ", c.Ownership.ControlFlow?.PendingBinding.Select(x => x.ToString()) ?? []);

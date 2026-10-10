@@ -63,7 +63,7 @@ public class DictionaryIndexableTest
         Assert.True(KotoHelper.Replace(index, index.Right, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(replacement, c.Binding.IndexerCall(index, false)!.ArgumentNodes[0]);
-        Assert.Equal(BindingState.Resolved, replacement.BindingState);
+        Assert.Equal(BindingState.Resolved, replacement.StateOf());
     }
 
     [Fact]

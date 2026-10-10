@@ -47,11 +47,11 @@ public class InferredPropertyAccessBindingTest
         var original = property.InitializerKoto!;
         var replacement = Property(Check("public group Api\n    public let item = true", true)).InitializerKoto!;
         Assert.True(KotoHelper.Replace(property, original, replacement));
-        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null) + string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.BindingFailure}:{x.Node}")));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null) + string.Join(", ", c.Binding.Issues.Select(x => $"{x.Node.Akind}:{x.Node.FailureOf()}:{x.Node}")));
         Assert.True(property.BoundSymbol!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.Access, property.BindingFailure);
+        Assert.Equal(BindingFailure.Access, property.FailureOf());
         Assert.False(property.BoundSymbol!.Property!.IsVerified);
     }
 
@@ -86,7 +86,7 @@ public class InferredPropertyAccessBindingTest
         Assert.Equal(valid, property.BoundSymbol!.Property!.IsVerified);
         if (!valid)
         {
-            Assert.Equal(BindingFailure.Access, property.BindingFailure);
+            Assert.Equal(BindingFailure.Access, property.FailureOf());
             Assert.False(c.Emission.Validate(out _));
         }
 

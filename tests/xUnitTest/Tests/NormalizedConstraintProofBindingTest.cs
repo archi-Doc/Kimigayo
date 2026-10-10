@@ -110,7 +110,7 @@ public class NormalizedConstraintProofBindingTest
         var context = Function(c, "context");
         var query = Function(c, "query");
         var proposition = ((IsKoto)query.TypeConstraints[0]).BoundConstraint!;
-        Assert.Equal(expected, c.Binding.Prove(proposition, query, [context.Parameters[0].Type.BoundType], context));
+        Assert.Equal(expected, c.Binding.Prove(proposition, query, [context.Parameters[0].Type.TypeOf()], context));
     }
 
     private static FunctionKoto Function(Compilation c, string name)

@@ -28,7 +28,7 @@ public class OriginSchemaEditTest
         Assert.Equal(after, current.Origin.Name);
         Assert.Equal(Assert.Single(donor.BoundSymbol!.Schema!.Origins).Span, current.Span);
         Assert.Same(function, current.Origin.Binder);
-        Assert.Same(current.Origin, function.ReturnType!.BoundType!.Origin);
+        Assert.Same(current.Origin, function.ReturnType!.TypeOf()!.Origin);
         Assert.Equal(before, previous.Name);
         Assert.Equal(before, previous.Origin.Name);
         Assert.True(c.Bind().IsComplete);

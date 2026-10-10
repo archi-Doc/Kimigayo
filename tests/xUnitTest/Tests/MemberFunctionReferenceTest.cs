@@ -88,7 +88,7 @@ public class MemberFunctionReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Box + "let pair = Box<i32>.pair<bool>");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.GenericsKoto>().Single(x => x.BoundType?.Kind == BoundTypeKind.FunctionItem).BoundType!;
+        var item = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.GenericsKoto>().Single(x => x.TypeOf()?.Kind == BoundTypeKind.FunctionItem).TypeOf()!;
         Assert.Equal(2, item.Components.Count);
         Assert.Same(BoundType.Boolean, item.Components[0]);
         Assert.Equal("Box", item.Components[1].Name);

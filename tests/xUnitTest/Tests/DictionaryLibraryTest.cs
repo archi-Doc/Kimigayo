@@ -263,7 +263,7 @@ public class DictionaryLibraryTest
     public void PrivateHandleUsesTheExpectedPlatformLayout()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
-        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.BoundType!;
+        var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!;
         var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool().Get(pointer.Components[0]));
         Assert.True(layout.CLayout);
         Assert.Equal(56, layout.Value.Layout.Size);

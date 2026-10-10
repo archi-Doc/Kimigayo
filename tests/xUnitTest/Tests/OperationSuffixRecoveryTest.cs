@@ -37,7 +37,7 @@ public class OperationSuffixRecoveryTest(ITestOutputHelper output)
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.IsType<ErrorKoto>(conversion.Right);
-        Assert.Null(conversion.Right.BoundType);
+        Assert.Null(conversion.Right.TypeOf());
         ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         c.Bind();
         c.Binding.ReportDiagnostics();

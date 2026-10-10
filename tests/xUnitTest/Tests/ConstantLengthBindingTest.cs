@@ -25,7 +25,7 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
-        Assert.Equal(expected, array.BoundType!.Length);
+        Assert.Equal(expected, array.TypeOf()!.Length);
     }
 
     [Theory]
@@ -51,7 +51,7 @@ public class ConstantLengthBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, issue => issue.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+        Assert.Contains(c.Binding.Issues, issue => issue.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
@@ -93,7 +93,7 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze("group Dimensions\n    private let Width: isize = 4\n    public func f<length N>(row: [(N + Width) of u8]) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
-        var expression = array.BoundType!.LengthExpression!;
+        var expression = array.TypeOf()!.LengthExpression!;
         Assert.Equal(KotoKind.Plus, expression.Operation);
         var constant = expression.Left!.IsConstant ? expression.Left : expression.Right!;
         Assert.Equal(4, constant.Value);
@@ -126,7 +126,7 @@ public class ConstantLengthBindingTest
         {
             var invalid = MinimalEmissionTest.Analyze(declaration + $"let row: [({expression}) of u8]");
             Assert.False(invalid.Binding.Result.IsComplete);
-            Assert.Contains(invalid.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidTypeFormation);
+            Assert.Contains(invalid.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidTypeFormation);
         }
     }
 
@@ -136,13 +136,13 @@ public class ConstantLengthBindingTest
         var c = MinimalEmissionTest.Analyze("let N: isize = 2\nlet row: [N of u8]");
         var variable = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "N");
         var array = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FixedArrayTypeKoto>());
-        var oldType = array.BoundType;
+        var oldType = array.TypeOf();
         var replacementSource = MinimalEmissionTest.Analyze("3");
         var replacement = Assert.Single(KotoTree.Walk(replacementSource.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
         Assert.True(KotoHelper.Replace(variable, variable.InitializerKoto!, replacement));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(3, array.BoundType!.Length);
-        Assert.NotSame(oldType, array.BoundType);
+        Assert.Equal(3, array.TypeOf()!.Length);
+        Assert.NotSame(oldType, array.TypeOf());
     }
 
     [Trait("Purpose", "Allocation")]

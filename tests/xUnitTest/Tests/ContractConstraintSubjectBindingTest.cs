@@ -25,7 +25,7 @@ public class ContractConstraintSubjectBindingTest
         var c = MinimalEmissionTest.Analyze(Implementation("Origin.Item is Copy", item));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, Contract(c).BindingState);
+        Assert.Equal(BindingState.Resolved, Contract(c).StateOf());
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -49,11 +49,11 @@ public class ContractConstraintSubjectBindingTest
         var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    " + clause);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
-        Assert.Equal(BindingState.Invalid, Contract(c).BindingState);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
+        Assert.Equal(BindingState.Invalid, Contract(c).StateOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Contract(restored).BindingState);
+        Assert.Equal(BindingState.Invalid, Contract(restored).StateOf());
     }
 
     [Fact]
@@ -61,9 +61,9 @@ public class ContractConstraintSubjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Head + "public contract R\n    Source.Origin.Item is string\npublic struct Impl\n    Self is R");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
-        Assert.False(c.Binding.GetConformanceDefinition(implementation.BoundType!, Contract(c).BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, Contract(c).BoundSymbol!)?.IsVerified);
     }
 
     [Theory]
@@ -73,7 +73,7 @@ public class ContractConstraintSubjectBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Head + "public " + kind + " R<T>\n    Source.Origin.Item is string" + (kind == "enum" ? "\n    A" : string.Empty));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
     }
 
     [Fact]
@@ -86,10 +86,10 @@ public class ContractConstraintSubjectBindingTest
         var replacement = Contract(donor).ConstraintNodes[0].Left;
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(BindingState.Resolved, Contract(c).BindingState);
+        Assert.Equal(BindingState.Resolved, Contract(c).StateOf());
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Contract(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Contract(c).StateOf());
     }
 
     [Trait("Purpose", "Allocation")]

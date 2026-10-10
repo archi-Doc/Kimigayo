@@ -22,7 +22,7 @@ public class DictionaryLiteralTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var declaration = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Last();
-        var type = declaration.BoundType!;
+        var type = declaration.TypeOf()!;
         Assert.Equal(BoundTypeKind.Dictionary, type.Kind);
         Assert.Same(key == "string" ? BoundType.String : BoundType.Primitives[key], type.Components[0]);
         Assert.Same(BoundType.Primitives[value], type.Components[1]);

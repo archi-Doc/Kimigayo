@@ -56,11 +56,11 @@ public class RuntimeTestFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(BindingState.Resolved, Test(c).BindingState);
+        Assert.Equal(BindingState.Resolved, Test(c).StateOf());
         Assert.NotNull(Test(c).BoundRuntimeTest);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.Equal(BindingState.Resolved, Test(restored).BindingState);
+        Assert.Equal(BindingState.Resolved, Test(restored).StateOf());
         Assert.NotNull(Test(restored).BoundRuntimeTest);
     }
 
@@ -77,7 +77,7 @@ public class RuntimeTestFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Hidden\npublic struct Target\n    public let field: Hidden\ngroup G\n    func f(x: objref/Target) -> bool => x is Target");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, Test(c).BindingState);
+        Assert.Equal(BindingState.Resolved, Test(c).StateOf());
         Assert.NotNull(Test(c).BoundRuntimeTest);
     }
 

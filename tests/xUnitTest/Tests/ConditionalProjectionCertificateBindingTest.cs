@@ -59,7 +59,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(Definition(c).IsVerified);
         Assert.True(Definition(c, "D").IsVerified);
-        Assert.Equal(BindingState.Resolved, Type(c).BindingState);
+        Assert.Equal(BindingState.Resolved, Type(c).StateOf());
     }
 
     [Theory]
@@ -73,7 +73,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last());
         Assert.Equal(valid, call.BoundCall is not null);
-        var copy = c.Binding.GetConformanceDefinition(Type(c).BoundType!, c.Library.Copy)!;
+        var copy = c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, c.Library.Copy)!;
         Assert.Equal(valid, copy.IsVerified);
     }
 
@@ -213,5 +213,5 @@ public class ConditionalProjectionCertificateBindingTest
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
 
     private static BoundConformance Definition(Compilation c, string contractName = "C")
-        => c.Binding.GetConformanceDefinition(Type(c).BoundType!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).BoundSymbol!)!;
+        => c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).BoundSymbol!)!;
 }

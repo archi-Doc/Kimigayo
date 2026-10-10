@@ -28,7 +28,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess($"func inspect(x: {type}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var function = Function(c, "inspect");
-        var bound = function.Parameters[0].Type.BoundType!;
+        var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(copy ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveCopy(bound, function));
         Assert.Equal(owned ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveOwned(bound, function));
     }
@@ -48,7 +48,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess($"struct S\nfunc inspect(x: {type}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Theory]
@@ -61,8 +61,8 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess(declaration + "\nfunc inspect(x: S) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Theory]
@@ -83,7 +83,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Box<T>\n    T is Copy\n    Self is Copy\n    let value: T\nfunc inspect(x: Box<i32>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -92,7 +92,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("group G\n    public func value<T>(x: T) -> T\n        T is Copy\n        return x\nstruct S\n    Self is Copy\n    let x = G.value(1)\nfunc inspect(x: S) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Theory]
@@ -103,7 +103,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess($"func inspect<T>(x: T)\n    {assumption}\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("func inspect<T, U>(x: T)\n    T is U\n    U is T\n    U is i32\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Theory]
@@ -125,7 +125,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess($"func inspect<s/T>(x: s/T)\n    s is {semantics}\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -134,8 +134,8 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("func inspect<s/T>(x: s/T)\n    s is owner\n    T is Copy and Owned\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("open struct Base\n    Self is Copy\n    let x: i32\nstruct Derived: Base\n    Self is Copy\n    let y: bool\nfunc inspect(x: Derived) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
         var bad = CompilationTestHelper.ParseSuccess("open struct Base\n    let text: string\nstruct Derived: Base\n    Self is Copy");
         Assert.False(bad.Bind().IsComplete);
         Assert.Contains(bad.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
@@ -156,7 +156,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct S\n    Self is Copy\n    computed text: string\n        get(self: ref/Self) -> string => \"text\"\nfunc inspect(x: S) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -173,7 +173,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct A\n    Self is Copy\n    let b: B\nstruct B\n    Self is Copy\n    let a: raw/A\nfunc inspect(x: A) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -182,7 +182,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Node {source}\n    let next: obj/Node{node}\n        origin node.source == source\n    let value: ref/i32 during source\nfunc inspect(x: Node) => ()");
         c.Bind();
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -191,7 +191,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Chain<T>\n    let next: obj/Chain<(T, T)>\nfunc inspect(x: Chain<i32>) => ()");
         c.Bind();
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -200,8 +200,8 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Box<T>\n    Self is Copy when T is Copy\n    let value: T\nfunc inspect(x: Box<Box<i32>>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -210,7 +210,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Node<T>\n    let next: obj/Node<(i32, i32)>\nfunc inspect(x: Node<i32>) => ()");
         c.Bind();
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -219,8 +219,8 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Pair<T, U>\n    Self is Copy when T is Copy, U is Copy and Owned\n    let first: T\n    let second: U\nfunc inspect(x: Pair<i32, bool>, y: Pair<i32, string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(f.Parameters[1].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
+        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(f.Parameters[1].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -241,7 +241,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct View {source}\n    let value: ref/i32 during source\nfunc inspect(x: View)\n    origin x.source == static\n    ()\ngroup Globals\n    var value: View{v}\n        origin v.source == static");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -250,7 +250,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct S\n    let x: Missing\nfunc inspect(x: S) => ()");
         c.Bind();
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess($"enum Option<T>\n    Self is Copy when T is Copy\n    Some(T)\n    None\nfunc inspect(x: Option<{argument}>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(expected, c.Binding.ProveCopy(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -286,7 +286,7 @@ public class IntrinsicCapabilityTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Box<T>\n    let value: T\n    Self is Copy when T is Copy\nfunc inspect(x: Box<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(Function(c, "inspect").Parameters[0].Type.BoundType!, Function(c, "inspect")));
+        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(Function(c, "inspect").Parameters[0].Type.TypeOf()!, Function(c, "inspect")));
     }
 
     [Theory]
@@ -304,7 +304,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Phantom<T>\nstruct Pointer<T>\n    let value: raw/T\nfunc inspect(x: Phantom<ref/i32 during a>, y: Pointer<ref/i32 during a>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.All(f.Parameters, p => Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(p.Type.BoundType!, f)));
+        Assert.All(f.Parameters, p => Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(p.Type.TypeOf()!, f)));
     }
 
     [Fact]
@@ -313,11 +313,11 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("func inspect(callback: (ref/i32) -> ref/i32, fixed: (ref/i32 during a) -> (), seed: ref/i32 during a) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        var signature = f.Parameters[0].Type.BoundType!;
+        var signature = f.Parameters[0].Type.TypeOf()!;
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(signature, f));
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(signature.Components[0].Components[0], f));
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(signature.Components[1], f));
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[1].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[1].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -326,8 +326,8 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct View<T> {source}\n    let value: ref/T during source\nfunc inspect(x: View<i32>, y: View<i32>)\n    origin x.source == static\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[1].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(f.Parameters[1].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -336,7 +336,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("func inspect(x: ref/(ref/i32 during a) during static) => ()");
         c.Bind();
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]
@@ -357,7 +357,7 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("struct Node\n    let next: obj/Node\nfunc inspect(x: Node) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "inspect");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     [Fact]

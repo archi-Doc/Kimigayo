@@ -24,9 +24,9 @@ public class UniqSliceTest(ITestOutputHelper output)
         Assert.Equal(OriginVariance.Covariant, source.Variance);
         Assert.Equal(LoanRequirement.Uniq, source.LoanRequirement);
         var view = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>(), static x => x.NameKoto.IdentifierName == "view");
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(view.BoundType!, view));
+        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(view.TypeOf()!, view));
         // Ordinary local Origins are not proven to outlive static; the common Owned proof remains Unknown.
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(view.BoundType!, view));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(view.TypeOf()!, view));
     }
 
     [Theory]

@@ -144,7 +144,7 @@ public class DefaultBindingTest
         Assert.Same(BoundType.I32, first.ParameterType);
         Assert.Equal("i64", second.ParameterType.Name);
         Assert.Same(calls[1].BoundCall!.ArgumentOperations[0].ParameterType, second.ParameterType);
-        Assert.Equal(BoundTypeKind.Parameter, first.Expression.BoundType!.Kind);
+        Assert.Equal(BoundTypeKind.Parameter, first.Expression.TypeOf()!.Kind);
     }
 
     [Fact]
@@ -155,7 +155,7 @@ public class DefaultBindingTest
         var plan = Assert.Single(Calls(c)).BoundCall!;
         var omitted = Assert.Single(plan.DefaultArguments.ToArray());
         Assert.Same(plan.ArgumentOperations[0].ParameterType!.Origin, omitted.ParameterType.Origin);
-        Assert.NotSame(omitted.Expression.BoundType!.Origin, omitted.ParameterType.Origin);
+        Assert.NotSame(omitted.Expression.TypeOf()!.Origin, omitted.ParameterType.Origin);
     }
 
     [Fact]

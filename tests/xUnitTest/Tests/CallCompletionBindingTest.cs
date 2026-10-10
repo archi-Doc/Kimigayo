@@ -16,7 +16,7 @@ public class CallCompletionBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic group Api\n    public func identity(value: " + input + ") -> " + result + " => value\ngroup Consumer\n    func call() => Api.identity(1)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Call(c).BoundCall);
@@ -31,7 +31,7 @@ public class CallCompletionBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic group Api\n    public func take<T>()\n        T is Hidden\n        ()\ngroup Consumer\n    func call() => Api.take<Source>()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.Null(Call(c).BoundCall);
     }
 
@@ -53,7 +53,7 @@ public class CallCompletionBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source("internal", "public").Replace("Api.identity(1)", "take(1)", StringComparison.Ordinal) + "\n    func take(value: i32) -> i32 => value");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.NotNull(Call(c).BoundCall);
     }
 

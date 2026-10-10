@@ -39,7 +39,7 @@ public class ConditionalMemberBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Equal("bool", call.BoundCall!.TypeArguments[0]!.Name);
-        Assert.Equal("bool", call.BoundType!.Name);
+        Assert.Equal("bool", call.TypeOf()!.Name);
     }
 
     [Theory]
@@ -159,7 +159,7 @@ public class ConditionalMemberBindingTest
         var contract = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "A").BoundSymbol!;
         for (var i = 0; i < 2; i++)
         {
-            Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(use.Parameters[i].Type.BoundType!, contract, use, out var path));
+            Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(use.Parameters[i].Type.TypeOf()!, contract, use, out var path));
             Assert.Equal(i == 0 ? "i32" : "string", Assert.Single(path!.AssociatedTypes).Value.Name);
         }
     }
@@ -186,7 +186,7 @@ public class ConditionalMemberBindingTest
         Assert.False(c.Bind().IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         Assert.Null(call.BoundCall);
-        Assert.NotEqual(BindingState.Resolved, call.BindingState);
+        Assert.NotEqual(BindingState.Resolved, call.StateOf());
 
         // SPEC 23.3.6.4: the failed candidate declaration publishes its Error, and the call rests on it instead of repeating it.
         Assert.Contains(c.Binding.Issues, x => x.Node is FunctionKoto { Name: "f" } && x.Code == DiagnosticCode.InvalidConstraint_Kd);

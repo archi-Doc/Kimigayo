@@ -19,16 +19,16 @@ public class BitConversionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
-        Assert.Same(BoundType.Primitives["i32"], variables["a"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["u32"], variables["b"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i32"]), variables["c"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["i64"], variables["e"].NameKoto.BoundType);
-        Assert.Same(BoundType.Primitives["u64"], variables["g"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u64"]), variables["h"].NameKoto.BoundType);
-        Assert.Same(BoundType.F32, variables["k"].NameKoto.BoundType);
-        Assert.Same(BoundType.F64, variables["l"].NameKoto.BoundType);
-        Assert.Same(BoundType.F32, variables["m"].NameKoto.BoundType);
-        Assert.Same(BoundType.F64, variables["n"].NameKoto.BoundType);
+        Assert.Same(BoundType.Primitives["i32"], variables["a"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["u32"], variables["b"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i32"]), variables["c"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["i64"], variables["e"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Primitives["u64"], variables["g"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u64"]), variables["h"].NameKoto.TypeOf());
+        Assert.Same(BoundType.F32, variables["k"].NameKoto.TypeOf());
+        Assert.Same(BoundType.F64, variables["l"].NameKoto.TypeOf());
+        Assert.Same(BoundType.F32, variables["m"].NameKoto.TypeOf());
+        Assert.Same(BoundType.F64, variables["n"].NameKoto.TypeOf());
         Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Bits, x.ConversionBinding));
     }
 
@@ -47,7 +47,7 @@ public class BitConversionTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
-        Assert.Same(expected, conversion.BoundType);
+        Assert.Same(expected, conversion.TypeOf());
         Assert.Equal(ConversionBinding.Bits, conversion.ConversionBinding);
         Assert.Equal((Int128)payload, Assert.NotNull(conversion.FoldedConstant));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);

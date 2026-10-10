@@ -19,13 +19,13 @@ public class UnresolvedRefinementBindingTest
         var c = Parse((qualified ? "public group Api\n" : string.Empty) + "public contract Child: " + (qualified ? "Api.Future" : "Future") + "\n" + (indirect ? "public contract Leaf: Child\n" : string.Empty) + "public struct Target\n    Self is " + name + "\ngroup G\n    func inspect<T>(value: T)\n        T is " + name + "\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var contract = Container(c, name);
-        Assert.Equal(BindingState.Unresolved, contract.BindingState);
+        Assert.Equal(BindingState.Unresolved, contract.StateOf());
         var function = Container(c, "G").Members.OfType<FunctionKoto>().Single();
         Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(Assert.IsType<IsKoto>(function.TypeConstraints[0]).BoundConstraint!, function));
-        Assert.False(c.Binding.GetConformanceDefinition(Container(c, "Target").BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", qualified ? "public group Api\n    public contract Future" : "public contract Future"));
         Assert.True(c.Bind().IsComplete, string.Join("; ", c.Binding.Issues.Select(x => x.ToString())));
-        Assert.True(c.Binding.GetConformanceDefinition(Container(c, "Target").BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.True(c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -38,7 +38,7 @@ public class UnresolvedRefinementBindingTest
     {
         var c = Parse("public group Api\npublic struct Target\npublic contract Future\npublic contract Child: " + parent);
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
-        Assert.Equal(BindingState.Invalid, Container(c, "Child").BindingState);
+        Assert.Equal(BindingState.Invalid, Container(c, "Child").StateOf());
     }
 
     [Theory]
@@ -48,7 +48,7 @@ public class UnresolvedRefinementBindingTest
     {
         var c = Parse("public contract Child: " + (reverse ? "Other, Future" : "Future, Other") + "\npublic contract Other: Child");
         Assert.True(c.Binding.Bind(BindingMode.Provisional).InvalidCount > 0);
-        Assert.Equal(BindingState.Invalid, Container(c, "Child").BindingState);
+        Assert.Equal(BindingState.Invalid, Container(c, "Child").StateOf());
     }
 
     [Theory]
@@ -59,7 +59,7 @@ public class UnresolvedRefinementBindingTest
         var c = Parse("public contract Child: Copy, Future\ngroup G\n    func inspect<T>(value: T)\n        T is Child" + (independent ? "\n        T is Copy" : string.Empty) + "\n        ()");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Container(c, "G").Members.OfType<FunctionKoto>().Single();
-        Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
     }
 
     [Theory]
@@ -71,7 +71,7 @@ public class UnresolvedRefinementBindingTest
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract Future\n    func read(self: ref/Self) -> i32"));
         Assert.Equal(implemented, c.Bind().IsComplete);
-        Assert.Equal(implemented, c.Binding.GetConformanceDefinition(Container(c, "Target").BoundType!, Container(c, "Child").BoundSymbol!)!.IsVerified);
+        Assert.Equal(implemented, c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, Container(c, "Child").BoundSymbol!)!.IsVerified);
     }
 
     [Theory]
@@ -92,10 +92,10 @@ public class UnresolvedRefinementBindingTest
         var c = Parse("public contract Child: Future\npublic contract Leaf: Child");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Container(c, "Child").BindingState);
+        Assert.Equal(BindingState.Invalid, Container(c, "Child").StateOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(0, restored.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        Assert.Equal(BindingState.Unresolved, Container(restored, "Leaf").BindingState);
+        Assert.Equal(BindingState.Unresolved, Container(restored, "Leaf").StateOf());
     }
 
     [Trait("Purpose", "Allocation")]

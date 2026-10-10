@@ -68,9 +68,9 @@ public class TypeBindingTest
         var schema = f.BoundSymbol!.Schema!;
         var document = f.CodeContext.SourceDocument!;
         Assert.Equal("second", document.AsSpan().Slice(schema.Origins[1].Span.Start, schema.Origins[1].Span.Length).ToString());
-        var origins = Nodes(c).OfType<IdentifierNameKoto>().Where(x => x.BoundOrigin is not null).ToArray();
+        var origins = Nodes(c).OfType<IdentifierNameKoto>().Where(x => x.OriginOf() is not null).ToArray();
         Assert.Equal(2, origins.Length);
-        Assert.Same(schema.Origins[0].Origin, origins[0].BoundOrigin);
+        Assert.Same(schema.Origins[0].Origin, origins[0].OriginOf());
     }
 
     [Fact]
@@ -89,8 +89,8 @@ public class TypeBindingTest
         var c = Parse("func f(x: ref/i32 during a, y: ref/i32 during (a and b), u: uniq/(ref/i32 during a) during a, v: uniq/(ref/i32 during (a and b)) during a) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.True(Binding.FitsType(f.Parameters[0].Type.BoundType!, f.Parameters[1].Type.BoundType!));
-        Assert.False(Binding.FitsType(f.Parameters[2].Type.BoundType!, f.Parameters[3].Type.BoundType!));
+        Assert.True(Binding.FitsType(f.Parameters[0].Type.TypeOf()!, f.Parameters[1].Type.TypeOf()!));
+        Assert.False(Binding.FitsType(f.Parameters[2].Type.TypeOf()!, f.Parameters[3].Type.TypeOf()!));
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public class TypeBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var call = Nodes(c).OfType<InvocationKoto>().Single();
-        Assert.Same(f.Parameters[0].Type.BoundType, call.BoundType);
+        Assert.Same(f.Parameters[0].Type.TypeOf(), call.TypeOf());
         Assert.Equal(GenericSlotKind.Pair, call.BoundCall!.Target.Schema!.GenericSlots[0].Kind);
     }
 
@@ -110,18 +110,18 @@ public class TypeBindingTest
         var c = Parse("func f(x: ref/i32)\n    var local: ref/i32 = x");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var local = Nodes(c).OfType<FieldKoto>().Single();
-        var input = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters[0].Type.BoundType!;
+        var input = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f").Parameters[0].Type.TypeOf()!;
         // The mutable local owns one stable region; its initializer contributes the fixed input bound.
-        Assert.True(Binding.IsLocalRegion(local.BoundType!.Origin!));
-        Assert.NotSame(input.Origin, local.BoundType.Origin);
-        Assert.Contains(input.Origin!, c.Binding.LocalRegionSources(local.BoundType.Origin!).ToArray());
+        Assert.True(Binding.IsLocalRegion(local.TypeOf()!.Origin!));
+        Assert.NotSame(input.Origin, local.TypeOf()!.Origin);
+        Assert.Contains(input.Origin!, c.Binding.LocalRegionSources(local.TypeOf()!.Origin!).ToArray());
         Assert.DoesNotContain(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginInference);
         Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.OriginOutlives &&
-            ReferenceEquals(x.Longer, input.Origin) && ReferenceEquals(x.Shorter, local.BoundType.Origin));
-        var origin = local.BoundType.Origin;
+            ReferenceEquals(x.Longer, input.Origin) && ReferenceEquals(x.Shorter, local.TypeOf()!.Origin));
+        var origin = local.TypeOf()!.Origin;
         var count = c.Binding.Obligations.Count;
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Same(origin, local.BoundType.Origin);
+        Assert.Same(origin, local.TypeOf()!.Origin);
         Assert.Equal(count, c.Binding.Obligations.Count);
     }
 
@@ -132,7 +132,7 @@ public class TypeBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Equal(GenericSlotKind.Length, f.BoundSymbol!.Schema!.GenericSlots[0].Kind);
-        Assert.NotNull(f.Parameters[0].Type.BoundType!.LengthExpression);
+        Assert.NotNull(f.Parameters[0].Type.TypeOf()!.LengthExpression);
         Assert.Contains(c.Binding.Obligations, x => x.Deadline == BindingDeadline.Instantiation);
         var duplicate = Parse("func f<length N>(x: [(N + 1) of i32]) => ()\nfunc f<length M>(x: [(M + 1) of i32]) => ()");
         Assert.False(duplicate.Bind().IsComplete);
@@ -175,13 +175,13 @@ public class TypeBindingTest
         var c = Parse("struct Pair {left, right}\n    let x: ref/i32 during left\n    let y: ref/i32 during right\nfunc f(x: Pair, y: Pair)\n    origin y.right == x.right\n    origin x.left == y.left");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
-        Assert.Equal(OriginKind.Input, f.Parameters[0].Type.BoundType!.OriginArguments[0].Kind);
+        Assert.Same(f.Parameters[0].Type.TypeOf(), f.Parameters[1].Type.TypeOf());
+        Assert.Equal(OriginKind.Input, f.Parameters[0].Type.TypeOf()!.OriginArguments[0].Kind);
         var schema = f.BoundSymbol!.Schema;
-        var type = f.Parameters[0].Type.BoundType;
+        var type = f.Parameters[0].Type.TypeOf();
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Same(schema, f.BoundSymbol.Schema);
-        Assert.Same(type, f.Parameters[0].Type.BoundType);
+        Assert.Same(type, f.Parameters[0].Type.TypeOf());
     }
 
     [Fact]
@@ -190,8 +190,8 @@ public class TypeBindingTest
         var c = Parse("struct Pair {left, right}\n    let x: ref/i32 during left\n    let y: ref/i32 during right\nfunc f(x: ref/i32, y: ref/i32, value: Pair) -> Pair{result}\n    origin value.left == x\n    origin value.right == x and y\n    origin result.left == x\n    return value");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        var result = f.ReturnType!.BoundType!;
-        Assert.Same(f.Parameters[0].Type.BoundType!.Origin, result.OriginArguments[0]);
+        var result = f.ReturnType!.TypeOf()!;
+        Assert.Same(f.Parameters[0].Type.TypeOf()!.Origin, result.OriginArguments[0]);
         Assert.Equal(OriginKind.Intersection, result.OriginArguments[1].Kind);
         Assert.Equal(2, result.OriginArguments[1].Operands.Count);
     }
@@ -202,8 +202,8 @@ public class TypeBindingTest
         var c = Parse("func f(x: ref/(ref/i32 during a) during (a and b), y: ref/(ref/i32 during a) during (b and a and a))");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Same(f.Parameters[0].Type.BoundType, f.Parameters[1].Type.BoundType);
-        Assert.Same(f.BoundSymbol!.Schema!.Origins[0].Origin, f.Parameters[0].Type.BoundType!.Components[0].Origin);
+        Assert.Same(f.Parameters[0].Type.TypeOf(), f.Parameters[1].Type.TypeOf());
+        Assert.Same(f.BoundSymbol!.Schema!.Origins[0].Origin, f.Parameters[0].Type.TypeOf()!.Components[0].Origin);
     }
 
     [Fact]

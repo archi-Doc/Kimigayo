@@ -18,7 +18,7 @@ public class ClosedConstraintLifecycleBindingTest
         var c = Parse("public contract Origin\npublic contract Marker\npublic struct Source\npublic " + kind + " Target\n    Source is " + (negative ? "not " : string.Empty) + "Origin\n    Self is Marker" + (kind == "enum" ? "\n    A" : string.Empty));
         var provisional = c.Binding.Bind(BindingMode.Provisional);
         Assert.Equal(0, provisional.InvalidCount);
-        Assert.Equal(BindingState.Unresolved, Target(c).BindingState);
+        Assert.Equal(BindingState.Unresolved, Target(c).StateOf());
         Assert.False(Certificate(c));
         AppendSourceConformance(c);
         Assert.Equal(!negative, c.Bind().IsComplete);
@@ -52,7 +52,7 @@ public class ClosedConstraintLifecycleBindingTest
     {
         var c = Parse("public contract Marker\npublic struct Target\n    " + clause + "\n    Self is Marker");
         Assert.Equal(valid, c.Binding.Bind(BindingMode.Provisional).InvalidCount == 0);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, Target(c).StateOf());
         Assert.Equal(valid, Certificate(c));
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, Certificate(c));
@@ -71,7 +71,7 @@ public class ClosedConstraintLifecycleBindingTest
         var property = Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!;
         var call = Assert.IsType<InvocationKoto>(Container(c, "G").Members.OfType<FunctionKoto>().Single().ExpressionBody);
         Assert.False(property.IsVerified);
-        Assert.Equal(BindingState.Unresolved, call.BindingState);
+        Assert.Equal(BindingState.Unresolved, call.StateOf());
         AppendSourceConformance(c);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(Certificate(c));
@@ -86,7 +86,7 @@ public class ClosedConstraintLifecycleBindingTest
     {
         var c = Parse("public contract Origin\npublic struct Source\npublic contract Marker\n    Source is Origin\npublic struct Target\n    Self is Marker");
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
-        Assert.Equal(BindingState.Unresolved, Container(c, "Marker").BindingState);
+        Assert.Equal(BindingState.Unresolved, Container(c, "Marker").StateOf());
         Assert.False(Certificate(c));
         if (append)
         {
@@ -151,5 +151,5 @@ public class ClosedConstraintLifecycleBindingTest
     private static DeclarationContainerKoto Target(Compilation c) => Container(c, "Target");
 
     private static bool Certificate(Compilation c)
-        => c.Binding.GetConformanceDefinition(Target(c).BoundType!, Container(c, "Marker").BoundSymbol!)!.IsVerified;
+        => c.Binding.GetConformanceDefinition(Target(c).TypeOf()!, Container(c, "Marker").BoundSymbol!)!.IsVerified;
 }

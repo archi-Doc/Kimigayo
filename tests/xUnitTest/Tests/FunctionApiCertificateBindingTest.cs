@@ -16,10 +16,10 @@ public class FunctionApiCertificateBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\n    associate Element\npublic struct Source\n    Self is Hidden\n    associate Hidden.Element is i32\npublic contract Export\n    func identity(self: ref/Self, value: i32) -> i32\npublic struct S\n    Self is Export\n    public func identity(self: ref/Self, value: " + input + ") -> " + result + " => value");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Export");
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
         var restored = Compilation.CreateForTest();
@@ -92,6 +92,6 @@ public class FunctionApiCertificateBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Export");
-        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!));
+        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!));
     }
 }

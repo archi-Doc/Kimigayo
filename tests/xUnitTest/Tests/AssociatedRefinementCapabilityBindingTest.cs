@@ -19,7 +19,7 @@ public class AssociatedRefinementCapabilityBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
-        var type = function.Parameters[0].Type.BoundType!;
+        var type = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(ConstraintProof.Proven, capability == "Copy" ? c.Binding.ProveCopy(type, function) : c.Binding.ProveOwned(type, function));
         Assert.True(c.Bind().IsComplete);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -36,12 +36,12 @@ public class AssociatedRefinementCapabilityBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", "public contract Origin\npublic struct Source\npublic contract Trait: Copy" + (outer ? string.Empty : condition) + "\npublic contract Elements" + (outer ? condition : string.Empty) + "\n    associate Item is Trait\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()"));
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = Function(c);
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
     }
 
     [Theory]
@@ -52,7 +52,7 @@ public class AssociatedRefinementCapabilityBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Trait: Copy\npublic contract Other\npublic contract Elements\n    associate Item is Trait " + operation + " Other\ngroup G\n    func inspect<T>(value: T.Item)\n        T is Elements\n        ()");
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
-        Assert.Equal(expected, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(expected, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
     }
 
     [Theory]
@@ -78,7 +78,7 @@ public class AssociatedRefinementCapabilityBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete);
         var function = Function(c);
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -90,12 +90,12 @@ public class AssociatedRefinementCapabilityBindingTest
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function));
+            Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
-            if (!c.Bind().IsComplete || c.Binding.ProveCopy(function.Parameters[0].Type.BoundType!, function) != ConstraintProof.Proven)
+            if (!c.Bind().IsComplete || c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function) != ConstraintProof.Proven)
             {
                 throw new InvalidOperationException("Associated refinement proof failed.");
             }

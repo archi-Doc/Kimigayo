@@ -148,7 +148,7 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => $abort(\"stop\")\nfunc run() => stop()@{mode}\n()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
-        Assert.Same(BoundType.Never, conversion.BoundType);
+        Assert.Same(BoundType.Never, conversion.TypeOf());
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);
     }

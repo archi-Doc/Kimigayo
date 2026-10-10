@@ -22,7 +22,7 @@ public class PatternTypeFormationBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
         Assert.Empty(c.Binding.PatternWarnings);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NonExhaustiveMatch);
+        Assert.DoesNotContain(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NonExhaustiveMatch);
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
         var restored = CompilationTestHelper.Reload(c);
@@ -84,7 +84,7 @@ public class PatternTypeFormationBindingTest
         var c = MinimalEmissionTest.Analyze("contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\nfunc f(value: E<Source>) => match value\n    _ => ()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.Equal(MatchCoverageState.Invalid, Plan(c).Coverage.State);
     }
 

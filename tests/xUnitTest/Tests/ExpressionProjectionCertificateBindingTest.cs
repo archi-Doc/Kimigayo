@@ -16,7 +16,7 @@ public class ExpressionProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(Source("internal", runtime));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         AssertCertificate(c, runtime, false);
         Assert.False(c.Bind().IsComplete);
         AssertCertificate(c, runtime, false);

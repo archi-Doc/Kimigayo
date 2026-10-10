@@ -291,8 +291,8 @@ public class ImplicitBaseCallTest
         var query = c.Binding.OmittedBaseQueries![constructor];
         var call = constructor.BaseInitializer!;
         (OmittedBaseOutcome Outcome, FunctionKoto? Winner) bound = call.BoundCall is { } selected ? (OmittedBaseOutcome.Selected, (FunctionKoto?)selected.Target.Declaration)
-            : call.Method.BindingFailure == BindingFailure.MissingName ? (OmittedBaseOutcome.NoBaseConstructor, null)
-            : (call.BindingFailure switch
+            : call.Method.FailureOf() == BindingFailure.MissingName ? (OmittedBaseOutcome.NoBaseConstructor, null)
+            : (call.FailureOf() switch
             {
                 BindingFailure.NoApplicableCandidate => OmittedBaseOutcome.NoneApplicable,
                 BindingFailure.Ambiguous => OmittedBaseOutcome.Ambiguous,
@@ -305,8 +305,8 @@ public class ImplicitBaseCallTest
         // A query inside the finished pass changes nothing the pass published.
         var issues = c.Binding.Issues.Count;
         var obligations = c.Binding.Obligations.Count;
-        var state = (call.BindingState, call.BindingFailure, call.BoundType);
+        var state = (call.StateOf(), call.FailureOf(), call.TypeOf());
         Assert.Equal(query, c.Binding.SelectOmittedBaseConstructor(constructor));
-        Assert.Equal((issues, obligations, state), (c.Binding.Issues.Count, c.Binding.Obligations.Count, (call.BindingState, call.BindingFailure, call.BoundType)));
+        Assert.Equal((issues, obligations, state), (c.Binding.Issues.Count, c.Binding.Obligations.Count, (call.StateOf(), call.FailureOf(), call.TypeOf())));
     }
 }

@@ -51,9 +51,9 @@ public class InheritedNameBindingTest
         const string child = "struct S: Middle<i32>\n    Self is C\n";
         var c = MinimalEmissionTest.Analyze("contract C\nopen struct Base<T>\n    public func f(x: T) => ()\n" + (reverseOrder ? child + middle : middle + child));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Type(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Type(c).StateOf());
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(Type(c).BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.BoundSymbol!)!.IsVerified);
     }
 
     [Fact]

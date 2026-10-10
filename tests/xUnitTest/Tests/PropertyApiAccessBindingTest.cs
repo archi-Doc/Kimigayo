@@ -22,7 +22,7 @@ public class PropertyApiAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var property = Assert.Single(c.Binding.Issues, x => x.Node is PropertyKoto && x.Node.BindingFailure == BindingFailure.Access);
+        var property = Assert.Single(c.Binding.Issues, x => x.Node is PropertyKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(((PropertyKoto)property.Node).BoundSymbol!.Property!.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }
@@ -53,7 +53,7 @@ public class PropertyApiAccessBindingTest
         Assert.Equal(valid, property.BoundSymbol!.Property!.IsVerified);
         if (!valid)
         {
-            Assert.Equal(BindingFailure.Access, property.BindingFailure);
+            Assert.Equal(BindingFailure.Access, property.FailureOf());
         }
     }
 
@@ -68,7 +68,7 @@ public class PropertyApiAccessBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         }
     }
 
@@ -101,7 +101,7 @@ public class PropertyApiAccessBindingTest
         Assert.True(replacement.BoundSymbol!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(container, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.Access, original.BindingFailure);
+        Assert.Equal(BindingFailure.Access, original.FailureOf());
         Assert.False(original.BoundSymbol!.Property!.IsVerified);
     }
 

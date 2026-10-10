@@ -40,7 +40,7 @@ public class ProjectedConstraintCallBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         AssertCall(c, false);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.NoApplicableCandidate);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.NoApplicableCandidate);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
         AssertCall(restored, false);

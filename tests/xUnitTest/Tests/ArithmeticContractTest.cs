@@ -53,7 +53,7 @@ public class ArithmeticContractTest(ITestOutputHelper output)
             var contract = c.Library.GetSymbol(id)!.Contract!;
             Assert.Equal("Output", Assert.Single(contract.AssociatedTypes).Symbol.Name);
             var function = (FunctionKoto)Assert.Single(contract.Requirements).Symbol.Declaration;
-            Assert.All(function.Parameters, static x => Assert.Equal(SemanticsKind.Ref, x.Type.BoundType!.Semantics));
+            Assert.All(function.Parameters, static x => Assert.Equal(SemanticsKind.Ref, x.Type.TypeOf()!.Semantics));
             Assert.Equal(id == KimiDeclarationId.Negatable ? 1 : 2, function.Parameters.Count);
         }
     }

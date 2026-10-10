@@ -22,14 +22,14 @@ public class ReceiverShorthandTest
         foreach (var function in functions)
         {
             Assert.Equal(0, function.BoundSymbol!.ReceiverIndex);
-            var receiver = function.Parameters[0].Type.BoundType!;
+            var receiver = function.Parameters[0].Type.TypeOf()!;
             Assert.Equal(SemanticsKind.Ref, receiver.Semantics);
             Assert.Same(function, receiver.Origin!.Binder);
             Assert.Equal(0, receiver.Origin.Slot);
-            Assert.Same(receiver, function.ReturnType!.BoundType);
+            Assert.Same(receiver, function.ReturnType!.TypeOf());
         }
 
-        Assert.Same(functions[0].Parameters[0].Type.BoundType!.Components[0], functions[1].Parameters[0].Type.BoundType!.Components[0]);
+        Assert.Same(functions[0].Parameters[0].Type.TypeOf()!.Components[0], functions[1].Parameters[0].Type.TypeOf()!.Components[0]);
     }
 
     [Fact]

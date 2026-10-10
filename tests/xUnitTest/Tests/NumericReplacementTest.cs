@@ -80,7 +80,7 @@ public class NumericReplacementTest
         var donor = MinimalEmissionTest.Analyze("let donor = " + literal);
         Assert.True(KotoHelper.Replace(variable, old, Variable(donor).InitializerKoto!));
         Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidLiteral && x.Node.Span == old.Span);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidLiteral && x.Node.Span == old.Span);
         Assert.False(c.Emission.Validate(out _));
     }
 

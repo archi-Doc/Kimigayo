@@ -16,7 +16,7 @@ public class EnumProjectionAccessBindingTest
         var c = MinimalEmissionTest.Analyze($"{contractAccess} contract C\n    associate Element\n{typeAccess} struct Source\n    Self is C\n    associate C.Element is i32\npublic enum Api\n    Item(Source.C.Element)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -52,7 +52,7 @@ public class EnumProjectionAccessBindingTest
         var c = Check(Prefix + "public contract Marker\npublic enum Api\n    Item(Source.C.Element)\n    Self is Marker\npublic group Consumer\n    " + consumer, false);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.False(c.Binding.GetConformanceDefinition(api.BoundType!, marker.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(api.TypeOf()!, marker.BoundSymbol!)?.IsVerified ?? false);
         Assert.DoesNotContain(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
     }
 
@@ -82,7 +82,7 @@ public class EnumProjectionAccessBindingTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(Payload(c), replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.Access, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").BindingFailure);
+        Assert.Equal(BindingFailure.Access, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").FailureOf());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -116,7 +116,7 @@ public class EnumProjectionAccessBindingTest
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
             Assert.False(c.Emission.Validate(out _));
         }
 

@@ -31,7 +31,7 @@ public class WholeValueTest
         var c = CompilationTestHelper.Parse($"open struct B\nstruct S\nstruct Cell<T>\n    let item: T\nfunc inspect(x: {type}) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
-        Assert.Equal(expected ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveSealed(f.Parameters[0].Type.BoundType!, f));
+        Assert.Equal(expected ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveSealed(f.Parameters[0].Type.TypeOf()!, f));
     }
 
     // A body-local projection isolates the capability: rc/arc have no outer Origin for a `during x` result.

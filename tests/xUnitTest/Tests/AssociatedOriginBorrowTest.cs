@@ -18,7 +18,7 @@ public class AssociatedOriginBorrowTest
         var c = MinimalEmissionTest.Analyze(declarations + "\nfunc f(x: ref/i32 during source) -> S.(C).Item(source) => x");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Same(f.Parameters[0].Type.BoundType, f.ReturnType!.BoundType);
+        Assert.Same(f.Parameters[0].Type.TypeOf(), f.ReturnType!.TypeOf());
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 

@@ -35,7 +35,7 @@ public class ConstraintBindingTest
         var context = Function(c, "context");
         var queryFunction = Function(c, "query");
         var proposition = ((IsKoto)queryFunction.TypeConstraints[0]).BoundConstraint!;
-        Assert.Equal(expected, c.Binding.Prove(proposition, queryFunction, [context.Parameters[0].Type.BoundType], context));
+        Assert.Equal(expected, c.Binding.Prove(proposition, queryFunction, [context.Parameters[0].Type.TypeOf()], context));
     }
 
     [Theory]
@@ -100,7 +100,7 @@ public class ConstraintBindingTest
         var query = Function(c, "query");
         var context = Function(c, "context");
         var constraint = ((IsKoto)query.TypeConstraints[0]).BoundConstraint!;
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(constraint, query, [context.Parameters[0].Type.BoundType], context));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(constraint, query, [context.Parameters[0].Type.TypeOf()], context));
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(constraint, query, [constraint.RequiredType], context));
     }
 

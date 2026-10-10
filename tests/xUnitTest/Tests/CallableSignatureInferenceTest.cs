@@ -265,7 +265,7 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.BoundCall?.Target.Name == "keep");
         var slot = call.BoundCall!.TypeArguments[0]!;
         var borrow = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static x => x.ToString() == "x@ref");
-        Assert.Same(borrow.BoundType!.Origin, slot.Origin);
+        Assert.Same(borrow.TypeOf()!.Origin, slot.Origin);
         ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceOrder" + reversed, Len + body + "require r@follow == 4 else => $abort(\"order\")", string.Empty);
 
         var source = "func len(n: ref/i32) -> i32 => n@follow\n" + body.Replace("var x", "    var x", StringComparison.Ordinal).Replace("let r", "    let r", StringComparison.Ordinal);

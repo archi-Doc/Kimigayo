@@ -18,10 +18,10 @@ public class PairGroupingBindingTest
         var c = Parse($"func identity<s/T>(value: {type}) -> {type} => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var identity = Function(c, "identity");
-        Assert.Same(identity.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, identity.Parameters[0].Type.BoundType);
-        Assert.Same(identity.Parameters[0].Type.BoundType, identity.ReturnType!.BoundType);
+        Assert.Same(identity.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, identity.Parameters[0].Type.TypeOf());
+        Assert.Same(identity.Parameters[0].Type.TypeOf(), identity.ReturnType!.TypeOf());
         var use = Function(c, "use");
-        Assert.Same(use.Parameters[0].Type.BoundType, use.ExpressionBody!.BoundType);
+        Assert.Same(use.Parameters[0].Type.TypeOf(), use.ExpressionBody!.TypeOf());
         Assert.DoesNotContain(c.Binding.Obligations, x => x.Deadline == BindingDeadline.Definition);
     }
 
@@ -54,10 +54,10 @@ public class PairGroupingBindingTest
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
             var identity = Function(c, "identity");
-            var bound = identity.Parameters[0].Type.BoundType;
-            Assert.Same(bound, identity.ReturnType!.BoundType);
+            var bound = identity.Parameters[0].Type.TypeOf();
+            Assert.Same(bound, identity.ReturnType!.TypeOf());
             Assert.True(c.Bind().IsComplete, Describe(c));
-            Assert.Same(bound, identity.Parameters[0].Type.BoundType);
+            Assert.Same(bound, identity.Parameters[0].Type.TypeOf());
         }
     }
 
@@ -88,7 +88,7 @@ public class PairGroupingBindingTest
         Assert.Equal(syntaxError ? "OriginBindingSetName_Kd" : "InvalidOriginBinding_Kd", Assert.Single(TestDiagnostics.Of(c)).Code);
         if (syntaxError)
         {
-            Assert.Null(Function(c, "f").Parameters[0].Type.BoundType);
+            Assert.Null(Function(c, "f").Parameters[0].Type.TypeOf());
         }
 
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
@@ -100,8 +100,8 @@ public class PairGroupingBindingTest
         var c = Parse("func f<s/T, r/U>(value: s/(U))\n    T is i32\n    U is i32\n    ()");
         Assert.True(c.Bind().IsComplete);
         var f = Function(c, "f");
-        Assert.Equal(BoundTypeKind.SemanticsApplication, f.Parameters[0].Type.BoundType!.Kind);
-        Assert.NotSame(f.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.BoundType);
+        Assert.Equal(BoundTypeKind.SemanticsApplication, f.Parameters[0].Type.TypeOf()!.Kind);
+        Assert.NotSame(f.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.TypeOf());
     }
 
     [Fact]
@@ -124,7 +124,7 @@ public class PairGroupingBindingTest
         Assert.True(KotoHelper.Replace(group, group.Type, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenConstraint_Kd);
-        Assert.Equal(BoundTypeKind.SemanticsApplication, semantics.BoundType!.Kind);
+        Assert.Equal(BoundTypeKind.SemanticsApplication, semantics.TypeOf()!.Kind);
     }
 
     [Fact]

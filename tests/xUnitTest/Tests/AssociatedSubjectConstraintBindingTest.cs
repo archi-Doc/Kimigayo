@@ -16,7 +16,7 @@ public class AssociatedSubjectConstraintBindingTest
         var c = MinimalEmissionTest.Analyze(Source(enumeration, "string", "i32"));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
     }
@@ -49,7 +49,7 @@ public class AssociatedSubjectConstraintBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(false, "string", "i32").Replace("x: Box<Source>", "x: " + type, StringComparison.Ordinal));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.UnsatisfiedConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
     }
 
     [Theory]

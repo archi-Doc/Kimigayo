@@ -82,7 +82,7 @@ public class AggregateProjectionCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "D");
-        Assert.False(c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -129,6 +129,6 @@ public class AggregateProjectionCertificateBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
     }
 }

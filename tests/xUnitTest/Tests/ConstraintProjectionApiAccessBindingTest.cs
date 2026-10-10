@@ -18,7 +18,7 @@ public class ConstraintProjectionApiAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\n" + declaration);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -70,7 +70,7 @@ public class ConstraintProjectionApiAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic group Api\n    public func expose<T>(value: T)\n        T is C\n        {subject} is i32\n        ()");
         Check(c, false);
-        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto { Left: MemberAccessKoto } && x.Node.BindingFailure == BindingFailure.Access);
+        Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto { Left: MemberAccessKoto } && x.Node.FailureOf() == BindingFailure.Access);
     }
 
     [Theory]
@@ -116,7 +116,7 @@ public class ConstraintProjectionApiAccessBindingTest
         Check(c, false);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Implementation");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
-        var conformance = c.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!);
+        var conformance = c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!);
         Assert.NotNull(conformance);
         Assert.False(conformance.IsVerified);
     }
@@ -162,7 +162,7 @@ public class ConstraintProjectionApiAccessBindingTest
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(BindingFailure.Access, clause.BindingFailure);
+        Assert.Equal(BindingFailure.Access, clause.FailureOf());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -195,7 +195,7 @@ public class ConstraintProjectionApiAccessBindingTest
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node is IsKoto && x.Node.FailureOf() == BindingFailure.Access);
             Assert.False(c.Emission.Validate(out _));
         }
     }

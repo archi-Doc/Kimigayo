@@ -16,7 +16,7 @@ public class TerminalGuardContinuationTest
     {
         var c = MinimalEmissionTest.Analyze(Source("var x = 1", guard, "x = 2", "let y = x"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.TypeMismatch);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.TypeMismatch);
         Assert.False(c.Emission.Validate(out _));
     }
 

@@ -36,7 +36,7 @@ public class PairAnnotationBindingTest
             {
                 Assert.False(c.Bind().IsComplete);
                 var f = Function(c);
-                var annotated = f.Parameters[0].Type.BoundType!;
+                var annotated = f.Parameters[0].Type.TypeOf()!;
                 Assert.Equal(BoundTypeKind.Parameter, annotated.Kind);
                 Assert.Same(f.BoundSymbol!.Schema!.GenericSlots[0].Symbol, annotated.Symbol);
                 Assert.Same(f.BoundSymbol.Schema.Origins[0].Origin, annotated.Origin);
@@ -186,7 +186,7 @@ public class PairAnnotationBindingTest
     {
         var c = Parse($"func f<s/T>(value: {type})\n    s is ref\n    T is i32\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Equal(BoundTypeKind.Parameter, Function(c).Parameters[0].Type.BoundType!.Kind);
+        Assert.Equal(BoundTypeKind.Parameter, Function(c).Parameters[0].Type.TypeOf()!.Kind);
     }
 
     [Theory]
@@ -207,11 +207,11 @@ public class PairAnnotationBindingTest
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
         var schema = f.BoundSymbol!.Schema!;
-        Assert.Same(schema.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.BoundType);
-        Assert.Null(f.Parameters[0].Type.BoundType!.Origin);
-        Assert.Same(schema.Origins[0].Origin, f.Parameters[1].Type.BoundType!.Origin);
-        Assert.Same(schema.Origins[1].Origin, f.Parameters[2].Type.BoundType!.Origin);
-        Assert.NotSame(f.Parameters[1].Type.BoundType, f.Parameters[2].Type.BoundType);
+        Assert.Same(schema.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.TypeOf());
+        Assert.Null(f.Parameters[0].Type.TypeOf()!.Origin);
+        Assert.Same(schema.Origins[0].Origin, f.Parameters[1].Type.TypeOf()!.Origin);
+        Assert.Same(schema.Origins[1].Origin, f.Parameters[2].Type.TypeOf()!.Origin);
+        Assert.NotSame(f.Parameters[1].Type.TypeOf(), f.Parameters[2].Type.TypeOf());
     }
 
     [Fact]
@@ -220,7 +220,7 @@ public class PairAnnotationBindingTest
         var c = Parse("func f<s/T>(value: (raw/(s/T during a), [2 of s/T during a])) => ()");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
-        var tuple = f.Parameters[0].Type.BoundType!;
+        var tuple = f.Parameters[0].Type.TypeOf()!;
         Assert.Equal(BoundTypeKind.Tuple, tuple.Kind);
         var pointerTarget = Assert.Single(tuple.Components[0].Components);
         var arrayElement = Assert.Single(tuple.Components[1].Components);

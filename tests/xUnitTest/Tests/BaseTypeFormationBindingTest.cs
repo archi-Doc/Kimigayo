@@ -18,13 +18,13 @@ public class BaseTypeFormationBindingTest
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is i32\ncontract C\n" + (reverseOrder ? derived + middle : middle + derived));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Type(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Type(c).StateOf());
         Assert.False(Definition(c).IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Equal(BindingState.Invalid, Type(restored).BindingState);
+        Assert.Equal(BindingState.Invalid, Type(restored).StateOf());
         Assert.False(Definition(restored).IsVerified);
     }
 
@@ -37,7 +37,7 @@ public class BaseTypeFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nopen struct Base<T>\ncontract C\nstruct S: Base<" + argument + ">\n    Self is C");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, Type(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Type(c).StateOf());
         Assert.False(Definition(c).IsVerified);
     }
 
@@ -60,7 +60,7 @@ public class BaseTypeFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is i32\ncontract C\nstruct Invalid: Base<string>\nstruct S: Base<i32>\n    Self is C");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, Type(c).BindingState);
+        Assert.Equal(BindingState.Resolved, Type(c).StateOf());
         Assert.True(Definition(c).IsVerified);
     }
 
@@ -69,7 +69,7 @@ public class BaseTypeFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is i32\ncontract C\nstruct S: Base<string>\n    Self is C");
         Assert.False(c.Binding.Bind(BindingMode.Provisional).IsComplete);
-        Assert.Equal(BindingState.Invalid, Type(c).BindingState);
+        Assert.Equal(BindingState.Invalid, Type(c).StateOf());
         Assert.False(Definition(c).IsVerified);
     }
 
@@ -118,6 +118,6 @@ public class BaseTypeFormationBindingTest
     private static BoundConformance Definition(Compilation c)
     {
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(Type(c).BoundType!, contract.BoundSymbol!));
+        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.BoundSymbol!));
     }
 }

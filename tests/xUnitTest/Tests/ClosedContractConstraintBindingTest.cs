@@ -24,10 +24,10 @@ public class ClosedContractConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\npublic contract R\n    " + clause + "\npublic struct Impl\n    Self is R");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").BindingState);
+        Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").StateOf());
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R");
-        Assert.Equal(valid, c.Binding.GetConformanceDefinition(implementation.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.Equal(valid, c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -40,7 +40,7 @@ public class ClosedContractConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract R\n    Source is R\npublic struct Source" + (cycle ? "\n    Self is R" : string.Empty));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").BindingState);
+        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").StateOf());
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -54,11 +54,11 @@ public class ClosedContractConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\n" + (reverse ? contract + source : source + contract));
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").BindingState);
+        Assert.Equal(BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").StateOf());
         var child = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child");
-        Assert.Equal(BindingState.Invalid, child.BindingState);
+        Assert.Equal(BindingState.Invalid, child.StateOf());
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
-        Assert.False(c.Binding.GetConformanceDefinition(implementation.BoundType!, child.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, child.BoundSymbol!)!.IsVerified);
     }
 
     [Theory]
@@ -71,7 +71,7 @@ public class ClosedContractConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\n    associate Item\npublic contract R: Origin\n    " + clause + "\npublic struct Impl\n    Self is R\n    associate Origin.Item is " + item);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").BindingState);
+        Assert.Equal(BindingState.Resolved, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").StateOf());
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -86,7 +86,7 @@ public class ClosedContractConstraintBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         if (!valid)
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.Access);
+            Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
         }
     }
 
@@ -98,7 +98,7 @@ public class ClosedContractConstraintBindingTest
         var c = MinimalEmissionTest.Analyze("public contract Origin\npublic contract R\n    " + subject + " is Origin");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Node.BindingFailure == BindingFailure.InvalidConstraint);
+        Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.InvalidConstraint);
     }
 
     [Fact]
@@ -114,10 +114,10 @@ public class ClosedContractConstraintBindingTest
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(implementation.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.GetConformanceDefinition(implementation.BoundType!, contract.BoundSymbol!)!.IsVerified);
+        Assert.True(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]

@@ -136,8 +136,8 @@ public class PropertyBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var property = Property(c, "C", "item");
         var header = property.Declaration.TypeKoto!;
-        Assert.Equal(BindingState.Resolved, header.BindingState);
-        Assert.Same(property.Type, header.BoundType);
+        Assert.Equal(BindingState.Resolved, header.StateOf());
+        Assert.Same(property.Type, header.TypeOf());
     }
 
     [Theory]
@@ -302,7 +302,7 @@ public class PropertyBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    property item: i32 has get\nopen struct Base\n    public var item: i32\nstruct S: Base\n    Self is C\n    {member}");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Binding.GetConformance(Container(c, "S").BoundType!, Container(c, "C").BoundSymbol!));
+        Assert.Null(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").BoundSymbol!));
     }
 
     [Theory]
@@ -323,7 +323,7 @@ public class PropertyBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var member = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == "item");
         Assert.Same(Property(c, "Base", "item").Symbol, member.BoundSymbol);
-        Assert.Equal("i32", member.BoundType!.Name);
+        Assert.Equal("i32", member.TypeOf()!.Name);
     }
 
     [Fact]
@@ -427,7 +427,7 @@ public class PropertyBindingTest
 
     private static BoundProperty Property(Compilation c, string type, string name) => Container(c, type).Members.OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == name).BoundSymbol!.Property!;
 
-    private static BoundConformance Conformance(Compilation c, string type, string contract) => c.Binding.GetConformance(Container(c, type).BoundType!, Container(c, contract).BoundSymbol!)!;
+    private static BoundConformance Conformance(Compilation c, string type, string contract) => c.Binding.GetConformance(Container(c, type).TypeOf()!, Container(c, contract).BoundSymbol!)!;
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

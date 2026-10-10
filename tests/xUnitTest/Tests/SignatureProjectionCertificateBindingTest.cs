@@ -54,7 +54,7 @@ public class SignatureProjectionCertificateBindingTest
         {
             var type = compilation.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Last");
             var contract = compilation.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "D");
-            Assert.Equal(valid, compilation.Binding.GetConformanceDefinition(type.BoundType!, contract.BoundSymbol!)!.IsVerified);
+            Assert.Equal(valid, compilation.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
         }
     }
 
@@ -132,6 +132,6 @@ public class SignatureProjectionCertificateBindingTest
     private static BoundConformance Definition(Compilation c)
     {
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return c.Binding.GetConformanceDefinition(Structure(c).BoundType!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(Structure(c).TypeOf()!, contract.BoundSymbol!)!;
     }
 }

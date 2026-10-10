@@ -61,7 +61,7 @@ public class CopyOperationTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.Equal(ConversionBinding.Identity, conversion.ConversionBinding);
-        Assert.Equal(BoundType.I32, conversion.BoundType);
+        Assert.Equal(BoundType.I32, conversion.TypeOf());
         Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
     }
 

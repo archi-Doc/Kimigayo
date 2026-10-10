@@ -37,7 +37,7 @@ public class WrappingIntegerTest
         var primitive = BoundType.Primitives[integer];
         var wrapping = BoundType.WrappingOf(primitive);
         var a = variables["a"];
-        Assert.Same(wrapping, a.NameKoto.BoundType);
+        Assert.Same(wrapping, a.NameKoto.TypeOf());
         Assert.Equal($"Wrapping<{integer}>", wrapping.Name);
         Assert.Equal(BoundTypeKind.Primitive, wrapping.Kind);
         Assert.True(wrapping.IsWrappingInteger);
@@ -50,16 +50,16 @@ public class WrappingIntegerTest
         Assert.Equal(ScalarTypes.Signed(primitive), ScalarTypes.Signed(wrapping));
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(wrapping, a));
         Assert.Equal(ConstraintProof.Refuted, c.Binding.ProvePrimitiveInteger(wrapping, a));
-        Assert.Same(wrapping, variables["b"].NameKoto.BoundType);
-        Assert.Same(primitive, variables["c"].NameKoto.BoundType);
-        Assert.Same(wrapping, variables["e"].NameKoto.BoundType);
-        Assert.Same(BoundType.Boolean, variables["eq"].NameKoto.BoundType);
-        Assert.Same(BoundType.Boolean, variables["lt"].NameKoto.BoundType);
-        Assert.Same(wrapping, variables["f"].NameKoto.BoundType); // Read through ref/Wrapping<T>.
-        Assert.Same(wrapping, variables["g"].NameKoto.BoundType);
-        Assert.Same(wrapping, variables["h"].NameKoto.BoundType);
-        Assert.Same(wrapping, variables["n"].NameKoto.BoundType); // Unary minus exists for unsigned arguments too.
-        Assert.Same(wrapping, variables["m"].NameKoto.BoundType);
+        Assert.Same(wrapping, variables["b"].NameKoto.TypeOf());
+        Assert.Same(primitive, variables["c"].NameKoto.TypeOf());
+        Assert.Same(wrapping, variables["e"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Boolean, variables["eq"].NameKoto.TypeOf());
+        Assert.Same(BoundType.Boolean, variables["lt"].NameKoto.TypeOf());
+        Assert.Same(wrapping, variables["f"].NameKoto.TypeOf()); // Read through ref/Wrapping<T>.
+        Assert.Same(wrapping, variables["g"].NameKoto.TypeOf());
+        Assert.Same(wrapping, variables["h"].NameKoto.TypeOf());
+        Assert.Same(wrapping, variables["n"].NameKoto.TypeOf()); // Unary minus exists for unsigned arguments too.
+        Assert.Same(wrapping, variables["m"].NameKoto.TypeOf());
         Assert.Same(WindowsLowering.GetValue(primitive), WindowsLowering.GetValue(wrapping));
     }
 
@@ -182,9 +182,9 @@ public class WrappingIntegerTest
         var c = MinimalEmissionTest.Analyze("let w = 5@Wrapping<u32>\nlet s = -5@Wrapping<i8>\nlet g = (-128)@Wrapping<i8>");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToDictionary(x => x.NameKoto.IdentifierName, x => x);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u32"]), variables["w"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i8"]), variables["s"].NameKoto.BoundType);
-        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i8"]), variables["g"].NameKoto.BoundType);
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["u32"]), variables["w"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i8"]), variables["s"].NameKoto.TypeOf());
+        Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i8"]), variables["g"].NameKoto.TypeOf());
 
         // -(1) is an ordinary negation typed as i32 before the conversion, which is then the same-argument error.
         var negated = MinimalEmissionTest.Analyze("let m = -(1)@Wrapping<u32>");
