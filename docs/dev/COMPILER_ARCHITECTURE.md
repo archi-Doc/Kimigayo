@@ -50,14 +50,27 @@ Unsupported code is a design change that needs a SPEC basis and owner approval.
   compiler processing time may, and are recorded. A regression is a change beyond the variation of repeated runs under
   identical conditions.
 
+## Canonical components
+
+Components the reduction has created, under `src/Kimi/Compiler`. Extend one of these before adding a parallel structure.
+
+| Component | Source | Responsibility |
+| --- | --- | --- |
+| `ChildSlots` | `Parsing/Koto/Common/ChildSlots.cs` | The one child walk: a node lists its slots once in `ForEachChildSlot`, which visiting, collecting and replacing share |
+| `SyntaxTable` | `Parsing/Koto/Common/SyntaxTable.cs` | Per-module dense pre-order `SyntaxId`; a synthetic node takes a later id at its first semantic write |
+| `HirTables` | `Binding/HirTables.cs` | Semantic columns and `PlanRow`s keyed by `SyntaxId`, behind the Koto forwarding properties until R6 |
+| `SemanticQuery` | `Binding/SemanticQuery.cs` | `Compilation.Semantics`: the facts Binding publishes to Hover, the LSP and tests |
+| `CallPlan` | `Binding/CallPlan.cs` | One plan per call, its callee a `CalleeKind` (Function, Requirement, Virtual or Value) |
+| `AdtDef` | `Binding/AdtDef.cs` | The stored shape of a struct or enum on its symbol: Fields, Cases, destructor, inline storage and the Field, base and Case Types of each instance |
+
 ## Stage ledger
 
 | Stage | State | Scope |
 | --- | --- | --- |
 | R0 | Done (timing baselines carried to before R5) | Baselines, size and rule ratchets, disposition ledger, narrow-implementation and Advice/Note inventories, freeze |
 | R1 | Done 2026-10-10 (closed by user instruction at 129,482 lines, above its 127,000 ceiling) | Delete-first: one Unsupported code, Advice/Note reduction, library validation into tests, dead code, control-flow type flow, OCC-X waiting machinery, independent narrow implementations |
-| R2a | Active | `SyntaxId`, `HirTables` behind forwarding properties, `AdtDef`, unified CallPlan type, pure fits, child-walk and operator-class consolidation, Hover move |
-| R2b | Pending | `TyCtxt`, complete HIR columns and Plans, default declarations, read-only declaration-table views, intrinsic table |
+| R2a | Done 2026-10-11 (closed at 126,611 lines, above its 125,000 ceiling, by the stage decision to close at the measured size) | `SyntaxId`, `HirTables` behind forwarding properties, `AdtDef`, unified CallPlan type, pure fits, child-walk and operator-class consolidation, Hover move |
+| R2b | Active | `TyCtxt`, complete HIR columns and Plans, default declarations, read-only declaration-table views, intrinsic table |
 | R3 | Pending | MIR model, descriptor table, validator, dump and builder (shadow) |
 | R4 | Pending | MIR analyses A1–A6 and the difference ledger (shadow) |
 | R5 | Pending | Monomorphization, shims, layout/ABI, code generation, capability table (shadow) |

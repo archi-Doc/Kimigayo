@@ -11,8 +11,8 @@ namespace XunitTest;
 public class ArchitectureRulesTest
 {
     [Theory]
-    [InlineData("Koto-keyed dictionaries in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"Dictionary<\w*Koto\b", 101)]
-    [InlineData("Supports* gates", "src/Kimi/Compiler", "*.cs", @"\bbool\s+Supports\w*\s*[(<]", 15)]
+    [InlineData("Koto-keyed dictionaries in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"Dictionary<\w*Koto\b", 96)]
+    [InlineData("Supports* gates", "src/Kimi/Compiler", "*.cs", @"\bbool\s+Supports\w*\s*[(<]", 13)]
     [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 446)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
     [InlineData("Advice in the diagnostic catalog", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"(?m)^\s*Advice=", 0)]
@@ -21,6 +21,7 @@ public class ArchitectureRulesTest
     [InlineData("Test reads and writes of Koto semantic slots", "tests/xUnitTest", "*.cs", @"(?<!Compiler)\.(?:Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage)\b|[{,]\s*(?:Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|CallStorage|ClosureStorage|ConversionBinding|EntryCall|Iteration|IsDirectStorage|FillCount|SemanticsIndexed)\s*:", 13)]
     [InlineData("Operator Koto subclasses", "src/Kimi/Compiler/Parsing/Koto/Expressions", "*.cs", @"\bclass\s+\w+\s*:\s*(?:Binary|Unary)Koto\b", 9)]
     [InlineData("Child walks other than ForEachChildSlot", "src/Kimi/Compiler", "*.cs", @"\b(?:VisitChildrenCore|GetChildNodes|ReplaceChildCore|ReplaceInList)\b", 0)]
+    [InlineData("Semantic auto-properties on Koto classes", "src/Kimi/Compiler/Parsing/Koto", "*.cs", @"\b(?:Bound[A-Z]\w*|BindingSymbol|CallPlan)\??\s+\w+\s*\{\s*get;\s*(?:(?:internal|private|protected)\s+)?set;\s*\}", 7)]
     public void SourcePatternDoesNotGrow(string rule, string directory, string pattern, string regex, int limit)
     {
         var expression = new Regex(regex);

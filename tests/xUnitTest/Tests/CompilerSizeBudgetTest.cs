@@ -8,21 +8,22 @@ namespace XunitTest;
 /// as counted by <c>wc -l</c>, so comments and blank lines count. The caps fall when a reduction stage exits.</summary>
 public class CompilerSizeBudgetTest
 {
-    // R1 exit (2026-10-10): an area may grow by at most 2% over its size at the R1 exit, and the total may not grow.
-    private const int TotalCap = 129_482;
+    // R2a exit (2026-10-11): an area may grow by at most 2% over its size at the R2a exit (Core, which grew in R2a,
+    // keeps its lower R1 cap), and the total (126,611 lines, closed above the R2a ceiling of 125,000) may not grow.
+    private const int TotalCap = 126_611;
 
     private static readonly Dictionary<string, int> Caps = new(StringComparer.Ordinal)
     {
-        ["Analysis"] = 17_965,
-        ["Binding"] = 57_454,
+        ["Analysis"] = 17_942,
+        ["Binding"] = 56_258,
         ["Core"] = 1_614,
         ["Documentation"] = 4_424,
         ["Emission"] = 21_320,
         ["Helper"] = 3_505,
         ["Lexing"] = 4_047,
         ["LlvmTemplates"] = 2_381,
-        ["Parsing"] = 17_990,
-        ["Root"] = 1_366,
+        ["Parsing"] = 16_570,
+        ["Root"] = 1_064,
     };
 
     public static TheoryData<string> Areas
