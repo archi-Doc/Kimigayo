@@ -97,16 +97,16 @@ internal record struct MirBlock(int Start, int Count, MirTerminator Terminator);
 /// <summary>A local: local 0 is the Return local, the Arg locals follow it (the receiver first), then Var, Temp and DropFlag locals.</summary>
 internal readonly record struct MirLocal(BoundType Type, MirLocalKind Kind, SourceInfo Source, bool Mutable = false, string? Name = null, MirLocalRole Role = MirLocalRole.None);
 
-/// <summary>A scope of the body; scope 0 is the body's own, and a scope's parent precedes it. An Inlined scope's source is its call.</summary>
-internal readonly record struct MirScope(int Parent, MirScopeKind Kind, SourceRef Source);
+/// <summary>A scope of the body; scope 0 is the body's own, and the scope a scope is in (<see cref="Outer"/>) precedes it. An Inlined scope's source is its call.</summary>
+internal readonly record struct MirScope(int Outer, MirScopeKind Kind, SourceRef Source);
 
 /// <summary>A constant; interned, so equal constants share one id.</summary>
 internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int128 Bits = default, object? Value = null);
 
-/// <summary>An interned projection step: the chain it extends (0: the root), its kind and argument (a Field index, a base depth, an index
+/// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index, a base depth, an index
 /// local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects (null when its base does not admit it).
 /// Chains are independent of their roots, so equal prefixes share ids.</summary>
-internal readonly record struct MirProjection(int Parent, MirProjectionKind Kind, int Arg, BoundType? Type);
+internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type);
 
 internal readonly record struct MirSwitchCase(long Value, int Target);
 
@@ -204,7 +204,7 @@ internal sealed class MirBody
                 _ = TyCtxt.Layer(type, out var below, out var binder);
                 if (kind == MirProjectionKind.PairLayer)
                 {
-                    return binder is not null && (uint)arg < (uint)this.Binders.Count && ReferenceEquals(this.Binders[arg].Target, binder) ? below : null;
+                    return this.Binds(arg, binder) ? below : null;
                 }
 
                 return binder is null && !ReferenceEquals(below, type) ? below : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } ? pointee : null;
@@ -229,6 +229,12 @@ internal sealed class MirBody
                 return null;
         }
     }
+
+    /// <summary>Gets whether a binder of the body, which a PairLayer or PairAcquire names, is the pair layer's binder (<see cref="TyCtxt.Layer"/>).</summary>
+    /// <param name="binder">The index in <see cref="Binders"/>.</param>
+    /// <param name="target">The pair layer's binder.</param>
+    /// <returns>Whether the index names that binder.</returns>
+    internal bool Binds(int binder, BindingSymbol? target) => target is not null && (uint)binder < (uint)this.Binders.Count && ReferenceEquals(this.Binders[binder].Target, target);
 
     /// <summary>Starts the body over for a definition: every table empty but the body's scope and the empty projection chain.</summary>
     /// <param name="key">The definition.</param>
@@ -274,7 +280,7 @@ internal sealed class MirBody
 
     internal int AddCase(long value, int target) => Add(ref this.cases, ref this.caseCount, new MirSwitchCase(value, target));
 
-    internal int AddScope(int parent, MirScopeKind kind, SourceRef source) => Add(ref this.scopes, ref this.scopeCount, new MirScope(parent, kind, source));
+    internal int AddScope(int outer, MirScopeKind kind, SourceRef source) => Add(ref this.scopes, ref this.scopeCount, new MirScope(outer, kind, source));
 
     /// <summary>Gets the id of a constant, interning it.</summary>
     /// <param name="constant">The constant.</param>

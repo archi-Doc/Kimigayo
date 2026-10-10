@@ -6,7 +6,7 @@
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A MIR statement (plan 5.4). The six kind vocabularies of MIR are closed (ArchitectureRulesTest.VocabularyDoesNotGrow):
-/// a new member needs a SPEC basis and owner approval.</summary>
+/// a new member needs a SPEC basis and owner approval, and every member has a row in <see cref="MirDescriptors"/>.</summary>
 internal enum MirStatementKind : byte
 {
     Assign, // Place = Rvalue.

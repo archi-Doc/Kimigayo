@@ -13,7 +13,8 @@ namespace XunitTest;
 public sealed class MirModelTest
 {
     internal const string Source = "open struct Base\n    public var tag: i32 = 0\n    public init() => ()\nstruct Point : Base\n    public var x: i32 = 0\n" +
-        "    public var y: bool = false\n    public init() => ()\nenum Shape\n    Dot\n    Line(i32, i32)\nfunc f() -> i32 => 1\n";
+        "    public var y: bool = false\n    public init() => ()\nenum Shape\n    Dot\n    Line(i32, i32)\nfunc f() -> i32 => 1\n" +
+        "func g<s/T>(value: s/T) -> s/T\n    s is owner or uniq\n    T is Copy\n    return value\n";
 
     private static readonly SourceInfo At = default;
 
@@ -47,7 +48,7 @@ public sealed class MirModelTest
 
         var deref = body.Project(Local(body, c.Types.Reference(SemanticsKind.Ref, tuple)), MirProjectionKind.Deref, 0);
         var first = body.Project(deref, MirProjectionKind.Field, 0);
-        Assert.Equal(deref.Projection, body.Projections[first.Projection].Parent);
+        Assert.Equal(deref.Projection, body.Projections[first.Projection].Prefix);
         Assert.Same(BoundType.I32, body.TypeOf(first));
         Assert.Same(BoundType.I32, body.TypeOf(body.Project(Local(body, c.Types.Pointer(BoundType.I32)), MirProjectionKind.Deref, 0)));
 
@@ -75,6 +76,12 @@ public sealed class MirModelTest
         Assert.Equal(invalid.Projection, body.Project(Local(body, BoundType.I32), MirProjectionKind.Field, 0).Projection);
         Assert.Equal(count + 1, body.Projections.Length);
         Assert.Null(body.TypeOf(body.Project(Local(body, BoundType.I32), MirProjectionKind.PairLayer, 0)));
+        var pair = Local(body, types.Pair);
+        Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
+        PairBinder.Collect(types.Generic, body.Binders);
+        _ = TyCtxt.Layer(types.Pair, out var target, out _);
+        Assert.Same(target, body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 0)));
+        Assert.Null(body.TypeOf(body.Project(pair, MirProjectionKind.PairLayer, 1)));
     }
 
     // Equal constants share an id; the Type, the kind and the value tell constants apart, a string by its text.
@@ -193,7 +200,8 @@ public sealed class MirModelTest
         BoundType Self(string name) => c.Semantics.SelfType(containers.Single(x => x.Name == name).SymbolOf()!);
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").SymbolOf()!;
         var array = c.Types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [BoundType.I32], 3);
-        return (c, new(Self("Base"), Self("Point"), Self("Shape"), array, function));
+        var generic = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g");
+        return (c, new(Self("Base"), Self("Point"), Self("Shape"), array, function, generic, generic.Parameters[0].Type.TypeOf()!));
     }
 
     internal static MirBody NewBody(Types types)
@@ -206,5 +214,6 @@ public sealed class MirModelTest
 
     internal static MirPlace Local(MirBody body, BoundType type, MirLocalKind kind = MirLocalKind.Var) => new(body.AddLocal(new(type, kind, At)));
 
-    internal sealed record Types(BoundType Base, BoundType Point, BoundType Shape, BoundType Array, BindingSymbol Function);
+    // Pair is the pair layer of g's parameter, whose binder PairBinder.Collect lists for Generic.
+    internal sealed record Types(BoundType Base, BoundType Point, BoundType Shape, BoundType Array, BindingSymbol Function, FunctionKoto Generic, BoundType Pair);
 }
