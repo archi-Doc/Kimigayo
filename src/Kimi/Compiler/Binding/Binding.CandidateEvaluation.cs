@@ -222,70 +222,16 @@ public sealed partial class Binding
         return this.FailExplained(ref this.callableConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
     }
 
-    // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused. A conformance whose only
-    // unproven part waits for OCC-X (SPEC 12.4.4.1) is a located limit: an explicit one reports it at its declaration, from which the
-    // use derives, and an inherited one, which has no declaration record, at the use.
+    // Keep a single pending declaration's concrete proof obligation before its candidate scratch is reused.
     private BoundType? FailPendingConstraint(InvocationKoto call, ReferenceConstraintFailure fact)
     {
         this.MarkWaitingHeaders(call);
-        return this.FailUnprovenReference(call, fact, true);
+        return this.FailExplained(ref this.referenceConstraints, call, BindingFailure.UnprovenConstraint, fact, true);
     }
 
-    // A call or Function Item whose unproven clause waits only for OCC-X shares that located limit.
-    private BoundType? FailUnprovenReference(Koto use, ReferenceConstraintFailure fact, bool unresolved)
-    {
-        if (fact.Proof == ConstraintProof.Unknown && this.PendingExclusiveConformance(fact.Constraint, this.ConstraintScope(use)) is { } path)
-        {
-            if (path.InheritedFrom is null)
-            {
-                this.partPrerequisites[use] = path.Use;
-            }
-
-            return this.Fail(use, BindingFailure.Unsupported, unresolved);
-        }
-
-        return this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnprovenConstraint, fact, unresolved);
-    }
-
-    private BoundConformancePath? PendingExclusiveConformance(BoundConstraint constraint, BindingScope scope)
-    {
-        // SPEC 8.7, 12.4.4.1, 23.3.6.1: an Unknown composite clause is the OCC-X limit only when each of its unproven operands waits only
-        // for OCC-X; a decided operand is neutral, and any other unproven operand stays a Proof failure after OCC-X.
-        if (constraint.Kind is ConstraintKind.And or ConstraintKind.Or)
-        {
-            var left = this.ProveConstraint(constraint.Left!, scope) == ConstraintProof.Unknown;
-            var right = this.ProveConstraint(constraint.Right!, scope) == ConstraintProof.Unknown;
-            var leftPath = left ? this.PendingExclusiveConformance(constraint.Left!, scope) : null;
-            var rightPath = right ? this.PendingExclusiveConformance(constraint.Right!, scope) : null;
-            return (left && leftPath is null) || (right && rightPath is null) ? null : leftPath ?? rightPath;
-        }
-
-        if (constraint.Kind == ConstraintKind.Not)
-        {
-            return this.PendingExclusiveConformance(constraint.Left!, scope);
-        }
-
-        if (constraint is not { Kind: ConstraintKind.Contract, Subject.Symbol: { } symbol, Contract: { } contract } || !this.conformances.TryGetValue((symbol, contract), out var identity))
-        {
-            return null;
-        }
-
-        foreach (var path in identity.PathStorage)
-        {
-            if (path.PendingExclusiveOnly)
-            {
-                return path;
-            }
-        }
-
-        return null;
-    }
-
-    // The first clause with the outcome. An Unknown clause that waits only for OCC-X yields to another Unknown clause, which stays a Proof
-    // failure after OCC-X (SPEC 12.4.4.1, 23.3.6.1), so the report does not depend on the clauses' order.
+    // The first clause with the outcome.
     private ReferenceConstraintFailure? CandidateConstraintFailure(FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType, ConstraintProof outcome)
     {
-        var pending = (ReferenceConstraintFailure?)null;
         for (var i = 0; i < function.TypeConstraints.Count; i++)
         {
             if (function.TypeConstraints[i] is not IsKoto { BoundConstraint: { HasUnresolved: false } bound } clause)
@@ -296,12 +242,7 @@ public sealed partial class Binding
             var substituted = this.SubstituteCandidateConstraint(bound, function, slots, lengths, scope, self, declaringType);
             if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == outcome)
             {
-                if (outcome != ConstraintProof.Unknown || this.PendingExclusiveConformance(substituted, scope) is null)
-                {
-                    return new(clause, substituted, outcome, function.BoundSymbol);
-                }
-
-                pending ??= new(clause, substituted, outcome, function.BoundSymbol);
+                return new(clause, substituted, outcome, function.BoundSymbol);
             }
         }
 
@@ -318,17 +259,12 @@ public sealed partial class Binding
                 var substituted = this.ContractConstraint(this.SubstituteConstraint(bound, member.Scope.Owner, (BoundType[])declaringType.Components), scope, declaringType);
                 if (!substituted.HasUnresolved && this.ProveConstraint(substituted, scope) == outcome)
                 {
-                    if (outcome != ConstraintProof.Unknown || this.PendingExclusiveConformance(substituted, scope) is null)
-                    {
-                        return new(clause, substituted, outcome, member);
-                    }
-
-                    pending ??= new(clause, substituted, outcome, member);
+                    return new(clause, substituted, outcome, member);
                 }
             }
         }
 
-        return pending;
+        return null;
     }
 
     private BoundConstraint SubstituteCandidateConstraint(BoundConstraint constraint, FunctionKoto function, BoundType?[] slots, BoundLength?[] lengths, BindingScope scope, BoundType? self, BoundType? declaringType)

@@ -11,7 +11,7 @@ namespace XunitTest;
 
 public class ImplicitBaseCallTest
 {
-    private const string PendingBumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\nopen struct Base0\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base0\n";
+    private const string LimitedBumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\nopen struct Base0\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base0\n";
 
     [Fact]
     public void OmittedBaseCallUsesOrdinaryDefaultsBeforeOwnInitializers()
@@ -189,10 +189,12 @@ public class ImplicitBaseCallTest
     [InlineData("open struct Base<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Equatable\n        ()\nstruct Leaf<U>: Base<U>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
     [InlineData("open struct Base<T>\n    protected init() => ()\nstruct Leaf: Base<i64>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
     [InlineData("open struct Base {a}\n    public var n: i32 = 1\n    public init() => ()\nstruct Leaf {b}: Base during b\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Selected))]
-    // SPEC 12.4.4.1: a composite base clause is the OCC-X limit only when each of its unproven operands waits for OCC-X.
-    [InlineData(PendingBumps + "open struct Holder<T>\n    protected init()\n        T is Bumps and Owned\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Unsupported))]
-    [InlineData(PendingBumps + "open struct Holder<T>\n    protected init()\n        T is not Bumps\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Unsupported))]
-    [InlineData(PendingBumps + "struct GLeaf<U>: Base0\n    var item: U\nopen struct Holder<T>\n    protected init()\n        T is Bumps and Owned\n        ()\nstruct Derived<U>: Holder<GLeaf<U>>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Unproven))]
+    // SPEC 23.3.6.4: a base constructor whose premise rests on a conformance limited by OCC-X leaves the selection resting on that
+    // conformance.
+    [InlineData(LimitedBumps + "open struct Holder<T>\n    protected init()\n        T is Bumps and Owned\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))]
+    [InlineData(LimitedBumps + "open struct Holder<T>\n    protected init()\n        T is not Bumps\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))]
+    [InlineData(LimitedBumps + "struct GLeaf<U>: Base0\n    var item: U\nopen struct Holder<T>\n    protected init()\n        T is Bumps and Owned\n        ()\nstruct Derived<U>: Holder<GLeaf<U>>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))]
+    [InlineData(LimitedBumps + "open struct Holder<T>\n    protected init() => ()\n    protected init(x: i32 = 0)\n        T is Bumps\n        ()\nstruct Derived: Holder<Leaf>\n    public init() => ()\n()", nameof(OmittedBaseOutcome.Dependent))] // Selected before R1f (STATUS).
     public void OmittedBaseQueryAgreesWithTheBoundCall(string source, string outcome)
         => AssertOmittedBaseAgreement(CompilationTestHelper.ParseSuccess(source), outcome);
 
@@ -295,6 +297,7 @@ public class ImplicitBaseCallTest
                 BindingFailure.NoApplicableCandidate => OmittedBaseOutcome.NoneApplicable,
                 BindingFailure.Ambiguous => OmittedBaseOutcome.Ambiguous,
                 BindingFailure.UnprovenConstraint => OmittedBaseOutcome.Unproven,
+                BindingFailure.None => OmittedBaseOutcome.Dependent,
                 _ => OmittedBaseOutcome.Unsupported,
             }, null);
         Assert.Equal((Enum.Parse<OmittedBaseOutcome>(expected), bound.Outcome, bound.Winner), (query.Outcome, query.Outcome, query.Winner));

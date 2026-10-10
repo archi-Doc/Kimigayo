@@ -428,6 +428,7 @@ public sealed partial class Binding
             var pendingProof = false;
             Koto? invalid = null;
             var error = false;
+            this.failedConformance = null;
             for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
             {
                 this.BindHeader(candidate);
@@ -469,12 +470,12 @@ public sealed partial class Binding
 
             if (error)
             {
-                return invalid is not null ? this.CompleteDependent(use, invalid) : this.Fail(use, BindingFailure.InvalidConstraint);
+                return (invalid ?? this.TakeFailedConformance()) is { } cause ? this.CompleteDependent(use, cause) : this.Fail(use, BindingFailure.InvalidConstraint);
             }
 
             if (pendingProof)
             {
-                return pending is { } fact ? this.FailUnprovenReference(use, fact, false) : this.Fail(use, BindingFailure.UnprovenConstraint);
+                return pending is { } fact ? this.FailExplained(ref this.referenceConstraints, use, BindingFailure.UnprovenConstraint, fact) : this.Fail(use, BindingFailure.UnprovenConstraint);
             }
 
             var winner = this.SelectBest(evaluated.AsSpan(0, count), operations, stride);

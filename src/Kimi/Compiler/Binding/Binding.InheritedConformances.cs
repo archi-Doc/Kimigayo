@@ -122,13 +122,13 @@ public sealed partial class Binding
         }
 
         path.Checking = true;
+        this.conformanceChecks++;
         path.RejectedSelfSignature = null;
         path.WitnessStorage.Clear();
         path.WitnessMap.Clear();
         path.PropertyWitnessStorage.Clear();
         path.PropertyWitnessMap.Clear();
-        path.PendingExclusive = null;
-        path.PendingExclusiveOnly = false;
+        var completed = false;
         try
         {
             var proof = ConstraintProof.Proven;
@@ -246,13 +246,16 @@ public sealed partial class Binding
                 }
             }
 
-            proof = PendingExclusiveProof(path, proof);
+            proof = UnsupportedProof(path, proof);
             path.IsVerified = proof == ConstraintProof.Proven;
+            completed = true;
             return proof;
         }
         finally
         {
             path.Checking = false;
+            path.Unsupported &= completed; // An interrupted verification records no limit.
+            this.conformanceChecks--;
         }
     }
 

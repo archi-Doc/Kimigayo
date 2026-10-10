@@ -381,6 +381,13 @@ public sealed partial class Binding
             {
                 var path = identity.PathStorage[i];
                 var definition = this.VerifyConformance(path);
+                if (path.Unsupported && this.conformanceChecks == 0)
+                {
+                    // SPEC 23.3.6.1, 23.3.6.4: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedConformance).
+                    this.failedConformance ??= path;
+                    definition = ConstraintProof.Error;
+                }
+
                 var condition = this.ProveConformanceConditions(path, type, scope);
                 var available = definition == ConstraintProof.Proven ? condition : condition == ConstraintProof.Error ? ConstraintProof.Error : definition;
                 result = CombineProof(result, available, false);

@@ -70,6 +70,7 @@ public sealed partial class Binding
         var shape = MeasureCandidates(candidates, true);
         var obligationCount = this.obligations.Count;
         var acquisition = this.acquisitionFailure;
+        var failedConformance = this.failedConformance;
         var requirementContract = this.activeRequirementContract;
         var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
         var scratch = this.typeScratch.Rent(Math.Max(1, shape.Generics));
@@ -112,6 +113,7 @@ public sealed partial class Binding
                 PremisesOnly = true,
             };
             this.acquisitionFailure = null;
+            this.failedConformance = null;
             foreach (var candidate in candidates)
             {
                 this.EvaluateCallCandidate(ref evaluation, candidate);
@@ -126,8 +128,8 @@ public sealed partial class Binding
                     : new(OmittedBaseOutcome.Unsupported),
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),
-                CallSelection.Unproven => this.UnprovenBaseSelection(ref evaluation),
-                CallSelection.InvalidDeclaration => evaluation.InvalidDeclaration is { } invalid ? new(OmittedBaseOutcome.Dependent, Cause: invalid) : new(OmittedBaseOutcome.Unsupported),
+                CallSelection.Unproven => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
+                CallSelection.InvalidDeclaration => (evaluation.InvalidDeclaration ?? this.TakeFailedConformance()) is { } cause ? new(OmittedBaseOutcome.Dependent, Cause: cause) : new(OmittedBaseOutcome.Unsupported),
                 CallSelection.FailedSignature => new(OmittedBaseOutcome.Dependent, Cause: evaluation.FailedPendingSignature),
                 _ => new(OmittedBaseOutcome.Dependent, Cause: evaluation.IncompleteSignature),
             };
@@ -142,6 +144,7 @@ public sealed partial class Binding
 
             this.obligations.RemoveRange(obligationCount, this.obligations.Count - obligationCount);
             this.acquisitionFailure = acquisition;
+            this.failedConformance = failedConformance;
             this.activeRequirementContract = requirementContract;
             (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
             this.indexScratch.Return(boundStarts);
@@ -154,30 +157,6 @@ public sealed partial class Binding
             this.lengthScratch.Return(lengthArguments, clearArray: true);
             this.typeScratch.Return(scratch, clearArray: true);
         }
-    }
-
-    // As a call publishes it (BindCallCore): one pending candidate's Callable or Constraint premise, an exclusive witness waiting for
-    // OCC-X as the conformance's own limit (SPEC 12.4.4.1), or no single premise.
-    private OmittedBaseSelection UnprovenBaseSelection(ref CallEvaluation evaluation)
-    {
-        if (evaluation.PendingCount != 1)
-        {
-            return new(OmittedBaseOutcome.Unproven);
-        }
-
-        if (evaluation.CallableFailure is { } callable)
-        {
-            return new(OmittedBaseOutcome.Unproven, Cause: callable.Clause);
-        }
-
-        if (evaluation.ConstraintFailure is not { } constraint)
-        {
-            return new(OmittedBaseOutcome.Unproven);
-        }
-
-        return this.PendingExclusiveConformance(constraint.Constraint, evaluation.Scope) is not { } path ? new(OmittedBaseOutcome.Unproven, Cause: constraint.Clause)
-            : path.InheritedFrom is null ? new(OmittedBaseOutcome.Dependent, Cause: path.Use)
-            : new(OmittedBaseOutcome.Unsupported);
     }
 
     // SPEC 6.2.3.6: decides each pending synthesized constructor of a derived structure once the declarations are bound, base first.

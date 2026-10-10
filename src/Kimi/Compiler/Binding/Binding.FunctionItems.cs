@@ -288,10 +288,11 @@ public sealed partial class Binding
         }
 
         var container = this.ReferenceContainer(use, symbol);
+        this.failedConformance = null;
         var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container, failureUse: use);
         if (proof != ConstraintProof.Proven)
         {
-            this.RequireReferenceConstraint(use, proof);
+            this.RequireConstraint(use, proof, this.capabilityMode);
             return null;
         }
 
@@ -407,10 +408,11 @@ public sealed partial class Binding
             }
 
             var container = this.ReferenceContainer(use, selected);
+            this.failedConformance = null;
             var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths, use);
             if (proof != ConstraintProof.Proven)
             {
-                this.RequireReferenceConstraint(use, proof);
+                this.RequireConstraint(use, proof, this.capabilityMode);
                 return null;
             }
 
@@ -520,27 +522,13 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 12.4.4.1: a Function Item clause that only an OCC-X witness leaves unproven is that located limit, as at a call.
-    private void RequireReferenceConstraint(Koto use, ConstraintProof proof)
-    {
-        if (proof == ConstraintProof.Unknown && this.capabilityMode == BindingMode.Final && this.referenceConstraints?.TryGetValue(use, out var fact) == true)
-        {
-            this.FailUnprovenReference(use, fact, false);
-            return;
-        }
-
-        this.RequireConstraint(use, proof, this.capabilityMode);
-    }
-
     private void RecordReferenceConstraint(Koto use, IsKoto clause, BoundConstraint constraint, ConstraintProof proof)
     {
         if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown)
         {
             var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
-            // A refuted clause, then an Unknown one that does not wait only for OCC-X, is the reported cause (SPEC 12.4.4.1).
-            if (!failures.TryGetValue(use, out var previous) || (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Refuted) ||
-                (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Unknown && this.PendingExclusiveConformance(previous.Constraint, this.ConstraintScope(use)) is not null &&
-                    this.PendingExclusiveConformance(constraint, this.ConstraintScope(use)) is null))
+            // A refuted clause, then the first Unknown one, is the reported cause.
+            if (!failures.TryGetValue(use, out var previous) || (previous.Proof == ConstraintProof.Unknown && proof == ConstraintProof.Refuted))
             {
                 failures[use] = new(clause, constraint, proof);
             }

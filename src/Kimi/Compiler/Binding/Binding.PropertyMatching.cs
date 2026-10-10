@@ -133,8 +133,7 @@ public sealed partial class Binding
             conformance.PropertyWitnessMap.Add((witness.Identity, requirement.Kind), witness);
             if (objectProof == ConstraintProof.Unknown)
             {
-                // SPEC 12.4.4.1: an exclusive accessor receiver projected to its base waits for OCC-X (VerifyConformance).
-                conformance.PendingExclusive ??= implementation.Property.Symbol;
+                conformance.Unsupported = true; // SPEC 12.4.4.1: OCC-X (UnsupportedProof).
                 return proof;
             }
 

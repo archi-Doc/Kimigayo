@@ -1018,6 +1018,16 @@ public sealed partial class Binding
             }
 
             this.SettleSpecificationLinks();
+
+            // SPEC 23.3.6.1: an inherited conformance limited by OCC-X is reported once, at the derived Type's base clause, when a failing
+            // check rested on it; an explicit one was reported at its declaration (ValidateConformances).
+            for (var i = 0; i < this.activeConformancePaths.Count; i++)
+            {
+                if (this.activeConformancePaths[i] is { Needed: true } path)
+                {
+                    this.Fail(path.Use, BindingFailure.Unsupported);
+                }
+            }
         }
 
         var resolved = 0;

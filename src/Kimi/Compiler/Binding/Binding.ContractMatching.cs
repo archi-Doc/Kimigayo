@@ -138,21 +138,22 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 12.4.4.1: a verification whose witnesses wait for OCC-X is not Proven; when nothing else is unproven, its only cause is that
-    // wait, which the conformance and its uses report as a located limit rather than an unproven Constraint.
-    private static ConstraintProof PendingExclusiveProof(BoundConformancePath path, ConstraintProof proof)
+    // SPEC 12.4.4.1, 23.3.6.1: a witness whose ObjectCallCompatible status is not computed leaves the verification Unknown; it is the
+    // conformance's limit (Unsupported) only when nothing else is unproven.
+    private static ConstraintProof UnsupportedProof(BoundConformancePath path, ConstraintProof proof)
     {
-        if (path.PendingExclusive is null)
-        {
-            return proof;
-        }
-
-        path.PendingExclusiveOnly = proof == ConstraintProof.Proven;
-        return CombineProof(proof, ConstraintProof.Unknown, true);
+        path.Unsupported &= proof == ConstraintProof.Proven;
+        return path.Unsupported ? ConstraintProof.Unknown : proof;
     }
 
     private ConstraintProof VerifyConformance(BoundConformancePath conformance, ConstraintProof? inheritedProof = null)
     {
+        // A limit is the fact of a completed verification; an early or in-progress answer has none (ResolveConformance).
+        if (!conformance.Checking)
+        {
+            conformance.Unsupported = false;
+        }
+
         if (this.collectingAssociated is not null && this.associatedInference.TryGetValue(conformance.Type, out var batch) && batch.State != 2)
         {
             return ConstraintProof.Unknown; // Type-value scheduling never certifies a collecting definition.
@@ -168,7 +169,7 @@ public sealed partial class Binding
             conformance.IsVerified = false;
             if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
             {
-                this.failedDerivedConformance ??= conformance.Use; // A use rests on a conformance that rests on its specification.
+                this.failedConformance ??= conformance; // A use rests on a conformance that rests on its specification.
             }
 
             return ConstraintProof.Error;
@@ -191,12 +192,12 @@ public sealed partial class Binding
         }
 
         conformance.Checking = true;
+        this.conformanceChecks++;
         conformance.WitnessStorage.Clear();
         conformance.WitnessMap.Clear();
         conformance.PropertyWitnessStorage.Clear();
         conformance.PropertyWitnessMap.Clear();
-        conformance.PendingExclusive = null;
-        conformance.PendingExclusiveOnly = false;
+        var completed = false;
         try
         {
             var shape = conformance.Contract.Contract!;
@@ -422,13 +423,16 @@ public sealed partial class Binding
                 conformance.WitnessMap.Add(identity, witness);
             }
 
-            proof = PendingExclusiveProof(conformance, proof);
+            proof = UnsupportedProof(conformance, proof);
             conformance.IsVerified = proof == ConstraintProof.Proven;
+            completed = true;
             return proof;
         }
         finally
         {
             conformance.Checking = false;
+            conformance.Unsupported &= completed; // An interrupted verification records no limit.
+            this.conformanceChecks--;
         }
 
         ConstraintProof Invalid(BindingFailure failure)
@@ -606,8 +610,7 @@ public sealed partial class Binding
             witness.ObjectCompatibility = selection.Path is not null && receiverIndex >= 0 ? ProjectedReceiverProof(implementation.BoundSymbol!) : ConstraintProof.Proven;
             if (witness.ObjectCompatibility == ConstraintProof.Unknown)
             {
-                // SPEC 12.4.4.1: an exclusive receiver projected to its base waits for OCC-X; the verification adds it as its own cause.
-                conformance.PendingExclusive ??= implementation.BoundSymbol;
+                conformance.Unsupported = true; // SPEC 12.4.4.1: OCC-X (UnsupportedProof).
                 return proof;
             }
 

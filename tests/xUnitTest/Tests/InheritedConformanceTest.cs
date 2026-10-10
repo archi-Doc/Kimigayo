@@ -37,19 +37,23 @@ public class InheritedConformanceTest
 
     private const string Bumps = "contract Bumps\n    func bump(self: uniq/Self) -> ()\n";
 
-    // SPEC 12.4.4.1: an exclusive implementation reached through a base waits for the receiver-preservation proof of OCC-X. The wait is
-    // one located Unsupported_Kd, never an unproven Constraint: at an explicit conformance, whose uses derive from it, and at the
-    // use of an inherited one, which has no declaration record; an inherited one without a use says nothing.
+    // SPEC 12.4.4.1, 23.3.6.1, 23.3.6.4: an exclusive implementation reached through a base has no computed ObjectCallCompatible status
+    // (OCC-X). Its conformance is one location-only Unsupported_Kd at its declaration: an explicit `Self is C`, or the derived Type's base
+    // clause for an inherited conformance once a check that needs it fails. Every check resting on it is derived; an unused inherited
+    // conformance says nothing.
     [Theory]
-    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "up(x@uniq)")]
-    [InlineData(Bumps + "open struct Base\n    public var count: i32 = 1\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    Self is Bumps\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "Self is Bumps")]
-    [InlineData("contract Counted\n    property count: i32 has get, set\nopen struct Base\n    var raw: i32 = 1\n    public computed count: i32\n        get(self: ref/Self) -> i32 => self.raw\n        set(self: uniq/Self, value: i32) -> () => self.raw = value\nstruct Leaf: Base\n    Self is Counted\n    public init() => ()\nvar x = Leaf.init()\n", "Self is Counted")]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "struct Leaf: |Base")]
+    [InlineData(Bumps + "open struct Base\n    public var count: i32 = 1\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    Self is Bumps\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "|Self is Bumps")]
+    [InlineData("contract Counted\n    property count: i32 has get, set\nopen struct Base\n    var raw: i32 = 1\n    public computed count: i32\n        get(self: ref/Self) -> i32 => self.raw\n        set(self: uniq/Self, value: i32) -> () => self.raw = value\nstruct Leaf: Base\n    Self is Counted\n    public init() => ()\nvar x = Leaf.init()\n", "|Self is Counted")]
     [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nvar x = Leaf.init()\n", null)]
-    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "up(x@uniq)")]
-    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is not Bumps\n    ()\nvar x = Leaf.init()\nup(x@uniq)\n", "up(x@uniq)")]
-    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\n_ = up<Leaf>\n", "up<Leaf>")]
-    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nlet f: (uniq/Leaf) -> () = up\n", "up")]
-    public void APendingExclusiveWitnessIsOneLocatedLimit(string source, string? at)
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\n", "struct Leaf: |Base")]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is not Bumps\n    ()\nvar x = Leaf.init()\nup(x@uniq)\n", "struct Leaf: |Base")]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\n_ = up<Leaf>\n", "struct Leaf: |Base")]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nlet f: (uniq/Leaf) -> () = up\n", "struct Leaf: |Base")]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nvar x = Leaf.init()\nup(x@uniq)\nup(x@uniq)\n", "struct Leaf: |Base")]
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nfunc up<T>(x: uniq/T) -> ()\n    T is Bumps\n    x.bump()\nfunc up(x: uniq/Leaf) -> () => ()\nvar x = Leaf.init()\nup(x@uniq)\n", "struct Leaf: |Base")] // Reduction regression: no longer selected past the limit (STATUS).
+    [InlineData(Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct Leaf: Base\n    public init() => ()\nstruct Box<T>\n    T is Bumps\n    var item: T\nfunc peek(b: ref/Box<Leaf>) -> () => ()\nvar x = Leaf.init()\n", "struct Leaf: |Base")]
+    public void AnUncomputedExclusiveWitnessIsOneLimitAtItsConformance(string source, string? at)
     {
         var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
         if (at is null)
@@ -59,30 +63,28 @@ public class InheritedConformanceTest
         }
 
         var record = Assert.Single(diagnostics);
-        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), at), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
+        var marker = at.IndexOf('|', StringComparison.Ordinal);
+        var start = source.IndexOf(at.Remove(marker, 1), StringComparison.Ordinal) + marker;
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), start, at.Length - marker - 1), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
 
         // The limit is published from its recorded cause only; an independent error is still reported.
         var independent = DiagnosticCorpus.Check(source + "let bad: bool = 1\n").Diagnostics;
         Assert.Equal([nameof(DiagnosticCode.TypeMismatch_Kd), nameof(DiagnosticCode.Unsupported_Kd)], independent.Select(static x => x.Code).Order());
     }
 
-    // SPEC 8.7, 23.3.6.1: a clause with another unproven operand, or another unproven clause, stays a Proof failure after OCC-X, whatever
-    // the order of operands and clauses; a premise that proves that operand leaves the OCC-X limit.
+    // SPEC 23.3.6.4: a clause or candidate whose proof rests on a conformance limited by OCC-X is not decided whatever its other operands
+    // and clauses (a refuted limit would refute it), so it is derived from that conformance's one record.
     [Theory]
-    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n", "up(x)", "T is Bumps and Owned", false)]
-    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Owned and Bumps\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n", "up(x)", "T is Owned and Bumps", false)]
-    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps\n    T is Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n", "up(x)", "T is Owned", false)]
-    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> ()\n    _ = up<GLeaf<U>>\n", "up<GLeaf<U>>", "T is Bumps and Owned", false)]
-    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> ()\n    U is Owned\n    up(x)\n", "up(x)", null, true)]
-    public void OtherUnprovenOperandsStayProofFailures(string use, string at, string? clause, bool pending)
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n")]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Owned and Bumps\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n")]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps\n    T is Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> () => up(x)\n")]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> ()\n    _ = up<GLeaf<U>>\n")]
+    [InlineData("func up<T>(x: uniq/T) -> ()\n    T is Bumps and Owned\n    ()\nfunc outer<U>(x: uniq/GLeaf<U>) -> ()\n    U is Owned\n    up(x)\n")]
+    public void AClauseRestingOnTheLimitIsDerived(string use)
     {
         var source = Bumps + "open struct Base\n    Self is Bumps\n    public var count: i32 = 1\n    public init() => ()\n    public func bump(self: uniq/Self) -> () => self.count += 1\nstruct GLeaf<U>: Base\n    var item: U\n    public init(item: U) => self.item = item@move\n" + use + "()\n";
         var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((pending ? nameof(DiagnosticCode.Unsupported_Kd) : nameof(DiagnosticCode.UnprovenConstraint_Kd), at), (record.Code, source.Substring(record.Span!.Value.Start, record.Span.Value.Length)));
-        if (clause is not null)
-        {
-            Assert.Contains($"requires {clause}; this condition cannot be proven for GLeaf<U>", record.Note, StringComparison.Ordinal);
-        }
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), source.IndexOf("struct GLeaf<U>: Base", StringComparison.Ordinal) + 17, 4), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
     }
 
     [Fact]

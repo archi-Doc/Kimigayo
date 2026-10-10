@@ -158,6 +158,7 @@ public sealed partial class Binding
         }
 
         this.ResetAssociatedInference();
+        this.failedConformance = null;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.activeConformancePaths.Clear();
@@ -212,8 +213,8 @@ public sealed partial class Binding
             conformance.WitnessMap.Clear();
             conformance.PropertyWitnessStorage.Clear();
             conformance.PropertyWitnessMap.Clear();
-            conformance.PendingExclusive = null;
-            conformance.PendingExclusiveOnly = false;
+            conformance.Unsupported = false;
+            conformance.Needed = false;
             conformance.AssociatedStorage.Clear();
             conformance.InferenceStorage.Clear();
             conformance.Scope.Reset();
@@ -816,12 +817,13 @@ public sealed partial class Binding
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var conformance = this.activeConformancePaths[i];
+            this.failedConformance = null;
             var proof = this.VerifyConformance(conformance);
             if (final && conformance.InheritedFrom is null)
             {
-                if (proof == ConstraintProof.Unknown && conformance.PendingExclusiveOnly && mode == BindingMode.Final)
+                if (conformance.Unsupported && mode == BindingMode.Final)
                 {
-                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.4.4.1
+                    this.Fail(conformance.Use, BindingFailure.Unsupported); // SPEC 12.4.4.1, 23.3.6.1: the limit's one location
                     continue;
                 }
 
@@ -836,7 +838,10 @@ public sealed partial class Binding
             {
                 if (identity.PathStorage.Count != 0)
                 {
+                    this.failedConformance = null;
+                    this.conformanceChecks++;
                     var agreement = this.VerifyConformanceAgreement(identity);
+                    this.conformanceChecks--;
                     var explicitPath = false;
                     foreach (var path in identity.PathStorage)
                     {
@@ -854,6 +859,7 @@ public sealed partial class Binding
             for (var i = 0; i < this.projectionUses.Count; i++)
             {
                 var use = this.projectionUses[i];
+                this.failedConformance = null;
                 this.RequireConstraint(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode);
             }
         }

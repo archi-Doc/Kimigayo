@@ -193,11 +193,12 @@ public sealed class BoundConformancePath
 
     internal BoundType? InheritedBase { get; set; }
 
-    // SPEC 12.4.4.1: the first implementation whose exclusive receiver, projected to its base, waits for the preservation proof of
-    // OCC-X, and whether that is the only part of this verification that is not Proven; reset with the witnesses.
-    internal BindingSymbol? PendingExclusive { get; set; }
+    // SPEC 12.4.4.1, 23.3.6.1: the last completed verification's only unproven part is a witness whose ObjectCallCompatible status
+    // is not computed (OCC-X); a check that needs this conformance rests on its location-only Unsupported_Kd at Use.
+    internal bool Unsupported { get; set; }
 
-    internal bool PendingExclusiveOnly { get; set; }
+    // A failing check rested on this limit, so Binding.Check publishes it; an inherited conformance has no declaration of its own.
+    internal bool Needed { get; set; }
 
     internal BindingSymbol? RejectedSelfSignature { get; set; }
 

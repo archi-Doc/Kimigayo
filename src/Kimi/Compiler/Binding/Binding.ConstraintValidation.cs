@@ -12,8 +12,12 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
 
-    // The use of the first failed conformance whose failure is derived from its specification, met by a call's Constraint check (Check).
-    private Koto? failedDerivedConformance;
+    // The first failed conformance a check's Error rests on: one resting on its specification, or one limited by OCC-X outside
+    // conformance verification (ResolveConformance). A consumer clears it before its proof and takes it after (TakeFailedConformance).
+    private BoundConformancePath? failedConformance;
+
+    // Conformance verifications and agreements in progress; inside them a conformance limited by OCC-X stays Unknown.
+    private int conformanceChecks;
 
     // The conformance uses whose completeness rests on a specification, settled at publication (SettleSpecificationLinks).
     private List<Koto>? specificationLinks;
@@ -523,7 +527,7 @@ public sealed partial class Binding
     {
         if (proof == ConstraintProof.Error)
         {
-            this.FailConstraint(use, diagnosticCause);
+            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedConformance());
         }
         else if (proof == ConstraintProof.Refuted)
         {
@@ -541,6 +545,20 @@ public sealed partial class Binding
                 use.BindingState = BindingState.Unresolved;
             }
         }
+    }
+
+    // SPEC 23.3.6.4: the Use of the failed conformance that the Error a check just consumed rests on; a limit a failing check needs is
+    // published by Binding.Check.
+    private Koto? TakeFailedConformance()
+    {
+        if (this.failedConformance is not { } path)
+        {
+            return null;
+        }
+
+        this.failedConformance = null;
+        path.Needed |= path.Unsupported;
+        return path.Use;
     }
 
     // SPEC 8.1.1, 8.1.2, 8.4.7.2: the independent causes for which a Type occurrence's role or pair formation is not proven, None when
