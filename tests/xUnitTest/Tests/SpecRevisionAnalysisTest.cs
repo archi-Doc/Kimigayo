@@ -77,13 +77,14 @@ public class SpecRevisionAnalysisTest
         => AssertValidAnalysis(source);
 
     [Theory]
-    [InlineData("let value: i32 = label work: do\n    ()", "incompatible")]
-    [InlineData("let value: i32 = label work: do\n    exit to work", "incompatible")]
-    [InlineData("label work: do\n    exit to work 1\n    exit to work", "incompatible")]
-    [InlineData("label work: do\n    exit to work 1\n    exit to work \"text\"", "incompatible")]
-    [InlineData("let value: i32 = label work: do\n    loop\n        if false\n            exit to work \"text\"", "incompatible")]
-    public void RejectsInvalidLabeledResultsEvenWhenUnreachable(string source, string diagnostic)
-        => Assert.Contains(Analyze(source).Issues, issue => issue.Message.Contains(diagnostic, StringComparison.Ordinal));
+    [InlineData("let value: i32 = label work: do\n    ()")]
+    [InlineData("let value: i32 = label work: do\n    exit to work")]
+    [InlineData("label work: do\n    exit to work 1\n    exit to work")]
+    [InlineData("label work: do\n    exit to work 1\n    exit to work \"text\"")]
+    [InlineData("let value: i32 = label work: do\n    loop\n        if false\n            exit to work \"text\"")]
+    [InlineData("defer => exit 1")]
+    public void RejectsInvalidBlockResultsEvenWhenUnreachable(string source)
+        => Assert.False(Parse(source).Compilation.Bind().IsComplete);
 
     [Theory]
     [InlineData("defer => exit")]
@@ -99,7 +100,6 @@ public class SpecRevisionAnalysisTest
     [InlineData("loop\n    defer => continue", "No valid target")]
     [InlineData("label outer: loop\n    defer => exit to outer", "No valid target")]
     [InlineData("if true\n    defer => yield 1", "No valid target")]
-    [InlineData("defer => exit 1", "incompatible")]
     [InlineData("defer\n    if false\n        return", "No valid target")]
     public void DeferredBoundaryCannotBeCrossed(string source, string diagnostic)
         => Assert.Contains(Analyze(source).Issues, issue => issue.Message.Contains(diagnostic, StringComparison.Ordinal));
@@ -109,52 +109,32 @@ public class SpecRevisionAnalysisTest
     {
         var analysis = Analyze("func f() -> i32\n    defer\n        loop\n            continue\n    let after = 1\n    return 2");
         Assert.Empty(analysis.Issues);
-        var function = analysis.Nodes.Single(x => x.Key is FunctionKoto { IsGenerated: false });
-        Assert.Equal(new ControlFlowType("i32"), function.Value.FunctionResultType);
-        Assert.Equal(new ControlFlowType("i32"), function.Value.TargetResultType);
         var after = analysis.Nodes.Single(x => x.Key is FieldKoto { NameKoto.IdentifierName: "after" });
         Assert.True(after.Value.CanCompleteNormally);
-        var deferred = analysis.Nodes.Single(x => x.Key is DeferredBlockKoto);
-        Assert.Null(deferred.Value.ExpressionType);
     }
 
     [Fact]
     public void BranchScopedCleanupDoesNotBlockOtherReturnPaths()
     {
-        var analysis = Analyze("func f(flag: bool) -> i32\n    if flag\n        defer\n            loop\n                continue\n        return \"text\"\n    return 1");
-        var function = analysis.Nodes.Single(x => x.Key is FunctionKoto { IsGenerated: false }).Value;
-        Assert.Equal("i32", function.TargetResultType!.Name);
-        Assert.True(function.CanCompleteNormally);
+        var tree = Parse("func f(flag: bool) -> i32\n    if flag\n        defer\n            loop\n                continue\n        return \"text\"\n    return 1");
+        tree.Compilation.Bind();
+        var analysis = tree.Compilation.AnalyzeControlFlow();
+        Assert.True(analysis.Nodes.Single(x => x.Key is FunctionKoto { IsGenerated: false }).Value.CanCompleteNormally);
         // The blocked return is still checked against the available result contract.
-        Assert.Contains(analysis.Issues, issue => issue.Message.Contains("incompatible", StringComparison.Ordinal));
+        Assert.Contains(tree.Compilation.Binding.Issues, issue => issue.Code == Kimi.DiagnosticCode.TypeMismatch_Kd);
     }
 
     [Fact]
     public void UnreachedRegistrationDoesNotBlockAnEarlierReturn()
-    {
-        var analysis = Analyze("func f() -> i32\n    return 1\n    defer\n        loop\n            continue");
-        Assert.Empty(analysis.Issues);
-        Assert.Equal("i32", analysis.Nodes.Single(x => x.Key is FunctionKoto { IsGenerated: false }).Value.FunctionResultType!.Name);
-    }
+        => Assert.Empty(Analyze("func f() -> i32\n    return 1\n    defer\n        loop\n            continue").Issues);
 
+    // SPEC 11: a stored Property's custom getter returns exactly the Property's Type.
     [Theory]
     [InlineData("get(self: ref/Self) -> bool => 1", true)]
-    [InlineData("get(self: ref/Self) -> i64 => 1", false)]
+    [InlineData("get(self: ref/Self) -> i64 => 1", true)]
     [InlineData("get(self: ref/Self) -> i32 => 1", false)]
-    public void GetterUsesItsResultTypeInsteadOfPropertyType(string getter, bool invalid)
-    {
-        var analysis = Analyze("struct Example\n    var value: i32\n        " + getter);
-        Assert.Equal(invalid, analysis.Issues.Count != 0);
-    }
-
-    [Fact]
-    public void UnresolvedGetterContractIsNotInferredFromItsBody()
-    {
-        var analysis = Analyze("struct Example<T>\n    var value: T\n        get(self: ref/Self) -> T => 1");
-        var getter = analysis.Nodes.Single(x => x.Key is PropertyAccessorKoto);
-        Assert.Null(getter.Value.TargetResultType);
-        Assert.Contains(getter.Key, analysis.PendingBinding);
-    }
+    public void StoredGetterResultIsExactlyThePropertyType(string getter, bool invalid)
+        => Assert.Equal(invalid, !Parse("struct Example\n    var value: i32\n        " + getter).Compilation.Bind().IsComplete);
 
     [Theory]
     [InlineData("func f()\n    #if false\n        ()")]
@@ -185,11 +165,10 @@ public class SpecRevisionAnalysisTest
     public void NullIsAContextuallyTypedLiteral(string source)
     {
         var tree = Parse(source);
-        var analysis = ControlFlowAnalysis.Analyze(tree.RootKoto);
-        Assert.Empty(analysis.Issues);
-        var nulls = analysis.Nodes.Where(x => x.Key is NullLiteralKoto).ToArray();
+        Assert.True(tree.Compilation.Bind().IsComplete);
+        var nulls = KotoTree.Walk(tree.GeneratedFunction!).OfType<NullLiteralKoto>().ToArray();
         Assert.NotEmpty(nulls);
-        Assert.All(nulls, x => Assert.Equal("raw/i32", x.Value.ExpressionType!.Name));
+        Assert.All(nulls, x => Assert.True(ReferenceTypes.IsPointer(x.BoundType)));
         Parse(tree.GeneratedFunction!.ToString());
     }
 
@@ -202,7 +181,7 @@ public class SpecRevisionAnalysisTest
     [InlineData("let value = null == null")]
     [InlineData("let value = 1 == null")]
     public void RejectsNullWithoutAPointerContext(string source)
-        => Assert.NotEmpty(Analyze(source).Issues);
+        => Assert.False(Parse(source).Compilation.Bind().IsComplete);
 
     [Theory]
     [InlineData("unsafe func f(pointer: raw/i32) -> i32\n    return *pointer", false)]
@@ -233,10 +212,7 @@ public class SpecRevisionAnalysisTest
     [InlineData("let pointer: raw/i32 = null\nlet other: raw/u8 = pointer", false)]
     [InlineData("let pointer: raw/i32 = null\nunsafe\n    let other: raw/u8 = pointer@raw/u8", true)]
     public void ChecksKnownUnsafeOperationsAndLexicalPermission(string source, bool valid)
-    {
-        var analysis = Analyze(source);
-        Assert.Equal(valid, analysis.Issues.Count == 0);
-    }
+        => Assert.Equal(valid, BindsAndFlows(source));
 
     [Theory]
     [InlineData("f()", false)]
@@ -249,10 +225,7 @@ public class SpecRevisionAnalysisTest
     public void ChecksUnsafeCallsAfterBindingSelectsAFunction(string call, bool valid)
     {
         var declaration = call.Contains("f<i32>", StringComparison.Ordinal) ? "unsafe func f<T>() => ()" : "unsafe func f() => ()";
-        var tree = Parse(declaration + "\n" + call);
-        var function = Assert.IsType<FunctionKoto>(tree.GeneratedFunction!.Body!.Items[0]);
-        var analysis = ControlFlowAnalysis.Analyze(tree.RootKoto, new SelectedFunctionTypes(function));
-        Assert.Equal(valid, analysis.Issues.Count == 0);
+        Assert.Equal(valid, BindsAndFlows(declaration + "\n" + call));
     }
 
     [Theory]
@@ -267,7 +240,7 @@ public class SpecRevisionAnalysisTest
     [InlineData("i128", "-170141183460469231731687303715884105728", true)]
     [InlineData("i128", "-170141183460469231731687303715884105729", false)]
     public void ChecksIntegerMagnitudesWithoutSignedBitPatternFormatting(string type, string literal, bool valid)
-        => Assert.Equal(valid, Analyze($"func f() -> {type} => {literal}").Issues.Count == 0);
+        => Assert.Equal(valid, Parse($"func f() -> {type} => {literal}").Compilation.Bind().IsComplete);
 
     [Theory]
     [InlineData("340282366920938463463374607431768211455")]
@@ -284,23 +257,6 @@ public class SpecRevisionAnalysisTest
         Assert.Equal(literal, Assert.IsType<NumberLiteralKoto>(Assert.IsType<FieldKoto>(Assert.Single(reparsed.GeneratedFunction!.Body!.Items)).InitializerKoto).Literal);
     }
 
-    private sealed class SelectedFunctionTypes(FunctionKoto function) : ControlFlowTypeSystem
-    {
-        private readonly SyntaxControlFlowTypes syntax = new();
-
-        public override FunctionKoto? GetReferencedFunction(Koto expression)
-            => expression is IdentifierNameKoto { IdentifierName: "f" } ? function : null;
-
-        public override ControlFlowType? GetExpressionType(Koto expression)
-            => expression is InvocationKoto ? ControlFlowType.Unit : this.syntax.GetExpressionType(expression);
-
-        public override ControlFlowType? GetDeclaredType(Koto? type) => this.syntax.GetDeclaredType(type);
-
-        public override bool? IsCompatible(ControlFlowResultSource source, ControlFlowType target) => this.syntax.IsCompatible(source, target);
-
-        public override bool? IsExhaustive(MatchKoto match) => this.syntax.IsExhaustive(match);
-    }
-
     private static Kotonoha Parse(string source, bool valid = true)
     {
         var tree = Compilation.CreateForTest().Kotonoha;
@@ -313,11 +269,25 @@ public class SpecRevisionAnalysisTest
         return tree;
     }
 
-    private static ControlFlowAnalysis Analyze(string source) => ControlFlowAnalysis.Analyze(Parse(source).RootKoto);
+    private static ControlFlowAnalysis Analyze(string source)
+    {
+        var compilation = Parse(source).Compilation;
+        compilation.Bind();
+        return compilation.AnalyzeControlFlow();
+    }
+
+    // Whether Binding accepts the source and control flow reports no Error.
+    private static bool BindsAndFlows(string source)
+    {
+        var compilation = Parse(source).Compilation;
+        return compilation.Bind().IsComplete && compilation.AnalyzeControlFlow().Issues.Count == 0;
+    }
 
     private static void AssertValidAnalysis(string source)
     {
-        var analysis = Analyze(source);
+        var compilation = Parse(source).Compilation;
+        Assert.True(compilation.Bind().IsComplete, string.Join("\n", compilation.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
+        var analysis = compilation.AnalyzeControlFlow();
         Assert.True(analysis.Issues.Count == 0, string.Join("\n", analysis.Issues.Select(x => x.Message)));
     }
 }

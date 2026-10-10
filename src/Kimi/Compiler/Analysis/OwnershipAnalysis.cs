@@ -74,7 +74,7 @@ public sealed partial class OwnershipAnalysis
         var root = this.compilation.Kotonoha.RootKoto;
         if (this.flow is null)
         {
-            this.flow = ControlFlowAnalysis.Analyze(root, binding.TypeSystem);
+            this.flow = ControlFlowAnalysis.Analyze(root);
         }
         else
         {

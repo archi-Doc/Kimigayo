@@ -74,7 +74,7 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func source() -> Result<i32, i32> => .Ok(1)\nfunc run() -> Result<(), i32>\n    " + statement + "\n    return .Ok(())");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Equal(warning, flow.Warnings.Count != 0);
     }
 
@@ -119,7 +119,7 @@ public class OptionalTryDiscardTest
         var value = payload == "()" ? "()" : payload.StartsWith("Result", StringComparison.Ordinal) ? ".Ok(())" : "1";
         var c = MinimalEmissionTest.Analyze($"func source() -> Result<{payload}, i32> => .Ok({value})\nfunc run() -> Result<(), i32>\n    {statement}\n    return .Ok(())");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var warnings = c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings;
+        var warnings = c.AnalyzeControlFlow().Warnings;
         if (priority == 0)
         {
             Assert.Empty(warnings);
@@ -222,7 +222,7 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func process<T>(x: Result<T, i32>) -> Result<(), i32>\n    try x@move\n    return .Ok(())\n_ = process<()>(.Ok(()))\n_ = process<i32>(.Ok(1))");
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, Describe(c));
-        var warning = Assert.Single(c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings);
+        var warning = Assert.Single(c.AnalyzeControlFlow().Warnings);
         Assert.Equal(3, warning.Priority);
         Assert.IsType<TryKoto>(warning.Node);
     }
@@ -232,7 +232,7 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func source() -> Result<Never, i32> => .Err(1)\nfunc run() -> Result<(), i32>\n    try source()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Warnings);
         Assert.Empty(flow.Issues);
     }
@@ -243,7 +243,7 @@ public class OptionalTryDiscardTest
         var c = MinimalEmissionTest.Analyze("func save() -> Result<(), i32> => .Ok(())\nfunc run() -> Result<(), i32> => try save()");
         c.Binding.CheckBound();
         c.Binding.ReportDiagnostics();
-        c.AnalyzeControlFlow(c.Binding.TypeSystem).ReportDiagnostics();
+        c.AnalyzeControlFlow().ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Code == "TryPayloadMismatch_Kd" && d.Explanation.Contains("without try", StringComparison.Ordinal));
     }
 
@@ -267,7 +267,7 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> i32? => .Some(try x)");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Bind();
@@ -281,9 +281,9 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func run(x: i32?) -> ()?\n    try x\n    return .Some(())");
         var propagation = Assert.Single(Descendants(c.Kotonoha.RootKoto).OfType<TryKoto>());
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
-        Assert.Same(BoundType.I32, flow.Nodes[propagation].ExpressionType);
+        Assert.Same(BoundType.I32, propagation.BoundType);
     }
 
     [Fact]

@@ -30,7 +30,7 @@ public class BorrowedDictionaryIndexTest(ITestOutputHelper testOutput)
         Assert.Equal(independent ? 2 : 1, errors.Length);
         var error = Assert.Single(errors, static x => x.Code == "NoApplicableOverload_Kd");
         Assert.Equal("entries[key@ref]", source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
-        Assert.DoesNotContain(errors, static x => x.Code == "IncompatibleResult_Kd" || x.Code.StartsWith("Unsupported", StringComparison.Ordinal));
+        Assert.DoesNotContain(errors, static x => x.Code.StartsWith("Unsupported", StringComparison.Ordinal));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         Assert.Contains("entries[key@ref]", console.Text, StringComparison.Ordinal);

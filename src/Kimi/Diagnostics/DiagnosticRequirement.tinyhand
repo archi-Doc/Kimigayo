@@ -592,7 +592,7 @@
     Description="the program has a valid startup"
 
   + Name="ControlFlow"
-    Description="the control flow and the operand Types are valid"
+    Description="the control flow and unsafe operations are valid"
 
   + Name="Ownership.UninitializedUse"
     Description="the value is initialized on every incoming path"

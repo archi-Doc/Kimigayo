@@ -58,7 +58,6 @@ public class CharLiteralParseTest
         Assert.Same(field, node.Parent);
         Assert.Equal(new SourceSpan(Prefix.Length, literal.Length), node.Span);
         Assert.Equal(literal, node.ToString());
-        Assert.Equal(new ControlFlowType("char"), new SyntaxControlFlowTypes().GetExpressionType(node));
 
         var restored = TinyhandSerializer.Deserialize<Kotonoha>(TinyhandSerializer.Serialize(parsed));
         Assert.NotNull(restored);
@@ -172,12 +171,13 @@ public class CharLiteralParseTest
     }
 
     [Fact]
-    public void DeclaredAndInferredCharTypesAreKnownToControlFlow()
+    public void DeclaredCharTypesBind()
     {
         var parsed = Parse("func f() -> char => '😀'");
         AssertValid(parsed);
         var function = Assert.IsType<FunctionKoto>(Assert.Single(parsed.GeneratedFunction!.Body!.Items));
-        Assert.Equal(new ControlFlowType("char"), new SyntaxControlFlowTypes().GetDeclaredType(function.ReturnType));
+        Assert.True(parsed.Compilation.Bind().IsComplete);
+        Assert.Same(BoundType.Char, function.ReturnType!.BoundType);
         Assert.Empty(parsed.Compilation.AnalyzeControlFlow().Issues);
     }
 }

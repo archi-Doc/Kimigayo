@@ -309,7 +309,7 @@ public class OwnershipAnalysisTest
     {
         var invalid = Parse("func f() -> i32\n    ()");
         var valid = Parse("let x = 1");
-        var flow = invalid.AnalyzeControlFlow(invalid.Binding.TypeSystem);
+        var flow = invalid.AnalyzeControlFlow();
         Assert.NotEmpty(flow.Issues);
         flow.Reanalyze(valid.Kotonoha.RootKoto);
         Assert.Empty(flow.Issues);

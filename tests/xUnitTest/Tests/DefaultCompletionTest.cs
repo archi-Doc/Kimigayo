@@ -18,12 +18,11 @@ public class DefaultCompletionTest
         const string Declaration = "func f(x: i32 = (loop => continue)) -> i32 => x\n";
         var call = supplied ? "f(3)\n" : "f()\n";
         var c = Parse(forward ? call + Declaration : Declaration + call);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
         var invocation = Assert.Single(flow.Nodes.Keys.OfType<InvocationKoto>());
         Assert.Equal(supplied, flow.Nodes[invocation].CanCompleteNormally);
-        Assert.NotEqual(ControlFlowType.Never, flow.Nodes[invocation].ExpressionType);
         var function = (FunctionKoto)invocation.BoundCall!.Target.Declaration;
         Assert.True(flow.Nodes[function].CanCompleteNormally);
         Assert.True(c.Ownership.Analyze().IsVerified);
@@ -36,7 +35,7 @@ public class DefaultCompletionTest
     public void NoncompletingDefaultsSatisfyRequireFailure(string expression)
     {
         var c = Parse("func f(x: i32 = (" + expression + ")) => ()\nfunc caller()\n    require true else => f()\ncaller()");
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
         var call = Assert.Single(flow.Nodes.Keys.OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "f");
@@ -66,7 +65,7 @@ public class DefaultCompletionTest
     public void NestedDefaultsPropagateCompletion()
     {
         var c = Parse("f()\nfunc leaf(x: i32 = (loop => continue)) -> i32 => x\nfunc f(x: i32 = leaf()) -> i32 => x");
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
         Assert.All(flow.Nodes.Where(x => x.Key is InvocationKoto), x => Assert.False(x.Value.CanCompleteNormally));
@@ -76,7 +75,7 @@ public class DefaultCompletionTest
     public void RecursiveDefaultUsesTheResolvedSignature()
     {
         var c = Parse("func f(x: i32 = f()) -> i32 => x\nf()");
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.PendingBinding);
         Assert.Empty(flow.Issues);
         Assert.True(c.Ownership.Analyze().IsVerified);
@@ -103,7 +102,7 @@ public class DefaultCompletionTest
         public void WarmDefaultFlowReanalysisAllocatesNothing()
         {
             var c = Parse("f()\nfunc f(x: i32 = (loop => continue)) -> i32 => x\nf(3)");
-            var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+            var flow = c.AnalyzeControlFlow();
             Assert.Empty(flow.Issues);
             Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
             Assert.Empty(flow.Issues);

@@ -111,7 +111,7 @@ public class Utf8TryWriteTest
     public void DirectWriteWarningIsIndependentOfDiscardWarning()
     {
         var c = MinimalEmissionTest.Analyze(Setup + "(writer@uniq).write(\"\\(42)\")");
-        var warnings = c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings;
+        var warnings = c.AnalyzeControlFlow().Warnings;
         Assert.Contains(warnings, x => x.Code == DiagnosticCode.OwningWriteArgument_Kd);
         Assert.Equal(2, warnings.Count);
     }

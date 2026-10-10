@@ -873,39 +873,10 @@
     Category="Language"
     Message="A non-Unit Block-bodied function cannot fall through"
 
-  + Name="IncompatibleResult_Kd"
-    Category="Language"
-    Message="A result of type {0} is incompatible with {1}"
-    Arguments="actual:Type,expected:Type"
-
   + Name="OverlappingLabel_Kd"
     Category="Language"
     Message="Label {0} overlaps an enclosing Label"
     Arguments="label:Text"
-
-  + Name="UntypedNull_Kd"
-    Category="Language"
-    Message="A null literal or result requires an expected raw-pointer Type"
-
-  + Name="UntypedNullComparison_Kd"
-    Category="Language"
-    Message="A null comparison requires a pointer operand to determine its Type"
-
-  + Name="InvalidPointerConversion_Kd"
-    Category="Language"
-    Message="Pointer conversions support only another pointer Type or usize"
-
-  + Name="InvalidDereference_Kd"
-    Category="Language"
-    Message="Dereference requires a raw-pointer operand"
-
-  + Name="InvalidPointerArithmetic_Kd"
-    Category="Language"
-    Message="Pointer arithmetic and indexing require a pointer on the left and a signed isize offset"
-
-  + Name="InvalidPointerComparison_Kd"
-    Category="Language"
-    Message="Pointers compare only for equality, between operands of the same pointer Type"
 
   + Name="NonNumericOperand_Kd"
     Category="Language"

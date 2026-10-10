@@ -16,7 +16,6 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f(x: " + operand + ") -> bool => x is " + target);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
         Assert.Null(Test(c).BoundRuntimeTest);
         Assert.False(c.Bind().IsComplete);
         Assert.Null(Test(c).BoundRuntimeTest);
@@ -46,7 +45,6 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Valid\n" + declarations + "\ngroup G\n    func f(x: objref/Valid) -> bool => x is " + target);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
         Assert.Null(Test(c).BoundRuntimeTest);
     }
 
@@ -58,10 +56,12 @@ public class RuntimeTestFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
+        Assert.Equal(BindingState.Resolved, Test(c).BindingState);
+        Assert.NotNull(Test(c).BoundRuntimeTest);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.True(restored.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(restored)));
+        Assert.Equal(BindingState.Resolved, Test(restored).BindingState);
+        Assert.NotNull(Test(restored).BoundRuntimeTest);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class RuntimeTestFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Hidden\npublic struct Target\n    public let field: Hidden\ngroup G\n    func f(x: objref/Target) -> bool => x is Target");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.True(c.Binding.TypeSystem.IsBoundRuntimeTypeTest(Test(c)));
+        Assert.Equal(BindingState.Resolved, Test(c).BindingState);
         Assert.NotNull(Test(c).BoundRuntimeTest);
     }
 

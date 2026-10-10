@@ -275,12 +275,11 @@ public partial class Compilation
         return this.kotonohaIdToKotonoha.TryGetValue(kotonohaId, out kotonoha);
     }
 
-    /// <summary>Analyzes control flow after parsing and compile-time directive selection.</summary>
-    /// <param name="types">Type facts supplied by Binding, or syntax-only facts when omitted.</param>
-    /// <returns>Definite errors, inferred contracts, and obligations pending further Binding.</returns>
-    public ControlFlowAnalysis AnalyzeControlFlow(ControlFlowTypeSystem? types = null)
+    /// <summary>Analyzes control flow from the parsed source and Binding's current facts.</summary>
+    /// <returns>Definite errors, warnings, and obligations pending further Binding.</returns>
+    public ControlFlowAnalysis AnalyzeControlFlow()
     {
-        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto, types);
+        var flow = ControlFlowAnalysis.Analyze(this.Kotonoha.RootKoto);
         for (var i = 1; i < this.SourceModules.Length; i++)
         {
             flow.Append(this.SourceModules[i].RootKoto);

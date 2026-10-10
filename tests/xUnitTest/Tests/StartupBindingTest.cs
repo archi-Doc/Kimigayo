@@ -343,7 +343,7 @@ public class StartupBindingTest
     {
         var c = Parse("return");
         c.Bind();
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.NotEmpty(flow.Issues);
     }
 
@@ -359,7 +359,7 @@ public class StartupBindingTest
         // The ordinary Slice iterator library body now retains its own Origin
         // obligation. Console calls must still introduce no source obligations.
         Assert.DoesNotContain(c.Binding.Obligations, x => !ReferenceEquals(x.Use.CodeContext.Kotonoha, c.Library.Kotonoha));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.True(flow.PendingBinding.Count == 0, string.Join("\n", flow.PendingBinding.Select(x => $"{x.Akind}: {x}, {x.BindingState}, {x.BoundType}")));
         Assert.Empty(flow.Issues);
     }
@@ -371,7 +371,7 @@ public class StartupBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.PendingBinding);
         Assert.Equal(error, flow.Issues.Count != 0);
     }
@@ -384,7 +384,7 @@ public class StartupBindingTest
         var c = Parse($"struct S\n    public func f(value: i32, self: ref/Self) -> i32 => value\nfunc use(x: ref/S) -> i32 => {expression}");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.PendingBinding);
         Assert.Empty(flow.Issues);
         if (call.BoundCall!.Receiver is { } receiver)

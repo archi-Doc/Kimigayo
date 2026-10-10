@@ -36,7 +36,7 @@ public class PatternBindingTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.PendingBinding);
         Assert.True(flow.Issues.Count == 0, string.Join("\n", flow.Issues.Select(x => x.Message)));
         Assert.All(Matches(c), m => Assert.True(c.Binding.TryGetMatch(m, out _)));
@@ -60,7 +60,7 @@ public class PatternBindingTest
         var plan = Plan(c);
         Assert.Equal(MatchCoverageState.Invalid, plan.Coverage.State);
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.DoesNotContain(flow.Issues, x => x.Message.Contains("exhaustive", StringComparison.Ordinal));
     }
 
@@ -130,7 +130,7 @@ public class PatternBindingTest
         var c = Parse("func f(x: bool) => match x\n    true if true => ()\n    false if yield () => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.NonExhaustive, Plan(c).Coverage.State);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
         Assert.Contains(flow.Issues, x => x.Message.Contains("target", StringComparison.Ordinal));
     }
@@ -291,27 +291,27 @@ public class PatternBindingTest
     [Theory]
     [InlineData("func f(x: bool) => match x\n    (_) => ()", MatchCoverageState.Exhaustive)]
     [InlineData("func f(x: bool) => match x\n    (_) if true => ()", MatchCoverageState.NonExhaustive)]
-    public void SyntaxCoverageHonorsGroupingAndGuards(string source, MatchCoverageState expected)
+    public void CoverageHonorsGroupingAndGuards(string source, MatchCoverageState expected)
     {
         var c = Parse(source);
+        c.Bind();
+        Assert.Equal(expected, Plan(c).Coverage.State);
         var flow = c.AnalyzeControlFlow();
-        var match = Matches(c)[0];
-        Assert.Equal(expected == MatchCoverageState.NonExhaustive, flow.Issues.Any(i => i.Message.Contains("exhaustive", StringComparison.Ordinal)));
-        Assert.DoesNotContain(match.Arms[0].Guard!, flow.PendingBinding);
+        Assert.DoesNotContain(Matches(c)[0].Arms[0].Guard!, flow.PendingBinding);
     }
 
     [Fact]
-    public void GuardReturnTargetsFunctionAndSyntaxChecksUnsafeOperations()
+    public void GuardReturnTargetsFunctionAndChecksUnsafeOperations()
     {
         var c = Parse("func f(x: bool) -> i32 => match x\n    true if return 1 => 2\n    false => 3");
         c.Bind();
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.IsType<FunctionKoto>(Assert.Single(flow.Targets, t => t.Key is ReturnKoto).Value);
         Assert.DoesNotContain(Matches(c)[0].Arms[0].Guard!, flow.PendingBinding);
         var unsafeGuard = Parse("func f(x: bool, p: raw/bool) => match x\n    _ if *p => ()");
-        var syntaxFlow = unsafeGuard.AnalyzeControlFlow();
-        Assert.Contains(syntaxFlow.Issues, i => i.Message.Contains("unsafe", StringComparison.OrdinalIgnoreCase));
-        Assert.Contains(syntaxFlow.Issues, i => i.Message.Contains("exhaustive", StringComparison.Ordinal));
+        unsafeGuard.Bind();
+        Assert.Contains(unsafeGuard.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
+        Assert.Contains(unsafeGuard.AnalyzeControlFlow().Issues, i => i.Message.Contains("unsafe", StringComparison.OrdinalIgnoreCase));
     }
 
     [Fact]
@@ -319,7 +319,7 @@ public class PatternBindingTest
     {
         var c = Parse("func f() -> i32\n    let result = label work: do\n        match (return 1)\n            _ if (exit to work 2) => ()\n            _ => ()\n        exit to work 3\n    return result");
         c.Bind();
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         var match = Matches(c)[0];
         var guardExit = Assert.IsType<ExitKoto>(KotoHelper.UnwrapParentheses(match.Arms[0].Guard!));
         var target = Assert.IsType<DoKoto>(flow.Targets[guardExit]);
@@ -407,7 +407,7 @@ public class PatternBindingTest
             Assert.True(c.Binding.TryGetMatch(match, out var plan));
             var positions = plan!.Positions;
             var symbol = positions.Single(x => x.Kind == BoundPatternKind.Binding).BodySymbol;
-            var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+            var flow = c.AnalyzeControlFlow();
             Assert.Empty(flow.PendingBinding);
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {

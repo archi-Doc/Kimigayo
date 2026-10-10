@@ -336,7 +336,7 @@ public sealed class BindingSymbol
 
 /// <summary>An immutable complete type; constructed types are interned within a compilation.</summary>
 /// <remarks>Interning makes identity the type equality, so equality and hashing never walk the fields.</remarks>
-public sealed record BoundType : ControlFlowType
+public sealed record BoundType
 {
     private readonly NumericCategory numeric;
 
@@ -351,8 +351,8 @@ public sealed record BoundType : ControlFlowType
     private readonly bool containsPairLayer;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, FunctionResultMode resultMode = FunctionResultMode.Value)
-        : base(name)
     {
+        this.Name = name;
         this.Kind = kind;
         this.Symbol = symbol;
         this.Semantics = semantics;
@@ -397,8 +397,8 @@ public sealed record BoundType : ControlFlowType
     // SPEC 3.1.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
     // signedness. It is a Primitive by Core identity: no declaration, components or storage, and identity by reference.
     private BoundType(string name, BoundType integer)
-        : base(name)
     {
+        this.Name = name;
         this.Kind = BoundTypeKind.Primitive;
         this.Semantics = SemanticsKind.Owner;
         this.Components = [];
@@ -414,6 +414,9 @@ public sealed record BoundType : ControlFlowType
         Unsigned,
         Float,
     }
+
+    /// <summary>Gets the canonical type name.</summary>
+    public string Name { get; }
 
     public BoundTypeKind Kind { get; }
 
@@ -448,11 +451,11 @@ public sealed record BoundType : ControlFlowType
     /// <summary>Gets a value indicating whether this is a numeric Type: integer, wrapping integer or floating-point.</summary>
     public bool IsNumeric => this.numeric != NumericCategory.None;
 
-    public static new BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
+    public static BoundType Unit { get; } = new("()", BoundTypeKind.Primitive);
 
-    public static new BoundType Never { get; } = new("Never", BoundTypeKind.Primitive);
+    public static BoundType Never { get; } = new("Never", BoundTypeKind.Primitive);
 
-    public static new BoundType Boolean { get; } = new("bool", BoundTypeKind.Primitive);
+    public static BoundType Boolean { get; } = new("bool", BoundTypeKind.Primitive);
 
     internal static readonly Dictionary<string, BoundType> Primitives = CreatePrimitives();
 

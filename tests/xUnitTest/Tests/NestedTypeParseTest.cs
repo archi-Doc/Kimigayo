@@ -146,28 +146,8 @@ public class NestedTypeParseTest
     }
 
     [Fact]
-    public void SyntaxTypeFactsDoNotFlattenReferenceLayersOrTupleArity()
-    {
-        var types = new SyntaxControlFlowTypes();
-        Assert.Equal(new ControlFlowType("i32"), types.GetDeclaredType(ParseParameterType("(i32)")));
-        Assert.Null(types.GetDeclaredType(ParseParameterType("(i32,)")));
-        Assert.Null(types.GetDeclaredType(ParseParameterType("ref/ref/i32")));
-        Assert.Equal(new ControlFlowType("raw/raw/i32"), types.GetDeclaredType(ParseParameterType("raw/(raw/i32)")));
-        Assert.NotEmpty(TestDiagnostics.Of(Parse("func f(x: raw/(raw/i32 during inner))")));
-    }
-
-    [Theory]
-    [InlineData("raw/ref/T")]
-    [InlineData("(raw/ref/T)")]
-    [InlineData("owner/(raw/ref/T)")]
-    [InlineData("ref/raw/T")]
-    public void ConversionsNeverRequireAnUnsafeContext(string type)
-    {
-        // SPEC 5: only an operation whose violation may be undefined behavior needs one; a conversion is not such an operation.
-        var tree = ParseSuccess($"let result = value@{type}");
-        var conversion = Assert.IsType<ConversionKoto>(Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items)).InitializerKoto);
-        Assert.NotEqual(true, new SyntaxControlFlowTypes().RequiresUnsafeContext(conversion));
-    }
+    public void NestedPointerOriginsAreDiagnosed()
+        => Assert.NotEmpty(TestDiagnostics.Of(Parse("func f(x: raw/(raw/i32 during inner))")));
 
     private static Koto ParseParameterType(string type)
         => Assert.Single(ParseSingleFunction($"func use(value: {type}) => ()").Parameters).Type!;

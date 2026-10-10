@@ -29,9 +29,8 @@ public class RuntimeTypeTest
         Assert.Same(test.Right.BoundType, plan.TargetType);
         Assert.Null(test.BoundConstraint);
         Assert.Same(BoundType.Boolean, test.BoundType);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
-        Assert.Equal(ControlFlowType.Boolean, flow.Nodes[test].ExpressionType);
         Assert.False(flow.Nodes.ContainsKey(test.Right));
         Assert.Empty(flow.PendingBinding);
     }
@@ -66,7 +65,7 @@ public class RuntimeTypeTest
         Assert.False(c.Bind().IsComplete);
         var grouped = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => not (x is Dog)");
         AssertBound(grouped);
-        Assert.Empty(grouped.AnalyzeControlFlow(grouped.Binding.TypeSystem).Issues);
+        Assert.Empty(grouped.AnalyzeControlFlow().Issues);
     }
 
     [Theory]
@@ -77,7 +76,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog, flag: bool) -> bool\n    " + body);
         AssertBound(c);
         Assert.Same(BoundType.Boolean, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "b").BoundType);
-        Assert.Empty(c.AnalyzeControlFlow(c.Binding.TypeSystem).Issues);
+        Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
     [Theory]
@@ -187,7 +186,7 @@ public class RuntimeTypeTest
         Assert.True(KotoHelper.Replace(test, oldTarget, newTarget));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(test.BoundRuntimeTest);
-        Assert.Contains(test, c.AnalyzeControlFlow(c.Binding.TypeSystem).PendingBinding);
+        Assert.Contains(test, c.AnalyzeControlFlow().PendingBinding);
         Assert.True(KotoHelper.Replace(test, newTarget, oldTarget));
         AssertBound(c);
         Assert.Same(original, test.BoundRuntimeTest!.Value.TargetType);
@@ -209,9 +208,9 @@ public class RuntimeTypeTest
         AssertBound(c);
         var test = Test(c);
         Assert.NotNull(test.BoundRuntimeTest!.Value.OperandType.Origin);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        Assert.Same(BoundType.Boolean, test.BoundType);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
-        Assert.Equal(ControlFlowType.Boolean, flow.Nodes[test].ExpressionType);
         Assert.False(flow.Nodes.ContainsKey(test.Right));
         var invalid = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> i32\n    return 0\n    return x is Dog");
         Assert.False(invalid.Bind().IsComplete);
@@ -226,7 +225,7 @@ public class RuntimeTypeTest
         AssertBound(c);
         var test = Test(c);
         Assert.Same(BoundType.Never, test.BoundRuntimeTest!.Value.OperandType);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.False(flow.Nodes[test].CanCompleteNormally);
         Assert.False(flow.Nodes.ContainsKey(test.Right));
@@ -280,7 +279,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess($"struct Dog\nfunc f(x: objref/Dog, flag: bool) -> bool\n    require x is not Dog {operation} flag else => return false\n    return true");
         AssertBound(c);
         var test = Test(c);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
         Assert.False(flow.Nodes.ContainsKey(test.Right));
@@ -291,7 +290,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => (label work: do\n    defer => loop => ()\n    exit to work x\n) is Dog");
         AssertBound(c);
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.False(flow.Nodes[Test(c)].CanCompleteNormally);
     }
@@ -352,7 +351,7 @@ public class RuntimeTypeTest
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "f");
         Assert.Single(body.Operations, op => op.Source == test.Left && op.Kind == OwnershipOperationKind.Call);
         Assert.Single(body.Operations, op => op.Kind == OwnershipOperationKind.Consume);
-        Assert.Empty(c.AnalyzeControlFlow(c.Binding.TypeSystem).Warnings);
+        Assert.Empty(c.AnalyzeControlFlow().Warnings);
     }
 
     [Fact]
@@ -360,7 +359,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> i32\n    if x is Dog => return 1");
         c.Bind();
-        Assert.NotEmpty(c.AnalyzeControlFlow(c.Binding.TypeSystem).Issues);
+        Assert.NotEmpty(c.AnalyzeControlFlow().Issues);
         var refinement = CompilationTestHelper.ParseSuccess("open struct Animal\nstruct Dog: Animal\n    public func bark(self: objref/Self) -> bool => true\nfunc f(x: objref/Animal) -> bool\n    require x is Dog else => return false\n    return x.bark()");
         Assert.False(refinement.Bind().IsComplete);
         Assert.NotNull(Test(refinement).BoundRuntimeTest);
@@ -382,7 +381,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess(source.ToString());
         AssertBound(c);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
-        var flow = c.AnalyzeControlFlow(c.Binding.TypeSystem);
+        var flow = c.AnalyzeControlFlow();
         Assert.Equal(0, AllocationMeasurement.Measure(() => flow.Reanalyze(c.Kotonoha.RootKoto)));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

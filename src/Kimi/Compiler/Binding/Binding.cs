@@ -35,7 +35,6 @@ public sealed partial class Binding
     {
         this.compilation = compilation;
         this.indexer = new(this);
-        this.TypeSystem = new BindingControlFlowTypes(this);
         this.Library = new(compilation);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
@@ -72,9 +71,6 @@ public sealed partial class Binding
         this.derivedIssues.Clear();
         return this.Result = this.Check(BindingMode.Final);
     }
-
-    /// <summary>Gets the bridge supplying actual Binding facts to control-flow analysis.</summary>
-    public ControlFlowTypeSystem TypeSystem { get; }
 
     /// <summary>Rebinds all selected syntax, reusing nodes, symbols, types, scopes, and collection capacity.</summary>
     /// <param name="mode">Whether this is a provisional or final pass.</param>

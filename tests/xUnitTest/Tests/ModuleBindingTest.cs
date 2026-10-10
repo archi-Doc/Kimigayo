@@ -482,7 +482,7 @@ public class ModuleBindingTest
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
             var test = Assert.IsType<IsKoto>(function.ExpressionBody);
             Assert.Equal(valid, test.BoundRuntimeTest is not null);
-            Assert.Equal(valid, c.Binding.TypeSystem.IsBoundRuntimeTypeTest(test));
+            Assert.Equal(valid, test.BindingState == BindingState.Resolved);
         }
     }
 

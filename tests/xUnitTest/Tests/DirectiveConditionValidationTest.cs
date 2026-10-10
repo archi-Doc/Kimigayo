@@ -304,6 +304,7 @@ public class DirectiveConditionValidationTest
         var compilation = Parse($"#if {condition}\nvar value = 1");
 
         Assert.Empty(TestDiagnostics.Of(compilation));
+        compilation.Bind();
         Assert.Empty(compilation.AnalyzeControlFlow().PendingBinding);
     }
 

@@ -78,7 +78,27 @@ public sealed partial class Binding
         return null;
     }
 
-    internal BoundType? CommonBorrowResult(BoundType left, BoundType right)
+    /// <summary>Gets whether Binding inferred Unit for a result target that no declaration, construct rule or expected Type
+    /// fixed (SPEC 17.4.1).</summary>
+    /// <param name="target">A do or a selection.</param>
+    /// <returns>Whether the target's final result is that inferred Unit.</returns>
+    internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
+        target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
+
+    // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
+    // result sources reaches no syntax the survey cannot bind yet.
+    private static bool SurveyablePosition(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        return node switch
+        {
+            FromEndIndexKoto fromEnd => SurveyablePosition(fromEnd.Operand),
+            RangeKoto range => (range.Start is null || SurveyablePosition(range.Start)) && (range.End is null || SurveyablePosition(range.End)),
+            _ => IsUnfittedLiteral(node) || node.BindingState == BindingState.Resolved || node is IdentifierNameKoto,
+        };
+    }
+
+    private BoundType? CommonBorrowResult(BoundType left, BoundType right)
     {
         if (ReferenceEquals(left, BoundType.Never))
         {
@@ -101,19 +121,6 @@ public sealed partial class Binding
         }
 
         return this.WithOrigins(left, this.Meet(a, b), []);
-    }
-
-    // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
-    // result sources reaches no syntax the survey cannot bind yet.
-    private static bool SurveyablePosition(Koto node)
-    {
-        node = KotoHelper.UnwrapParentheses(node);
-        return node switch
-        {
-            FromEndIndexKoto fromEnd => SurveyablePosition(fromEnd.Operand),
-            RangeKoto range => (range.Start is null || SurveyablePosition(range.Start)) && (range.End is null || SurveyablePosition(range.End)),
-            _ => IsUnfittedLiteral(node) || node.BindingState == BindingState.Resolved || node is IdentifierNameKoto,
-        };
     }
 
     // SPEC 14.9.1: result sources whose reference layers over one read Type differ in number or kind unify to that Type;
@@ -170,6 +177,7 @@ public sealed partial class Binding
         context.HasLiteral = false;
         context.PartialEvidence = false;
         context.Expected = expected;
+        context.Inferred = expected is null;
         context.Invalid = context.Pending = false;
         context.Sources.Clear();
         context.Evidence.Clear();
@@ -646,6 +654,9 @@ public sealed partial class Binding
         internal Koto? ArrayFailure { get; set; }
 
         internal BoundType? Expected { get; set; }
+
+        // Whether no declaration, construct rule or caller's expected Type fixed the result, so Binding infers it.
+        internal bool Inferred { get; set; }
 
         internal List<BoundType?> Sources { get; } = new();
 

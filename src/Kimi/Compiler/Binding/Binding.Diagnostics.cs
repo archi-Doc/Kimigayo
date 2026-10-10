@@ -316,11 +316,6 @@ public sealed partial class Binding
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
     internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
 
-    // SPEC 15.6.1: the Origin relation that a structurally fitting value leaves at its destination, for phases that judge the fit.
-    internal OriginRelationFact? OriginRelationOf(BoundType actual, BoundType expected, Koto at)
-        => ReferenceTypes.StorageMatches(expected, actual) && this.FailedOriginRelation(actual, expected, at, OriginVariance.Covariant) is { } relation
-            ? relation with { At = at, Destination = expected } : null;
-
     /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
     /// <param name="node">The node.</param>
     /// <returns>The check keys, or <see langword="null"/>.</returns>

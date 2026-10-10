@@ -6,7 +6,7 @@ using Kimi.Compiler;
 
 namespace Benchmark;
 
-/// <summary>Measures positional Pattern Binding, coverage and result flow without parsing.</summary>
+/// <summary>Measures positional Pattern Binding, coverage and control flow without parsing.</summary>
 [Config(typeof(BenchmarkConfig))]
 public class PatternBindingBenchmark
 {
@@ -39,10 +39,10 @@ public class PatternBindingBenchmark
             throw new InvalidOperationException("Benchmark source must bind successfully.");
         }
 
-        this.flow = this.compilation.AnalyzeControlFlow(this.compilation.Binding.TypeSystem);
+        this.flow = this.compilation.AnalyzeControlFlow();
         if (this.flow.PendingBinding.Count != 0 || this.flow.Issues.Count != 0)
         {
-            throw new InvalidOperationException("Benchmark source must pass result-flow checking.");
+            throw new InvalidOperationException("Benchmark source must pass control-flow checking.");
         }
     }
 
