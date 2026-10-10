@@ -24,11 +24,12 @@ public sealed partial class Binding
         Replaced = 8,
     }
 
-    internal void PublishHir()
+    // Returns the pass the published columns describe (0: none), by which the MIR builder caches its program.
+    internal ulong PublishHir()
     {
         if (this.running || this.Result == default || this.hirVersion == this.storageVersion)
         {
-            return;
+            return this.hirVersion;
         }
 
         this.hirVersion = this.storageVersion;
@@ -39,6 +40,7 @@ public sealed partial class Binding
         }
 
         publisher.Publish(this.Library.Kotonoha.Syntax, this.Library.Kotonoha.RootKoto);
+        return this.hirVersion;
     }
 
     // One walk of the tree through its child slots; each node's position follows from the slot its parent holds it in.
@@ -83,6 +85,14 @@ public sealed partial class Binding
             {
                 var target = KotoHelper.ResolveTransferTarget((JumpKoto)node);
                 HirTables.PlanFor(node, target is not null).Plan = target;
+            }
+
+            // A number literal's value as Binding fits it (SPEC 3.1, 13.5.4): its floating-point Type's bits, else the integer it names.
+            if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
+            {
+                var value = node.BoundType is { IsFloatingPoint: true } type ? ScalarTypes.TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
+                    : number.TryGetIntegerMagnitude(out var magnitude) ? unchecked((Int128)(negative ? 0 - magnitude : magnitude)) : (Int128?)null;
+                HirTables.PlanFor(node, value is not null).Folded = value;
             }
 
             if (op is not (HirOp.Unset or HirOp.Error) && (op != HirOp.Syntax || (node is FunctionKoto && (position & HirPosition.Replaced) == 0)))
@@ -216,6 +226,7 @@ public sealed partial class Binding
         private HirOp KindOp(Koto node) => node switch
         {
             BoolLiteralKoto or CharLiteralKoto or NumberLiteralKoto or StringLiteralKoto or UnitLiteralKoto or NullLiteralKoto => HirOp.Literal,
+            UnaryKoto when KotoHelper.SignedNumber(node, out _) is not null && CallPlan.Of(node) is null => HirOp.Literal, // Binding fits a signed number once.
             InterpolatedStringKoto or MacroKoto when node.Formatting is not null => HirOp.Interpolation,
             InterpolatedStringKoto => HirOp.Syntax, // The text a $tryWrite writes: its segments and expressions are the macro's writes.
             LabeledKoto or ParenthesizedKoto or MacroKoto or ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer } => HirOp.Group,

@@ -1,0 +1,7 @@
+func first(a: i32, b: i32) -> i32 => a
+func twice(x: i32) -> i32 => first(x, 2)
+func nothing() => ()
+func run()
+    nothing()
+    _ = twice(1)
+run()

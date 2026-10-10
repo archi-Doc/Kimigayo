@@ -124,6 +124,8 @@ public partial class Compilation
     /// <summary>Gets the Type context: interned Types and substitutions, which the MIR builder reads without Binding.</summary>
     internal TyCtxt Types => this.Binding.Types;
 
+    private Mir.MirBuilder? mirBuilder;
+
     #endregion
 
     /// <summary>
@@ -306,6 +308,10 @@ public partial class Compilation
     }
 
     internal void InvalidateOwnership() => this.ownership?.Invalidate();
+
+    /// <summary>Builds and validates the MIR of the latest Binding pass, once per pass (R3: beside the old path, which still decides).</summary>
+    /// <returns>The program, with its construction records and validator findings.</returns>
+    internal Mir.MirProgram BuildMir() => (this.mirBuilder ??= new(this)).Build();
 
     internal bool TryGetIdentifier(ReadOnlySpan<char> text, [NotNullWhen(true)] out string? identifier)
         => this.identifiers.TryGetIdentifier(text, out identifier);

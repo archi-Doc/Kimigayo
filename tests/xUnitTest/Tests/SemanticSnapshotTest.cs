@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -17,7 +18,8 @@ namespace XunitTest;
 /// current snapshot and its differences there. Without the variable nothing is requested and the test does nothing.
 /// <c>KIMI_SEMANTIC_HIR=1</c> publishes the HIR columns before the ownership analysis and adds a <c>.hir.txt</c> file per case: one
 /// line per node with its id, Op, Res, a jump's target, its completion, the Adjust its consumer gives it, its Place and its expansion
-/// (R2b).</remarks>
+/// (R2b). <c>KIMI_SEMANTIC_MIR=1</c> builds the MIR before the ownership analysis and adds a <c>.mir.txt</c> file per case: the MIR dump of
+/// its module's bodies, construction records and validator findings (R3).</remarks>
 public sealed class SemanticSnapshotTest
 {
     [Fact]
@@ -42,11 +44,13 @@ public sealed class SemanticSnapshotTest
         var baseline = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_BASELINE");
         Assert.False(string.IsNullOrEmpty(baseline), "KIMI_SEMANTIC_BASELINE names the baseline directory.");
         var hir = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_HIR") == "1";
+        var mir = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_MIR") == "1";
         var names = CaseNames();
-        var snapshots = new (string Text, string Hir)[names.Length];
-        Parallel.For(0, names.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) }, i => snapshots[i] = Take(names[i], hir));
-        var files = names.Select(static (x, i) => (File: FileName(x), Index: i, Hir: false))
-            .Concat(hir ? names.Select(static (x, i) => (File: FileName(x)[..^4] + ".hir.txt", Index: i, Hir: true)) : []).ToArray();
+        var snapshots = new (string Text, string Hir, string Mir)[names.Length];
+        Parallel.For(0, names.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) }, i => snapshots[i] = Take(names[i], hir, mir));
+        var files = names.Select(static (x, i) => (File: FileName(x), Index: i, Kind: 0))
+            .Concat(hir ? names.Select(static (x, i) => (File: FileName(x)[..^4] + ".hir.txt", Index: i, Kind: 1)) : [])
+            .Concat(mir ? names.Select(static (x, i) => (File: FileName(x)[..^4] + ".mir.txt", Index: i, Kind: 2)) : []).ToArray();
         if (mode == "write")
         {
             Write(baseline, files, snapshots);
@@ -61,8 +65,9 @@ public sealed class SemanticSnapshotTest
 
         var differences = new List<string>();
         var expected = Directory.GetFiles(baseline, "*.txt", SearchOption.AllDirectories)
-            .Select(x => Path.GetRelativePath(baseline, x).Replace('\\', '/')).Where(x => hir || !x.EndsWith(".hir.txt", StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
-        foreach (var (file, index, isHir) in files)
+            .Select(x => Path.GetRelativePath(baseline, x).Replace('\\', '/'))
+            .Where(x => (hir || !x.EndsWith(".hir.txt", StringComparison.Ordinal)) && (mir || !x.EndsWith(".mir.txt", StringComparison.Ordinal))).ToHashSet(StringComparer.Ordinal);
+        foreach (var (file, index, kind) in files)
         {
             if (!expected.Remove(file))
             {
@@ -71,7 +76,7 @@ public sealed class SemanticSnapshotTest
             }
 
             var before = File.ReadAllText(Path.Combine(baseline, file)).Split('\n');
-            var after = (isHir ? snapshots[index].Hir : snapshots[index].Text).Split('\n');
+            var after = Of(snapshots[index], kind).Split('\n');
             var line = 0;
             while (line < before.Length && line < after.Length && before[line] == after[line])
             {
@@ -133,13 +138,15 @@ public sealed class SemanticSnapshotTest
     }
 
     /// <summary>Takes the snapshot of a case; with <paramref name="hir"/> the HIR columns are published before the ownership analysis
-    /// and printed too.</summary>
+    /// and printed too, and with <paramref name="mir"/> the MIR is built before it and dumped.</summary>
     /// <param name="name">The case name.</param>
     /// <param name="hir">Whether to publish and print the HIR columns.</param>
-    /// <returns>The semantic snapshot and the HIR snapshot (empty without <paramref name="hir"/>).</returns>
-    internal static (string Text, string Hir) Take(string name, bool hir)
+    /// <param name="mir">Whether to build and dump the MIR.</param>
+    /// <returns>The semantic snapshot, the HIR snapshot and the MIR dump (each empty when not requested).</returns>
+    internal static (string Text, string Hir, string Mir) Take(string name, bool hir, bool mir = false)
     {
         var printer = new SemanticPrinter(hir);
+        var dump = new StringBuilder();
         try
         {
             var (c, module) = Bind(name);
@@ -148,7 +155,13 @@ public sealed class SemanticSnapshotTest
                 HirTables.Publish(c);
             }
 
+            var program = mir ? c.BuildMir() : null;
             c.Ownership.Analyze();
+            if (program is not null)
+            {
+                MirDump.Write(program, module.Syntax.Module, dump);
+            }
+
             printer.Print(c, module);
         }
         catch (Exception exception)
@@ -156,7 +169,7 @@ public sealed class SemanticSnapshotTest
             printer.Fail(exception);
         }
 
-        return (printer.ToString(), printer.Hir);
+        return (printer.ToString(), printer.Hir, dump.ToString());
     }
 
     private static PairCaseRow[] PairCases()
@@ -173,15 +186,18 @@ public sealed class SemanticSnapshotTest
         return builder.Append(".txt").ToString();
     }
 
-    private static void Write(string directory, (string File, int Index, bool Hir)[] files, (string Text, string Hir)[] snapshots)
+    private static void Write(string directory, (string File, int Index, int Kind)[] files, (string Text, string Hir, string Mir)[] snapshots)
     {
-        foreach (var (file, index, hir) in files)
+        foreach (var (file, index, kind) in files)
         {
             var path = Path.Combine(directory, file);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, hir ? snapshots[index].Hir : snapshots[index].Text, new UTF8Encoding(false));
+            File.WriteAllText(path, Of(snapshots[index], kind), new UTF8Encoding(false));
         }
     }
+
+    // A case's semantic snapshot (kind 0), HIR snapshot (1) or MIR dump (2).
+    private static string Of((string Text, string Hir, string Mir) snapshot, int kind) => kind switch { 0 => snapshot.Text, 1 => snapshot.Hir, _ => snapshot.Mir };
 
     /// <summary>One row of <c>tests/diagnostics/pair-cases.json</c>; only its name and source are read here.</summary>
     /// <param name="Name">The case name.</param>

@@ -73,7 +73,8 @@ internal struct HirTables
 
     /// <summary>Publishes the Op, Res, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
     /// <param name="compilation">The bound compilation.</param>
-    internal static void Publish(Compilation compilation) => compilation.Binding.PublishHir();
+    /// <returns>The pass the columns describe, 0 before the first.</returns>
+    internal static ulong Publish(Compilation compilation) => compilation.Binding.PublishHir();
 
     /// <summary>Gets a node's plan row, or the default row when it has none.</summary>
     /// <param name="node">The node.</param>
@@ -177,8 +178,8 @@ internal struct HirTables
 
 /// <summary>
 /// The plan slots of one node (the planIndex column): its kind's retained plan, a second plan, its formatting plan, a folded
-/// constant, a mode and a flag. Each Koto class fixes what its slots hold; a class reads them by type, so a slot it does not use
-/// reads as absent.
+/// constant (a conversion's, or a number literal's value, which <see cref="HirTables.Publish"/> writes), a mode and a flag. Each Koto
+/// class fixes what its slots hold; a class reads them by type, so a slot it does not use reads as absent.
 /// </summary>
 internal struct PlanRow
 {

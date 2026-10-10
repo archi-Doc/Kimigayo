@@ -1,0 +1,26 @@
+fn top-level#0 @2
+  _0: () return @2
+  s1: lexical in s0 @3
+  bb0:
+      _0 = const () @3 s1
+      return @3
+fn pick @4
+  _0: bool return @4
+  _1: bool arg flag @4
+  _2: bool var copy @8 s1
+  _3: bool var mut other @11 s1
+  _4: () temp @16 s1
+  _5: Never temp @19 s1
+  s1: lexical in s0 @7
+  opaque 0 @16: _3 _2
+  bb0:
+    * _2 = copy _1 @10 s1
+    * _3 = const true @15 s1
+    * _4 = opaque 0: () @16 s1
+    * goto bb1 check bb2 @19 s1
+  bb1:
+      _0 = copy _2 @19 s1
+      return @19 s1
+  bb2:
+      unreachable @7
+unsupported @16

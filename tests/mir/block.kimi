@@ -1,0 +1,5 @@
+func pick(flag: bool) -> bool
+    let copy = flag
+    var other: bool = (true)
+    other = copy
+    return copy

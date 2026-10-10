@@ -136,34 +136,8 @@ public sealed class MirValidatorTest
         Assert.True(counter.Places > 0);
     }
 
-    private static List<MirFinding> Validate(MirBody body)
-    {
-        var findings = new List<MirFinding>();
-        new MirValidator().Validate(body, findings);
-        return findings;
-    }
-
-    // Appends operands together and gives the first one's index.
-    private static int AddOperands(MirBody body, MirOperand[] operands)
-    {
-        var start = body.Operands.Length;
-        foreach (var operand in operands)
-        {
-            body.AddOperand(operand);
-        }
-
-        return start;
-    }
-
-    private static string[] Uses(MirBody body, int block, int index)
-    {
-        var recorder = new Recorder([]);
-        MirUses.ForEach(body, new(block, index), ref recorder);
-        return recorder.Log.ToArray();
-    }
-
     // The valid body, or the body that breaks one rule: an added statement, local, block or terminator at Broken, or a changed one.
-    private static MirBody Build(MirViolation? broken)
+    internal static MirBody Build(MirViolation? broken)
     {
         var (c, types) = Fixture.Value;
         var tuple = c.Types.Tuple([BoundType.I32, BoundType.Boolean]);
@@ -292,6 +266,32 @@ public sealed class MirValidatorTest
         }
 
         return body;
+    }
+
+    private static List<MirFinding> Validate(MirBody body)
+    {
+        var findings = new List<MirFinding>();
+        new MirValidator().Validate(body, findings);
+        return findings;
+    }
+
+    // Appends operands together and gives the first one's index.
+    private static int AddOperands(MirBody body, MirOperand[] operands)
+    {
+        var start = body.Operands.Length;
+        foreach (var operand in operands)
+        {
+            body.AddOperand(operand);
+        }
+
+        return start;
+    }
+
+    private static string[] Uses(MirBody body, int block, int index)
+    {
+        var recorder = new Recorder([]);
+        MirUses.ForEach(body, new(block, index), ref recorder);
+        return recorder.Log.ToArray();
     }
 
     private readonly struct Recorder(List<string> log) : IMirUses

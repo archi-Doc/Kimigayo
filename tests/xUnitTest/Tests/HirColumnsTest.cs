@@ -419,6 +419,14 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} completion {completion}");
             }
 
+            // An evaluated number, a directly signed one included, is one Literal with the value Binding fitted (SPEC 13.5.4), unless it is a
+            // fraction that a folded conversion takes.
+            if (evaluated && op is not (HirOp.Error or HirOp.Call) && KotoHelper.SignedNumber(node, out _) is { } number &&
+                (op != HirOp.Literal || (HirTables.PlanOf(node).Folded is null && (number.IsInteger || node.TypeOf() is { IsFloatingPoint: true }))))
+            {
+                problems.Add($"{where} without its literal value");
+            }
+
             // An evaluated node and a node used in place have their Place, a stored Field, an explicit follow and a read name a Place, and
             // the layers a consumer follows are layers of the Type, every one of them under a stored Field, an element or a sequence's metadata.
             var place = HirTables.PlaceOf(node);

@@ -1,0 +1,4 @@
+func sum(a: i32, b: i32) -> i32
+    let c = a + b
+    return c
+func fail() -> i32 => missing
