@@ -137,6 +137,19 @@ public sealed class HirColumnsTest
         Assert.Equal(expected, adjusted);
     }
 
+    // SPEC 3.5, 8.9: a bare Place whose Type's Copy is unproven needs a Move (the ownership analysis reports TransferRequired), and a pair
+    // layer whose every admitted case Copies or Reborrows is acquired by case.
+    [Fact]
+    public void ABarePlaceIsAcquiredAsBindingDecides()
+    {
+        var c = MinimalEmissionTest.Analyze("func keep<T>(x: T) -> T\n    T is Owned\n    return x\nfunc pass<s/T>(value: s/T) -> s/T\n    s is owner or uniq\n    T is Copy\n" +
+            "    return value\nrequire keep(1) == 1 else => $abort(\"bare\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        Assert.Equal([HirAcquire.Move, HirAcquire.ByCase], Reachable(c.Kotonoha).OfType<JumpKoto>().Select(static x => HirTables.AdjustOf(x.Expression!).Acquire));
+    }
+
     // SPEC 3.4.1, 4.6.9, 7.1.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
     // ConstIndex and a runtime one an Index, a user index publishes the element Place, which an update through its Field takes by indexUniq
     // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.

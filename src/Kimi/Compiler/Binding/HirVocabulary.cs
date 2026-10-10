@@ -145,7 +145,7 @@ internal enum HirAcquire : byte
     Copy,
     Move,
     Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode.
-    ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.9), or a Copy unproven for an abstract Type.
+    ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.9).
     Temporary, // A value, not a Place, taken as it is.
 }
 

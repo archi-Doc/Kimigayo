@@ -450,8 +450,8 @@ public sealed partial class Binding
             }
         }
 
-        // Binding's bare acquisition of a Place (BareAcquire), where a Copy unproven for an abstract Type is decided by case and a raw referent
-        // that is not Copy Moves; a value that is not a Place is a Temporary.
+        // Binding's bare acquisition of a Place (BareAcquire) as it is: a Move there is the explicit Move a Place whose Copy is unproven needs
+        // (SPEC 3.5, TransferRequired), and only an Error proof leaves it unset; a value that is not a Place is a Temporary.
         private HirAcquire Bare(Koto child)
         {
             var place = this.IsPlace(child);
@@ -461,7 +461,7 @@ public sealed partial class Binding
             }
 
             var bare = binding.BareAcquire(type, child, out var proof);
-            return bare != HirAcquire.Move ? bare : proof == ConstraintProof.Refuted ? HirAcquire.Move : proof == ConstraintProof.Unknown ? HirAcquire.ByCase : HirAcquire.Unset;
+            return bare == HirAcquire.Move && proof == ConstraintProof.Error ? HirAcquire.Unset : bare;
         }
 
         // Whether a node's consumer updates it or borrows it exclusively, directly or through the projections of a Place path, where the old
