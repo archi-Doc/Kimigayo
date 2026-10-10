@@ -24,9 +24,6 @@ internal enum OmittedBaseOutcome : byte
 
     /// <summary>The selection rests on another failure, such as an invalid declaration.</summary>
     Dependent,
-
-    /// <summary>The selection reaches a state the query does not decide.</summary>
-    Unsupported,
 }
 
 /// <summary>An omitted base clause's selection: the selected constructor, or the premise clause or failure an unselected outcome
@@ -53,14 +50,11 @@ public sealed partial class Binding
 
     // SPEC 6.2.3.6: the omitted base clause's ordinary selection over the direct base's constructors with no arguments, made from the
     // derived constructor's scope with the evaluation and classification of a call (Binding.CallSelection), without publishing. The
-    // obligations, candidate bounds and per-call state that evaluation touches are restored.
+    // obligations, candidate bounds and per-call state that evaluation touches are restored. The constructor's base initializer is
+    // the retained zero-argument call of its omitted base clause.
     internal OmittedBaseSelection SelectOmittedBaseConstructor(FunctionKoto constructor)
     {
-        if (constructor.BaseInitializer is not { ArgumentNodes.Count: 0 } call)
-        {
-            return new(OmittedBaseOutcome.Unsupported);
-        }
-
+        var call = constructor.BaseInitializer!;
         if (this.BaseConstructorGroup(constructor, out _) is not { } group)
         {
             return new(OmittedBaseOutcome.NoBaseConstructor);
@@ -121,15 +115,15 @@ public sealed partial class Binding
 
             boundStarts[evaluation.Count] = this.candidateBounds.Count;
             var (selection, winner) = this.ClassifySelection(ref evaluation);
+
+            // A winner whose own slots stay unsolved is selected as by a written base call, whose binding then reports them.
             return selection switch
             {
-                CallSelection.Selected => evaluated[winner] is { State: CandidateApplicability.Applicable, Unsolved: false } selected
-                    ? new(OmittedBaseOutcome.Selected, (FunctionKoto)selected.Symbol!.Declaration)
-                    : new(OmittedBaseOutcome.Unsupported),
+                CallSelection.Selected => new(OmittedBaseOutcome.Selected, (FunctionKoto)evaluated[winner].Symbol!.Declaration),
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),
                 CallSelection.Unproven => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
-                CallSelection.InvalidDeclaration => (evaluation.InvalidDeclaration ?? this.TakeFailedConformance()) is { } cause ? new(OmittedBaseOutcome.Dependent, Cause: cause) : new(OmittedBaseOutcome.Unsupported),
+                CallSelection.InvalidDeclaration => new(OmittedBaseOutcome.Dependent, Cause: evaluation.InvalidDeclaration ?? this.TakeFailedConformance()),
                 CallSelection.FailedSignature => new(OmittedBaseOutcome.Dependent, Cause: evaluation.FailedPendingSignature),
                 _ => new(OmittedBaseOutcome.Dependent, Cause: evaluation.IncompleteSignature),
             };
@@ -198,7 +192,7 @@ public sealed partial class Binding
         {
             // A base synthesized constructor that does not exist for a reason other than absence leaves this one resting on that reason.
             if (baseType.Symbol?.Declaration is StructKoto parent && (parent.ImplicitConstructorPending || this.implicitConstructorDecisions.ContainsKey(parent)) &&
-                this.CompleteImplicitConstructor(parent) is { Outcome: OmittedBaseOutcome.Unproven or OmittedBaseOutcome.Dependent or OmittedBaseOutcome.Unsupported } inherited)
+                this.CompleteImplicitConstructor(parent) is { Outcome: OmittedBaseOutcome.Unproven or OmittedBaseOutcome.Dependent } inherited)
             {
                 selection = inherited;
             }

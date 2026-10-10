@@ -127,7 +127,7 @@ public sealed partial class Binding
             source.GetArgumentLabel(0) is not null || source.GetArgumentLabel(1) is not null ||
             source.ArgumentNodes[1] is not (StringLiteralKoto or InterpolatedStringKoto))
         {
-            return this.Fail(syntax, BindingFailure.Unsupported);
+            return this.Fail(syntax, BindingFailure.Internal); // The parser reports any other operand as a recovery.
         }
 
         var actual = this.BindNode(source.ArgumentNodes[0], scope);

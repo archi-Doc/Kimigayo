@@ -253,6 +253,9 @@ internal enum BindingFailure : byte
     // SPEC 4.3.1: an initialized local annotation obtains every written hole from consistent initializer evidence.
     ArrayAnnotationInference,
     NoInit,
+
+    // SPEC 21.3.5: a state that valid input never reaches, such as a library declaration the catalog guarantees; a compiler fault.
+    Internal,
 }
 
 /// <summary>A stable in-memory declaration identity, shared by all resolved references.</summary>

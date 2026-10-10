@@ -98,11 +98,6 @@ public class FuncDeclarationParseTest
         Assert.True(CompilerHelper.TryParse(text, out var actual));
         Assert.Equal(expected, actual);
         Assert.Equal(text, actual.ToText());
-        Assert.Equal(expected == SemanticsKind.Owner, actual.IsValue());
-        Assert.Equal(expected is >= SemanticsKind.Ref and <= SemanticsKind.Uniq, actual.IsValueBorrow());
-        Assert.Equal(expected is >= SemanticsKind.Obj and <= SemanticsKind.Arc, actual.IsObject());
-        Assert.Equal(expected is >= SemanticsKind.ObjRef and <= SemanticsKind.ObjUniq, actual.IsObjectBorrow());
-        Assert.Equal(expected != SemanticsKind.Owner, actual.IsReference());
     }
 
     [Fact]
@@ -110,11 +105,6 @@ public class FuncDeclarationParseTest
     {
         Assert.False(CompilerHelper.TryParse("s", out var actual));
         Assert.Equal(SemanticsKind.Parameter, actual);
-        Assert.False(actual.IsValue());
-        Assert.False(actual.IsValueBorrow());
-        Assert.False(actual.IsObject());
-        Assert.False(actual.IsObjectBorrow());
-        Assert.False(actual.IsReference());
     }
 
     [Theory]

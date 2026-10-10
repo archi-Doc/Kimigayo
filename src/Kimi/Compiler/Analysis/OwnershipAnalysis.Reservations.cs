@@ -95,14 +95,14 @@ public sealed partial class OwnershipAnalysis
     }
 
     // SPEC 9.5.1: a shared receiver selected through a base path is the whole receiver, borrowed at its own Type (`whole`), whose base
-    // prefix is then lent at the parameter Type (`type`); an exclusive or unproven projection is a located limit (OCC-X).
+    // prefix is then lent at the parameter Type (`type`). Binding rejects an exclusive or unproven projection first (OCC-X).
     private bool BaseBorrowTypes(Koto source, in BoundArgumentOperation argument, out BoundType type, out BoundType whole)
     {
         type = whole = null!;
         if (argument.ObjectCompatibility != ConstraintProof.Proven || argument.ParameterType?.Semantics is not (SemanticsKind.Ref or SemanticsKind.ObjRef) ||
             argument.SourceType is not { } receiverType || argument.BasePath is null)
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return false;
         }
 

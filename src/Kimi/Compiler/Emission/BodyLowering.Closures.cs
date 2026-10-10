@@ -358,7 +358,7 @@ internal sealed partial class BodyLowering
 
         for (var i = 0; i < inputs.Components.Count; i++)
         {
-            if (!FunctionAbi.SupportsParameter(inputs.Components[i], this.aggregateLayouts))
+            if (!FunctionAbi.Supports(inputs.Components[i], this.aggregateLayouts))
             {
                 return Fail("Unsupported common-function parameter representation.", out failure);
             }

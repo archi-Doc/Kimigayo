@@ -298,7 +298,7 @@ public class ImplicitBaseCallTest
                 BindingFailure.Ambiguous => OmittedBaseOutcome.Ambiguous,
                 BindingFailure.UnprovenConstraint => OmittedBaseOutcome.Unproven,
                 BindingFailure.None => OmittedBaseOutcome.Dependent,
-                _ => OmittedBaseOutcome.Unsupported,
+                var failure => throw new InvalidOperationException($"The bound base call failed with {failure}."),
             }, null);
         Assert.Equal((Enum.Parse<OmittedBaseOutcome>(expected), bound.Outcome, bound.Winner), (query.Outcome, query.Outcome, query.Winner));
 

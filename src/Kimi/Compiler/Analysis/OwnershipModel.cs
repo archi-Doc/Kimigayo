@@ -70,7 +70,6 @@ public enum OwnershipOperationKind : byte
     Deliver,
     Branch,
     Exit,
-    Unsupported,
     PayloadPlacement,
     CompleteConstruction,
     InitializeSubject,
@@ -113,7 +112,6 @@ public enum CleanupAction : byte
     Skip,
     Destroy,
     Conditional,
-    Unsupported,
 }
 
 public enum CleanupReason : byte
@@ -494,9 +492,9 @@ public sealed partial class OwnershipBody
     // inconsistency that only a Debug build would notice.
     internal bool Invariant(bool condition, Koto? source = null)
     {
-        if (!condition && !this.HasUnsupportedIssue())
+        if (!condition && this.IssueStorage.Count == 0)
         {
-            // A graph left partial at an unsupported construct is not evidence of an implementation fault.
+            // A graph left partial where an earlier issue stopped it is not evidence of an implementation fault.
             this.ReportIssue(new(source ?? this.Function, OwnershipFailure.Internal));
         }
 
@@ -508,19 +506,6 @@ public sealed partial class OwnershipBody
     private BoundType? Concrete(BoundType? type)
         => type is null ? type : this.Instance is not null ? this.InstanceBinding!.InstantiateStorageType(type, this.Instance)
         : this.Cases.IsEmpty ? type : this.InstanceBinding!.CaseType(type, this.Cases.Span);
-
-    private bool HasUnsupportedIssue()
-    {
-        for (var i = 0; i < this.IssueStorage.Count; i++)
-        {
-            if (this.IssueStorage[i].Failure == OwnershipFailure.Unsupported)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.

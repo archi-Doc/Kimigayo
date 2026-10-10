@@ -244,7 +244,7 @@ public sealed partial class Binding
                     this.FailExplained(ref this.constructorAbsences, node, BindingFailure.MissingName, new ConstructorAbsence(type!, decision)),
                 OmittedBaseOutcome.Unproven => this.FailExplained(ref this.constructorAbsences, node, BindingFailure.UnprovenConstraint, new ConstructorAbsence(type!, decision)),
                 OmittedBaseOutcome.Dependent when decision.Cause is { } cause => this.CompleteDependent(node, cause),
-                _ => this.Fail(node, BindingFailure.Unsupported),
+                _ => this.Fail(node, BindingFailure.Internal),
             };
         }
 

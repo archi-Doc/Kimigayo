@@ -27,7 +27,7 @@ public sealed partial class OwnershipAnalysis
             {
                 if (function.BaseInitializer is not { } initializer)
                 {
-                    this.Unsupported(function);
+                    this.Internal(function);
                 }
                 else
                 {

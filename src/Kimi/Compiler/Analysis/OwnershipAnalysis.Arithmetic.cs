@@ -10,7 +10,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (call.BoundCall is not { ArgumentOperations.Length: 2 } plan)
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

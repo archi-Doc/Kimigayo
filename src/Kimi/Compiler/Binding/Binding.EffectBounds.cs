@@ -1608,12 +1608,7 @@ public sealed partial class Binding
                     // A write to the result initializes it and has no cleanup step of its own.
                     case OwnershipOperationKind.Cleanup or OwnershipOperationKind.Write when operation.Place >= 0 && (uint)body.OperationSteps[id] < (uint)body.CleanupSteps.Count &&
                         body.CleanupSteps[body.OperationSteps[id]].Operation == id:
-                        var action = body.CleanupSteps[body.OperationSteps[id]].Action;
-                        if (action == CleanupAction.Unsupported)
-                        {
-                            this.Violate(EffectViolation.UnknownDestruction, operation.Source);
-                        }
-                        else if (action != CleanupAction.Skip && (body.GetStorageState(id, operation.Place) & PlaceState.MayOwn) != 0)
+                        if (body.CleanupSteps[body.OperationSteps[id]].Action != CleanupAction.Skip && (body.GetStorageState(id, operation.Place) & PlaceState.MayOwn) != 0)
                         {
                             var place = body.Places[operation.Place];
                             this.subjectBody = body;

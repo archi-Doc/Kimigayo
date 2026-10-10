@@ -1088,7 +1088,7 @@ public sealed partial class Binding
 
             if (this.ExecutedTarget(winner, self) is not { } executed)
             {
-                return this.Fail(call, BindingFailure.Unsupported, true); // SPEC 22.1: a linked constructor whose link is not validated.
+                return this.Fail(call, BindingFailure.Internal); // SPEC 22.1: the catalog links every linked constructor.
             }
 
             var basePath = callee is MemberAccessKoto memberCallee && this.memberSelections.TryGetValue(memberCallee, out var memberSelection) ? memberSelection.Path : null;

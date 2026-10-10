@@ -155,8 +155,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.issues.Clear();
-        this.obligationVerdicts.Clear();
-        this.obligationVerdictVersion = -1;
         this.invalidDefaults.Clear();
         this.checkedDefaults.Clear();
         this.candidates.Clear();
@@ -561,7 +559,7 @@ public sealed partial class OwnershipAnalysis
         this.resultPlace = this.Place(function, declarationDefault >= 0 ? function.Parameters[declarationDefault].Type.BoundType : function.BoundSymbol?.Type ?? BoundType.Unit, OwnershipPlaceKind.Result, true);
         if (declarationDefault < 0 && function.Captures is { Length: > 0 } && function.BoundClosure is null)
         {
-            this.Unsupported(function);
+            this.Internal(function);
         }
 
         var parameterCount = declarationDefault >= 0 ? declarationDefault : function.Parameters.Count;
@@ -636,7 +634,7 @@ public sealed partial class OwnershipAnalysis
         }
         else
         {
-            this.Unsupported(function);
+            this.Internal(function);
         }
 
         this.CheckEnvironmentMoves(function);
@@ -668,7 +666,7 @@ public sealed partial class OwnershipAnalysis
             {
                 if (this.body.SymbolPlaces.TryGetValue(closure.Captures[i].Environment, out var place) && place == moved.Input)
                 {
-                    this.Unsupported(moved.Source);
+                    this.Internal(moved.Source);
                     break;
                 }
             }
@@ -1023,7 +1021,7 @@ public sealed partial class OwnershipAnalysis
             var operand = this.EvaluatedOperand(evaluated, out var projection);
             if (projection >= 0)
             {
-                this.Unsupported(node); // An element projection is read only where the selection reads its receiver.
+                this.Internal(node); // An element projection is read only where the selection reads its receiver.
                 return -1;
             }
 
@@ -1168,7 +1166,7 @@ public sealed partial class OwnershipAnalysis
                     var operation = ExplicitAdaptationPlan.Select(sourceType, targetType, adaptation.IsShorthand);
                     if ((adaptation.Operations & (1U << (int)operation)) == 0)
                     {
-                        this.Unsupported(conversion);
+                        this.Internal(conversion);
                         return -1;
                     }
 
@@ -1484,13 +1482,6 @@ public sealed partial class OwnershipAnalysis
         var left = this.Expression(binary.Left, PlaceUseKind.Read);
         var leftValue = this.Value(left);
         var rightValue = this.Value(this.Expression(binary.Right, PlaceUseKind.Read));
-        if (left >= 0 && this.body.PlaceStorage[left] is { Kind: not OwnershipPlaceKind.Temporary, Acquisition: not AcquisitionKind.Copy } &&
-            KotoHelper.UnwrapParentheses(binary.Right) is not IdentifierNameKoto)
-        {
-            // Retaining a non-Copy operand view across effectful RHS evaluation needs a Loan.
-            this.Unsupported(binary);
-        }
-
         if (leftValue < 0 || rightValue < 0)
         {
             return -1; // Later source operands were checked, but no operator value arrived.
@@ -1578,7 +1569,7 @@ public sealed partial class OwnershipAnalysis
 
         if ((selected ?? call.BoundCall) is not { } plan)
         {
-            this.Unsupported(call);
+            this.Internal(call);
             return -1;
         }
 
@@ -1587,7 +1578,7 @@ public sealed partial class OwnershipAnalysis
         {
             if (this.body.ResolveCall(plan, this.Active) is not { } substituted)
             {
-                this.Unsupported(call);
+                this.Internal(call);
                 return -1;
             }
 
@@ -1645,7 +1636,7 @@ public sealed partial class OwnershipAnalysis
         this.ActivateCallReservations(call, reservationMark);
         if (plan.Target.Declaration is FunctionKoto target && target.Parameters.Count != this.arguments.Count - mark)
         {
-            this.Unsupported(call); // Every parameter must have an explicit or default acquisition.
+            this.Internal(call); // Every parameter must have an explicit or default acquisition.
         }
 
         var inputStart = this.body.CallInputCount;
@@ -1897,7 +1888,7 @@ public sealed partial class OwnershipAnalysis
 
         // A borrowed source keeps its value and responsibility; it never enters the callee.
         this.Expression(argument, PlaceUseKind.Borrow);
-        this.Unsupported(argument);
+        this.Internal(argument);
         return -1;
     }
 
@@ -2113,11 +2104,13 @@ public sealed partial class OwnershipAnalysis
         }
     }
 
+    // A registration without a Place belongs to a construct whose issue left the graph partial.
     private void CleanupPlace(int place, Koto declaration, Koto source)
     {
+        this.body.Invariant(place >= 0, source);
         var operation = this.Emit(OwnershipOperationKind.Cleanup, source, place);
         this.body.OperationSteps[operation] = this.body.CleanupStepStorage.Count;
-        this.body.CleanupStepStorage.Add(new(operation, place, declaration, place < 0 ? CleanupAction.Unsupported : CleanupAction.Skip));
+        this.body.CleanupStepStorage.Add(new(operation, place, declaration, CleanupAction.Skip));
     }
 
     private int New(OwnershipOperationKind kind, Koto source, int place = -1, int input = -1, AcquisitionKind acquisition = AcquisitionKind.None, LoanRequirement loanMode = LoanRequirement.None, int projection = -1, int reservation = -1)
@@ -2159,11 +2152,10 @@ public sealed partial class OwnershipAnalysis
         return this.body.EdgeStorage.Count - 1;
     }
 
-    private void Unsupported(Koto source)
-    {
-        this.Emit(OwnershipOperationKind.Unsupported, source);
-        this.body.ReportIssue(new(source, OwnershipFailure.Unsupported));
-    }
+    private void Unsupported(Koto source) => this.body.ReportIssue(new(source, OwnershipFailure.Unsupported));
+
+    // SPEC 21.3.5: a state that a complete Binding never leaves for this analysis.
+    private void Internal(Koto source) => this.body.ReportIssue(new(source, OwnershipFailure.Internal));
 
     private readonly record struct Registration(int Place, Koto Source, int Sequence, bool IsSubject = false);
 

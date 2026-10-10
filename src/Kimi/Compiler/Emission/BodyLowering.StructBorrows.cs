@@ -132,8 +132,7 @@ internal sealed partial class BodyLowering
             {
                 var sourceType = body.Resolve(projectedCall.SourceType, body.ContextAt(id));
                 var sourceCore = ObjectTypes.IsBorrow(output) ? ObjectTypes.ViewTarget(sourceType) : ReferenceTypes.IsReference(sourceType) || ObjectTypes.HandleMode(sourceType) is not null || ObjectTypes.IsBorrow(sourceType) ? sourceType!.Components[0] : sourceType;
-                if (projectedCall.ObjectCompatibility != ConstraintProof.Proven || projectedCall.BasePath is null ||
-                    value.Count != 1 ||
+                if (projectedCall.BasePath is null || value.Count != 1 ||
                     !ReferenceTypes.StorageMatches(type.Components[0], sourceCore) ||
                     !ReferenceTypes.StorageMatches(output.Components[0], body.Resolve(projectedCall.BasePath.Type, body.ContextAt(id))) ||
                     !ReferenceTypes.StorageMatches(ValueType(body, Input(body, id, 0)), type) ||
@@ -230,7 +229,7 @@ internal sealed partial class BodyLowering
                         (selected.Parent is MemberAccessKoto followedMember && MemberReceiverOperation(followedMember, output.Semantics) is { Kind: ArgumentOperationKind.Borrow } followedReceiver &&
                             ReferenceEquals(followedReceiver.Source, selected) && ReferenceTypes.StorageMatches(body.Resolve(followedReceiver.ParameterType, body.ContextAt(id)), output)));
                 var memberProjection = operation.Source.Parent is MemberAccessKoto selectedMember &&
-                    MemberReceiverOperation(selectedMember, output.Semantics) is { ObjectCompatibility: ConstraintProof.Proven } memberReceiver &&
+                    MemberReceiverOperation(selectedMember, output.Semantics) is { } memberReceiver &&
                     ReferenceEquals(memberReceiver.Source, operation.Source) &&
                     ((memberReceiver.Kind == ArgumentOperationKind.PayloadProjection && ReferenceTypes.StorageMatches(body.Resolve(memberReceiver.ParameterType, body.ContextAt(id)), output)) ||
                     (memberReceiver.Kind == ArgumentOperationKind.BaseBorrow && output.Semantics == SemanticsKind.Ref && memberReceiver.BasePath is not null));

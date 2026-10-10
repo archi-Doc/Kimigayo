@@ -49,7 +49,7 @@ public sealed partial class OwnershipAnalysis
         // so the rest of the pointee need not be initialized and no Loan is created.
         if (!ElementAccess.TryType(element, out var type, out var position) || !ReferenceEquals(type, element.BoundType))
         {
-            this.Unsupported(element);
+            this.Internal(element);
             return -1;
         }
 
@@ -129,7 +129,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (layers <= 0)
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 
@@ -185,7 +185,7 @@ public sealed partial class OwnershipAnalysis
             if (type is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
                 this.Resolve(type.Components[0], this.Active) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 } stored)
             {
-                this.Unsupported(source);
+                this.Internal(source);
                 return -1;
             }
 
@@ -457,7 +457,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (target.BoundType?.IsInteger != true)
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

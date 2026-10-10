@@ -286,7 +286,7 @@ internal sealed partial class BodyLowering
             var type = body.Places[place].Type;
             if (!ReferenceEquals(body.Operations[entry].Source, call) ||
                 (parameterType is not { } required || (!call.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(type, required, call) &&
-                !(acquisition is { Kind: ArgumentOperationKind.BaseBorrow, BasePath: not null, ObjectCompatibility: ConstraintProof.Proven } &&
+                !(acquisition is { Kind: ArgumentOperationKind.BaseBorrow, BasePath: not null } &&
                 type is { Semantics: SemanticsKind.Ref, Components.Count: 1 } && required is { Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
                 ReferenceEquals(required.Components[0], plan.DeclaringType) && ObjectTypes.Supports(type.Components[0], required.Components[0])))))
             {

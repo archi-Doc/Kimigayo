@@ -36,7 +36,7 @@ public sealed partial class Binding
                 }
 
                 return this.TryBindIndexer((IndexKoto)source, scope, receiver, out var indexedDictionary)
-                    ? indexedDictionary : this.Fail(source, BindingFailure.Unsupported);
+                    ? indexedDictionary : this.Fail(source, BindingFailure.Internal);
             }
 
             if (this.TryBindViewSelection((IndexKoto)source, scope, receiver, out var view))

@@ -94,7 +94,7 @@ internal sealed class CompilerFunctionAdapters
 
         foreach (var input in inputs)
         {
-            if (!FunctionAbi.SupportsParameter(input, this.layouts))
+            if (!FunctionAbi.Supports(input, this.layouts))
             {
                 return null;
             }

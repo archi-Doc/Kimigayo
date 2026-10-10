@@ -8,8 +8,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// PLAN G74 U4: every Binding obligation records the check that discharges it and receives one verdict per analysis of a Binding,
-// which ownership reporting and the emission check both read.
+// PLAN G74 U4: every Binding obligation records the check that discharges it and receives one verdict per analysis of a Binding;
+// an unchecked obligation is an ownership record, so the analysis result that emission reads is unverified.
 public class OriginObligationVerdictTest
 {
     public static TheoryData<string, string?> Families => OriginProofScalingTest.Families;
@@ -23,7 +23,7 @@ public class OriginObligationVerdictTest
         var (c, metrics) = Analyze(OriginProofWorkloads.Create(family, 2));
         var count = c.Binding.Result.IsComplete ? c.Binding.Obligations.Count : 0; // Ownership analyzes only a complete Binding.
         Assert.Equal(count, metrics.Verdicts);
-        Assert.Equal(code is null, c.Ownership.SupportsOriginObligations());
+        Assert.Equal(code is null, c.Ownership.Result.IsVerified);
         c.Ownership.ReportDiagnostics();
         Assert.Equal(count, metrics.Verdicts);
 
@@ -42,25 +42,20 @@ public class OriginObligationVerdictTest
         var calls = c.Binding.Obligations.Where(static x => x.Discharge == OriginDischarge.CallBorrows && x.Shorter?.Binder is FunctionKoto { Name: "g" }).ToArray();
         Assert.Equal(2, calls.Length); // The Holder inputs h1 and h2.
         Assert.All(calls, static x => Assert.Equal(OriginKind.Input, x.Shorter!.Kind));
-        Assert.True(c.Ownership.SupportsOriginObligations());
+        Assert.True(c.Ownership.Result.IsVerified);
     }
 
-    // PLAN G74 U4: verdicts read after their inputs changed are an internal invariant failure, never judged again; a rebind
-    // invalidates them, so nothing is supported until the analysis runs again.
+    // PLAN G74 U4: a rebind invalidates the verdicts, so nothing is verified until the analysis runs again.
     [Fact]
-    public void VerdictsReadAfterTheirInputsChangedFail()
+    public void ARebindInvalidatesTheVerdicts()
     {
         var (c, _) = Analyze(OriginProofWorkloads.Create("valid", 1));
-        Assert.True(c.Ownership.SupportsOriginObligations());
-        var version = typeof(Binding).GetField("originStateVersion", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
-        version.SetValue(c.Binding, (int)version.GetValue(c.Binding)! + 1);
-        Assert.Throws<InvalidOperationException>(() => c.Ownership.SupportsOriginObligations());
-
+        Assert.True(c.Ownership.Result.IsVerified);
         c.Bind();
-        Assert.False(c.Ownership.SupportsOriginObligations());
+        Assert.False(c.Ownership.Result.IsVerified);
         c.Binding.CheckStartup(OutputKind.Application);
         c.Ownership.Analyze();
-        Assert.True(c.Ownership.SupportsOriginObligations());
+        Assert.True(c.Ownership.Result.IsVerified);
     }
 
     private static (Compilation Compilation, OriginProofMetrics Metrics) Analyze(string source)

@@ -80,9 +80,9 @@ internal static class OwnershipFlow
         OwnershipOperationKind.ReplaceBorrowed or OwnershipOperationKind.ExchangeBorrowed or OwnershipOperationKind.SwapBorrowed => OperationFlow.Update,
 
         // Control flow and scope: no value reaches a Place. Declare brings an uninitialized Place into scope and Cleanup
-        // destroys one, which holds nothing after; an Unsupported body is rejected.
+        // destroys one, which holds nothing after.
         OwnershipOperationKind.Entry or OwnershipOperationKind.Exit or OwnershipOperationKind.Branch or OwnershipOperationKind.Declare or
-            OwnershipOperationKind.Cleanup or OwnershipOperationKind.Unsupported => OperationFlow.None,
+            OwnershipOperationKind.Cleanup => OperationFlow.None,
 
         // Tests, checks and observations read values defined elsewhere and define no Place.
         OwnershipOperationKind.MatchDispatch or OwnershipOperationKind.PatternTest or OwnershipOperationKind.CheckDictionaryKey or

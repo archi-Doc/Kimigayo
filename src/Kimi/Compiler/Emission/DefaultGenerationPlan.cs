@@ -50,7 +50,7 @@ internal sealed class DefaultGenerationPlan
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(function.Parameters[i].Type.BoundType!, call);
-            if (type is null || !FunctionAbi.SupportsParameter(type, layouts))
+            if (type is null || !FunctionAbi.Supports(type, layouts))
             {
                 failure = "Default evaluator input has no concrete representation.";
                 return null;

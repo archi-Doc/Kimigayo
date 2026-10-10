@@ -252,10 +252,6 @@ internal sealed partial class BodyLowering
 
                 this.matchTests[arm.Test] = armIndex;
                 var guarded = binding.Arms[n].Syntax.Guard is not null;
-                if (guarded && !MatchTypes.SupportsGuard(binding, arm.Pattern))
-                {
-                    return Fail("Unsupported guarded Subject Type.", out failure);
-                }
 
                 var unconditional = pattern.Kind is BoundPatternKind.Wildcard or BoundPatternKind.Binding or BoundPatternKind.Unit;
                 var duplicate = false;

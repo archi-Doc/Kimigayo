@@ -333,7 +333,7 @@ public sealed partial class OwnershipAnalysis
 
         if (!ElementAccess.TryType(source, out _, out var element))
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

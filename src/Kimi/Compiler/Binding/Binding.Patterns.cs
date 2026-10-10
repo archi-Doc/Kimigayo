@@ -249,10 +249,16 @@ public sealed partial class Binding
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
-            if (plan.Pending && arm.Guard is null)
+            if (plan.Pending)
             {
                 // Implicit shared inspection needs candidate/body Loan semantics before
                 // the ordinary expression binder may use these Pattern bindings.
+                if (arm.Guard is { } pendingGuard)
+                {
+                    this.MarkUnsupportedTree(pendingGuard);
+                    this.Fail(pendingGuard, BindingFailure.Unsupported, true);
+                }
+
                 this.MarkUnsupportedTree(arm.Body);
                 this.Fail(arm.Body, BindingFailure.Unsupported, true);
                 pendingBody = true;
@@ -261,16 +267,6 @@ public sealed partial class Binding
 
             if (arm.Guard is { } guard)
             {
-                if (plan.Pending || !MatchTypes.SupportsGuard(plan, plan.Arms[i].Pattern))
-                {
-                    this.MarkUnsupportedTree(guard);
-                    this.MarkUnsupportedTree(arm.Body);
-                    this.Fail(guard, BindingFailure.Unsupported, true);
-                    this.Fail(arm.Body, BindingFailure.Unsupported, true);
-                    pendingBody = true;
-                    continue;
-                }
-
                 var guardType = this.BindNode(guard, this.scopes[guard], BoundType.Boolean);
                 pendingBody |= guardType is null;
                 if (guardType is not null && !Compatible(guardType, BoundType.Boolean))

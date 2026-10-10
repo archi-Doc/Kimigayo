@@ -520,7 +520,7 @@ public sealed partial class LlvmEmitter
             return "Emission requires the verified windows-x64-v1 target and DataLayout.";
         }
 
-        if (!c.Binding.Result.IsComplete || !c.Ownership.SupportsOriginObligations() || !startup.IsComplete || !c.Ownership.Result.IsVerified)
+        if (!c.Binding.Result.IsComplete || !startup.IsComplete || !c.Ownership.Result.IsVerified)
         {
             return "Emission requires current final Binding, startup, control-flow and ownership verification without errors.";
         }
@@ -594,7 +594,7 @@ public sealed partial class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.SupportsParameter(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
+                if (!FunctionAbi.Supports(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && parameter.Type.BoundType!.Origin is null))
                 {
                     return "Parameters require verified value, owned-slot or shared-string representations.";

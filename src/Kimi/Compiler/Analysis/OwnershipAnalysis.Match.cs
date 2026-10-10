@@ -31,14 +31,6 @@ public sealed partial class OwnershipAnalysis
             return false;
         }
 
-        for (var i = 0; i < plan.Arms.Count; i++)
-        {
-            if (plan.Arms[i].Syntax.Guard is not null && !MatchTypes.SupportsGuard(plan, plan.Arms[i].Pattern))
-            {
-                return false;
-            }
-        }
-
         for (var i = 0; i < plan.Positions.Count; i++)
         {
             var position = plan.Positions[i];

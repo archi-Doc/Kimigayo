@@ -43,7 +43,7 @@ public sealed partial class Binding
         var id = ObjectFactoryId(target.Semantics);
         if (this.Library.GetSymbol(id) is not { } factory)
         {
-            return this.Fail(conversion, BindingFailure.Unsupported, true);
+            return this.Fail(conversion, BindingFailure.Internal);
         }
 
         var call = conversion.CreationStorage;

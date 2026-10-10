@@ -6,68 +6,23 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    // One verdict per Binding obligation in order, and the Binding state version they were computed from; -1 before analysis.
-    private readonly List<ObligationVerdict> obligationVerdicts = new();
-    private int obligationVerdictVersion = -1;
-
-    // Whether every Binding obligation is discharged, from the verdicts of this analysis (PLAN G74 U4); false before analysis.
-    internal bool SupportsOriginObligations()
-    {
-        if (!this.CurrentVerdicts())
-        {
-            return false;
-        }
-
-        for (var i = 0; i < this.obligationVerdicts.Count; i++)
-        {
-            if (this.obligationVerdicts[i].Unchecked)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    // Whether the verdicts are computed for the current Binding. Binding invalidates this analysis whenever it rebinds, so verdicts
-    // whose obligation or inference state has changed since were computed from other inputs: an internal invariant, never a reason
-    // to judge again.
-    private bool CurrentVerdicts()
-    {
-        if (this.obligationVerdictVersion < 0)
-        {
-            return false;
-        }
-
-        var binding = this.compilation.Binding;
-        if (this.obligationVerdictVersion != binding.OriginStateVersion || this.obligationVerdicts.Count != binding.Obligations.Count)
-        {
-            throw new InvalidOperationException("Binding's obligations or inference state changed after their verdicts were computed (PLAN G74 U4).");
-        }
-
-        return true;
-    }
-
     // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
-    // remains unchecked is its own record, reported without adding constraints. A failed Origin relation leaves the Loan, destruction
-    // and result checks to proceed without it; any other unchecked obligation, such as an unsolved inference, stops the analysis.
+    // remains unchecked is its own record, reported without adding constraints, so an unchecked obligation leaves the analysis
+    // unverified. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it; any other unchecked
+    // obligation, such as an unsolved inference, stops the analysis.
     private bool ReportUnprovenOriginObligations()
     {
-        var binding = this.compilation.Binding;
-        var obligations = binding.Obligations;
-        this.obligationVerdicts.Clear();
+        var obligations = this.compilation.Binding.Obligations;
         var stop = false;
         for (var i = 0; i < obligations.Count; i++)
         {
             var verdict = this.JudgeObligation(obligations[i]);
-            this.obligationVerdicts.Add(verdict);
             if (verdict.Unchecked)
             {
                 stop |= this.ReportJudgedOriginObligation(obligations[i], verdict.Judgment, verdict.Reversed, false);
             }
         }
 
-        this.obligationVerdictVersion = binding.OriginStateVersion;
         return stop;
     }
 
@@ -512,7 +467,7 @@ public sealed partial class OwnershipAnalysis
         if (!(receiverType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || ObjectTypes.HandleMode(receiverType) is { PayloadAuthority: LoanRequirement.Uniq }) ||
             this.Resolve(field.BoundType, this.Active) is not { } stored || (operation != KotoKind.Equals && !this.SupportsUpdate(field, stored, operation)))
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

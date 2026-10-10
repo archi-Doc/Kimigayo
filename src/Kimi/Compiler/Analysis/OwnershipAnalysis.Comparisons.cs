@@ -96,7 +96,7 @@ public sealed partial class OwnershipAnalysis
         if (!ReferenceEquals(stored, BoundType.String))
         {
             this.Expression(source, PlaceUseKind.Read);
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

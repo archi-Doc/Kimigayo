@@ -81,25 +81,6 @@ internal static class MatchTypes
         return false;
     }
 
-    internal static bool SupportsGuard(BoundMatch match, int root)
-    {
-        if (SupportsGuard(match.Positions[root].MatchedType))
-        {
-            return true;
-        }
-
-        for (var i = root; i < match.Positions[root].End; i++)
-        {
-            var position = match.Positions[i];
-            if (position.Kind == BoundPatternKind.Binding && position.CandidateSymbol?.Type is null)
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     internal static bool NeedsGuardProtection(BoundType type) => !ScalarTypes.Supports(type) && !ReferenceEquals(type, BoundType.Unit);
 
     internal static bool SupportsGuard(BoundType? type) => ScalarTypes.Supports(type) ||

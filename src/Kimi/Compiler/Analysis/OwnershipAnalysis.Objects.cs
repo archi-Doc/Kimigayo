@@ -10,7 +10,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (this.Resolve(source.BoundType, this.Active) is not { } payload)
         {
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 
@@ -58,7 +58,7 @@ public sealed partial class OwnershipAnalysis
         if (ObjectTypes.HandleMode(plan.OperandType) is null && !ObjectTypes.IsBorrow(plan.OperandType))
         {
             this.Expression(source.Left, PlaceUseKind.Read);
-            this.Unsupported(source);
+            this.Internal(source);
             return -1;
         }
 

@@ -40,7 +40,7 @@ public sealed partial class OwnershipAnalysis
         // SPEC 15.7: no Owned/Copy constraint. Content transfers and their operation order are checked with ordinary stores.
         if (!ReferenceTypes.IsStorage(this.body.Places[first].Type))
         {
-            this.Unsupported(call);
+            this.Internal(call);
             this.EndComparisonLoans(depth, call);
             this.comparisonDepth = depth;
             return -1;

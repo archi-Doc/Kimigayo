@@ -289,24 +289,9 @@ public sealed partial class Binding
 
     // Ordinary members of Origin-bearing containers remain limited; constrained requirements use RequirementItems.
     // An instance member is referenced unbound through its Type (SPEC 7.3).
-    private static bool UnsupportedReference(BindingSymbol candidate, FunctionKoto function, bool unbound, BoundType? declaringType)
-    {
-        if ((candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
-            (candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && !ContainerBound(candidate, declaringType)))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < function.GenericArguments.Count; i++)
-        {
-            if (function.GenericArguments[i] is not (GenericParameterKoto or LengthParameterKoto))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    private static bool UnsupportedReference(BindingSymbol candidate, bool unbound, BoundType? declaringType)
+        => (candidate.ReceiverIndex >= 0 && !unbound) || candidate.Scope.Owner is ContractKoto || candidate.Scope.Owner.BoundSymbol?.Schema is { Origins.Count: > 0 } ||
+            (candidate.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } && !ContainerBound(candidate, declaringType));
 
     // SPEC 15.6.4, 15.8.2: a value call whose result names none of the callee's per-call inputs keeps that result as written when
     // it is independent of the call: each Origin is static, carried only by Copy captures of a Copy result (a Copy of a captured
@@ -432,7 +417,7 @@ public sealed partial class Binding
             for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
             {
                 this.BindHeader(candidate);
-                if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound, declaring))
+                if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, unbound, declaring))
                 {
                     return this.Fail(use, BindingFailure.Unsupported);
                 }
@@ -548,7 +533,7 @@ public sealed partial class Binding
             {
                 if (!this.FunctionReferenceFits(use, selected, target, required, scope, boundArguments: arguments, boundLengths: lengths))
                 {
-                    return this.Fail(use, BindingFailure.Unsupported, true);
+                    return this.Fail(use, BindingFailure.Internal); // The selected candidate was applicable.
                 }
 
                 if (KotoHelper.UnwrapParentheses(use) is GenericsKoto written)
@@ -609,7 +594,7 @@ public sealed partial class Binding
         for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next))
         {
             this.BindHeader(candidate);
-            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, function, unbound, declaring))
+            if (candidate.Declaration is not FunctionKoto function || UnsupportedReference(candidate, unbound, declaring))
             {
                 return true;
             }

@@ -25,41 +25,6 @@ public static class CompilerHelper
         return (ModifierKind)((byte)kind & AccessibilityModifierMask);
     }
 
-    /// <summary>Returns whether the kind represents value semantics.</summary>
-    /// <param name="kind">The kind to classify.</param>
-    /// <returns><see langword="true"/> for value semantics; otherwise, <see langword="false"/>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsValue(this SemanticsKind kind)
-        => kind == SemanticsKind.Owner;
-
-    /// <summary>Returns whether the kind represents a value borrow.</summary>
-    /// <param name="kind">The kind to classify.</param>
-    /// <returns><see langword="true"/> for value-borrow semantics; otherwise, <see langword="false"/>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsValueBorrow(this SemanticsKind kind)
-        => kind is >= SemanticsKind.Ref and <= SemanticsKind.Uniq;
-
-    /// <summary>Returns whether the kind represents an owning object.</summary>
-    /// <param name="kind">The kind to classify.</param>
-    /// <returns><see langword="true"/> for object semantics; otherwise, <see langword="false"/>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsObject(this SemanticsKind kind)
-        => kind is >= SemanticsKind.Obj and <= SemanticsKind.Arc;
-
-    /// <summary>Returns whether the kind represents an object borrow.</summary>
-    /// <param name="kind">The kind to classify.</param>
-    /// <returns><see langword="true"/> for object-borrow semantics; otherwise, <see langword="false"/>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsObjectBorrow(this SemanticsKind kind)
-        => kind is >= SemanticsKind.ObjRef and <= SemanticsKind.ObjUniq;
-
-    /// <summary>Returns whether the kind represents reference semantics.</summary>
-    /// <param name="kind">The kind to classify.</param>
-    /// <returns><see langword="true"/> for reference semantics; otherwise, <see langword="false"/>.</returns>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsReference(this SemanticsKind kind)
-        => kind is >= SemanticsKind.Ref and <= SemanticsKind.Raw;
-
     /// <summary>Parses a built-in semantics name without allocating.</summary>
     /// <param name="text">The semantics name.</param>
     /// <param name="kind">The parsed kind, or <see cref="SemanticsKind.Parameter"/> when the name is not built in.</param>

@@ -1152,6 +1152,7 @@ public sealed partial class Binding
                     BindingFailure.UnprovenOverrideCondition => DiagnosticCode.UnprovenOverrideCondition_Kd,
                     BindingFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
                     BindingFailure.BaseCall => DiagnosticCode.InvalidBaseCall_Kd,
+                    BindingFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
                     _ => DiagnosticCode.Unsupported_Kd,
                 };
                 if (node.BindingFailure == BindingFailure.TypeMismatch && (node is TryKoto || node is ReturnKoto { Parent: TryKoto }))

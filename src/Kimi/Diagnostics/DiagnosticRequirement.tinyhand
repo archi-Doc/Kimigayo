@@ -393,6 +393,9 @@
   + Name="Binding.Unsupported"
     Description="the form lies inside the implemented subset"
 
+  + Name="Binding.Internal"
+    Description="the binder keeps its invariants"
+
   + Name="Binding.InvalidAssignment"
     Description="the target permits assignment"
 

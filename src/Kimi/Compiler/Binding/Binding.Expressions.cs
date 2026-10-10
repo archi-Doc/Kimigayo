@@ -1375,7 +1375,7 @@ public sealed partial class Binding
                 // SPEC 5.2: *p denotes a Place of the pointee Type; the unsafe context is checked by control flow.
                 return ReferenceTypes.IsPointer(operand) ? Complete(unary, operand.Components[0]) : this.Fail(unary, BindingFailure.TypeMismatch);
             default:
-                return this.Fail(unary, BindingFailure.Unsupported, true);
+                return this.Fail(unary, BindingFailure.Internal);
         }
     }
 
