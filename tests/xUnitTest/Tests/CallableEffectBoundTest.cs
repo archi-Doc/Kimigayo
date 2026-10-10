@@ -131,21 +131,19 @@ public class CallableEffectBoundTest
         }
     }
 
+    // With preserves results, excluding the earlier result of the same Callable value needs value identity across replacement,
+    // an implementation limit (reduction regression R1g): the later call is one located Unsupported_Kd.
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, true)]
-    public void EarlierResultsRequirePreservation(bool bounded, bool valid)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void EarlierResultsRequirePreservation(bool bounded)
     {
         var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, next: ref/F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<(uniq/S) -> S.Item>\n" +
             (bounded ? "        effect preserves results\n" : string.Empty) +
             "    let first = next(source)\n    let second = next(source)\n    return (first@move, second@move)\npublic func main() => ()\n";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Ownership.Result.IsVerified);
-        if (!valid)
+        var diagnostic = AssertSecondCall(source, bounded ? "Unsupported_Kd" : "CallEffectConflict_Kd", "next(source)");
+        if (!bounded)
         {
-            var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-            Assert.Equal("CallEffectConflict_Kd", diagnostic.Code);
             Assert.Contains("Callable Constraint", diagnostic.Message);
             Assert.Equal(["call", "loan"], diagnostic.Related!.Select(static r => r.Role));
         }
@@ -396,26 +394,27 @@ public class CallableEffectBoundTest
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
+    // A replaced value is another callable value, so the guarantee no longer excludes the earlier result; whether the value was
+    // replaced is the same limit as above, while a call through a different value is the specified conflict.
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ReplacingTheCallableCannotReuseTheEarlierValuesGuarantee(bool replace)
+    [InlineData("    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
+    [InlineData("    f = two@move\n    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
+    [InlineData("    var g = two@move\n    let second = g(source)\n", "CallEffectConflict_Kd", "g(source)")]
+    public void ReplacingTheCallableCannotReuseTheEarlierValuesGuarantee(string second, string code, string call)
     {
         var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n        effect preserves results\n    var f = one@move\n    let first = f(source)\n" +
-            (replace ? "    f = two@move\n" : string.Empty) +
-            "    let second = f(source)\n    return (first@move, second@move)\npublic func main() => ()\n";
-        var records = DiagnosticCorpus.Check(source).Diagnostics;
-        if (!replace)
-        {
-            Assert.Empty(records);
-        }
-        else
-        {
-            Assert.Equal("CallEffectConflict_Kd", Assert.Single(records).Code);
-        }
+            second + "    return (first@move, second@move)\npublic func main() => ()\n";
+        AssertSecondCall(source, code, call);
     }
 
     [Fact]
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
+
+    private static CheckDiagnostic AssertSecondCall(string source, string code, string call)
+    {
+        var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, source.LastIndexOf(call, StringComparison.Ordinal), call.Length), (diagnostic.Code, diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length));
+        return diagnostic;
+    }
 }

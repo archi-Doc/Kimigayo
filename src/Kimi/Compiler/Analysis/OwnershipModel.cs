@@ -617,7 +617,7 @@ internal readonly record struct OwnershipCallLoans(int Call, int Result, int End
 // The value an input of a requirement call designates: a root Place, possibly through its first Field; a negative root when
 // unknown. Two live exclusive values are disjoint, and shared aliases only read, so effects reach another value only through
 // the same root or a dependency between roots.
-internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field, Koto? CallablePath = null);
+internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field);
 
 // SPEC 8.4.10.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
 // (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on

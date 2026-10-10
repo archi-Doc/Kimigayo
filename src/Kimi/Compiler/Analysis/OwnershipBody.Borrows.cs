@@ -908,7 +908,13 @@ public sealed partial class OwnershipBody
                     continue;
                 }
 
-                this.ReportIssue(new(this.Operations[op].Source, OwnershipFailure.CallEffectConflict, Place: p, LoanSource: this.Places[p].Source, Related: this.Operations[earlier.Call].Source));
+                // SPEC 8.4.10.7: preserves results excludes the earlier results of the same Callable value, whose identity across
+                // replacement needs value flow this analysis lacks: a Callable that may be the same is a limit (plan rule 5).
+                var source = this.Operations[op].Source;
+                this.ReportIssue(effect.Preserves && effect.Requirement is BoundType && ReferenceEquals(earlier.Requirement, effect.Requirement) &&
+                    this.RelatedValues(earlier.Receiver, effect.Receiver, count, false) ?
+                    new(source, OwnershipFailure.Unsupported) :
+                    new(source, OwnershipFailure.CallEffectConflict, Place: p, LoanSource: this.Places[p].Source, Related: this.Operations[earlier.Call].Source));
                 checkedCall = op;
                 break;
             }
@@ -916,7 +922,7 @@ public sealed partial class OwnershipBody
     }
 
     // The earlier requirement result kept by `holder` whose Loans the effect may conflict with, if any: one reached through a
-    // related value, unless both only read or preserves results excludes it for the same receiver.
+    // related value, unless both only read or preserves results excludes it for the same requirement receiver.
     private OwnershipRequirementResult? HeldRequirementConflict(int holder, in OwnershipRequirementEffect effect, List<OwnershipRequirementResult> results, int count)
     {
         for (var h = 0; h < this.requirementHolders.Count; h++)
@@ -929,8 +935,8 @@ public sealed partial class OwnershipBody
             var result = results[this.requirementHolders[h].Result];
             if (result.Region != effect.Region || result.Call == effect.Call || (result.Mode != LoanRequirement.Uniq && effect.Mode != LoanRequirement.Uniq) ||
                 !this.RelatedValues(result.Input, effect.Input, count, false) ||
-                (effect.Preserves && ReferenceEquals(result.Requirement, effect.Requirement) && ReferenceEquals(result.Contract, effect.Contract) &&
-                    (effect.Requirement is BoundType ? this.SameUnreplacedCallable(result.Receiver, effect.Receiver) : this.RelatedValues(result.Receiver, effect.Receiver, count, true))))
+                (effect.Preserves && effect.Requirement is not BoundType && ReferenceEquals(result.Requirement, effect.Requirement) &&
+                    ReferenceEquals(result.Contract, effect.Contract) && this.RelatedValues(result.Receiver, effect.Receiver, count, true)))
             {
                 continue;
             }

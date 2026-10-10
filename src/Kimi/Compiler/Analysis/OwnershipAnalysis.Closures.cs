@@ -251,7 +251,7 @@ public sealed partial class OwnershipAnalysis
             path = KotoHelper.UnwrapParentheses(conversion.Left);
         }
 
-        var receiver = this.ValueIdentity(path) with { CallablePath = path };
+        var receiver = this.ValueIdentity(path);
         var effects = this.body.RequirementEffects ??= new();
         var bounds = true;
         var preserves = this.compilation.Binding.AvailableCallableEffects(type, signature, plan.ReceiverKind, call).Preserves;
