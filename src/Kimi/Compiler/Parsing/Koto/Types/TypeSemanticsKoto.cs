@@ -283,7 +283,7 @@ public sealed class TypeSemanticsKoto : TypeKoto
         }
 
         var bindingSet = !this.origin.IsSlotBinding && (this.origin.IsBindingSet || this.Type is null || this.isTransparentWrapper);
-        var intersection = !bindingSet && this.OriginExpression is AndKoto;
+        var intersection = !bindingSet && this.OriginExpression is BinaryKoto { Akind: KotoKind.And };
         builder.Append(bindingSet ? "{" : " during ");
         if (intersection)
         {

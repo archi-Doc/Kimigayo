@@ -68,7 +68,7 @@ public sealed partial class Binding
                 var move = new IdentifierNameKoto(bridge.Binder, "move") { BoundType = bridge.Input, BindingState = BindingState.Resolved };
                 var transfer = new ConversionKoto(bridge.Binder, value, move) { ConversionBinding = ConversionBinding.Transfer, BoundType = bridge.Input, BindingState = BindingState.Resolved };
                 value.Parent = move.Parent = transfer;
-                body = new EqualsKoto(bridge.Binder, member, transfer) { BoundType = BoundType.Unit, BindingState = BindingState.Resolved };
+                body = new BinaryKoto(bridge.Binder, KotoKind.Equals, member, transfer) { BoundType = BoundType.Unit, BindingState = BindingState.Resolved };
                 member.Parent = transfer.Parent = body;
             }
 
@@ -85,14 +85,14 @@ public sealed partial class Binding
             bridge.SelfSymbol!.Type = bridge.Receiver;
             var function = bridge.ExecutionFunction!;
             var body = function.ExpressionBody!;
-            var member = (MemberAccessKoto)(body is ConversionKoto or EqualsKoto ? ((BinaryKoto)body).Left : body);
+            var member = (MemberAccessKoto)(body is ConversionKoto or BinaryKoto { Akind: KotoKind.Equals } ? ((BinaryKoto)body).Left : body);
             member.Left.BoundType = bridge.Receiver;
             member.BoundType = this.StoredType(witness.Implementation.Property.Type!, witness.ImplementationType);
             if (body is ConversionKoto borrow)
             {
                 borrow.BoundType = borrow.Right.BoundType = bridge.Result;
             }
-            else if (body is EqualsKoto assignment)
+            else if (body is BinaryKoto { Akind: KotoKind.Equals } assignment)
             {
                 bridge.ValueSymbol!.Type = bridge.Input;
                 var transfer = (ConversionKoto)assignment.Right;

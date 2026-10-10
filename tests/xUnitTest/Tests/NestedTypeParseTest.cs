@@ -120,7 +120,7 @@ public class NestedTypeParseTest
     {
         var tree = ParseSuccess($"let result = value@{type} < limit");
         var field = Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items));
-        var comparison = Assert.IsType<LessThanKoto>(field.InitializerKoto);
+        var comparison = ParseTestHelper.Binary(KotoKind.LessThan, field.InitializerKoto);
         var conversion = Assert.IsType<ConversionKoto>(comparison.Left);
         Assert.Equal(type, conversion.Right.ToString());
         Assert.Equal(ParseTestHelper.Unparse(tree), ParseTestHelper.Unparse(ParseSuccess(ParseTestHelper.Unparse(tree))));

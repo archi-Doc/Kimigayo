@@ -19,8 +19,7 @@ public sealed partial class OwnershipAnalysis
             return success;
         }
 
-        var negative = source is PrefixMinusKoto;
-        var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
+        var number = KotoHelper.SignedNumber(source, out var negative);
         if (number is { IsInteger: true } && number.TryGetIntegerMagnitude(out var magnitude))
         {
             return ScalarTypes.TryLiteral(type, magnitude, negative, this.compilation.PointerWidth, out value);
@@ -172,7 +171,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         // Binding fits a directly signed literal once, including each signed minimum.
-        if (unary is PrefixMinusKoto or PrefixPlusKoto && unary.Operand is NumberLiteralKoto)
+        if (KotoHelper.SignedNumber(unary, out _) is not null)
         {
             return this.Temporary(unary);
         }

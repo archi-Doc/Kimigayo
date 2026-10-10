@@ -344,7 +344,7 @@ public sealed partial class Binding
 
     // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
     private static bool IsStringJoin(Koto node, int depth)
-        => depth < 32 && KotoHelper.UnwrapParentheses(node) is PlusKoto join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
+        => depth < 32 && KotoHelper.UnwrapParentheses(node) is BinaryKoto { Akind: KotoKind.Plus } join && IsStringOperand(join.Left, depth + 1) && IsStringOperand(join.Right, depth + 1);
 
     private static bool IsStringOperand(Koto node, int depth)
         => ReferenceTypes.EndsInString(KotoHelper.UnwrapParentheses(node).BoundType) || IsStringJoin(node, depth);

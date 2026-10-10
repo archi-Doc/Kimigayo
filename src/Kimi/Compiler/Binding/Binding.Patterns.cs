@@ -552,15 +552,16 @@ public sealed partial class Binding
     private bool TryPatternLiteral(Koto syntax, BoundType type, out PatternLiteral literal)
     {
         literal = default;
-        var number = syntax as NumberLiteralKoto ?? (syntax as PrefixMinusKoto)?.Operand as NumberLiteralKoto;
-        if (number is not null)
+        // A number or a negated number; TryDictionaryLiteralKey unwraps a key's unary + before this.
+        var negative = syntax.Akind == KotoKind.PrefixMinus;
+        if ((negative ? ((UnaryKoto)syntax).Operand : syntax) is NumberLiteralKoto number)
         {
-            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !FitsIntegerMagnitude(magnitude, type, syntax is PrefixMinusKoto, this.compilation.PointerWidth))
+            if (!number.IsInteger || !number.TryGetIntegerMagnitude(out var magnitude) || !FitsIntegerMagnitude(magnitude, type, negative, this.compilation.PointerWidth))
             {
                 return false;
             }
 
-            literal = new(PatternLiteralKind.Integer, magnitude, syntax is PrefixMinusKoto && magnitude != 0);
+            literal = new(PatternLiteralKind.Integer, magnitude, negative && magnitude != 0);
             Complete(number, type);
             return true;
         }

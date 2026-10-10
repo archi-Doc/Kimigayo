@@ -192,7 +192,7 @@ public sealed partial class Binding
     {
         node = KotoHelper.UnwrapParentheses(node);
         return node.BoundType is null &&
-            (node is NumberLiteralKoto or NullLiteralKoto || node is PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } ||
+            (node is NullLiteralKoto || KotoHelper.SignedNumber(node, out _) is not null ||
             IsLiteralOnlyOperation(node) || IsLiteralOnlyFromEnd(node) || IsLiteralOnlyRange(node));
     }
 
@@ -225,9 +225,9 @@ public sealed partial class Binding
             return literal.IsInteger ? BoundType.I32 : BoundType.F64;
         }
 
-        if (node is PrefixMinusKoto or PrefixPlusKoto)
+        if (node is UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.PrefixPlus } sign)
         {
-            return NumericLiteralDefault(((UnaryKoto)node).Operand);
+            return NumericLiteralDefault(sign.Operand);
         }
 
         if (node is BinaryKoto { Akind: KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret or KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } binary &&
@@ -331,12 +331,13 @@ public sealed partial class Binding
             return this.FitsLiteralPosition(node, type, scope);
         }
 
-        if (node is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto } && this.TakesGenericLiterals(type, scope))
+        var number = KotoHelper.SignedNumber(node, out var negative);
+        if (number is not null && this.TakesGenericLiterals(type, scope))
         {
-            return FitsGenericInteger(node as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)node).Operand, node is PrefixMinusKoto);
+            return FitsGenericInteger(number, negative);
         }
 
-        if (node is not (PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto }) && IsLiteralOnlyOperation(node))
+        if (number is null && IsLiteralOnlyOperation(node))
         {
             // SPEC 12.3.1: every literal fits the Type its operator propagates and every operator is defined for that Type;
             // a shift count is typed independently of the candidate. A wrapping integer Type has unary - for every argument.
@@ -344,22 +345,20 @@ public sealed partial class Binding
             var numeric = integer || type.IsFloatingPoint;
             return node switch
             {
-                PrefixMinusKoto negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
-                PrefixPlusKoto plus => numeric && this.FitsInputLiteral(plus.Operand, type, scope),
+                UnaryKoto { Akind: KotoKind.PrefixMinus } negated => numeric && !type.IsUnsignedInteger && !this.IsGenericInteger(type, scope) && this.FitsInputLiteral(negated.Operand, type, scope),
+                UnaryKoto { Akind: KotoKind.PrefixPlus } plus => numeric && this.FitsInputLiteral(plus.Operand, type, scope),
                 BinaryKoto { Akind: KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan } shifted => integer && this.FitsInputLiteral(shifted.Left, type, scope),
                 BinaryKoto binary => numeric && this.FitsInputLiteral(binary.Left, type, scope) && this.FitsInputLiteral(binary.Right, type, scope),
                 _ => false,
             };
         }
 
-        return node switch
+        if (number is not null)
         {
-            NumberLiteralKoto number => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, false, this.compilation.PointerWidth),
-            PrefixMinusKoto { Operand: NumberLiteralKoto number } => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, true, this.compilation.PointerWidth),
-            PrefixPlusKoto { Operand: NumberLiteralKoto number } => LiteralCategoryMatches(number, type) && FitsLiteral(number, type, false, this.compilation.PointerWidth),
-            NullLiteralKoto => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw },
-            _ => true,
-        };
+            return LiteralCategoryMatches(number, type) && FitsLiteral(number, type, negative, this.compilation.PointerWidth);
+        }
+
+        return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
     }
 
     private BoundType? Join(Koto node, BoundType? a, BoundType? b)

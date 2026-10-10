@@ -60,7 +60,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => not x is Dog");
         var test = Test(c);
-        Assert.IsType<NotKoto>(test.Left);
+        ParseTestHelper.Unary(KotoKind.Not, test.Left);
         Assert.False(test.IsNegated);
         Assert.False(c.Bind().IsComplete);
         var grouped = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => not (x is Dog)");
@@ -260,7 +260,7 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> bool => x is obj/Dog");
         var test = Test(c);
         Assert.Equal("obj", test.Right.ToString());
-        Assert.IsType<SlashKoto>(test.Parent);
+        ParseTestHelper.Binary(KotoKind.Slash, test.Parent);
         Assert.False(c.Bind().IsComplete);
     }
 
@@ -322,7 +322,7 @@ public class RuntimeTypeTest
         var clause = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<IsKoto>().Single();
         Assert.False(clause.IsRuntimeTest);
         Assert.False(clause.IsNegated);
-        Assert.IsType<NotKoto>(clause.Right);
+        ParseTestHelper.Unary(KotoKind.Not, clause.Right);
         Assert.NotNull(clause.BoundConstraint);
         Assert.Null(clause.BoundRuntimeTest);
     }

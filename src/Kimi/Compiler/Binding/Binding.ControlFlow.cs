@@ -277,10 +277,10 @@ public sealed partial class Binding
                 return BoundType.Char;
             case UnitLiteralKoto:
                 return BoundType.Unit;
-            case NotKoto or AndKoto or OrKoto or EqualsEqualsKoto or ExclamationEqualsKoto or LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto:
+            case UnaryKoto { Akind: KotoKind.Not } or BinaryKoto { Akind: KotoKind.And or KotoKind.Or or KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals }:
                 return BoundType.Boolean;
-            case PrefixMinusKoto or PrefixPlusKoto:
-                return this.ResultEvidence(((UnaryKoto)source).Operand, scope);
+            case UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.PrefixPlus } sign:
+                return this.ResultEvidence(sign.Operand, scope);
             case BinaryKoto binary when binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals:
                 return BoundType.Unit;
             case BinaryKoto binary when binary.Akind is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan:

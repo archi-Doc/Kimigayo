@@ -509,14 +509,13 @@ public sealed partial class Binding
             case ParenthesizedKoto parentheses:
                 result = this.BindRequirement(parentheses.Operand, subject, semantics, scope);
                 break;
-            case NotKoto not:
+            case UnaryKoto { Akind: KotoKind.Not } not:
                 result = this.NegateConstraint(this.BindRequirement(not.Operand, subject, semantics, scope));
                 break;
-            case AndKoto or OrKoto:
-                var binary = (BinaryKoto)node;
+            case BinaryKoto { Akind: KotoKind.And or KotoKind.Or } binary:
                 var left = this.BindRequirement(binary.Left, subject, semantics, scope);
                 var right = this.BindRequirement(binary.Right, subject, semantics, scope);
-                result = this.InternConstraint(new(node is AndKoto ? ConstraintKind.And : ConstraintKind.Or, left: left, right: right));
+                result = this.InternConstraint(new(binary.Akind == KotoKind.And ? ConstraintKind.And : ConstraintKind.Or, left: left, right: right));
                 break;
             default:
                 if (subject is null)

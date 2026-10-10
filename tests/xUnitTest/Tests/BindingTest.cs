@@ -124,7 +124,7 @@ public class BindingTest
         // SPEC 12.3.1: a shift count is typed independently of the shifted operand, so an untyped count defaults to i32.
         var compilation = CompilationTestHelper.ParseSuccess($"let x: {type} = 1\nlet y = x << {count}");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
-        var shift = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<LessThanLessThanKoto>());
+        var shift = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<BinaryKoto>(), static x => x.Akind == KotoKind.LessThanLessThan);
         Assert.Equal("i32", shift.Right.BoundType!.Name);
         Assert.Same(shift.Left.BoundType, shift.BoundType);
     }
@@ -136,7 +136,7 @@ public class BindingTest
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var function = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => !x.IsGenerated);
         var local = Assert.Single(KotoTree.Walk(function).OfType<FieldKoto>());
-        var operand = Assert.IsType<IdentifierNameKoto>(Assert.IsType<PlusKoto>(local.InitializerKoto).Left);
+        var operand = Assert.IsType<IdentifierNameKoto>(ParseTestHelper.Binary(KotoKind.Plus, local.InitializerKoto).Left);
         Assert.Equal(BindingSymbolKind.Parameter, operand.BoundSymbol!.Kind);
         Assert.NotSame(local.BoundSymbol, operand.BoundSymbol);
     }

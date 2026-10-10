@@ -248,8 +248,8 @@ public class SpecConformanceParseTest
         AssertValid(parsed);
         var items = parsed.GeneratedFunction!.Body!.Items.Cast<FieldKoto>().ToArray();
         Assert.IsType<InvocationKoto>(items[1].InitializerKoto);
-        Assert.IsType<GreaterThanGreaterThanKoto>(items[2].InitializerKoto);
-        Assert.IsType<GreaterThanEqualsKoto>(items[3].InitializerKoto);
+        ParseTestHelper.Binary(KotoKind.GreaterThanGreaterThan, items[2].InitializerKoto);
+        ParseTestHelper.Binary(KotoKind.GreaterThanEquals, items[3].InitializerKoto);
         RoundTrip(parsed);
     }
 

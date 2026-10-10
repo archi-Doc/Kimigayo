@@ -55,7 +55,7 @@ public sealed partial class Binding
         {
             case NumberLiteralKoto { IsInteger: true } number:
                 return number.TryGetIntegerMagnitude(out bits) && bits <= (signed ? sign - 1 : mask);
-            case PrefixMinusKoto { Operand: NumberLiteralKoto number }:
+            case UnaryKoto { Akind: KotoKind.PrefixMinus, Operand: NumberLiteralKoto number }:
                 if (!number.TryGetIntegerMagnitude(out var magnitude) || magnitude > (signed ? sign : 0))
                 {
                     return false;
@@ -63,7 +63,7 @@ public sealed partial class Binding
 
                 bits = unchecked((UInt128)0 - magnitude) & mask;
                 return true;
-            case PrefixMinusKoto negated:
+            case UnaryKoto { Akind: KotoKind.PrefixMinus } negated:
                 if (!this.TryLiteralBits(negated.Operand, out var operand) || (signed ? operand == sign : operand != 0))
                 {
                     return false;
@@ -71,7 +71,7 @@ public sealed partial class Binding
 
                 bits = unchecked((UInt128)0 - operand) & mask;
                 return true;
-            case PrefixPlusKoto plus:
+            case UnaryKoto { Akind: KotoKind.PrefixPlus } plus:
                 return this.TryLiteralBits(plus.Operand, out bits);
             case BinaryKoto binary when this.TryLiteralBits(binary.Left, out var left) && this.TryLiteralBits(binary.Right, out var right):
                 switch (binary.Akind)

@@ -64,7 +64,7 @@ internal static class CompileTimeConditionEvaluator
                 value = new(text.Literal);
                 return true;
 
-            case NumberLiteralKoto or PrefixPlusKoto or PrefixMinusKoto:
+            case NumberLiteralKoto or UnaryKoto { Akind: KotoKind.PrefixPlus or KotoKind.PrefixMinus }:
                 return TryGetInteger(node, out value) || Invalid(node);
 
             case IdentifierNameKoto identifier:
@@ -79,23 +79,21 @@ internal static class CompileTimeConditionEvaluator
             case ParenthesizedKoto parenthesized:
                 return TryEvaluateValue(compilation, parenthesized.Operand, out value);
 
-            case NotKoto not:
+            case UnaryKoto { Akind: KotoKind.Not } not:
                 var operand = Evaluate(compilation, not.Operand);
                 value = new(operand == CompileTimeConditionResult.False);
                 return operand != CompileTimeConditionResult.Error;
 
-            case AndKoto or OrKoto:
-                var logical = (BinaryKoto)node;
+            case BinaryKoto { Akind: KotoKind.And or KotoKind.Or } logical:
                 // Validate both operands even when one determines the truth value.
                 var left = Evaluate(compilation, logical.Left);
                 var right = Evaluate(compilation, logical.Right);
-                value = new(node is AndKoto
+                value = new(logical.Akind == KotoKind.And
                     ? left == CompileTimeConditionResult.True && right == CompileTimeConditionResult.True
                     : left == CompileTimeConditionResult.True || right == CompileTimeConditionResult.True);
                 return left != CompileTimeConditionResult.Error && right != CompileTimeConditionResult.Error;
 
-            case EqualsEqualsKoto or ExclamationEqualsKoto:
-                var equality = (BinaryKoto)node;
+            case BinaryKoto { Akind: KotoKind.EqualsEquals or KotoKind.ExclamationEquals } equality:
                 var leftValid = TryEvaluateValue(compilation, equality.Left, out var leftValue);
                 var rightValid = TryEvaluateValue(compilation, equality.Right, out var rightValue);
                 if (!leftValid || !rightValid)
@@ -109,7 +107,7 @@ internal static class CompileTimeConditionEvaluator
                     return false;
                 }
 
-                value = new(node is EqualsEqualsKoto ? leftValue == rightValue : leftValue != rightValue);
+                value = new(equality.Akind == KotoKind.EqualsEquals ? leftValue == rightValue : leftValue != rightValue);
                 return true;
 
             default:
@@ -130,9 +128,7 @@ internal static class CompileTimeConditionEvaluator
 
     private static bool TryGetInteger(Koto node, out BasicValue value)
     {
-        var negative = node is PrefixMinusKoto;
-        var operand = node is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)node).Operand : node;
-        if (operand is NumberLiteralKoto { AttributeChain: null } literal && literal.TryGetIntegerMagnitude(out var magnitude) &&
+        if (KotoHelper.SignedNumber(node, out var negative) is { AttributeChain: null } literal && literal.TryGetIntegerMagnitude(out var magnitude) &&
             magnitude <= (UInt128)long.MaxValue + (negative ? 1U : 0U))
         {
             value = new(negative ? (long)-(Int128)magnitude : (long)magnitude);

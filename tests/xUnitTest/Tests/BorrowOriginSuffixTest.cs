@@ -101,7 +101,7 @@ public class BorrowOriginSuffixTest
     {
         var tree = ParseTestHelper.ParseSuccess($"let result = x@{target} / y");
         var declaration = Assert.IsType<FieldKoto>(Assert.Single(tree.GeneratedFunction!.Body!.Items));
-        var division = Assert.IsType<SlashKoto>(declaration.InitializerKoto);
+        var division = ParseTestHelper.Binary(KotoKind.Slash, declaration.InitializerKoto);
         var adaptation = Assert.IsType<ConversionKoto>(division.Left);
         Assert.Equal(target, adaptation.Right.ToString());
         Assert.Equal("y", division.Right.ToString());
@@ -192,7 +192,7 @@ public class BorrowOriginSuffixTest
         var c = MinimalEmissionTest.Analyze(Source);
         var function = Assert.Single(ParseTestHelper.GetChildren(c.Kotonoha.RootKoto).OfType<FunctionKoto>());
         var field = Assert.IsType<FieldKoto>(Assert.Single(function.Body!.Items));
-        var division = Assert.IsType<SlashKoto>(field.InitializerKoto);
+        var division = ParseTestHelper.Binary(KotoKind.Slash, field.InitializerKoto);
         var conversion = Assert.IsType<ConversionKoto>(division.Left);
         Assert.Equal(BindingSymbolKind.Type, conversion.Right.BoundSymbol?.Kind);
         c.Binding.ReportDiagnostics();

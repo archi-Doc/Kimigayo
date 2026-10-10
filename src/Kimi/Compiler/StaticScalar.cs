@@ -52,8 +52,8 @@ internal static class StaticScalar
             return true;
         }
 
-        var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
+        var number = KotoHelper.SignedNumber(source, out var negative);
         return number is { IsInteger: true } && number.TryGetIntegerMagnitude(out var magnitude) &&
-            ScalarTypes.TryLiteral(property.Type, magnitude, source is PrefixMinusKoto, 64, out value);
+            ScalarTypes.TryLiteral(property.Type, magnitude, negative, 64, out value);
     }
 }

@@ -212,8 +212,7 @@ internal sealed partial class BodyLowering
                 if (width == 128)
                 {
                     var source = operation.Source;
-                    var number = source is Parsing.PrefixMinusKoto or Parsing.PrefixPlusKoto
-                        ? ((Parsing.UnaryKoto)source).Operand as Parsing.NumberLiteralKoto : source as Parsing.NumberLiteralKoto;
+                    var number = KotoHelper.SignedNumber(source, out var negative);
                     if (source is Parsing.ConversionKoto { FoldedConstant: { } folded })
                     {
                         // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded payload.
@@ -225,7 +224,7 @@ internal sealed partial class BodyLowering
                     else if (number is not null)
                     {
                         if (!ReferenceEquals(type, body.Resolve(source.BoundType, body.ContextAt(id))) || !number.TryGetIntegerMagnitude(out var magnitude) ||
-                            !ScalarTypes.TryLiteral(type, magnitude, source is Parsing.PrefixMinusKoto, 64, out var bits) || bits != value.Constant)
+                            !ScalarTypes.TryLiteral(type, magnitude, negative, 64, out var bits) || bits != value.Constant)
                         {
                             return false;
                         }

@@ -309,7 +309,7 @@ internal sealed partial class BodyLowering
                 return Fail("Result was not secured before cleanup.", out failure);
             }
         }
-        else if (input.Write != -1 || body.Operations[id].Source is not (Parsing.AndKoto or Parsing.OrKoto))
+        else if (input.Write != -1 || body.Operations[id].Source is not Parsing.BinaryKoto { Akind: Parsing.KotoKind.And or Parsing.KotoKind.Or })
         {
             return Fail("Missing result acquisition operation.", out failure);
         }

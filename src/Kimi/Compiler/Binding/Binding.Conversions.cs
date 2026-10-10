@@ -52,10 +52,10 @@ public sealed partial class Binding
     {
         var target = this.BindType(argument, scope);
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
-        var number = operand as NumberLiteralKoto ?? (operand is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)operand).Operand as NumberLiteralKoto : null);
+        var number = KotoHelper.SignedNumber(operand, out var negative);
         if (operation != Constants.WrapOperation)
         {
-            return this.BindBitConversion(conversion, scope, target, operand, number);
+            return this.BindBitConversion(conversion, scope, target, number, negative);
         }
 
         if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope))
@@ -75,7 +75,7 @@ public sealed partial class Binding
             }
 
             // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant.
-            var payload = operand is PrefixMinusKoto ? (UInt128)0 - magnitude : magnitude;
+            var payload = negative ? (UInt128)0 - magnitude : magnitude;
             Complete(conversion.Right, target);
             return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), width), ConversionBinding.Wrap);
         }
@@ -105,11 +105,10 @@ public sealed partial class Binding
 
     // SPEC 13.5.4.4: E@bits<U> reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of
     // the same fixed width, in either direction, without a check; a direct literal is converted at compile time.
-    private BoundType? BindBitConversion(ConversionKoto conversion, BindingScope scope, BoundType? target, Koto operand, NumberLiteralKoto? number)
+    private BoundType? BindBitConversion(ConversionKoto conversion, BindingScope scope, BoundType? target, NumberLiteralKoto? number, bool negative)
     {
         if (target is not null && number is not null)
         {
-            var negative = operand is PrefixMinusKoto;
             Int128 folded;
             if (number.IsInteger && FloatingTypes.Supports(target))
             {
@@ -178,9 +177,9 @@ public sealed partial class Binding
     // is exact, and a value outside the range is a compile-time error at the literal rather than a runtime Abort.
     private BoundType? BindTruncatedLiteral(ConversionKoto conversion, BoundType target, Koto operand)
     {
-        var number = operand as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)operand).Operand;
+        var number = KotoHelper.SignedNumber(operand, out var negative)!;
         if (!number.TryGetTruncatedMagnitude(out var magnitude) ||
-            !ScalarTypes.TryLiteral(target, magnitude, operand is PrefixMinusKoto, this.compilation.PointerWidth, out var bits))
+            !ScalarTypes.TryLiteral(target, magnitude, negative, this.compilation.PointerWidth, out var bits))
         {
             this.Fail(operand, BindingFailure.InvalidLiteral);
             for (var node = conversion.Left; !ReferenceEquals(node, operand); node = ((UnaryKoto)node).Operand)
@@ -671,12 +670,9 @@ public sealed partial class Binding
         var plain = syntax is not TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false } explicitSemantics ||
             (explicitSemantics.SemanticsKind == SemanticsKind.Owner && explicitSemantics.SemanticsParameter is null);
         var operand = KotoHelper.UnwrapParentheses(conversion.Left);
-        var literal = operand is NumberLiteralKoto { IsInteger: true } or
-            PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: true } } or
-            PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: true } };
-        var floatingLiteral = operand is NumberLiteralKoto { IsInteger: false } or
-            PrefixMinusKoto { Operand: NumberLiteralKoto { IsInteger: false } } or
-            PrefixPlusKoto { Operand: NumberLiteralKoto { IsInteger: false } };
+        var signed = KotoHelper.SignedNumber(operand, out _);
+        var literal = signed is { IsInteger: true };
+        var floatingLiteral = signed is { IsInteger: false };
         if (plain && floatingLiteral && target is { IsInteger: true } && ScalarTypes.Width(target, this.compilation.PointerWidth) != 0)
         {
             return this.BindTruncatedLiteral(conversion, target, operand);

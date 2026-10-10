@@ -78,9 +78,9 @@ public class KotoHierarchyTest
             field.ChildNodes,
             child => Assert.IsType<IdentifierNameKoto>(child),
             child => Assert.IsAssignableFrom<TypeKoto>(child),
-            child => Assert.IsType<PlusKoto>(child));
+            child => ParseTestHelper.Binary(KotoKind.Plus, child));
 
-        var addition = Assert.IsType<PlusKoto>(field.InitializerKoto);
+        var addition = ParseTestHelper.Binary(KotoKind.Plus, field.InitializerKoto);
         Assert.Equal(2, addition.ChildNodes.Count());
         Assert.All(addition.ChildNodes, child => Assert.Same(addition, child.Parent));
     }
@@ -109,7 +109,7 @@ public class KotoHierarchyTest
         Assert.Collection(
             body.Items,
             item => Assert.IsType<FieldKoto>(item),
-            item => Assert.IsType<PlusEqualsKoto>(item),
+            item => ParseTestHelper.Binary(KotoKind.PlusEquals, item),
             item => Assert.IsType<IfKoto>(item),
             item => Assert.IsType<ReturnKoto>(item),
             item => Assert.IsType<FunctionKoto>(item));

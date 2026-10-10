@@ -53,10 +53,10 @@ public class RequirementTypeParsingTest
     public void RequirementPrecedenceIsUnchanged()
     {
         var function = ParseTestHelper.ParseSingleFunction("func use<T>(value: T)\n    T is not (i32,) or Box<i32>.C.Element and Copy\n    ()");
-        var root = Assert.IsType<NotKoto>(Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
-        var either = Assert.IsType<OrKoto>(root.Operand);
+        var root = ParseTestHelper.Unary(KotoKind.Not, Assert.IsType<IsKoto>(Assert.Single(function.TypeConstraints)).Right);
+        var either = ParseTestHelper.Binary(KotoKind.Or, root.Operand);
         Assert.IsType<TupleTypeKoto>(either.Left);
-        var both = Assert.IsType<AndKoto>(either.Right);
+        var both = ParseTestHelper.Binary(KotoKind.And, either.Right);
         var projection = Assert.IsType<MemberAccessKoto>(both.Left);
         Assert.IsType<GenericsKoto>(Assert.IsType<MemberAccessKoto>(projection.Left).Left);
     }

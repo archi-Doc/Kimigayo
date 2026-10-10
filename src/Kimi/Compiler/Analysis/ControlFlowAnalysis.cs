@@ -501,9 +501,9 @@ public sealed class ControlFlowAnalysis
         {
             NumberLiteralKoto or BoolLiteralKoto or CharLiteralKoto => true,
             IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter } => true,
-            NotKoto unary => this.IsEffectFree(unary.Operand),
-            EqualsEqualsKoto or ExclamationEqualsKoto or LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto =>
-                this.IsEffectFree(((BinaryKoto)node).Left) && this.IsEffectFree(((BinaryKoto)node).Right),
+            UnaryKoto { Akind: KotoKind.Not } unary => this.IsEffectFree(unary.Operand),
+            BinaryKoto { Akind: KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals } comparison =>
+                this.IsEffectFree(comparison.Left) && this.IsEffectFree(comparison.Right),
             _ => false,
         };
     }
@@ -958,8 +958,7 @@ public sealed class ControlFlowAnalysis
 
                 flow = new(!this.IsNever(name), Pending: unknownName);
                 break;
-            case AndKoto or OrKoto:
-                var logical = (BinaryKoto)node;
+            case BinaryKoto { Akind: KotoKind.And or KotoKind.Or } logical:
                 var left = this.Visit(logical.Left);
                 var right = this.Visit(logical.Right);
                 // Runtime short-circuiting may skip the right operand. Do not constant-fold it for reachability.

@@ -91,7 +91,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (syntax is PrefixPlusKoto { Operand: NumberLiteralKoto number })
+        if (syntax is UnaryKoto { Akind: KotoKind.PrefixPlus, Operand: NumberLiteralKoto number })
         {
             syntax = number;
         }

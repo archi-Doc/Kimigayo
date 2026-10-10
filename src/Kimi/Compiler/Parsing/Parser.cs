@@ -2028,7 +2028,7 @@ CloseParameters:
         {
             var op = reader.Read();
             var right = ParseOriginAtom(ref reader);
-            left = new AndKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(op.Span.End, right.Span.End)), left, right);
+            left = new BinaryKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, Math.Max(op.Span.End, right.Span.End)), KotoKind.And, left, right);
         }
 
         return left;
@@ -3695,7 +3695,7 @@ CloseParameters:
         // Directive conditions reject every is test separately; do not report it twice as a chain.
         var runtimeIs = !reader.IsParsingCompileTimeCondition;
         return (tokenKind != TokenKind.Is || runtimeIs) &&
-            (left is LessThanKoto or LessThanEqualsKoto or GreaterThanKoto or GreaterThanEqualsKoto or EqualsEqualsKoto or ExclamationEqualsKoto ||
+            (left is BinaryKoto { Akind: KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals or KotoKind.EqualsEquals or KotoKind.ExclamationEquals } ||
             (runtimeIs && left is IsKoto));
     }
 
@@ -3999,20 +3999,14 @@ ProcessPrefix:
             case TokenKind.PlusPlus:
                 {
                     var token = reader.Read();
-                    left = new PostfixIncrementKoto(
-                        ref reader,
-                        SourceSpan.FromBounds(left.Span.Start, token.Span.End),
-                        left);
+                    left = new UnaryKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, token.Span.End), KotoKind.PostfixIncrement, left);
                     return true;
                 }
 
             case TokenKind.MinusMinus:
                 {
                     var token = reader.Read();
-                    left = new PostfixDecrementKoto(
-                        ref reader,
-                        SourceSpan.FromBounds(left.Span.Start, token.Span.End),
-                        left);
+                    left = new UnaryKoto(ref reader, SourceSpan.FromBounds(left.Span.Start, token.Span.End), KotoKind.PostfixDecrement, left);
                     return true;
                 }
         }

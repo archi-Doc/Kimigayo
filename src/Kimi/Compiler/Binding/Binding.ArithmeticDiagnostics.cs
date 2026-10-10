@@ -42,7 +42,7 @@ public sealed partial class Binding
 
         static Koto? ContractUse(Koto node, BindingSymbol? contract)
             => ReferenceEquals(node.BoundSymbol, contract) ? node
-            : node is AndKoto conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
+            : node is BinaryKoto { Akind: KotoKind.And } conjunction ? ContractUse(conjunction.Left, contract) ?? ContractUse(conjunction.Right, contract)
             : node is ParenthesizedKoto parentheses ? ContractUse(parentheses.Operand, contract) : null;
     }
 

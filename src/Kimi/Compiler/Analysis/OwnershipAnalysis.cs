@@ -1446,7 +1446,7 @@ public sealed partial class OwnershipAnalysis
             return this.Temporary(binary);
         }
 
-        if (binary is AndKoto or OrKoto)
+        if (binary.Akind is KotoKind.And or KotoKind.Or)
         {
             var output = this.ResultPlace(binary);
             var condition = this.Value(this.Expression(binary.Left, PlaceUseKind.Read));
@@ -1459,7 +1459,7 @@ public sealed partial class OwnershipAnalysis
             var evaluate = this.New(OwnershipOperationKind.Branch, binary.Right);
             var skip = this.New(OwnershipOperationKind.Branch, binary);
             var join = this.ResultJoin(binary, output);
-            var evaluateWhen = binary is AndKoto;
+            var evaluateWhen = binary.Akind == KotoKind.And;
             this.Connect(branch, evaluate, evaluateWhen ? OwnershipEdgeKind.True : OwnershipEdgeKind.False);
             this.Connect(branch, skip, evaluateWhen ? OwnershipEdgeKind.False : OwnershipEdgeKind.True);
 

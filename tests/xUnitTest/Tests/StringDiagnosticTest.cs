@@ -186,7 +186,7 @@ public sealed class StringDiagnosticTest(ITestOutputHelper output)
         var literals = nodes.OfType<StringLiteralKoto>().ToArray();
         Assert.Equal(2, literals.Length);
         Assert.All(literals, x => Assert.Equal((literal, value), (Text(source, x.Span), x.Literal)));
-        Assert.Equal("text == " + literal, Text(source, Assert.Single(nodes.OfType<EqualsEqualsKoto>()).Span));
+        Assert.Equal("text == " + literal, Text(source, Assert.Single(nodes, static x => x.Akind == KotoKind.EqualsEquals).Span));
     }
 
     // An interpolation segment has no delimiters of its own: it spans its text, while the literal spans both quotes.

@@ -10,20 +10,18 @@ namespace Kimi.Compiler.Parsing;
 #pragma warning disable SA1649 // File name should match first type name
 
 /// <summary>
-/// Provides the base representation of a unary expression.
+/// Represents a unary expression. An operator is this class with its <see cref="KotoKind"/>; attributes, macros,
+/// dereferences, from-end indexes and parentheses derive from it for the members of their own.
 /// </summary>
 /// <remarks>
-/// Concrete operators only contribute their <see cref="KotoKind"/>; the prefix and postfix
-/// spellings are looked up from a table so every operator shares the same writing code.
+/// The prefix and postfix spellings are looked up from a table so every operator shares the same writing code.
 /// </remarks>
-public abstract class UnaryKoto : ExpressionKoto
+public class UnaryKoto : ExpressionKoto
 {
-    internal BoundArithmetic? ArithmeticStorage { get; set; }
-
-    internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
-
     private static readonly string?[] PrefixTexts = new string?[MaxKind];
     private static readonly string?[] PostfixTexts = new string?[MaxKind];
+
+    private readonly KotoKind kind;
 
     static UnaryKoto()
     {
@@ -42,22 +40,31 @@ public abstract class UnaryKoto : ExpressionKoto
         PostfixTexts[(int)KotoKind.PostfixDecrement] = "--";
     }
 
+    /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
+    /// <param name="kind">The node kind.</param>
+    /// <param name="operand">The operand.</param>
+    public UnaryKoto(ref TokenReader reader, SourceSpan range, KotoKind kind, Koto operand)
+        : base(ref reader, range)
+    {
+        this.kind = kind;
+        this.Operand = operand;
+        operand.Parent = this;
+    }
+
+    /// <inheritdoc/>
+    public sealed override KotoKind Akind => this.kind;
+
     /// <summary>Gets or sets the operand.</summary>
     public Koto Operand { get; protected set; }
 
     /// <summary>Gets the spelling of a prefix or postfix operator, without the operand or spaces.</summary>
     public string OperatorText => (PrefixTexts[(int)this.Akind] ?? PostfixTexts[(int)this.Akind] ?? string.Empty).Trim();
 
-    /// <summary>Initializes a new instance of the <see cref="UnaryKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    protected UnaryKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range)
-    {
-        this.Operand = operand;
-        operand.Parent = this;
-    }
+    internal BoundArithmetic? ArithmeticStorage { get; set; }
+
+    internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
@@ -98,8 +105,14 @@ public abstract class UnaryKoto : ExpressionKoto
 /// <summary>Represents an attribute expression.</summary>
 public sealed class AttributeKoto : UnaryKoto
 {
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.Attribute;
+    /// <summary>Initializes a new instance of the <see cref="AttributeKoto"/> class.</summary>
+    /// <param name="reader">The token reader.</param>
+    /// <param name="range">The complete source span.</param>
+    /// <param name="operand">The operand.</param>
+    public AttributeKoto(ref TokenReader reader, SourceSpan range, Koto operand)
+        : base(ref reader, range, KotoKind.Attribute, operand)
+    {
+    }
 
     /// <summary>Gets the attribute identifier.</summary>
     public Koto IdentifierKoto
@@ -116,29 +129,17 @@ public sealed class AttributeKoto : UnaryKoto
         => this.IdentifierKoto is IdentifierNameKoto { IdentifierName: "Layout" } &&
             this.Operand is InvocationKoto { ArgumentNodes.Count: 1 } call && call.GetArgumentLabel(0) is null &&
             call.ArgumentNodes[0] is StringLiteralKoto literal && literal.Literal is "C" or "Kimigayo" ? literal.Literal : null;
-
-    /// <summary>Initializes a new instance of the <see cref="AttributeKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public AttributeKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
 }
 
 /// <summary>Represents a macro expression.</summary>
 public sealed class MacroKoto : UnaryKoto
 {
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.Macro;
-
     /// <summary>Initializes a new instance of the <see cref="MacroKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="operand">The operand.</param>
     public MacroKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
+        : base(ref reader, range, KotoKind.Macro, operand)
     {
     }
 }
@@ -146,15 +147,12 @@ public sealed class MacroKoto : UnaryKoto
 /// <summary>Represents a dereference expression.</summary>
 public sealed class DereferenceKoto : UnaryKoto
 {
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.Dereference;
-
     /// <summary>Initializes a new instance of the <see cref="DereferenceKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="operand">The operand.</param>
     public DereferenceKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
+        : base(ref reader, range, KotoKind.Dereference, operand)
     {
     }
 }
@@ -168,146 +166,28 @@ public sealed class DereferenceKoto : UnaryKoto
 /// </remarks>
 public sealed class FromEndIndexKoto : UnaryKoto
 {
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.FromEndIndex;
-
-    /// <summary>Gets the nonnegative distance from the end.</summary>
-    public Koto Value => this.Operand;
-
     /// <summary>Initializes a new instance of the <see cref="FromEndIndexKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="operand">The operand.</param>
     public FromEndIndexKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
+        : base(ref reader, range, KotoKind.FromEndIndex, operand)
     {
     }
-}
 
-/// <summary>Represents a unary plus expression.</summary>
-public sealed class PrefixPlusKoto : UnaryKoto
-{
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.PrefixPlus;
-
-    /// <summary>Initializes a new instance of the <see cref="PrefixPlusKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public PrefixPlusKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-}
-
-/// <summary>Represents a prefix increment expression.</summary>
-public sealed class PrefixPlusPlusKoto : UnaryKoto
-{
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.PrefixPlusPlus;
-
-    /// <summary>Initializes a new instance of the <see cref="PrefixPlusPlusKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public PrefixPlusPlusKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-}
-
-/// <summary>Represents a unary minus expression.</summary>
-public sealed class PrefixMinusKoto : UnaryKoto
-{
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.PrefixMinus;
-
-    /// <summary>Initializes a new instance of the <see cref="PrefixMinusKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public PrefixMinusKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-}
-
-/// <summary>Represents a prefix decrement expression.</summary>
-public sealed class PrefixMinusMinusKoto : UnaryKoto
-{
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.PrefixMinusMinus;
-
-    /// <summary>Initializes a new instance of the <see cref="PrefixMinusMinusKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public PrefixMinusMinusKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-}
-
-/// <summary>Represents a postfix increment expression.</summary>
-public sealed class PostfixIncrementKoto : UnaryKoto
-{
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.PostfixIncrement;
-
-    /// <summary>Initializes a new instance of the <see cref="PostfixIncrementKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public PostfixIncrementKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-}
-
-/// <summary>Represents a postfix decrement expression.</summary>
-public sealed class PostfixDecrementKoto : UnaryKoto
-{
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.PostfixDecrement;
-
-    /// <summary>Initializes a new instance of the <see cref="PostfixDecrementKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public PostfixDecrementKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
-}
-
-/// <summary>Represents a logical negation expression.</summary>
-public sealed class NotKoto : UnaryKoto
-{
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.Not;
-
-    /// <summary>Initializes a new instance of the <see cref="NotKoto"/> class.</summary>
-    /// <param name="reader">The token reader.</param>
-    /// <param name="range">The complete source span.</param>
-    /// <param name="operand">The operand.</param>
-    public NotKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
-    {
-    }
+    /// <summary>Gets the nonnegative distance from the end.</summary>
+    public Koto Value => this.Operand;
 }
 
 /// <summary>Represents a parenthesized expression.</summary>
 public sealed class ParenthesizedKoto : UnaryKoto
 {
-    /// <inheritdoc/>
-    public override KotoKind Akind => KotoKind.Parenthesized;
-
     /// <summary>Initializes a new instance of the <see cref="ParenthesizedKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>
     /// <param name="range">The complete source span.</param>
     /// <param name="operand">The operand.</param>
     public ParenthesizedKoto(ref TokenReader reader, SourceSpan range, Koto operand)
-        : base(ref reader, range, operand)
+        : base(ref reader, range, KotoKind.Parenthesized, operand)
     {
     }
 

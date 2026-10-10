@@ -68,7 +68,7 @@ public class ControlFlowRevisionParseTest
             Assert.IsType<IdentifierNameKoto>(plainExit.Expression);
             var namedExit = Assert.IsType<ExitKoto>(block.Items[1]);
             Assert.Equal("search", namedExit.Label);
-            Assert.IsType<PlusKoto>(namedExit.Expression);
+            ParseTestHelper.Binary(KotoKind.Plus, namedExit.Expression);
             Assert.Same(block, namedExit.Parent);
             Assert.Same(namedExit, namedExit.Expression!.Parent);
         }
@@ -91,12 +91,12 @@ public class ControlFlowRevisionParseTest
             var body = Function(tree).Body!;
             var add = Assert.IsType<FunctionKoto>(body.Items[0]);
             Assert.Null(add.Body);
-            Assert.IsType<PlusKoto>(add.ExpressionBody);
+            ParseTestHelper.Binary(KotoKind.Plus, add.ExpressionBody);
             Assert.True(KotoHelper.IsValueContext(add.ExpressionBody!));
             Assert.Same(add, add.ExpressionBody!.Parent);
             var increment = Assert.IsType<FunctionKoto>(Assert.IsType<FieldKoto>(body.Items[1]).InitializerKoto);
             Assert.Equal(string.Empty, increment.Name);
-            Assert.IsType<PlusKoto>(increment.ExpressionBody);
+            ParseTestHelper.Binary(KotoKind.Plus, increment.ExpressionBody);
             var block = Assert.IsType<FunctionKoto>(Assert.IsType<FieldKoto>(body.Items[2]).InitializerKoto);
             Assert.Null(block.ExpressionBody);
             Assert.IsType<ReturnKoto>(Assert.Single(block.Body!.Items));

@@ -27,7 +27,7 @@ public class TypeArgumentRecognitionTest
         var tree = ParseSuccess(source);
         var nodes = KotoTree.Walk(tree.RootKoto).ToArray();
         Assert.DoesNotContain(nodes, static x => x is GenericsKoto);
-        Assert.Contains(nodes, static x => x is LessThanKoto);
+        Assert.Contains(nodes, static x => x.Akind == KotoKind.LessThan);
     }
 
     [Theory]
@@ -41,8 +41,8 @@ public class TypeArgumentRecognitionTest
     public void AdjacentListsWithAMatchingCloserAreTypeArguments(string source)
     {
         var tree = ParseSuccess(source);
-        Assert.DoesNotContain(KotoTree.Walk(tree.RootKoto), static x => x is LessThanKoto);
+        Assert.DoesNotContain(KotoTree.Walk(tree.RootKoto), static x => x.Akind == KotoKind.LessThan);
         var roundTrip = ParseSuccess(Unparse(tree));
-        Assert.DoesNotContain(KotoTree.Walk(roundTrip.RootKoto), static x => x is LessThanKoto);
+        Assert.DoesNotContain(KotoTree.Walk(roundTrip.RootKoto), static x => x.Akind == KotoKind.LessThan);
     }
 }

@@ -13,9 +13,9 @@ internal static class FloatingTypes
 
     internal static bool TryLiteral(Koto source, out long bits)
     {
-        var number = source is PrefixMinusKoto or PrefixPlusKoto ? ((UnaryKoto)source).Operand as NumberLiteralKoto : source as NumberLiteralKoto;
+        var number = KotoHelper.SignedNumber(source, out var negative);
         bits = 0;
-        return number is not null && TryLiteral(number, source.BoundType, source is PrefixMinusKoto, out bits);
+        return number is not null && TryLiteral(number, source.BoundType, negative, out bits);
     }
 
     internal static bool TryLiteral(NumberLiteralKoto number, BoundType? type, bool negative, out long bits)

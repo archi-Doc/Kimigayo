@@ -215,7 +215,7 @@ public sealed partial class Binding
     // The target of the plain numeric conversion whose direct literal operand failed to fit, if the node is such a literal.
     private static BoundType? LiteralConversionTarget(Koto node)
     {
-        if (node is not (NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto }))
+        if (KotoHelper.SignedNumber(node, out _) is null)
         {
             return null;
         }

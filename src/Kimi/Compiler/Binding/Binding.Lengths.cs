@@ -506,10 +506,8 @@ public sealed partial class Binding
                 return false;
             }
         }
-        else if (syntax is NumberLiteralKoto or PrefixMinusKoto { Operand: NumberLiteralKoto } or PrefixPlusKoto { Operand: NumberLiteralKoto })
+        else if (KotoHelper.SignedNumber(syntax, out var negative) is { } literal)
         {
-            var literal = syntax as NumberLiteralKoto ?? (NumberLiteralKoto)((UnaryKoto)syntax).Operand;
-            var negative = syntax is PrefixMinusKoto;
             if (!literal.IsInteger || !literal.TryGetIntegerMagnitude(out var magnitude) ||
                 !ScalarTypes.TryLiteral(type, magnitude, negative, this.compilation.PointerWidth, out _))
             {
