@@ -87,7 +87,7 @@ public class FloatConversionEmissionTest
         var operation = body.Operations[id];
         if (defect == "binding")
         {
-            Assert.IsType<ConversionKoto>(operation.Source).ConversionBinding = ConversionBinding.Integer;
+            Assert.IsType<ConversionKoto>(operation.Source).SetConversion(ConversionBinding.Integer);
         }
         else
         {

@@ -115,7 +115,7 @@ public class AssociatedSpecificationAccessBindingTest
         Assert.True(c.Binding.Result.IsComplete == valid, MinimalEmissionTest.Describe(c, null));
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Export");
-        var definition = c.Binding.GetConformanceDefinition(api.TypeOf()!, contract.BoundSymbol!);
+        var definition = c.Binding.GetConformanceDefinition(api.TypeOf()!, contract.SymbolOf()!);
         Assert.NotNull(definition);
         Assert.Equal(valid, definition.IsVerified);
         if (!valid)

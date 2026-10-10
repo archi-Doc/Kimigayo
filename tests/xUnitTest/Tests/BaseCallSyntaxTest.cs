@@ -67,7 +67,7 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         Assert.Empty(TestDiagnostics.Of(c));
         var reference = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.Akind == KotoKind.BaseReference);
-        Assert.Equal(BindingSymbolKind.Capture, reference.BoundSymbol!.Kind);
+        Assert.Equal(BindingSymbolKind.Capture, reference.SymbolOf()!.Kind);
     }
 
     [Fact]
@@ -77,7 +77,7 @@ public class BaseCallSyntaxTest(ITestOutputHelper output)
         c.Binding.ReportDiagnostics();
         Assert.Empty(TestDiagnostics.Of(c));
         var reference = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x.Akind == KotoKind.BaseReference);
-        Assert.Equal(BindingSymbolKind.Capture, reference.BoundSymbol!.Kind);
+        Assert.Equal(BindingSymbolKind.Capture, reference.SymbolOf()!.Kind);
     }
 
     [Fact]

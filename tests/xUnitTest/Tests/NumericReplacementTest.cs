@@ -40,7 +40,7 @@ public class NumericReplacementTest
         var replacement = Variable(donor).InitializerKoto!;
         Assert.True(KotoHelper.Replace(property, property.InitializerKoto!, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(property.BoundSymbol!.Property!.IsVerified);
+        Assert.True(property.SymbolOf()!.Property!.IsVerified);
     }
 
     [Theory]

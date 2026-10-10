@@ -199,7 +199,7 @@ public class WholeValueTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<FunctionKoto>().Single(x => x.Name == "f");
         var call = Assert.IsType<InvocationKoto>(f.ExpressionBody);
-        Assert.Equal(ArgumentOperationKind.PayloadProjection, call.BoundCall!.ReceiverOperation.Kind);
+        Assert.Equal(ArgumentOperationKind.PayloadProjection, call.CallOf()!.ReceiverOperation.Kind);
     }
 
     [Fact]

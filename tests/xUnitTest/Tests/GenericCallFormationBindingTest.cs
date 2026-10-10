@@ -21,12 +21,12 @@ public class GenericCallFormationBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Null(Call(restored).BoundCall);
+        Assert.Null(Call(restored).CallOf());
     }
 
     [Fact]
@@ -35,7 +35,7 @@ public class GenericCallFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>(value: T) => ()\n    func call(value: Box<string>) => take(value)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
     }
 
     [Theory]
@@ -48,10 +48,10 @@ public class GenericCallFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Call(c).BoundCall);
+        Assert.NotNull(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.NotNull(Call(restored).BoundCall);
+        Assert.NotNull(Call(restored).CallOf());
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class GenericCallFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("#Unknown\ngroup Invalid\n    public struct S\ngroup Consumer\n    func take<T>() => ()\n    func call() => take<Invalid.S>()");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
     }
 
     [Fact]
@@ -79,7 +79,7 @@ public class GenericCallFormationBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var call = Call(c);
-        var plan = call.BoundCall;
+        var plan = call.CallOf();
         Assert.NotNull(plan);
         var generic = Assert.IsType<GenericsKoto>(call.Method);
         var original = Assert.Single(generic.TypeArguments);
@@ -87,10 +87,10 @@ public class GenericCallFormationBindingTest
         var replacement = Assert.Single(Assert.IsType<GenericsKoto>(Call(donor).Method).TypeArguments);
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.True(KotoHelper.Replace(generic, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(plan, call.BoundCall);
+        Assert.Same(plan, call.CallOf());
     }
 
     [Trait("Purpose", "Allocation")]

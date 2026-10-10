@@ -23,9 +23,9 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
         var source = Consume + "let value = \"owned\"\nlet result = consume(" + expression + ")\n" + check;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "consume");
-        Assert.Equal(BoundTypeKind.Closure, call.BoundCall!.TypeArguments[1]!.Kind);
-        Assert.Null(call.ArgumentNodes[0].ErasedFunctionType);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "consume");
+        Assert.Equal(BoundTypeKind.Closure, call.CallOf()!.TypeArguments[1]!.Kind);
+        Assert.Null(call.ArgumentNodes[0].ErasedTypeOf());
         ScalarEmissionTest.EmitFixture("AnonymousArgument" + name, source, output);
     }
 
@@ -111,7 +111,7 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Consume + "let result = consume(func [] () => 42)");
         Assert.False(c.Binding.Result.IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.Method is IdentifierNameKoto { IdentifierName: "consume" });
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         c.Binding.ReportDiagnostics();
         var error = Assert.Single(TestDiagnostics.Of(c));
         Assert.Equal(nameof(DiagnosticCode.UnboundTypeArgument_Kd), error.Code);
@@ -162,7 +162,7 @@ public class AnonymousArgumentInferenceTest(ITestOutputHelper output)
         Assert.Equal("UnresolvedBinding_Kd", error.Code);
         Assert.Equal("missing", error.Text);
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
-        Assert.NotNull(closure.BoundClosure);
+        Assert.NotNull(closure.ClosureOf());
     }
 
     [Trait("Purpose", "Allocation")]

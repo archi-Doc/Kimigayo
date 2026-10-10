@@ -118,9 +118,9 @@ public class Utf8ConsoleTest
 
         public override void Visit(Koto node)
         {
-            if (node is MemberAccessKoto && node.BoundSymbol?.Name == "writeLine")
+            if (node is MemberAccessKoto && node.SymbolOf()?.Name == "writeLine")
             {
-                this.Selected = node.BoundSymbol.LibraryDeclaration;
+                this.Selected = node.SymbolOf()!.LibraryDeclaration;
             }
 
             base.Visit(node);

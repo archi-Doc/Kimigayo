@@ -14,14 +14,14 @@ public class ValueCallBindingTest
         const string Source = "func apply(f: (i32) -> bool) -> bool => f(42)";
         var c = MinimalEmissionTest.Analyze(Source);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.NotNull(call.BoundValueCall);
+        Assert.NotNull(call.ValueCallOf());
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "apply");
         var donor = MinimalEmissionTest.Analyze(Source.Replace("i32", "i64", StringComparison.Ordinal));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "apply").Parameters[0];
         Assert.True(KotoHelper.Replace(function, function.Parameters[0].Type, changed.Type));
-        Assert.Null(call.BoundValueCall);
+        Assert.Null(call.ValueCallOf());
         Assert.True(c.Bind().IsComplete);
-        Assert.NotNull(call.BoundValueCall);
+        Assert.NotNull(call.ValueCallOf());
     }
 
     [Theory]
@@ -44,8 +44,8 @@ public class ValueCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var plan = Assert.IsType<CallPlan>(call.BoundValueCall);
-        Assert.Null(call.BoundCall);
+        var plan = Assert.IsType<CallPlan>(call.ValueCallOf());
+        Assert.Null(call.CallOf());
         Assert.Same(call.Method, plan.CalleeValue);
         Assert.Same(call.TypeOf(), plan.ReturnType);
         Assert.Equal(call.ArgumentNodes.Count, plan.ArgumentOperations.Length);
@@ -62,7 +62,7 @@ public class ValueCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var plan = Assert.IsType<CallPlan>(call.BoundValueCall);
+        var plan = Assert.IsType<CallPlan>(call.ValueCallOf());
         Assert.Same(call.Method, plan.CalleeValue);
         Assert.Equal(payload ? ArgumentOperationKind.PayloadProjection : ArgumentOperationKind.Value, plan.ReceiverOperation.Kind);
         if (payload)
@@ -110,11 +110,11 @@ public class ValueCallBindingTest
         var c = MinimalEmissionTest.Analyze("func apply<T>(f: (T) -> bool, value: T) -> bool => f(value@move)");
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var plan = call.BoundValueCall;
+        var plan = call.ValueCallOf();
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.Same(plan, call.BoundValueCall);
+            Assert.Same(plan, call.ValueCallOf());
         }
 
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
@@ -125,6 +125,6 @@ public class ValueCallBindingTest
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
-        Assert.NotNull(Assert.Single(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundValueCall);
+        Assert.NotNull(Assert.Single(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<InvocationKoto>()).ValueCallOf());
     }
 }

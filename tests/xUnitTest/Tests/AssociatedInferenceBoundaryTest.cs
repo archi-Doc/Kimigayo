@@ -90,7 +90,7 @@ public class AssociatedInferenceBoundaryTest
     {
         var c = Bound("contract C<T>\n    associate Item\n    func read(value: T) -> Self.Item\nstruct S\n    Self is C<i32> and C<bool>\n    public func read(value: i32) -> i32 => value\n    public func read(value: bool) -> bool => value");
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-        var clause = Assert.Single(type.ConstraintNodes).BoundConstraint!;
+        var clause = Assert.Single(type.ConstraintNodes).ConstraintOf()!;
         var left = c.Binding.GetConformanceDefinition(type.TypeOf()!, clause.Left!.Contract!)!;
         var right = c.Binding.GetConformanceDefinition(type.TypeOf()!, clause.Right!.Contract!)!;
         Assert.Equal("i32", Assert.Single(left.AssociatedTypes).Value.Name);
@@ -202,7 +202,7 @@ public class AssociatedInferenceBoundaryTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName);
-        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!;
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));

@@ -34,7 +34,7 @@ public class ProjectedBorrowEmissionTest
         var source = Batch + "let values: [2 of i32] = [6, 7]\nlet b = Batch.init(values)\nlet r = b.view()\nlet n = r[1]";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.Validate(out var error), error);
-        var body = c.Ownership.Bodies.Single(x => x.Function.BoundSymbol?.Name == "view");
+        var body = c.Ownership.Bodies.Single(x => x.Function.SymbolOf()?.Name == "view");
         var address = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Borrow);
         body.Values[address] = body.Values[address] with { Constant = 0 };
         using var output = new StringWriter();

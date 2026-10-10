@@ -28,8 +28,8 @@ public class GenericClosureIdentityTest
     public void LengthContextIdentityIsCanonicalAndDistinct()
     {
         var c = MinimalEmissionTest.Analyze(Identity + "_ = identity([1, 2])\n_ = identity([3, 4])\n_ = identity([5])");
-        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).BoundClosure!.EnvironmentType!;
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall?.Target.Name == "identity").Select(x => x.BoundCall!).ToArray();
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "identity").Select(x => x.CallOf()!).ToArray();
         var first = c.Binding.InstantiateStorageType(closure, calls[0])!;
         var same = c.Binding.InstantiateStorageType(closure, calls[1])!;
         var different = c.Binding.InstantiateStorageType(closure, calls[2])!;

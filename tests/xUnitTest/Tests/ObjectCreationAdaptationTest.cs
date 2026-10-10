@@ -193,13 +193,13 @@ public class ObjectCreationAdaptationTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze("let n = 7@obj");
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
-        var original = Assert.IsType<InvocationKoto>(conversion.CreationCall);
-        Assert.Equal(CompilerFunctionKind.MakeObj, original.BoundCall!.Target.CompilerFunction);
+        var original = Assert.IsType<InvocationKoto>(conversion.ConversionOf().Creation);
+        Assert.Equal(CompilerFunctionKind.MakeObj, original.CallOf()!.Target.CompilerFunction);
         var donor = KotoTree.Walk(MinimalEmissionTest.Analyze("let n = 7@rc").Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
         Assert.True(KotoHelper.Replace(conversion, conversion.Right, donor.Right));
-        Assert.Null(conversion.CreationCall);
+        Assert.Null(conversion.ConversionOf().Creation);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(CompilerFunctionKind.MakeRc, conversion.CreationCall!.BoundCall!.Target.CompilerFunction);
+        Assert.Equal(CompilerFunctionKind.MakeRc, conversion.ConversionOf().Creation!.CallOf()!.Target.CompilerFunction);
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var failure), failure);

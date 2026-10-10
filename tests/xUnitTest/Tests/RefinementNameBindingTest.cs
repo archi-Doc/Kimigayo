@@ -30,7 +30,7 @@ public class RefinementNameBindingTest
         {
             var root = c.Kotonoha.RootKoto;
             var expected = parent.Contains("Api.", StringComparison.Ordinal) ? root.NestedContainers.Single(x => x.Name == "Api").NestedContainers.Single() : root.NestedContainers.Single(x => x.Name == "Origin");
-            Assert.Same(expected.BoundSymbol, root.NestedContainers.Single(x => x.Name == "Child").BoundSymbol!.Contract!.Ancestors.Single());
+            Assert.Same(expected.SymbolOf(), root.NestedContainers.Single(x => x.Name == "Child").SymbolOf()!.Contract!.Ancestors.Single());
         }
 
         Assert.Equal(valid, c.Bind().IsComplete);

@@ -23,7 +23,7 @@ public class WrapConversionTest
         Assert.Same(BoundType.WrappingOf(BoundType.Primitives["i16"]), variables["d"].NameKoto.TypeOf());
         Assert.Same(BoundType.Primitives["u64"], variables["e"].NameKoto.TypeOf());
         Assert.Same(BoundType.Primitives["i128"], variables["f"].NameKoto.TypeOf());
-        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Wrap, x.ConversionBinding));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Wrap, x.ConversionOf().Kind));
     }
 
     [Theory]
@@ -42,8 +42,8 @@ public class WrapConversionTest
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
         Assert.Same(expected, conversion.TypeOf());
-        Assert.Equal(ConversionBinding.Wrap, conversion.ConversionBinding);
-        var folded = Assert.NotNull(conversion.FoldedConstant);
+        Assert.Equal(ConversionBinding.Wrap, conversion.ConversionOf().Kind);
+        var folded = Assert.NotNull(conversion.ConversionOf().Folded);
         if (type == "u128")
         {
             Assert.Equal(Int128.MinValue, folded); // -2^127 is the bit pattern 2^127, read as u128.

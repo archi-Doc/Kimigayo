@@ -140,5 +140,5 @@ public class ConditionalPremiseAccessBindingTest
         => Assert.IsType<IsKoto>(Assert.IsType<SyntaxFormKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<SyntaxFormKoto>().Single().Operands[1]).Operands[0]);
 
     private static BoundConformance Definition(Compilation c, string contractName = "C")
-        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).BoundSymbol!)!;
+        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).SymbolOf()!)!;
 }

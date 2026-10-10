@@ -52,7 +52,7 @@ public class EnumProjectionAccessBindingTest
         var c = Check(Prefix + "public contract Marker\npublic enum Api\n    Item(Source.C.Element)\n    Self is Marker\npublic group Consumer\n    " + consumer, false);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.False(c.Binding.GetConformanceDefinition(api.TypeOf()!, marker.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(api.TypeOf()!, marker.SymbolOf()!)?.IsVerified ?? false);
         Assert.DoesNotContain(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
     }
 

@@ -21,8 +21,8 @@ public class ConstructorTypeInferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Box + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true });
-        var plan = Assert.IsType<CallPlan>(call.BoundCall);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true });
+        var plan = Assert.IsType<CallPlan>(call.CallOf());
         Assert.True(plan.TypeArguments.IsEmpty);
         Assert.Equal(name, Assert.Single(plan.DeclaringType!.Components).Name);
         Assert.Same(plan.DeclaringType, call.TypeOf());
@@ -94,7 +94,7 @@ public class ConstructorTypeInferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Box + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true });
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true });
         Assert.Equal(BoundTypeKind.Closure, call.TypeOf()!.Components[0].Kind);
     }
 
@@ -169,8 +169,8 @@ public class ConstructorTypeInferenceTest
         Assert.Equal(TestDiagnostics.Of(fast).Select(x => (x.Code, x.Label, x.Note)), TestDiagnostics.Of(reference).Select(x => (x.Code, x.Label, x.Note)));
 
         static string[] Constructions(Compilation compilation)
-            => KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true })
-                .Select(x => Binding.DiagnosticTypeName(x.BoundCall!.DeclaringType!) + ":" + x.BoundCall.Target.Declaration.Span.Start).ToArray();
+            => KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true })
+                .Select(x => Binding.DiagnosticTypeName(x.CallOf()!.DeclaringType!) + ":" + x.CallOf()!.Target.Declaration.Span.Start).ToArray();
     }
 
     // SPEC 8.4.8.2: the fixed construction defers on an Unknown premise only as the first selection does, so the plain init, still
@@ -182,8 +182,8 @@ public class ConstructorTypeInferenceTest
     {
         var c = CompilationTestHelper.ParseSuccess(UnknownPremise + type + ".init(value@move)\n    return box.tag");
         Assert.True(c.Bind().IsComplete);
-        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true });
-        Assert.Single(((FunctionKoto)call.BoundCall!.Target.Declaration).Parameters);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.CallOf()?.Target.Declaration is FunctionKoto { IsConstructor: true });
+        Assert.Single(((FunctionKoto)call.CallOf()!.Target.Declaration).Parameters);
     }
 
     [Fact]

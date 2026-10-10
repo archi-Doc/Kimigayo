@@ -80,11 +80,11 @@ public class GuardedDefaultContinuationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
-        var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.BoundSymbol?.Kind == BindingSymbolKind.Parameter).Source;
-        var original = source.BoundSymbol!;
-        source.BoundSymbol = c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1);
+        var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.SymbolOf()?.Kind == BindingSymbolKind.Parameter).Source;
+        var original = source.SymbolOf()!;
+        source.SetSymbol(c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1));
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
-        source.BoundSymbol = original;
+        source.SetSymbol(original);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
     }
 }

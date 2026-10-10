@@ -96,7 +96,7 @@ public class EffectBoundImplementationTest
     {
         var c = MinimalEmissionTest.Analyze(Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var equals = ((ContractKoto)c.Library.GetSymbol(KimiDeclarationId.Equatable)!.Declaration).Members.OfType<FunctionKoto>().Single(static x => x.Name == "equals").BoundSymbol;
+        var equals = ((ContractKoto)c.Library.GetSymbol(KimiDeclarationId.Equatable)!.Declaration).Members.OfType<FunctionKoto>().Single(static x => x.Name == "equals").SymbolOf();
         var operations = 0;
         foreach (var entry in KimiLibraryCatalog.Entries)
         {

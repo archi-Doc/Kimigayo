@@ -375,8 +375,8 @@ public class IntrinsicCapabilityTest
         var c = CompilationTestHelper.ParseSuccess("alias Core\ncontract Copy\ngroup Core\n    public contract Copy\nfunc f<T>(x: T)\n    T is ::Kimi.Copy\n    ()\nf(1)");
         c.Bind();
         var f = Function(c, "f");
-        Assert.Same(c.Library.Copy, ((IsKoto)f.TypeConstraints[0]).BoundConstraint!.Contract);
-        Assert.Equal(IntrinsicKind.None, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Copy").BoundSymbol!.Intrinsic);
+        Assert.Same(c.Library.Copy, ((IsKoto)f.TypeConstraints[0]).ConstraintOf()!.Contract);
+        Assert.Equal(IntrinsicKind.None, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Copy").SymbolOf()!.Intrinsic);
     }
 
     [Fact]

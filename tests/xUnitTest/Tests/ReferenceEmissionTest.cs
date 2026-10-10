@@ -289,7 +289,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.Empty(c.Binding.Issues);
         var call = c.Ownership.Bodies[0].Operations.First(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundCall.Target.Name: "pick" });
-        Assert.Equal(ArgumentOperationKind.Value, ((InvocationKoto)call.Source).BoundCall!.ArgumentOperations[0].Kind);
+        Assert.Equal(ArgumentOperationKind.Value, ((InvocationKoto)call.Source).CallOf()!.ArgumentOperations[0].Kind);
         ScalarEmissionTest.EmitFixture("ReferenceOverload", Source, "owned\n");
     }
 

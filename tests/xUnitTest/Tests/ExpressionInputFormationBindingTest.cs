@@ -17,12 +17,12 @@ public class ExpressionInputFormationBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Null(Call(restored).BoundCall);
+        Assert.Null(Call(restored).CallOf());
     }
 
     [Theory]
@@ -34,12 +34,12 @@ public class ExpressionInputFormationBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Test(c).BoundRuntimeTest);
+        Assert.Null(Test(c).RuntimeTestOf());
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Test(c).BoundRuntimeTest);
+        Assert.Null(Test(c).RuntimeTestOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Null(Test(restored).BoundRuntimeTest);
+        Assert.Null(Test(restored).RuntimeTestOf());
     }
 
     [Theory]
@@ -51,16 +51,16 @@ public class ExpressionInputFormationBindingTest
     {
         var call = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take<T>() => ()\n    func call() => take<" + argument + ">()");
         Assert.True(call.Binding.Result.IsComplete, MinimalEmissionTest.Describe(call, null));
-        Assert.NotNull(Call(call).BoundCall);
+        Assert.NotNull(Call(call).CallOf());
         var runtime = MinimalEmissionTest.Analyze(Prefix + "struct Target<T>\ngroup G\n    func call(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(runtime.Binding.Result.IsComplete, MinimalEmissionTest.Describe(runtime, null));
-        Assert.NotNull(Test(runtime).BoundRuntimeTest);
+        Assert.NotNull(Test(runtime).RuntimeTestOf());
         var restoredCall = CompilationTestHelper.Reload(call);
         Assert.True(restoredCall.Bind().IsComplete);
-        Assert.NotNull(Call(restoredCall).BoundCall);
+        Assert.NotNull(Call(restoredCall).CallOf());
         var restoredRuntime = CompilationTestHelper.Reload(runtime);
         Assert.True(restoredRuntime.Bind().IsComplete);
-        Assert.NotNull(Test(restoredRuntime).BoundRuntimeTest);
+        Assert.NotNull(Test(restoredRuntime).RuntimeTestOf());
     }
 
     [Theory]
@@ -94,22 +94,22 @@ public class ExpressionInputFormationBindingTest
         Assert.False(c.Bind().IsComplete);
         if (runtime)
         {
-            Assert.Null(Test(c).BoundRuntimeTest);
+            Assert.Null(Test(c).RuntimeTestOf());
         }
         else
         {
-            Assert.Null(Call(c).BoundCall);
+            Assert.Null(Call(c).CallOf());
         }
 
         Assert.True(KotoHelper.Replace(owner, replacement, original));
         Assert.True(c.Bind().IsComplete);
         if (runtime)
         {
-            Assert.NotNull(Test(c).BoundRuntimeTest);
+            Assert.NotNull(Test(c).RuntimeTestOf());
         }
         else
         {
-            Assert.NotNull(Call(c).BoundCall);
+            Assert.NotNull(Call(c).CallOf());
         }
     }
 

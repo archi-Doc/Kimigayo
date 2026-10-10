@@ -22,15 +22,15 @@ public class ContractSelfTest
         var self = take.Parameters[0].Type.TypeOf()!.Components[0];
         Assert.True(Binding.IsContractSelf(self));
         Assert.Equal(BoundTypeKind.Parameter, self.Kind);
-        Assert.NotSame(holder.BoundSymbol!.Type, self);
+        Assert.NotSame(holder.SymbolOf()!.Type, self);
 
         // Inside the Contract, Item is Self's Item declared by Holder; in a generic body, H's Item declared by Holder.
-        Assert.Equal([self, holder.BoundSymbol.Type!], take.ReturnType!.TypeOf()!.Components);
+        Assert.Equal([self, holder.SymbolOf()!.Type!], take.ReturnType!.TypeOf()!.Components);
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "read");
         var projection = read.ReturnType!.TypeOf()!;
         Assert.Equal(BoundTypeKind.AssociatedProjection, projection.Kind);
         Assert.Same(read.GenericArguments[0].TypeOf(), projection.Components[0]);
-        Assert.Same(holder.BoundSymbol.Type, projection.Components[1]);
+        Assert.Same(holder.SymbolOf()!.Type, projection.Components[1]);
     }
 
     [Fact]

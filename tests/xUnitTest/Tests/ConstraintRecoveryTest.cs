@@ -47,7 +47,7 @@ public class ConstraintRecoveryTest(ITestOutputHelper output)
         var errors = TestDiagnostics.Of(c);
         Assert.Equal([conditions.EndsWith('T') ? "MissingSyntax_Kd" : "ExpectedSyntax_Kd", "TypeMismatch_Kd"], errors.Select(static x => x.Code));
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "use");
-        var contract = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "C").BoundSymbol!;
+        var contract = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "C").SymbolOf()!;
         Assert.Equal(ConstraintProof.Error, c.Binding.ResolveConformance(use.Parameters[0].Type.TypeOf()!, contract, use, out var path));
         Assert.Null(path);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));

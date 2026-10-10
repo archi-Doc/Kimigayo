@@ -112,8 +112,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
             "accept(stop)\nConsole.writeLine(\"alive\")";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "accept");
-        Assert.Same(BoundType.Never, call.BoundCall!.TypeArguments[0]);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "accept");
+        Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
         ScalarEmissionTest.EmitFixture("CallableSignatureNever" + common, source, "alive\n");
     }
 
@@ -262,8 +262,8 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
         var body = $"func keep<T>({parameters}) -> T => value@move\nvar x: i32 = 4\nlet r = keep({arguments})\n";
         var c = MinimalEmissionTest.Analyze(Len + body + "require r@follow == 4 else => $abort(\"order\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.BoundCall?.Target.Name == "keep");
-        var slot = call.BoundCall!.TypeArguments[0]!;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "keep");
+        var slot = call.CallOf()!.TypeArguments[0]!;
         var borrow = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static x => x.ToString() == "x@ref");
         Assert.Same(borrow.TypeOf()!.Origin, slot.Origin);
         ScalarEmissionTest.EmitFixture("OriginSignatureEvidenceOrder" + reversed, Len + body + "require r@follow == 4 else => $abort(\"order\")", string.Empty);
@@ -292,10 +292,10 @@ public class CallableSignatureInferenceTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Len + "func runOnly<T>(action: (T) -> i32) -> Option<T> => .None\nlet r = runOnly(len)\nlet again = runOnly(len)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.BoundCall?.Target.Name == "runOnly").ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "runOnly").ToArray();
         Assert.Equal(2, calls.Length);
-        var first = calls[0].BoundCall!.TypeArguments[0]!;
-        var second = calls[1].BoundCall!.TypeArguments[0]!;
+        var first = calls[0].CallOf()!.TypeArguments[0]!;
+        var second = calls[1].CallOf()!.TypeArguments[0]!;
         Assert.Equal((BoundTypeKind.Semantics, SemanticsKind.Ref), (first.Kind, first.Semantics));
         Assert.Equal((OriginKind.Inference, true), (first.Origin!.Kind, first.Origin.Open));
         Assert.NotSame(first.Origin, second.Origin); // Each call site has its own local region.

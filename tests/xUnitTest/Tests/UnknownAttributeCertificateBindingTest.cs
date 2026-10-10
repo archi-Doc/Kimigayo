@@ -23,7 +23,7 @@ public class UnknownAttributeCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)?.IsVerified ?? false);
         Assert.False(c.Bind().IsComplete);
         Assert.False(Definition(c).IsVerified);
         var restored = Compilation.CreateForTest();
@@ -98,6 +98,6 @@ public class UnknownAttributeCertificateBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
-        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!));
+        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!));
     }
 }

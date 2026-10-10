@@ -148,7 +148,7 @@ public class OwnershipAnalysisTest
         var c = Parse("func makeText() -> string => \"a\"\nfunc f(a: string, b: i32) => ()\nfunc use(c: bool)\n    f(makeText(), if c => return else => 1)");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
-        var value = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Temporary && x.Source is InvocationKoto call && call.BoundCall!.Target.Name == "makeText");
+        var value = body.Places.Single(x => x.Kind == OwnershipPlaceKind.Temporary && x.Source is InvocationKoto call && call.CallOf()!.Target.Name == "makeText");
         Assert.Contains(body.CleanupSteps, x => x.Place == value.Id && x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto);
         Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.CallEntry && x.Place == value.Id);
         Assert.All(body.Edges.Where(x => x.Kind == OwnershipEdgeKind.Abort), x => Assert.Equal(OwnershipOperationKind.Exit, body.Operations[x.To].Kind));
@@ -182,7 +182,7 @@ public class OwnershipAnalysisTest
         var body = c.Ownership.Bodies.Single(x => x.Function.Name == "use");
         var steps = body.CleanupSteps.Where(x => x.Action == CleanupAction.Destroy && body.Operations[x.Operation].Source is ReturnKoto).ToArray();
         var inner = Array.FindIndex(steps, x => x.Source is FieldKoto);
-        var outer = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.BoundCall?.Target.Name == "makeText");
+        var outer = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
         Assert.True(inner >= 0 && outer > inner);
     }
 

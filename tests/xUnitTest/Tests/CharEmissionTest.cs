@@ -154,7 +154,7 @@ public class CharEmissionTest
         var operation = body.Operations[index];
         if (defect == "source-type")
         {
-            operation.Source.BoundType = BoundType.Boolean;
+            operation.Source.SetType(BoundType.Boolean);
         }
         else if (defect == "value-type")
         {

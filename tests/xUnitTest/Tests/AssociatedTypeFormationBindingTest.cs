@@ -113,6 +113,6 @@ public class AssociatedTypeFormationBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!));
+        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!));
     }
 }

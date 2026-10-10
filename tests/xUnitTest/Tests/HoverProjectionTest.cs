@@ -72,12 +72,12 @@ public sealed class HoverProjectionTest
             var compilation = Create(text);
             Assert.True(compilation.Bind().IsComplete);
             var nodes = KotoTree.Walk(compilation.Kotonoha.RootKoto).ToArray();
-            var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous).BoundClosure!.EnvironmentType!;
-            var calls = nodes.OfType<InvocationKoto>().Where(static x => x.BoundCall?.Target.Name == "identity").Select(static x => x.BoundCall!).ToArray();
+            var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
+            var calls = nodes.OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "identity").Select(static x => x.CallOf()!).ToArray();
             var closed = compilation.Binding.InstantiateStorageType(closure, calls[index])!;
             Assert.Empty(closed.Components); // The varying length is only in the hidden instantiation context.
-            var inspect = Assert.Single(nodes.OfType<InvocationKoto>(), static x => x.BoundCall?.Target.Name == "inspect");
-            var selected = inspect.BoundCall!;
+            var inspect = Assert.Single(nodes.OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "inspect");
+            var selected = inspect.CallOf()!;
             selected.Set(selected.Target, selected.ReturnType, null, [0], [closed]);
             return At(HoverBuilder.Create(compilation), text.LastIndexOf("inspect(", StringComparison.Ordinal));
         }

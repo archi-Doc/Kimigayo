@@ -27,7 +27,7 @@ public class ClosedContractConstraintBindingTest
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R").StateOf());
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "R");
-        Assert.Equal(valid, c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.Equal(valid, c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -58,7 +58,7 @@ public class ClosedContractConstraintBindingTest
         var child = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Child");
         Assert.Equal(BindingState.Invalid, child.StateOf());
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
-        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, child.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, child.SymbolOf()!)!.IsVerified);
     }
 
     [Theory]
@@ -114,10 +114,10 @@ public class ClosedContractConstraintBindingTest
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.True(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]

@@ -104,7 +104,7 @@ public class EnumOwnershipTest
         var steps = ReturnDestruction(body);
         var payload0 = Array.FindIndex(steps, x => x.Place == construction.PayloadStart);
         var payload1 = Array.FindIndex(steps, x => x.Place == construction.PayloadStart + 1);
-        var temporary = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.BoundCall?.Target.Name == "makeText");
+        var temporary = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
         Assert.True(payload1 >= 0 && payload0 > payload1 && temporary > payload0);
         Assert.DoesNotContain(steps, x => x.Place == construction.Place || x.Place == construction.PayloadStart + 2);
     }
@@ -208,7 +208,7 @@ public class EnumOwnershipTest
         var body = Body(c, "use");
         var steps = ReturnDestruction(body);
         var result = Array.FindIndex(steps, x => x.Source is IfKoto && body.Places[x.Place].Type.Name == "string");
-        var condition = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.BoundCall?.Target.Name == "makeText");
+        var condition = Array.FindIndex(steps, x => x.Source is InvocationKoto call && call.CallOf()?.Target.Name == "makeText");
         var payload = Array.FindIndex(steps, x => x.Place == body.Constructions[0].PayloadStart);
         Assert.True(payload >= 0 && result > payload);
         Assert.Equal(-1, condition); // Condition temporaries end before entering either branch.

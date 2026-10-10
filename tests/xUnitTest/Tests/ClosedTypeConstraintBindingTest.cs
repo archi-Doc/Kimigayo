@@ -48,7 +48,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.Equal(BindingState.Invalid, Target(c).StateOf());
         var source = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Source");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Origin");
-        Assert.Null(c.Binding.GetConformanceDefinition(source.TypeOf()!, contract.BoundSymbol!));
+        Assert.Null(c.Binding.GetConformanceDefinition(source.TypeOf()!, contract.SymbolOf()!));
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
     }
 
@@ -61,7 +61,7 @@ public class ClosedTypeConstraintBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var target = Target(c);
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Origin");
-        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, contract.BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, contract.SymbolOf()!)?.IsVerified);
     }
 
     [Theory]
@@ -75,10 +75,10 @@ public class ClosedTypeConstraintBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).StateOf());
-        Assert.Null(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall);
-        Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
+        Assert.Null(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().CallOf());
+        Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().SymbolOf()!.Property!.IsVerified);
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Origin");
-        Assert.False(c.Binding.GetConformanceDefinition(Target(c).TypeOf()!, contract.BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(Target(c).TypeOf()!, contract.SymbolOf()!)?.IsVerified);
     }
 
     [Theory]

@@ -63,7 +63,7 @@ public class DefaultOwnershipTest
         Assert.True(c.Ownership.Result.ErrorCount > 0, string.Join("\n", c.Ownership.Issues));
         var issue = Assert.Single(c.Ownership.Issues, x => x.Failure == OwnershipFailure.DefaultArgumentMove);
         Assert.IsType<IdentifierNameKoto>(issue.Source);
-        Assert.Equal("x", issue.Source.BoundSymbol!.Name);
+        Assert.Equal("x", issue.Source.SymbolOf()!.Name);
         c.Ownership.ReportDiagnostics();
         var diagnostic = Assert.Single(TestDiagnostics.Of(issue.Source.CodeContext), x => x.Code == nameof(DiagnosticCode.DefaultArgumentMove_Kd));
         Assert.Equal(issue.Source.Span, diagnostic.Span);

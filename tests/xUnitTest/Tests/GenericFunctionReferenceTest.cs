@@ -66,8 +66,8 @@ public class GenericFunctionReferenceTest
     {
         var c = MinimalEmissionTest.Analyze(Identity + Apply + "let r = apply(identity, 5)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "apply");
-        var item = call.BoundCall!.TypeArguments[0]!;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "apply");
+        var item = call.CallOf()!.TypeArguments[0]!;
         Assert.Equal(BoundTypeKind.FunctionItem, item.Kind);
         Assert.Same(BoundType.I32, Assert.Single(item.Components));
         Assert.Equal("function item identity<i32>", Binding.DiagnosticTypeName(item));

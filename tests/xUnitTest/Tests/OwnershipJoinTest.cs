@@ -120,7 +120,7 @@ public class OwnershipJoinTest
         var narrowed = body.Places[body.Operations[incoming].Input].Type;
         var place = body.Operations[phi].Place;
         body.PlaceStorage[place] = body.Places[place] with { Type = narrowed };
-        body.Operations[phi].Source.BoundType = narrowed;
+        body.Operations[phi].Source.SetType(narrowed);
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Equal(string.Empty, writer.ToString());

@@ -100,12 +100,12 @@ public class InheritedObjectCallTest(ITestOutputHelper output)
         var donor = MinimalEmissionTest.Analyze(Types + Operation.Replace("T is Owned", "T is Copy", StringComparison.Ordinal));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<IsKoto>()).Right;
         Assert.True(KotoHelper.Replace(clause, original, changed));
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(DiagnosticCode.UnprovenConstraint_Kd, Assert.Single(c.Binding.Issues).Code);
         Assert.True(KotoHelper.Replace(clause, changed, original));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(call.BoundCall);
+        Assert.NotNull(call.CallOf());
     }
 
     [Fact]

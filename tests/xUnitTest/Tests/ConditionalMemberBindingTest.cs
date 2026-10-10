@@ -19,7 +19,7 @@ public class ConditionalMemberBindingTest
         if (valid)
         {
             var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-            Assert.Equal("i32", call.BoundCall!.DeclaringType!.Components[0].Name);
+            Assert.Equal("i32", call.CallOf()!.DeclaringType!.Components[0].Name);
         }
     }
 
@@ -38,7 +38,7 @@ public class ConditionalMemberBindingTest
         var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f<U>(x: T, y: U) -> U => y\nfunc use() -> bool => S<i32>.f(1, true)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal("bool", call.BoundCall!.TypeArguments[0]!.Name);
+        Assert.Equal("bool", call.CallOf()!.TypeArguments[0]!.Name);
         Assert.Equal("bool", call.TypeOf()!.Name);
     }
 
@@ -108,8 +108,8 @@ public class ConditionalMemberBindingTest
         if (valid)
         {
             var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-            Assert.NotNull(call.BoundCall!.Receiver);
-            Assert.NotNull(call.BoundCall.InputOrigins[0]);
+            Assert.NotNull(call.CallOf()!.Receiver);
+            Assert.NotNull(call.CallOf()!.InputOrigins[0]);
         }
     }
 
@@ -156,7 +156,7 @@ public class ConditionalMemberBindingTest
         var c = Parse("contract A\n    associate E\ncontract B: A\ncontract C: A\nstruct S<T>\n    Self is B when T is i32\n        associate A.E is i32\n    Self is C when T is string\n        associate A.E is string\nfunc use(x: S<i32>, y: S<string>) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var use = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "use");
-        var contract = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "A").BoundSymbol!;
+        var contract = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ContractKoto>().Single(x => x.Name == "A").SymbolOf()!;
         for (var i = 0; i < 2; i++)
         {
             Assert.Equal(ConstraintProof.Proven, c.Binding.ResolveConformance(use.Parameters[i].Type.TypeOf()!, contract, use, out var path));
@@ -185,7 +185,7 @@ public class ConditionalMemberBindingTest
         var c = Parse("contract C\nstruct Bad\n    Self is C\nstruct S<T>\n    Self is C when T is Copy\n        public func f<U>(x: U) -> i32\n            U is Missing\n            return 1\n    public func f(x: i32) -> i32 => 2\nfunc use() -> i32 => S<i32>.f(1)");
         Assert.False(c.Bind().IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.NotEqual(BindingState.Resolved, call.StateOf());
 
         // SPEC 23.3.6.4: the failed candidate declaration publishes its Error, and the call rests on it instead of repeating it.
@@ -203,11 +203,11 @@ public class ConditionalMemberBindingTest
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         if (proven)
         {
-            Assert.Empty(((FunctionKoto)call.BoundCall!.Target.Declaration).GenericArguments);
+            Assert.Empty(((FunctionKoto)call.CallOf()!.Target.Declaration).GenericArguments);
         }
         else
         {
-            Assert.Null(call.BoundCall);
+            Assert.Null(call.CallOf());
             Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnprovenConstraint_Kd);
         }
     }
@@ -225,11 +225,11 @@ public class ConditionalMemberBindingTest
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         if (selected)
         {
-            Assert.Single(((FunctionKoto)call.BoundCall!.Target.Declaration).Parameters);
+            Assert.Single(((FunctionKoto)call.CallOf()!.Target.Declaration).Parameters);
         }
         else
         {
-            Assert.Null(call.BoundCall);
+            Assert.Null(call.CallOf());
             Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.UnprovenConstraint_Kd);
         }
     }
@@ -240,7 +240,7 @@ public class ConditionalMemberBindingTest
         var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x: i32) -> i32 => 1\n    public func f<U>(x: U) -> i32 => 2\nfunc use() -> i32 => S<string>.f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Single(((FunctionKoto)call.BoundCall!.Target.Declaration).GenericArguments);
+        Assert.Single(((FunctionKoto)call.CallOf()!.Target.Declaration).GenericArguments);
     }
 
     [Theory]
@@ -253,7 +253,7 @@ public class ConditionalMemberBindingTest
         var c = Parse("contract A\ncontract B\nstruct S<T>\n" + (reversed ? Owned + Copy : Copy + Owned) + "func use() -> i32 => S<i32>.f(1)");
         Assert.False(c.Bind().IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.Contains(c.Binding.Issues, x => ReferenceEquals(x.Node, call) && x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
@@ -262,7 +262,7 @@ public class ConditionalMemberBindingTest
     {
         var c = Parse("contract C\ngroup G\n    func f(x: i32) -> i32 => 1\n    struct S<T>\n        Self is C when T is Copy\n            func f(x: i32) -> i32 => 2\n        func use() -> i32 => f(1)");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
     }
 
     [Theory]
@@ -290,7 +290,7 @@ public class ConditionalMemberBindingTest
     {
         var c = Parse("contract C\nopen struct Base\n    public func f() -> i32 => 1\nstruct S<T>: Base\n    Self is C when T is Copy\n        public func f() -> i32 => 2\nfunc use() -> i32 => S<string>.f()");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
     }
 
     [Fact]
@@ -330,8 +330,8 @@ public class ConditionalMemberBindingTest
         if (valid)
         {
             var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-            Assert.Equal("Base", call.BoundCall!.DeclaringType!.Symbol!.Name);
-            Assert.Equal(argument, call.BoundCall.DeclaringType.Components[0].Name);
+            Assert.Equal("Base", call.CallOf()!.DeclaringType!.Symbol!.Name);
+            Assert.Equal(argument, call.CallOf()!.DeclaringType!.Components[0].Name);
         }
     }
 
@@ -340,7 +340,7 @@ public class ConditionalMemberBindingTest
     {
         var c = Parse("contract A\n    func f()\nstruct S<T>\n    func demand<U>()\n        U is A\n        ()\n    Self is A when T is Copy\n        public func unrelated() => demand<Self>()");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
     }
 
     [Theory]
@@ -363,17 +363,17 @@ public class ConditionalMemberBindingTest
         var replacement = Select(fragment);
         var parent = original.Parent!;
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var retained = call.BoundCall!;
+        var retained = call.CallOf()!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.False(c.Binding.Bind(BindingMode.Final).IsComplete);
         if (change != "associated")
         {
-            Assert.Null(call.BoundCall);
+            Assert.Null(call.CallOf());
         }
 
         Assert.True(KotoHelper.Replace(parent, replacement, original));
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
-        Assert.Same(retained, call.BoundCall);
+        Assert.Same(retained, call.CallOf());
     }
 
     [Fact]

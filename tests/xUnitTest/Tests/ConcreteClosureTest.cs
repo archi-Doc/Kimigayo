@@ -18,8 +18,8 @@ public class ConcreteClosureTest
     {
         var c = MinimalEmissionTest.Analyze(declaration + "\nlet outer = func [n] () => func [n" + acquisition + "] () => " + result + "\nlet first = outer()\nlet second = outer()\nrequire first() == 7 and second() == 7 else => $abort(\"nested\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var outer = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous && x.Function.BoundClosure!.Captures[0].Source.Kind == BindingSymbolKind.Local);
-        Assert.Equal(receiver, outer.Function.BoundClosure!.Receiver);
+        var outer = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous && x.Function.ClosureOf()!.Captures[0].Source.Kind == BindingSymbolKind.Local);
+        Assert.Equal(receiver, outer.Function.ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("ConcreteClosureNested" + name, CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
@@ -31,7 +31,7 @@ public class ConcreteClosureTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var closure = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.BoundClosure!;
+        var closure = Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!;
         Assert.Equal(BoundTypeKind.Closure, closure.EnvironmentType!.Kind);
         Assert.Equal(receiver, closure.Receiver);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));

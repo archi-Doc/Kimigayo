@@ -107,7 +107,7 @@ public class FunctionErasureRankingTest(ITestOutputHelper output)
         Assert.Null(error.Repairs);
         if (unboundBody)
         {
-            Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).BoundClosure);
+            Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf());
         }
 
         var console = new DiagnosticContractTest.DiagnosticConsole();

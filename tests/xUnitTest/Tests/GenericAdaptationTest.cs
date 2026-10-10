@@ -115,7 +115,7 @@ public class GenericAdaptationTest
             "let number = 7\ninspect(number@ref)\ninspect<obj/i32>(8@obj)\nrequire number == 7 else => $abort(\"slot\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.Adaptation is not null);
+        var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionOf().Adaptation is not null);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "inspect");
         var type = body.Resolve(conversion.TypeOf(), InterpretationContext.Root)!;
         Assert.Equal(SemanticsKind.Ref, type.Semantics);
@@ -167,7 +167,7 @@ public class GenericAdaptationTest
         var invalid = MinimalEmissionTest.Analyze(Source.Replace("7@s", "7@s/i64", StringComparison.Ordinal));
         var donor = Assert.Single(KotoTree.Walk(invalid.Kotonoha.RootKoto).OfType<ConversionKoto>());
         Assert.True(KotoHelper.Replace(conversion, conversion.Right, donor.Right));
-        Assert.Null(conversion.Adaptation);
+        Assert.Null(conversion.ConversionOf().Adaptation);
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.TypeMismatch_Kd);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));

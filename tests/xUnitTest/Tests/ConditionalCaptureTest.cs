@@ -56,5 +56,5 @@ public sealed class ConditionalCaptureTest
     }
 
     private static BoundClosure Closure(Compilation c)
-        => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).BoundClosure!;
+        => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!;
 }

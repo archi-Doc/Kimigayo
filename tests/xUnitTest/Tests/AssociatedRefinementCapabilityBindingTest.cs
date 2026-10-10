@@ -64,7 +64,7 @@ public class AssociatedRefinementCapabilityBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.True(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
-        Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
+        Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf());
     }
 
     [Theory]

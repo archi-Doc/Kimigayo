@@ -29,7 +29,7 @@ public class ParameterNameDefaultTest
         Assert.Equal(accepted, c.Emission.Validate(out _));
         if (accepted)
         {
-            Assert.Equal(defaults, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall!.DefaultArguments.Length);
+            Assert.Equal(defaults, Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf()!.DefaultArguments.Length);
         }
     }
 
@@ -136,10 +136,10 @@ public class ParameterNameDefaultTest
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => Assert.Null(x.BoundCall));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => Assert.Null(x.CallOf()));
         Assert.True(KotoHelper.Replace(parent, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(new[] { 0, 1 }, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.BoundCall!.DefaultArguments.Length));
+        Assert.Equal(new[] { 0, 1 }, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => x.CallOf()!.DefaultArguments.Length));
     }
 
     [Trait("Purpose", "Allocation")]

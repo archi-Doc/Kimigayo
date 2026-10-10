@@ -102,7 +102,7 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.OverrideContractMismatch_Kd);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out var selection));
-        Assert.Same(BoundType.I32, selection.Slot.Original.BoundSymbol!.Type);
+        Assert.Same(BoundType.I32, selection.Slot.Original.SymbolOf()!.Type);
     }
 
     [Theory]

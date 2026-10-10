@@ -19,7 +19,7 @@ public class PairCaseTypeTest
         var c = Parse(Box + "func f<s/T>(value: s/T, shared: ref/Box<s/T>, applied: s/Box<T>) -> ()\n    s is owner or uniq\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
-        var target = f.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
+        var target = f.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
         var whole = target.WholeType!;
         var projection = target.Type!;
         var o = c.Binding.PairOuterOrigin(target);
@@ -59,8 +59,8 @@ public class PairCaseTypeTest
         var c = Parse("func g<s/T, t/U>(value: s/(t/U)) -> ()\n    s is value or valueborrow\n    t is valueborrow\n    ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var g = Function(c, "g");
-        var outer = g.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
-        var inner = g.BoundSymbol.Schema.GenericSlots[1].Symbol;
+        var outer = g.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
+        var inner = g.SymbolOf()!.Schema!.GenericSlots[1].Symbol;
         var type = g.Parameters[0].Type.TypeOf()!;
         ReadOnlySpan<PairCase> cases = [new(outer, SemanticsKind.Ref), new(inner, SemanticsKind.Uniq)];
         var formed = c.Binding.CaseType(type, cases);
@@ -79,8 +79,8 @@ public class PairCaseTypeTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Function(c, "f");
         var g = Function(c, "g");
-        var ft = f.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
-        var gt = g.BoundSymbol!.Schema!.GenericSlots[0].Symbol;
+        var ft = f.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
+        var gt = g.SymbolOf()!.Schema!.GenericSlots[0].Symbol;
         var o = c.Binding.PairOuterOrigin(ft);
         Assert.Equal(OriginKind.Parameter, o.Kind);
         Assert.Same(f, o.Binder);
@@ -96,10 +96,10 @@ public class PairCaseTypeTest
         Assert.True(Binding.TryPairLayer(annotated, out var whole, out var target));
         Assert.Same(gt.WholeType, whole);
         Assert.Same(gt.Type, target);
-        Assert.Same(g.BoundSymbol.Schema.Origins[0].Origin, c.Binding.OuterOrigin(annotated));
+        Assert.Same(g.SymbolOf()!.Schema!.Origins[0].Origin, c.Binding.OuterOrigin(annotated));
 
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(o, c.Binding.PairOuterOrigin(Function(c, "f").BoundSymbol!.Schema!.GenericSlots[0].Symbol));
+        Assert.Same(o, c.Binding.PairOuterOrigin(Function(c, "f").SymbolOf()!.Schema!.GenericSlots[0].Symbol));
     }
 
     [Theory]

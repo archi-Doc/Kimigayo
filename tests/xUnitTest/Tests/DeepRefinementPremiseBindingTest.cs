@@ -21,7 +21,7 @@ public class DeepRefinementPremiseBindingTest
         Assert.True(c.Binding.Result.IsComplete);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single();
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
-        Assert.Equal(depth + 1, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C" + depth).BoundSymbol!.Contract!.Ancestors.Count);
+        Assert.Equal(depth + 1, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C" + depth).SymbolOf()!.Contract!.Ancestors.Count);
         Assert.True(c.Bind().IsComplete);
     }
 

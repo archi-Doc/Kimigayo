@@ -179,7 +179,7 @@ public class MatchOwnershipTest
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var initialize = Assert.Single(body.Operations, o => o.Kind == OwnershipOperationKind.InitializeSubject);
-        Assert.Single(body.Operations, o => o.Kind == OwnershipOperationKind.Call && o.Source is InvocationKoto call && call.BoundCall!.Target.Name == "make");
+        Assert.Single(body.Operations, o => o.Kind == OwnershipOperationKind.Call && o.Source is InvocationKoto call && call.CallOf()!.Target.Name == "make");
         Assert.DoesNotContain(body.Operations, o => o.Kind == OwnershipOperationKind.Consume && o.Place == initialize.Input);
         Assert.All(body.CleanupSteps.Where(s => s.Place == initialize.Input), s => Assert.Equal(CleanupAction.Skip, s.Action));
     }
@@ -210,7 +210,7 @@ public class MatchOwnershipTest
         var split = Assert.Single(body.Decompositions);
         var patternLocal = body.Places.Single(p => p.Kind == OwnershipPlaceKind.Local && p.Source is SyntaxFormKoto { Akind: KotoKind.BindingPattern });
         var inner = body.Places.Single(p => p.Source is FieldKoto f && f.NameKoto.IdentifierName == "local");
-        var outer = body.Places.Single(p => p.Source is InvocationKoto call && call.BoundCall!.Target.Name == "make");
+        var outer = body.Places.Single(p => p.Source is InvocationKoto call && call.CallOf()!.Target.Name == "make");
         var steps = body.CleanupSteps.Where(s => body.IsReachable(s.Operation) && body.Operations[s.Operation].Source is ReturnKoto && s.Action == CleanupAction.Destroy && body.Places[s.Place].Type.Name == "string");
         Assert.Equal([inner.Id, patternLocal.Id, split.PayloadStart + 1, outer.Id], steps.Select(s => s.Place));
     }
@@ -259,9 +259,9 @@ public class MatchOwnershipTest
         var c = Parse("func make() -> string => \"temporary\"\nfunc consume(a: i32, b: i32) => ()\nfunc f()\n    consume(\n        2,\n        match make() == \"expected\"\n            true => 1\n            false => 0\n    )");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
-        var inputTemporary = body.Places.Single(p => p.Source is InvocationKoto call && call.BoundCall!.Target.Name == "make");
+        var inputTemporary = body.Places.Single(p => p.Source is InvocationKoto call && call.CallOf()!.Target.Name == "make");
         var destroy = Assert.Single(body.CleanupSteps, s => s.Place == inputTemporary.Id && s.Action == CleanupAction.Destroy);
-        var consume = body.Operations.Select((o, i) => (o, i)).Single(x => x.o.Kind == OwnershipOperationKind.Call && x.o.Source is InvocationKoto call && call.BoundCall!.Target.Name == "consume");
+        var consume = body.Operations.Select((o, i) => (o, i)).Single(x => x.o.Kind == OwnershipOperationKind.Call && x.o.Source is InvocationKoto call && call.CallOf()!.Target.Name == "consume");
         Assert.True(destroy.Operation > consume.i);
     }
 
@@ -313,7 +313,7 @@ public class MatchOwnershipTest
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
         var acquisitions = body.Operations.Where(o => o.Kind == OwnershipOperationKind.AcquirePattern).ToArray();
-        Assert.Equal(["a", "b"], acquisitions.Select(o => body.Places[o.Input].Source.BoundSymbol!.Name));
+        Assert.Equal(["a", "b"], acquisitions.Select(o => body.Places[o.Input].Source.SymbolOf()!.Name));
         var cleanup = body.CleanupPlans.First(p => p.Reason == CleanupReason.ScopeExit);
         var destroyed = body.CleanupSteps.Skip(cleanup.Start).Take(cleanup.Count).Where(s => s.Action == CleanupAction.Destroy).Select(s => s.Place);
         Assert.Equal(acquisitions.Reverse().Select(o => o.Input), destroyed);

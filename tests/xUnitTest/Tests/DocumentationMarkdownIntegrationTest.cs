@@ -22,7 +22,7 @@ public class DocumentationMarkdownIntegrationTest
         Assert.All(doc.GetItemCandidates().ToArray().Take(9), item => Assert.Equal(DocumentationMarkdownItemKind.Unclassified, item.Kind));
         Assert.True(tree.Compilation.Bind().IsComplete);
         var function = Assert.IsType<FunctionKoto>(comment.Declaration);
-        Assert.Equal(-1, function.BoundSymbol!.ReceiverIndex);
+        Assert.Equal(-1, function.SymbolOf()!.ReceiverIndex);
         var classified = doc.ClassifyItems(DeclarationParameters(function)).ToArray();
         Assert.Equal(new[] { "by", "factor", "note", "self", "s", "T", "N", "a", "return", "note" }, classified.Select(x => x.Name));
         Assert.Equal(new[] { DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Unknown, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Parameter, DocumentationMarkdownItemKind.Standard, DocumentationMarkdownItemKind.Standard }, classified.Select(x => x.Kind));
@@ -39,7 +39,7 @@ public class DocumentationMarkdownIntegrationTest
         Assert.True(tree.Compilation.Bind().IsComplete);
         var comment = Assert.Single(Assert.Single(tree.DocumentationSources).Comments);
         var declaration = Assert.IsType<FunctionKoto>(comment.Declaration);
-        Assert.Equal(receiver ? 0 : -1, declaration.BoundSymbol!.ReceiverIndex);
+        Assert.Equal(receiver ? 0 : -1, declaration.SymbolOf()!.ReceiverIndex);
         var items = DocumentationMarkdownDocument.Parse(comment).ClassifyItems(DeclarationParameters(declaration)).ToArray();
         Assert.Equal(receiver ? DocumentationMarkdownItemKind.Unknown : DocumentationMarkdownItemKind.Parameter, items[0].Kind);
         Assert.Equal(DocumentationMarkdownItemKind.Parameter, items[1].Kind);
@@ -171,10 +171,10 @@ public class DocumentationMarkdownIntegrationTest
         result.AddRange(origins.Select(name => new DocumentationMarkdownParameter(name)));
         if (declaration is FunctionKoto f)
         {
-            Assert.NotNull(f.BoundSymbol);
+            Assert.NotNull(f.SymbolOf());
             for (var index = 0; index < f.Parameters.Count; index++)
             {
-                result.Add(new(f.Parameters[index].ExternalName, index == f.BoundSymbol.ReceiverIndex));
+                result.Add(new(f.Parameters[index].ExternalName, index == f.SymbolOf()!.ReceiverIndex));
             }
         }
 

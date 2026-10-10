@@ -40,6 +40,14 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal BoundRuntimeTypeTest? RuntimeTestOf(IsKoto node) => node.BoundRuntimeTest;
 
+    internal BoundClosure? ClosureOf(FunctionKoto node) => node.BoundClosure;
+
+    internal (ConversionBinding Kind, InvocationKoto? Creation, ExplicitAdaptationPlan? Adaptation, Int128? Folded) ConversionOf(ConversionKoto node) => (node.ConversionBinding, node.CreationCall, node.Adaptation, node.FoldedConstant);
+
+    internal (InvocationKoto? Entry, BoundIteration? Plan) IterationOf(ForKoto node) => (node.EntryCall, node.Iteration);
+
+    internal BoundType? ErasedTypeOf(Koto node) => node.ErasedFunctionType;
+
     // A recovery node stands for its syntax error, never for a semantic result.
     internal bool IsRecovery(Koto node) => Binding.IsRecovery(node, out _);
 

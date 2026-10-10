@@ -23,7 +23,7 @@ public class DefaultCompletionTest
         Assert.Empty(flow.PendingBinding);
         var invocation = Assert.Single(flow.Nodes.Keys.OfType<InvocationKoto>());
         Assert.Equal(supplied, flow.Nodes[invocation].CanCompleteNormally);
-        var function = (FunctionKoto)invocation.BoundCall!.Target.Declaration;
+        var function = (FunctionKoto)invocation.CallOf()!.Target.Declaration;
         Assert.True(flow.Nodes[function].CanCompleteNormally);
         Assert.True(c.Ownership.Analyze().IsVerified);
     }
@@ -38,7 +38,7 @@ public class DefaultCompletionTest
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
         Assert.Empty(flow.PendingBinding);
-        var call = Assert.Single(flow.Nodes.Keys.OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "f");
+        var call = Assert.Single(flow.Nodes.Keys.OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "f");
         Assert.False(flow.Nodes[call].CanCompleteNormally);
     }
 

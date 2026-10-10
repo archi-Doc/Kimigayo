@@ -38,8 +38,8 @@ public class GenericCaptureTest
     {
         const string Source = "func identity<T>(value: T) -> T\n    let action = func [] (inner: T) -> T => inner@move\n    return action(value@move)\n_ = identity(1)\n_ = identity(2)\n_ = identity(true)";
         var c = MinimalEmissionTest.Analyze(Source);
-        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).BoundClosure!.EnvironmentType!;
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall?.Target.Name == "identity").Select(x => x.BoundCall!).ToArray();
+        var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "identity").Select(x => x.CallOf()!).ToArray();
         var first = c.Binding.InstantiateStorageType(closure, calls[0])!;
         Assert.Same(first, c.Binding.InstantiateStorageType(closure, calls[1]));
         var other = c.Binding.InstantiateStorageType(closure, calls[2])!;

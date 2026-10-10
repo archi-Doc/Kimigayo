@@ -43,7 +43,7 @@ public class LateConstraintEnvironmentBindingTest
         var container = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
         Assert.Equal(BindingState.Invalid, container.StateOf());
-        Assert.False(c.Binding.GetConformanceDefinition(container.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(container.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
     }
 
     [Theory]
@@ -56,7 +56,7 @@ public class LateConstraintEnvironmentBindingTest
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "independent");
         Assert.Equal(BindingState.Resolved, function.StateOf());
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
-        Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
+        Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf());
         var caller = Caller(c);
         Assert.Equal(ConstraintProof.Error, c.Binding.ProveCopy(caller.Parameters[0].Type.TypeOf()!, caller));
     }
@@ -105,6 +105,6 @@ public class LateConstraintEnvironmentBindingTest
         var caller = Caller(c);
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, caller.StateOf());
         Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(caller.Parameters[0].Type.TypeOf()!, caller));
-        Assert.Equal(valid, Assert.IsType<InvocationKoto>(caller.Body!.Items.Single()).BoundCall is not null);
+        Assert.Equal(valid, Assert.IsType<InvocationKoto>(caller.Body!.Items.Single()).CallOf() is not null);
     }
 }

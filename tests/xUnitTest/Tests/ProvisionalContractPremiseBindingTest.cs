@@ -56,10 +56,10 @@ public class ProvisionalContractPremiseBindingTest
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
         var invocation = Assert.IsType<InvocationKoto>(function.Body!.Items.Single());
-        Assert.Equal(independent, invocation.BoundCall is not null);
+        Assert.Equal(independent, invocation.CallOf() is not null);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
-        Assert.NotNull(invocation.BoundCall);
+        Assert.NotNull(invocation.CallOf());
     }
 
     [Theory]

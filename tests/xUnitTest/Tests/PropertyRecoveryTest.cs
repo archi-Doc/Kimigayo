@@ -128,7 +128,7 @@ public class PropertyRecoveryTest(ITestOutputHelper output)
     }
 
     private static BoundProperty Property(Compilation c)
-        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single().BoundSymbol!.Property!;
+        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single().SymbolOf()!.Property!;
 
     private void AssertRecords(Compilation c, string[] codes)
     {

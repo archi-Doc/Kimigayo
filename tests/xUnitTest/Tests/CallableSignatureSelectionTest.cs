@@ -112,8 +112,8 @@ public class CallableSignatureSelectionTest
         var source = "func both<F>(f: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n        effect confined\n    F is Callable<(i64) -> i32>\n    return f(1@" + type + ")\n" + Main;
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.BoundValueCall is not null);
-        var plan = call.BoundValueCall!;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.ValueCallOf() is not null);
+        var plan = call.ValueCallOf()!;
         Assert.Equal(confined, c.Binding.AvailableCallableEffects(plan.CalleeType.Components[0], plan.DeclaredSignature, plan.ReceiverKind, call).Confined);
     }
 

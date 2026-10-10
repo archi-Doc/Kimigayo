@@ -49,7 +49,7 @@ public sealed class BlockClosureInferenceTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
-        Assert.Same(never ? BoundType.Never : BoundType.Unit, closure.BoundSymbol!.Type);
+        Assert.Same(never ? BoundType.Never : BoundType.Unit, closure.SymbolOf()!.Type);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
@@ -74,7 +74,7 @@ public sealed class BlockClosureInferenceTest
         var c = MinimalEmissionTest.Analyze("let f = func [] ()\n    loop => continue\n    return 1");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous);
-        Assert.Same(BoundType.I32, closure.BoundSymbol!.Type);
+        Assert.Same(BoundType.I32, closure.SymbolOf()!.Type);
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
@@ -141,7 +141,7 @@ public sealed class BlockClosureInferenceTest
         Assert.True(KotoHelper.Replace(closure, closure.Body!, replacement.Body!));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete);
-        Assert.Same(BoundType.String, closure.BoundSymbol!.Type);
+        Assert.Same(BoundType.String, closure.SymbolOf()!.Type);
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
 

@@ -21,11 +21,11 @@ public class UnresolvedRefinementBindingTest
         var contract = Container(c, name);
         Assert.Equal(BindingState.Unresolved, contract.StateOf());
         var function = Container(c, "G").Members.OfType<FunctionKoto>().Single();
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(Assert.IsType<IsKoto>(function.TypeConstraints[0]).BoundConstraint!, function));
-        Assert.False(c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(Assert.IsType<IsKoto>(function.TypeConstraints[0]).ConstraintOf()!, function));
+        Assert.False(c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", qualified ? "public group Api\n    public contract Future" : "public contract Future"));
         Assert.True(c.Bind().IsComplete, string.Join("; ", c.Binding.Issues.Select(x => x.ToString())));
-        Assert.True(c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.True(c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -71,7 +71,7 @@ public class UnresolvedRefinementBindingTest
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public contract Future\n    func read(self: ref/Self) -> i32"));
         Assert.Equal(implemented, c.Bind().IsComplete);
-        Assert.Equal(implemented, c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, Container(c, "Child").BoundSymbol!)!.IsVerified);
+        Assert.Equal(implemented, c.Binding.GetConformanceDefinition(Container(c, "Target").TypeOf()!, Container(c, "Child").SymbolOf()!)!.IsVerified);
     }
 
     [Theory]

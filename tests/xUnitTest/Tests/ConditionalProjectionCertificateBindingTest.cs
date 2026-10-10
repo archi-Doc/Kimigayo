@@ -72,7 +72,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last());
-        Assert.Equal(valid, call.BoundCall is not null);
+        Assert.Equal(valid, call.CallOf() is not null);
         var copy = c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, c.Library.Copy)!;
         Assert.Equal(valid, copy.IsVerified);
     }
@@ -86,7 +86,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, Definition(c).IsVerified);
         var call = Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last());
-        Assert.Equal(valid, call.BoundCall is not null);
+        Assert.Equal(valid, call.CallOf() is not null);
     }
 
     [Fact]
@@ -171,7 +171,7 @@ public class ConditionalProjectionCertificateBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         Assert.Equal(valid, ConditionalProperty(c).IsVerified);
-        Assert.True(Type(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
+        Assert.True(Type(c).Members.OfType<PropertyKoto>().Single().SymbolOf()!.Property!.IsVerified);
         Assert.Equal(valid, c.Bind().IsComplete);
         Assert.Equal(valid, ConditionalProperty(c).IsVerified);
         var restored = CompilationTestHelper.Reload(c);
@@ -201,7 +201,7 @@ public class ConditionalProjectionCertificateBindingTest
     private static BoundProperty ConditionalProperty(Compilation c)
     {
         var conditional = Type(c).Members.OfType<SyntaxFormKoto>().Single();
-        return Assert.IsType<CodeBlockKoto>(conditional.Operands[2]).Items.OfType<PropertyKoto>().Single().BoundSymbol!.Property!;
+        return Assert.IsType<CodeBlockKoto>(conditional.Operands[2]).Items.OfType<PropertyKoto>().Single().SymbolOf()!.Property!;
     }
 
     private static string Prefix(bool lateWitness, bool valid)
@@ -213,5 +213,5 @@ public class ConditionalProjectionCertificateBindingTest
         => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
 
     private static BoundConformance Definition(Compilation c, string contractName = "C")
-        => c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).BoundSymbol!)!;
+        => c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName).SymbolOf()!)!;
 }

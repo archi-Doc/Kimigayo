@@ -33,7 +33,7 @@ public class StructCaptureTest
     {
         var c = MinimalEmissionTest.Analyze(Packet + source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(receiver, Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.BoundClosure!.Receiver);
+        Assert.Equal(receiver, Assert.Single(c.Ownership.Bodies, x => x.Function.IsAnonymous).Function.ClosureOf()!.Receiver);
         ScalarEmissionTest.WriteFixture("StructCapture" + name, CompilationTestHelper.WriteIr(c), "drop\n");
     }
 

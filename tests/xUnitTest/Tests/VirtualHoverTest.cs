@@ -60,7 +60,7 @@ public sealed class VirtualHoverTest
         var c = Create(Source);
         var offset = Source.IndexOf("base.read", StringComparison.Ordinal) + 5;
         var before = At(HoverBuilder.Create(c), offset);
-        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.CallStorage is { Kind: CalleeKind.Virtual, VirtualIsDirect: true }).CallStorage!;
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.CallOf() is { Kind: CalleeKind.Virtual, VirtualIsDirect: true }).CallOf()!;
         call.VirtualImplementation = call.VirtualSlot.Original;
         call.VirtualImplementingType = call.VirtualSlot.DeclaringType;
         var after = At(HoverBuilder.Create(c), offset) with { Use = before.Use };

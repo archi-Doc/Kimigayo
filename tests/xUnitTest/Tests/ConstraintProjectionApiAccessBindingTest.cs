@@ -116,7 +116,7 @@ public class ConstraintProjectionApiAccessBindingTest
         Check(c, false);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Implementation");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
-        var conformance = c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!);
+        var conformance = c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!);
         Assert.NotNull(conformance);
         Assert.False(conformance.IsVerified);
     }

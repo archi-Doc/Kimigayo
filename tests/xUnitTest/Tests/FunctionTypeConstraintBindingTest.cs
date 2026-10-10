@@ -66,7 +66,7 @@ public class FunctionTypeConstraintBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
         var call = c.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-        Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
+        Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).CallOf() is not null);
     }
 
     [Theory]

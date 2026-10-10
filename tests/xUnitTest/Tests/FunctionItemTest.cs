@@ -40,8 +40,8 @@ public class FunctionItemTest
         var c = MinimalEmissionTest.Analyze("func first() => ()\nfunc second() => ()\nlet a = first\nlet b = second\nlet c = first");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().ToArray();
-        Assert.NotSame(variables[0].BoundSymbol!.Type, variables[1].BoundSymbol!.Type);
-        Assert.Same(variables[0].BoundSymbol!.Type, variables[2].BoundSymbol!.Type);
+        Assert.NotSame(variables[0].SymbolOf()!.Type, variables[1].SymbolOf()!.Type);
+        Assert.Same(variables[0].SymbolOf()!.Type, variables[2].SymbolOf()!.Type);
     }
 
     [Theory]

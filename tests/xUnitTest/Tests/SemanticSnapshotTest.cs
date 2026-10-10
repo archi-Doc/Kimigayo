@@ -347,21 +347,21 @@ public sealed class SemanticSnapshotTest
                 text.Append('/').Append(node.FailureOf());
             }
 
-            if (node.BoundMeaning is BoundType type)
+            if (node.TypeOf() is { } type)
             {
                 text.Append(" t=").Append(this.Type(type));
             }
-            else if (node.BoundMeaning is BoundOrigin origin)
+            else if (node.OriginOf() is { } origin)
             {
                 text.Append(" o=").Append(Origin(origin));
             }
 
-            if (node.BoundSymbol is { } symbol)
+            if (node.SymbolOf() is { } symbol)
             {
                 text.Append(" s=").Append(Symbol(symbol));
             }
 
-            if (node.ErasedFunctionType is { } erased)
+            if (node.ErasedTypeOf() is { } erased)
             {
                 text.Append(" erased=").Append(this.Type(erased));
             }
@@ -389,9 +389,9 @@ public sealed class SemanticSnapshotTest
 
             if (node is ConversionKoto conversion)
             {
-                text.Append(" conversion=").Append(conversion.ConversionBinding);
-                this.Call(" creation", conversion.CreationCall);
-                if (conversion.FoldedConstant is { } folded)
+                text.Append(" conversion=").Append(conversion.ConversionOf().Kind);
+                this.Call(" creation", conversion.ConversionOf().Creation);
+                if (conversion.ConversionOf().Folded is { } folded)
                 {
                     text.Append(" folded=").Append(folded.ToString(CultureInfo.InvariantCulture));
                 }
@@ -399,10 +399,10 @@ public sealed class SemanticSnapshotTest
 
             if (node is IsKoto test)
             {
-                text.Append(" constraint=").Append(test.BoundConstraint?.Kind.ToString() ?? "-");
+                text.Append(" constraint=").Append(test.ConstraintOf()?.Kind.ToString() ?? "-");
                 if (test.IsRuntimeTest)
                 {
-                    text.Append(" runtime").Append(test.IsNegated ? "-not" : string.Empty).Append(test.BoundRuntimeTest is null ? string.Empty : "-bound");
+                    text.Append(" runtime").Append(test.IsNegated ? "-not" : string.Empty).Append(test.RuntimeTestOf() is null ? string.Empty : "-bound");
                 }
             }
 
@@ -411,7 +411,7 @@ public sealed class SemanticSnapshotTest
                 text.Append(" direct");
             }
 
-            if (node is ForKoto { Iteration: { } iteration })
+            if (node is ForKoto loop && loop.IterationOf().Plan is { } iteration)
             {
                 this.Call(" next", iteration.Next);
             }
@@ -444,7 +444,7 @@ public sealed class SemanticSnapshotTest
             }
 
             var text = this.text;
-            if (invocation.BoundCall is { } call)
+            if (invocation.CallOf() is { } call)
             {
                 text.Append(label).Append('=').Append(call.Kind == CalleeKind.Virtual ? call.VirtualIsDirect ? "virtual-direct" : "virtual" : "direct")
                     .Append(' ').Append(Symbol(call.Target)).Append(" -> ").Append(this.Type(call.ReturnType));
@@ -469,7 +469,7 @@ public sealed class SemanticSnapshotTest
                     text.Append(" requirement=").Append(Symbol(requirement.RequirementStorage?.Target)).Append(" implementation=").Append(Symbol(requirement.ImplementationStorage?.Target));
                 }
             }
-            else if (invocation.BoundValueCall is { } value)
+            else if (invocation.ValueCallOf() is { } value)
             {
                 text.Append(label).Append("=value ").Append(this.Type(value.Signature)).Append(" receiver=").Append(value.ReceiverKind);
             }

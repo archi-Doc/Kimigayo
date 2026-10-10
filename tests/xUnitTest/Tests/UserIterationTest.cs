@@ -43,7 +43,7 @@ public class UserIterationTest
         Assert.True(KotoHelper.Replace(loop, loop.Iterable, changed.Iterable));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(BoundType.Boolean, loop.Bindings[0].TypeOf());
-        Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.EntryCall!.Method).Left);
+        Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.IterationOf().Entry!.Method).Left);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         var outputIr = CompilationTestHelper.WriteIr(c);
@@ -58,7 +58,7 @@ public class UserIterationTest
         var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
         Assert.True(KotoHelper.Replace(loop, loop.Body, changed.Body));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Same(loop.Body, loop.Iteration!.Decomposition.Arms[0].Syntax.Body);
+        Assert.Same(loop.Body, loop.IterationOf().Plan!.Decomposition.Arms[0].Syntax.Body);
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         var outputIr = CompilationTestHelper.WriteIr(c);

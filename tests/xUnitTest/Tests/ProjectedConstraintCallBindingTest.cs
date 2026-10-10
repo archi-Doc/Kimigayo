@@ -98,7 +98,7 @@ public class ProjectedConstraintCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source("Source.Origin.Item", "i32"));
         var call = Call(c);
-        var plan = call.BoundCall;
+        var plan = call.CallOf();
         Assert.NotNull(plan);
         var generic = Assert.IsType<GenericsKoto>(call.Method);
         var original = Assert.Single(generic.TypeArguments);
@@ -109,7 +109,7 @@ public class ProjectedConstraintCallBindingTest
         AssertCall(c, false);
         Assert.True(KotoHelper.Replace(generic, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(plan, call.BoundCall);
+        Assert.Same(plan, call.CallOf());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -135,7 +135,7 @@ public class ProjectedConstraintCallBindingTest
         => "public contract Origin\n    associate Item\npublic struct Source\n    Self is Origin\n    associate Origin.Item is i32\nfunc take<T>()\n    T is " + requirement + "\n    ()\ntake<" + argument + ">()";
 
     private static void AssertCall(Compilation c, bool valid)
-        => Assert.Equal(valid, Call(c).BoundCall is not null);
+        => Assert.Equal(valid, Call(c).CallOf() is not null);
 
     private static InvocationKoto Call(Compilation c)
         => Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last());

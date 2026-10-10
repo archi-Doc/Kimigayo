@@ -45,8 +45,8 @@ public class OriginFragmentBindingTest
                 var declaration = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
                 Assert.Equal(origins.Length != 0, declaration.HasOriginHeader);
                 Assert.False(declaration.HasIncompatibleBindingHeader);
-                Assert.Equal(origins.Length == 0 ? 0 : origins.Split(',').Length, declaration.BoundSymbol!.Schema!.Origins.Count);
-                Assert.All(declaration.BoundSymbol.Schema.Origins, x => Assert.Same(declaration, x.Origin.Binder));
+                Assert.Equal(origins.Length == 0 ? 0 : origins.Split(',').Length, declaration.SymbolOf()!.Schema!.Origins.Count);
+                Assert.All(declaration.SymbolOf()!.Schema!.Origins, x => Assert.Same(declaration, x.Origin.Binder));
             }
         }
     }
@@ -98,7 +98,7 @@ public class OriginFragmentBindingTest
         Assert.True(c.Bind().IsComplete);
         var declarations = c.Kotonoha.RootKoto.NestedContainers.Where(x => x.Name == "S").ToArray();
         Assert.Equal(2, declarations.Length);
-        Assert.NotSame(declarations[0].BoundSymbol!.Schema!.Origins[0].Origin, declarations[1].BoundSymbol!.Schema!.Origins[0].Origin);
+        Assert.NotSame(declarations[0].SymbolOf()!.Schema!.Origins[0].Origin, declarations[1].SymbolOf()!.Schema!.Origins[0].Origin);
     }
 
     [Trait("Purpose", "Allocation")]

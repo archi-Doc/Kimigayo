@@ -97,11 +97,11 @@ public class IdentityAcquisitionEmissionTest
         var identity = Assert.Single(identities);
         if (defect == "binding")
         {
-            identity.Source.ConversionBinding = ConversionBinding.Literal;
+            identity.Source.SetConversion(ConversionBinding.Literal);
         }
         else if (defect == "target")
         {
-            identity.Source.Right.BoundType = BoundType.Boolean;
+            identity.Source.Right.SetType(BoundType.Boolean);
         }
         else
         {

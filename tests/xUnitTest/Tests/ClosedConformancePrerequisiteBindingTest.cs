@@ -20,7 +20,7 @@ public class ClosedConformancePrerequisiteBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(!cycle, c.Binding.Result.IsComplete);
         var contract = Container(c, "C");
-        Assert.Equal(!cycle, c.Binding.GetConformanceDefinition(Container(c, "A").TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.Equal(!cycle, c.Binding.GetConformanceDefinition(Container(c, "A").TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         Assert.Equal(!cycle, c.Bind().IsComplete);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
@@ -37,7 +37,7 @@ public class ClosedConformancePrerequisiteBindingTest
         var c = MinimalEmissionTest.Analyze("public contract C\npublic struct A\n    A is C\n    Self is C");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(Container(c, "A").TypeOf()!, Container(c, "C").BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(Container(c, "A").TypeOf()!, Container(c, "C").SymbolOf()!)!.IsVerified);
     }
 
     [Theory]

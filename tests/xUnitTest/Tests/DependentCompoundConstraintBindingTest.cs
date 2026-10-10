@@ -64,7 +64,7 @@ public class DependentCompoundConstraintBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var target = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Target");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, contract.BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, contract.SymbolOf()!)?.IsVerified);
     }
 
     [Theory]

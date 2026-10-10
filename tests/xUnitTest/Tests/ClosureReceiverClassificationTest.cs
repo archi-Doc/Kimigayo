@@ -35,7 +35,7 @@ public class ClosureReceiverClassificationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
-        Assert.Equal(SemanticsKind.Owner, closure.BoundClosure!.Receiver);
+        Assert.Equal(SemanticsKind.Owner, closure.ClosureOf()!.Receiver);
     }
 
     [Fact]

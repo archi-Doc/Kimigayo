@@ -34,7 +34,7 @@ public class ConstraintBindingTest
         c.Bind();
         var context = Function(c, "context");
         var queryFunction = Function(c, "query");
-        var proposition = ((IsKoto)queryFunction.TypeConstraints[0]).BoundConstraint!;
+        var proposition = ((IsKoto)queryFunction.TypeConstraints[0]).ConstraintOf()!;
         Assert.Equal(expected, c.Binding.Prove(proposition, queryFunction, [context.Parameters[0].Type.TypeOf()], context));
     }
 
@@ -99,7 +99,7 @@ public class ConstraintBindingTest
         c.Bind();
         var query = Function(c, "query");
         var context = Function(c, "context");
-        var constraint = ((IsKoto)query.TypeConstraints[0]).BoundConstraint!;
+        var constraint = ((IsKoto)query.TypeConstraints[0]).ConstraintOf()!;
         Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(constraint, query, [context.Parameters[0].Type.TypeOf()], context));
         Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(constraint, query, [constraint.RequiredType], context));
     }
@@ -114,7 +114,7 @@ public class ConstraintBindingTest
         var c = Parse((reverse ? b + a : a + b) + "let result = f(1)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
-        Assert.Empty(((FunctionKoto)call.BoundSymbol!.Declaration).GenericArguments);
+        Assert.Empty(((FunctionKoto)call.SymbolOf()!.Declaration).GenericArguments);
     }
 
     [Fact]
@@ -133,7 +133,7 @@ public class ConstraintBindingTest
         var c = Parse("struct Box<T>\n    T is i32\n    let value: T\nfunc f<U>(value: U)\n    U is i32 or Box<string>\n    ()");
         Assert.False(c.Bind().IsComplete);
         var function = Function(c, "f");
-        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).BoundConstraint!, function));
+        Assert.Equal(ConstraintProof.Error, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).ConstraintOf()!, function));
     }
 
     [Fact]
@@ -237,7 +237,7 @@ public class ConstraintBindingTest
         var c = Parse("contract C\nstruct S\n    Self is C\nstruct N\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(N.init())");
         Assert.True(c.Bind().IsComplete);
         var s = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
-        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].BoundConstraint!, s));
+        Assert.Equal(ConstraintProof.Proven, c.Binding.Prove(s.ConstraintNodes[0].ConstraintOf()!, s));
     }
 
     // SPEC 8.7, 8.4.8.4: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
@@ -279,10 +279,10 @@ public class ConstraintBindingTest
         var c = Parse("func f<T>(x: T)\n    T is Missing\n    ()");
         c.Bind();
         var clause = (IsKoto)Function(c, "f").TypeConstraints[0];
-        Assert.Equal(ConstraintKind.Error, clause.BoundConstraint!.Kind);
+        Assert.Equal(ConstraintKind.Error, clause.ConstraintOf()!.Kind);
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct Missing");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Equal(ConstraintKind.TypeIdentity, clause.BoundConstraint!.Kind);
+        Assert.Equal(ConstraintKind.TypeIdentity, clause.ConstraintOf()!.Kind);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -295,9 +295,9 @@ public class ConstraintBindingTest
             Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         }
 
-        var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).BoundConstraint;
+        var proposition = ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf();
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
-        Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).BoundConstraint);
+        Assert.Same(proposition, ((IsKoto)Function(c, "f").TypeConstraints[0]).ConstraintOf());
     }
 
     private static Compilation Parse(string source, bool allowParserErrors = false)

@@ -19,11 +19,11 @@ public class SignatureInputFormationBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix + "group G\n    func take(x: " + (result ? "i32" : projected) + ") -> " + (result ? projected : "i32") + " => x\n    func call() -> i32 => take(1)");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Call(c).BoundCall is not null);
+        Assert.Equal(valid, Call(c).CallOf() is not null);
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
-        Assert.Equal(valid, Call(restored).BoundCall is not null);
+        Assert.Equal(valid, Call(restored).CallOf() is not null);
     }
 
     [Theory]
@@ -67,7 +67,7 @@ public class SignatureInputFormationBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
     }
 
     [Theory]
@@ -85,17 +85,17 @@ public class SignatureInputFormationBindingTest
         const string source = Prefix + "group G\n    func take(x: Source<i32>.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
-        var plan = Call(c).BoundCall;
+        var plan = Call(c).CallOf();
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "take");
         var original = function.Parameters[0].Type;
         var donor = MinimalEmissionTest.Analyze(source.Replace("Source<i32>", "Source<string>", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "take").Parameters[0].Type;
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         Assert.True(KotoHelper.Replace(function, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(plan, Call(c).BoundCall);
+        Assert.Same(plan, Call(c).CallOf());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -123,5 +123,5 @@ public class SignatureInputFormationBindingTest
         => Assert.IsType<InvocationKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody);
 
     private static BoundProperty Property(Compilation c)
-        => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!;
+        => c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<PropertyKoto>().Single().SymbolOf()!.Property!;
 }

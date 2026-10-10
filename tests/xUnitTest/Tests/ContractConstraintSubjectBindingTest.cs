@@ -63,7 +63,7 @@ public class ContractConstraintSubjectBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.UnsatisfiedConstraint);
         var implementation = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Impl");
-        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, Contract(c).BoundSymbol!)?.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(implementation.TypeOf()!, Contract(c).SymbolOf()!)?.IsVerified);
     }
 
     [Theory]

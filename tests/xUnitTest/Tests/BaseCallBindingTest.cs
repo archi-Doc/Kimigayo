@@ -78,17 +78,17 @@ public class BaseCallBindingTest
         var source = direct ? Source : Source.Replace("base.read", "self.read", StringComparison.Ordinal);
         var c = MinimalEmissionTest.Analyze(Types + source);
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.Method is MemberAccessKoto { Right: IdentifierNameKoto { IdentifierName: "read" } });
-        var before = call.BoundCall!.Target;
-        var previousPath = call.BoundCall.BasePath;
+        var before = call.CallOf()!.Target;
+        var previousPath = call.CallOf()!.BasePath;
         var derived = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "Derived");
         var donor = MinimalEmissionTest.Analyze(Types + source.Replace("Derived : Base", "Derived : Other", StringComparison.Ordinal));
         var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "Derived");
         Assert.True(KotoHelper.Replace(derived, derived.Bases[0], changed.Bases[0]));
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.True(c.Bind().IsComplete);
-        Assert.NotSame(before, call.BoundCall!.Target);
-        Assert.NotSame(previousPath, call.BoundCall.BasePath);
-        Assert.Equal("Other", call.BoundCall.DeclaringType!.Symbol!.Name);
+        Assert.NotSame(before, call.CallOf()!.Target);
+        Assert.NotSame(previousPath, call.CallOf()!.BasePath);
+        Assert.Equal("Other", call.CallOf()!.DeclaringType!.Symbol!.Name);
     }
 
     [Trait("Purpose", "Allocation")]

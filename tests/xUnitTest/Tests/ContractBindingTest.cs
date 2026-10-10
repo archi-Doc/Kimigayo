@@ -15,9 +15,9 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess("contract C\n    property item: i32 has get\nstruct S\n    Self is C\n    public let item: i32");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var type = Container(c, "S");
-        var contract = Container(c, "C").BoundSymbol!;
+        var contract = Container(c, "C").SymbolOf()!;
         var conformance = Assert.IsType<BoundConformance>(c.Binding.GetConformance(type.TypeOf()!, contract));
-        var property = Assert.IsType<PropertyKoto>(Assert.Single(type.Members)).BoundSymbol!.Property!;
+        var property = Assert.IsType<PropertyKoto>(Assert.Single(type.Members)).SymbolOf()!.Property!;
         Assert.True(conformance.IsVerified);
         Assert.True(property.IsVerified);
 
@@ -37,7 +37,7 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func read(self: ref/Self) -> i32\nstruct S\n    Self is C\n    public func read(self: ref/Self) -> i32 => 1");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var contract = Container(c, "C").BoundSymbol!;
+        var contract = Container(c, "C").SymbolOf()!;
         var type = Container(c, "S").TypeOf()!;
         var mapping = Assert.IsType<BoundConformance>(c.Binding.GetConformance(type, contract));
         var witness = Assert.Single(mapping.Witnesses);
@@ -75,10 +75,10 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract A\n    func f()\ncontract B: A\ncontract C: A\ncontract D: B, C\nstruct S\n    Self is D\n    Self is A\n    public func f() => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var d = Container(c, "D").BoundSymbol!.Contract!;
+        var d = Container(c, "D").SymbolOf()!.Contract!;
         Assert.Single(d.Requirements);
         Assert.Equal(3, d.Ancestors.Count);
-        Assert.Equal(Container(c, "A").BoundSymbol!.Contract!.Requirements[0], d.Requirements[0]);
+        Assert.Equal(Container(c, "A").SymbolOf()!.Contract!.Requirements[0], d.Requirements[0]);
     }
 
     [Theory]
@@ -104,7 +104,7 @@ public class ContractBindingTest
         Assert.Equal(valid, c.Bind().IsComplete);
         if (valid)
         {
-            Assert.Equal("i32", Assert.Single(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").BoundSymbol!)!.AssociatedTypes).Value.Name);
+            Assert.Equal("i32", Assert.Single(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!)!.AssociatedTypes).Value.Name);
         }
     }
 
@@ -166,11 +166,11 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func empty() -> Self\nfunc make<T>() -> T\n    T is C\n    return T.empty()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.NotNull(call.BoundCall);
-        Assert.Equal(BoundTypeKind.Parameter, call.BoundCall.ConformingType!.Kind);
-        Assert.Equal(Container(c, "C").BoundSymbol!.Contract!.Requirements[0], new(call.BoundCall.Target, call.BoundCall.RequirementContract!));
-        Assert.Same(call.BoundCall.ConformingType, call.TypeOf());
-        Assert.Null(call.BoundCall.Receiver);
+        Assert.NotNull(call.CallOf());
+        Assert.Equal(BoundTypeKind.Parameter, call.CallOf()!.ConformingType!.Kind);
+        Assert.Equal(Container(c, "C").SymbolOf()!.Contract!.Requirements[0], new(call.CallOf()!.Target, call.CallOf()!.RequirementContract!));
+        Assert.Same(call.CallOf()!.ConformingType, call.TypeOf());
+        Assert.Null(call.CallOf()!.Receiver);
     }
 
     [Theory]
@@ -182,8 +182,8 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    associate Element\n    func read(self: ref/Self) -> Element\nfunc readOne<T>(source: ref/T) -> {result}\n    {constraints}\n    return source.read()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.NotNull(call.BoundCall!.Receiver);
-        Assert.Equal(BoundTypeKind.Parameter, call.BoundCall.ConformingType!.Kind);
+        Assert.NotNull(call.CallOf()!.Receiver);
+        Assert.Equal(BoundTypeKind.Parameter, call.CallOf()!.ConformingType!.Kind);
     }
 
     [Fact]
@@ -324,7 +324,7 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f()\nstruct S\n    Self is C\n    public func f() => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var mapping = c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").BoundSymbol!)!;
+        var mapping = c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!)!;
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct S\n    public func f() => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.False(mapping.IsVerified);
@@ -413,7 +413,7 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f(x: i32) -> i32\nstruct S\n    Self is C\n    public func f(x: i32 = 1) -> i32 => x\nfunc call<T>() -> i32\n    T is C\n    return T.f()");
         Assert.False(c.Bind().IsComplete);
-        Assert.NotNull(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").BoundSymbol!));
+        Assert.NotNull(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!));
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
@@ -425,7 +425,7 @@ public class ContractBindingTest
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f() -> ref/i32 during a\nfunc call<T>()\n    T is C\n    T.f()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.NotNull(call.BoundCall);
+        Assert.NotNull(call.CallOf());
         var origin = call.TypeOf()!.Origin!;
         Assert.Equal((OriginKind.Inference, true), (origin.Kind, origin.Open));
         Assert.Same(call, origin.Binder);
@@ -436,11 +436,11 @@ public class ContractBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess("contract C\n    func f()\nstruct S\n    Self is C");
         c.Binding.Bind(BindingMode.Provisional);
-        var shape = Container(c, "C").BoundSymbol!.Contract;
+        var shape = Container(c, "C").SymbolOf()!.Contract;
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "struct S\n    public func f() => ()");
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
-        Assert.Same(shape, Container(c, "C").BoundSymbol!.Contract);
-        var mapping = c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").BoundSymbol!)!;
+        Assert.Same(shape, Container(c, "C").SymbolOf()!.Contract);
+        var mapping = c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!)!;
         Assert.Same(mapping.Witnesses[0].Implementation, mapping.GetImplementation(mapping.Witnesses[0].Identity));
     }
 

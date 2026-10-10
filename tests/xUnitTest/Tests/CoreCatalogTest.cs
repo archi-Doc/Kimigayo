@@ -161,7 +161,7 @@ public class CoreCatalogTest
             Assert.Equal(expected.Length, calls.Length);
             for (var i = 0; i < expected.Length; i++)
             {
-                Assert.Same(expected[i], calls[i].BoundCall!.Target);
+                Assert.Same(expected[i], calls[i].CallOf()!.Target);
                 Assert.Equal("Intrinsics", Assert.IsType<GroupKoto>(expected[i].Declaration.Parent).Name);
             }
         }

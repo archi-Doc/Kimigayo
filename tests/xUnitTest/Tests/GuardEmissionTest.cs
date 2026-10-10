@@ -68,7 +68,7 @@ public class GuardEmissionTest
         Assert.Same(pattern.BodySymbol!.Declaration, pattern.CandidateSymbol.Declaration);
         Assert.False(body.SymbolPlaces.ContainsKey(pattern.CandidateSymbol));
         // SPEC 14.8.3: the candidate is a shared reference, so it borrows the Subject Place, which holds the value.
-        Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.BoundSymbol == pattern.CandidateSymbol);
+        Assert.Contains(body.Operations, x => x.Kind == OwnershipOperationKind.Borrow && x.Source.SymbolOf() == pattern.CandidateSymbol);
         Assert.Contains(module.GetFunction(0).Slots, x => x.Place == body.Matches[0].Subject);
     }
 
@@ -136,7 +136,7 @@ public class GuardEmissionTest
         var arm = body.MatchArms[0];
         if (defect == "candidate")
         {
-            var read = body.OperationStorage.FindIndex(x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && x.Source.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate);
+            var read = body.OperationStorage.FindIndex(x => x.Kind is OwnershipOperationKind.Read or OwnershipOperationKind.Borrow && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);
             body.OperationSteps[read] = -1;
         }
         else if (defect == "boolean")
@@ -201,7 +201,7 @@ public class GuardEmissionTest
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetMatch(match, out var plan));
         Assert.Null(plan!.Positions[0].CandidateSymbol);
-        Assert.Same(plan.Positions[0].BodySymbol, ((BinaryKoto)oldGuard).Left.BoundSymbol);
+        Assert.Same(plan.Positions[0].BodySymbol, ((BinaryKoto)oldGuard).Left.SymbolOf());
     }
 
     [Fact]

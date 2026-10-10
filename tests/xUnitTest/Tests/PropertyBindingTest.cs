@@ -46,10 +46,10 @@ public class PropertyBindingTest
         var names = KotoTree.Walk(property.Setter.Declaration!.Body!).OfType<IdentifierNameKoto>().ToArray();
         var storage = Assert.Single(names, x => x.IdentifierName == "storage");
         var value = Assert.Single(names, x => x.IdentifierName == "value");
-        Assert.Equal(BindingSymbolKind.Storage, storage.BoundSymbol!.Kind);
-        Assert.Same(property.Declaration, storage.BoundSymbol.Declaration);
-        Assert.Equal(BindingSymbolKind.Parameter, value.BoundSymbol!.Kind);
-        Assert.NotSame(storage.BoundSymbol, value.BoundSymbol);
+        Assert.Equal(BindingSymbolKind.Storage, storage.SymbolOf()!.Kind);
+        Assert.Same(property.Declaration, storage.SymbolOf()!.Declaration);
+        Assert.Equal(BindingSymbolKind.Parameter, value.SymbolOf()!.Kind);
+        Assert.NotSame(storage.SymbolOf(), value.SymbolOf());
     }
 
     [Theory]
@@ -88,8 +88,8 @@ public class PropertyBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var getter = Property(c, "S", "item").Getter;
         var self = KotoTree.Walk(getter.Declaration!.ReturnType!).OfType<IdentifierNameKoto>().Single(x => x.IdentifierName == "self");
-        Assert.Equal(BindingSymbolKind.Parameter, self.BoundSymbol!.Kind);
-        Assert.Same(getter.Declaration, self.BoundSymbol.Declaration);
+        Assert.Equal(BindingSymbolKind.Parameter, self.SymbolOf()!.Kind);
+        Assert.Same(getter.Declaration, self.SymbolOf()!.Declaration);
         Assert.Same(Property(c, "S", "item").Type, getter.Result);
     }
 
@@ -302,7 +302,7 @@ public class PropertyBindingTest
     {
         var c = CompilationTestHelper.ParseSuccess($"contract C\n    property item: i32 has get\nopen struct Base\n    public var item: i32\nstruct S: Base\n    Self is C\n    {member}");
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").BoundSymbol!));
+        Assert.Null(c.Binding.GetConformance(Container(c, "S").TypeOf()!, Container(c, "C").SymbolOf()!));
     }
 
     [Theory]
@@ -322,7 +322,7 @@ public class PropertyBindingTest
         var c = CompilationTestHelper.ParseSuccess("open struct Base<T>\n    public var item: T\nstruct S: Base<i32>\nfunc read(value: ref/S) -> i32 => value.item");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var member = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(x => x.Right.ToString() == "item");
-        Assert.Same(Property(c, "Base", "item").Symbol, member.BoundSymbol);
+        Assert.Same(Property(c, "Base", "item").Symbol, member.SymbolOf());
         Assert.Equal("i32", member.TypeOf()!.Name);
     }
 
@@ -425,9 +425,9 @@ public class PropertyBindingTest
 
     private static DeclarationContainerKoto Container(Compilation c, string name) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name);
 
-    private static BoundProperty Property(Compilation c, string type, string name) => Container(c, type).Members.OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == name).BoundSymbol!.Property!;
+    private static BoundProperty Property(Compilation c, string type, string name) => Container(c, type).Members.OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == name).SymbolOf()!.Property!;
 
-    private static BoundConformance Conformance(Compilation c, string type, string contract) => c.Binding.GetConformance(Container(c, type).TypeOf()!, Container(c, contract).BoundSymbol!)!;
+    private static BoundConformance Conformance(Compilation c, string type, string contract) => c.Binding.GetConformance(Container(c, type).TypeOf()!, Container(c, contract).SymbolOf()!)!;
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
 }

@@ -17,7 +17,7 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = (" + expression + ")) => ()\nf(3)");
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        var function = (FunctionKoto)Assert.Single(Calls(c)).BoundCall!.Target.Declaration;
+        var function = (FunctionKoto)Assert.Single(Calls(c)).CallOf()!.Target.Declaration;
         var value = function.Parameters[0].DefaultValue!;
         var flow = c.Ownership.ControlFlow!;
         Assert.True(flow.Nodes.ContainsKey(value));
@@ -57,7 +57,7 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32 = (loop => continue)) => ()\nf(3)");
         Assert.True(c.Binding.Result.IsComplete);
-        var function = (FunctionKoto)Assert.Single(Calls(c)).BoundCall!.Target.Declaration;
+        var function = (FunctionKoto)Assert.Single(Calls(c)).CallOf()!.Target.Declaration;
         var flow = c.Ownership.ControlFlow!;
         Assert.Empty(flow.Issues);
         Assert.False(flow.Nodes[function.Parameters[0].DefaultValue!].CanCompleteNormally);
@@ -86,7 +86,7 @@ public class DefaultBindingTest
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x, z: i32 = y) => ()\nf(z: 3, x: 1)");
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(Calls(c));
-        var plan = call.BoundCall!;
+        var plan = call.CallOf()!;
         var function = (FunctionKoto)plan.Target.Declaration;
         Assert.Equal(new[] { 2, 0 }, plan.ArgumentToParameter.ToArray());
         Assert.Same(call.ArgumentNodes[0], plan.ArgumentOperations[0].Source);
@@ -94,7 +94,7 @@ public class DefaultBindingTest
         var omitted = Assert.Single(plan.DefaultArguments.ToArray());
         Assert.Same(c.Binding.ParameterSymbol(function, 1), omitted.Parameter);
         Assert.Same(function.Parameters[1].DefaultValue, omitted.Expression);
-        Assert.Same(c.Binding.ParameterSymbol(function, 0), omitted.Expression.BoundSymbol);
+        Assert.Same(c.Binding.ParameterSymbol(function, 0), omitted.Expression.SymbolOf());
         Assert.Same(BoundType.I32, omitted.ParameterType);
         Assert.True(c.Emission.Validate(out var error), error);
     }
@@ -107,13 +107,13 @@ public class DefaultBindingTest
         const string Function = "func f(x: i32, y: i32 = x, z: i32 = y) => ()";
         var c = MinimalEmissionTest.Analyze(forward ? "f(1)\n" + Function : Function + "\nf(1)");
         Assert.True(c.Binding.Result.IsComplete);
-        var plan = Assert.Single(Calls(c)).BoundCall!;
+        var plan = Assert.Single(Calls(c)).CallOf()!;
         var function = (FunctionKoto)plan.Target.Declaration;
         Assert.Equal(2, plan.DefaultArguments.Length);
         for (var i = 0; i < 2; i++)
         {
             Assert.Same(c.Binding.ParameterSymbol(function, i + 1), plan.DefaultArguments[i].Parameter);
-            Assert.Same(c.Binding.ParameterSymbol(function, i), plan.DefaultArguments[i].Expression.BoundSymbol);
+            Assert.Same(c.Binding.ParameterSymbol(function, i), plan.DefaultArguments[i].Expression.SymbolOf());
         }
     }
 
@@ -124,7 +124,7 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct S\n    public func f(first: i32, self: ref/Self, last: i32 = first) => ()\nfunc use(x: ref/S) => " + expression);
         Assert.True(c.Binding.Result.IsComplete);
-        var plan = Assert.Single(Calls(c)).BoundCall!;
+        var plan = Assert.Single(Calls(c)).CallOf()!;
         var function = (FunctionKoto)plan.Target.Declaration;
         Assert.Equal(explicitCount, plan.ArgumentOperations.Length);
         Assert.Same(c.Binding.ParameterSymbol(function, 2), Assert.Single(plan.DefaultArguments.ToArray()).Parameter);
@@ -137,13 +137,13 @@ public class DefaultBindingTest
         Assert.True(c.Binding.Result.IsComplete);
         var calls = Calls(c).ToArray();
         Assert.Equal(2, calls.Length);
-        var first = Assert.Single(calls[0].BoundCall!.DefaultArguments.ToArray());
-        var second = Assert.Single(calls[1].BoundCall!.DefaultArguments.ToArray());
+        var first = Assert.Single(calls[0].CallOf()!.DefaultArguments.ToArray());
+        var second = Assert.Single(calls[1].CallOf()!.DefaultArguments.ToArray());
         Assert.Same(first.Expression, second.Expression);
         Assert.Same(first.Parameter, second.Parameter);
         Assert.Same(BoundType.I32, first.ParameterType);
         Assert.Equal("i64", second.ParameterType.Name);
-        Assert.Same(calls[1].BoundCall!.ArgumentOperations[0].ParameterType, second.ParameterType);
+        Assert.Same(calls[1].CallOf()!.ArgumentOperations[0].ParameterType, second.ParameterType);
         Assert.Equal(BoundTypeKind.Parameter, first.Expression.TypeOf()!.Kind);
     }
 
@@ -152,7 +152,7 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: ref/i32 during a, y: ref/i32 during a = x) => ()\nfunc use(x: ref/i32 during b) => f(x)");
         Assert.True(c.Binding.Result.IsComplete);
-        var plan = Assert.Single(Calls(c)).BoundCall!;
+        var plan = Assert.Single(Calls(c)).CallOf()!;
         var omitted = Assert.Single(plan.DefaultArguments.ToArray());
         Assert.Same(plan.ArgumentOperations[0].ParameterType!.Origin, omitted.ParameterType.Origin);
         Assert.NotSame(omitted.Expression.TypeOf()!.Origin, omitted.ParameterType.Origin);
@@ -163,7 +163,7 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("open struct Base<T>\n    T is Copy\n    public func f(x: T, y: T = x) => ()\nstruct D: Base<i32>\nD.f(1)");
         Assert.True(c.Binding.Result.IsComplete);
-        var plan = Assert.Single(Calls(c)).BoundCall!;
+        var plan = Assert.Single(Calls(c)).CallOf()!;
         Assert.Equal("Base", plan.DeclaringType!.Symbol!.Name);
         Assert.Same(BoundType.I32, Assert.Single(plan.DefaultArguments.ToArray()).ParameterType);
     }
@@ -173,18 +173,18 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x) => ()\nf(1)");
         var call = Assert.Single(Calls(c));
-        var oldPlan = call.BoundCall!;
+        var oldPlan = call.CallOf()!;
         var original = (FunctionKoto)oldPlan.Target.Declaration;
         var replacementCompilation = MinimalEmissionTest.Analyze("func f(x: i32) => ()");
         var replacement = KotoTree.Walk(replacementCompilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(oldPlan, call.BoundCall);
-        Assert.True(call.BoundCall!.DefaultArguments.IsEmpty);
+        Assert.Same(oldPlan, call.CallOf());
+        Assert.True(call.CallOf()!.DefaultArguments.IsEmpty);
         Assert.True(KotoHelper.Replace(parent, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(original.Parameters[1].DefaultValue, Assert.Single(call.BoundCall!.DefaultArguments.ToArray()).Expression);
+        Assert.Same(original.Parameters[1].DefaultValue, Assert.Single(call.CallOf()!.DefaultArguments.ToArray()).Expression);
     }
 
     [Fact]
@@ -192,10 +192,10 @@ public class DefaultBindingTest
     {
         var valid = MinimalEmissionTest.Analyze("func f(x: i32 ! y: i32 = x) => ()\nf(1, y: 2)");
         Assert.True(valid.Binding.Result.IsComplete);
-        Assert.True(Assert.Single(Calls(valid)).BoundCall!.DefaultArguments.IsEmpty);
+        Assert.True(Assert.Single(Calls(valid)).CallOf()!.DefaultArguments.IsEmpty);
         var omitted = MinimalEmissionTest.Analyze("func f(x: i32 ! y: i32 = x) => ()\nf(1)");
         Assert.True(omitted.Binding.Result.IsComplete);
-        Assert.Equal(1, Assert.Single(Calls(omitted)).BoundCall!.DefaultArguments.Length);
+        Assert.Equal(1, Assert.Single(Calls(omitted)).CallOf()!.DefaultArguments.Length);
     }
 
     [Fact]
@@ -203,14 +203,14 @@ public class DefaultBindingTest
     {
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x) => ()\nf(1)");
         Assert.True(c.Binding.Result.IsComplete);
-        var plan = Assert.Single(Calls(c)).BoundCall!;
+        var plan = Assert.Single(Calls(c)).CallOf()!;
         var expression = plan.DefaultArguments[0].Expression;
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(plan, Assert.Single(Calls(c)).BoundCall);
+        Assert.Same(plan, Assert.Single(Calls(c)).CallOf());
         Assert.Same(expression, plan.DefaultArguments[0].Expression);
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        var restoredPlan = Assert.Single(Calls(restored)).BoundCall!;
+        var restoredPlan = Assert.Single(Calls(restored)).CallOf()!;
         var restoredFunction = (FunctionKoto)restoredPlan.Target.Declaration;
         Assert.NotSame(expression, restoredPlan.DefaultArguments[0].Expression);
         Assert.Same(restoredFunction.Parameters[1].DefaultValue, restoredPlan.DefaultArguments[0].Expression);
@@ -282,7 +282,7 @@ public class DefaultBindingTest
         var c = MinimalEmissionTest.Analyze("group Defaults\n    let x = 7\n    func f(x: i32, y: i32 = x) => ()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var function = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.Single().Members.OfType<FunctionKoto>());
-        Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.BoundSymbol);
+        Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.SymbolOf());
     }
 
     [Fact]
@@ -291,7 +291,7 @@ public class DefaultBindingTest
         var c = MinimalEmissionTest.Analyze("func f(x: i32, y: i32 = x) => ()");
         var function = Assert.Single(c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<FunctionKoto>());
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.BoundSymbol);
+        Assert.Same(c.Binding.ParameterSymbol(function, 0), function.Parameters[1].DefaultValue!.SymbolOf());
         var bytes = Tinyhand.TinyhandSerializer.Serialize(c.Kotonoha);
         var restored = Compilation.CreateForTest();
         Assert.True(restored.Prepare(WindowsProfile.Target));
@@ -301,7 +301,7 @@ public class DefaultBindingTest
         kotonoha.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         var restoredFunction = Assert.Single(kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<FunctionKoto>());
-        Assert.Same(restored.Binding.ParameterSymbol(restoredFunction, 0), restoredFunction.Parameters[1].DefaultValue!.BoundSymbol);
+        Assert.Same(restored.Binding.ParameterSymbol(restoredFunction, 0), restoredFunction.Parameters[1].DefaultValue!.SymbolOf());
     }
 
     [Trait("Purpose", "Allocation")]

@@ -74,7 +74,7 @@ public class ArrayInferenceEmissionTest
         Assert.True(c.Emission.WriteIr(original, out var error), error);
         var variable = c.Kotonoha.GeneratedFunction!.Body!.ChildNodes.OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "row");
         var array = Assert.IsType<FixedArrayTypeKoto>(variable.TypeKoto);
-        array.ElementType.BoundType = BoundType.String;
+        array.ElementType.SetType(BoundType.String);
         Assert.True(c.Bind().IsComplete);
         Assert.Same(BoundType.Primitives["u8"], array.ElementType.TypeOf());
         c.Binding.CheckStartup(OutputKind.Application);

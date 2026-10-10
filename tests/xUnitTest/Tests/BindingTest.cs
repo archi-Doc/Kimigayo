@@ -18,13 +18,13 @@ public class BindingTest
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         Assert.Equal(nodes, KotoTree.Walk(compilation.Kotonoha.RootKoto));
         Assert.Equal("i32", call.TypeOf()!.Name);
-        Assert.Equal("add", call.BoundCall!.Target.Name);
-        Assert.Equal(new[] { 0, 1 }, call.BoundCall.ArgumentToParameter.ToArray());
-        var plan = call.BoundCall;
-        var symbol = call.BoundSymbol;
+        Assert.Equal("add", call.CallOf()!.Target.Name);
+        Assert.Equal(new[] { 0, 1 }, call.CallOf()!.ArgumentToParameter.ToArray());
+        var plan = call.CallOf();
+        var symbol = call.SymbolOf();
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
-        Assert.Same(symbol, call.BoundSymbol);
-        Assert.Same(plan, call.BoundCall);
+        Assert.Same(symbol, call.SymbolOf());
+        Assert.Same(plan, call.CallOf());
         Assert.Empty(TestDiagnostics.Of(compilation));
     }
 
@@ -41,7 +41,7 @@ public class BindingTest
         compilation.Kotonoha.CreateCodeContext().Parse(group, "func generated() -> i32 => 42");
         Assert.True(compilation.Binding.Bind(BindingMode.Final).IsComplete, Describe(compilation));
         Assert.Same(call, Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>()));
-        Assert.Equal("generated", call.BoundCall!.Target.Name);
+        Assert.Equal("generated", call.CallOf()!.Target.Name);
     }
 
     [Fact]
@@ -53,7 +53,7 @@ public class BindingTest
         Assert.Equal(BindingState.Resolved, call.StateOf());
         compilation.Kotonoha.CreateCodeContext().Parse(Assert.Single(compilation.Kotonoha.RootKoto.NestedContainers), "func f(x: i64) -> i32 => 1");
         Assert.False(compilation.Binding.Bind(BindingMode.Final).IsComplete);
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.Contains(compilation.Binding.Issues, x => x.Code == DiagnosticCode.AmbiguousBinding_Kd);
     }
 
@@ -137,8 +137,8 @@ public class BindingTest
         var function = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => !x.IsGenerated);
         var local = Assert.Single(KotoTree.Walk(function).OfType<FieldKoto>());
         var operand = Assert.IsType<IdentifierNameKoto>(ParseTestHelper.Binary(KotoKind.Plus, local.InitializerKoto).Left);
-        Assert.Equal(BindingSymbolKind.Parameter, operand.BoundSymbol!.Kind);
-        Assert.NotSame(local.BoundSymbol, operand.BoundSymbol);
+        Assert.Equal(BindingSymbolKind.Parameter, operand.SymbolOf()!.Kind);
+        Assert.NotSame(local.SymbolOf(), operand.SymbolOf());
     }
 
     [Fact]
@@ -156,8 +156,8 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess("func identity<T>(value: T) -> T => value\nlet a = identity(1)\nlet b = identity<i64>(2)\nlet pair: (i32, i32) = (1, 2)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var calls = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
-        Assert.Equal("i32", calls[0].BoundCall!.TypeArguments[0]!.Name);
-        Assert.Equal("i64", calls[1].BoundCall!.TypeArguments[0]!.Name);
+        Assert.Equal("i32", calls[0].CallOf()!.TypeArguments[0]!.Name);
+        Assert.Equal("i64", calls[1].CallOf()!.TypeArguments[0]!.Name);
         var pair = KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "pair");
         Assert.Same(pair.TypeKoto!.TypeOf(), pair.InitializerKoto!.TypeOf());
     }
@@ -177,7 +177,7 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess("group Outer\n    struct T\n    group Inner\n        group T\n        func f(x: T) -> T => x");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var function = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<FunctionKoto>());
-        Assert.IsType<StructKoto>(function.Parameters[0].Type.BoundSymbol!.Declaration);
+        Assert.IsType<StructKoto>(function.Parameters[0].Type.SymbolOf()!.Declaration);
     }
 
     [Theory]
@@ -199,7 +199,7 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess(string.Join("\n", declarations) + "\nlet result = f(1)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var call = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var selected = Assert.IsType<FunctionKoto>(call.BoundSymbol!.Declaration);
+        var selected = Assert.IsType<FunctionKoto>(call.SymbolOf()!.Declaration);
         Assert.Empty(selected.GenericArguments);
         Assert.Single(selected.Parameters);
     }
@@ -210,7 +210,7 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess("func identity<T>(value: T) -> T => value\nlet result: i64 = identity(1)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var call = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal("i64", call.BoundCall!.TypeArguments[0]!.Name);
+        Assert.Equal("i64", call.CallOf()!.TypeArguments[0]!.Name);
     }
 
     [Fact]
@@ -219,7 +219,7 @@ public class BindingTest
         var compilation = CompilationTestHelper.ParseSuccess("func f(a: i32, b: i32) -> i32 => a + b\nlet result = f(b: 2, a: 1)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var call = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Equal(new[] { 1, 0 }, call.BoundCall!.ArgumentToParameter.ToArray());
+        Assert.Equal(new[] { 1, 0 }, call.CallOf()!.ArgumentToParameter.ToArray());
         Assert.Equal("2", Assert.IsType<NumberLiteralKoto>(call.ArgumentNodes[0]).Literal);
     }
 

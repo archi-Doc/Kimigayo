@@ -16,12 +16,12 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f(x: " + operand + ") -> bool => x is " + target);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Test(c).BoundRuntimeTest);
+        Assert.Null(Test(c).RuntimeTestOf());
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Test(c).BoundRuntimeTest);
+        Assert.Null(Test(c).RuntimeTestOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Null(Test(restored).BoundRuntimeTest);
+        Assert.Null(Test(restored).RuntimeTestOf());
     }
 
     [Theory]
@@ -33,7 +33,7 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Test(c).BoundRuntimeTest);
+        Assert.Null(Test(c).RuntimeTestOf());
     }
 
     [Theory]
@@ -45,7 +45,7 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Valid\n" + declarations + "\ngroup G\n    func f(x: objref/Valid) -> bool => x is " + target);
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Test(c).BoundRuntimeTest);
+        Assert.Null(Test(c).RuntimeTestOf());
     }
 
     [Theory]
@@ -57,11 +57,11 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\nstruct Target<T>\ngroup G\n    func f(x: objref/Target<i32>) -> bool => x is Target<" + argument + ">");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(BindingState.Resolved, Test(c).StateOf());
-        Assert.NotNull(Test(c).BoundRuntimeTest);
+        Assert.NotNull(Test(c).RuntimeTestOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
         Assert.Equal(BindingState.Resolved, Test(restored).StateOf());
-        Assert.NotNull(Test(restored).BoundRuntimeTest);
+        Assert.NotNull(Test(restored).RuntimeTestOf());
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class RuntimeTestFormationBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is i32\ngroup G\n    func f() -> bool => (return true) is Box<string>");
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Test(c).BoundRuntimeTest);
+        Assert.Null(Test(c).RuntimeTestOf());
     }
 
     [Fact]
@@ -78,7 +78,7 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze("struct Hidden\npublic struct Target\n    public let field: Hidden\ngroup G\n    func f(x: objref/Target) -> bool => x is Target");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Resolved, Test(c).StateOf());
-        Assert.NotNull(Test(c).BoundRuntimeTest);
+        Assert.NotNull(Test(c).RuntimeTestOf());
     }
 
     [Fact]
@@ -88,16 +88,16 @@ public class RuntimeTestFormationBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var test = Test(c);
-        var target = test.BoundRuntimeTest!.Value.TargetType;
+        var target = test.RuntimeTestOf()!.Value.TargetType;
         var original = test.Right;
         var donor = MinimalEmissionTest.Analyze(source.Replace("is Box<i32>", "is Box<string>", StringComparison.Ordinal));
         var replacement = Test(donor).Right;
         Assert.True(KotoHelper.Replace(test, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(test.BoundRuntimeTest);
+        Assert.Null(test.RuntimeTestOf());
         Assert.True(KotoHelper.Replace(test, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(target, test.BoundRuntimeTest!.Value.TargetType);
+        Assert.Same(target, test.RuntimeTestOf()!.Value.TargetType);
     }
 
     [Trait("Purpose", "Allocation")]

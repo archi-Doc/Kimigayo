@@ -60,7 +60,7 @@ public class CopyOperationTest
         var c = MinimalEmissionTest.Analyze("var n: i32 = 1\nlet a = n@copy\nn = 2\nlet b = n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
-        Assert.Equal(ConversionBinding.Identity, conversion.ConversionBinding);
+        Assert.Equal(ConversionBinding.Identity, conversion.ConversionOf().Kind);
         Assert.Equal(BoundType.I32, conversion.TypeOf());
         Assert.True(c.Ownership.Result.IsVerified, string.Join("\n", c.Ownership.Issues));
     }
@@ -105,7 +105,7 @@ public class CopyOperationTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionBinding == ConversionBinding.Identity);
+        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionOf().Kind == ConversionBinding.Identity);
     }
 
     [Fact]

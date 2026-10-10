@@ -52,7 +52,7 @@ public class BaseProjectionAccessBindingTest
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var marker = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Marker");
         Assert.Equal(BindingState.Invalid, api.StateOf());
-        Assert.False(c.Binding.GetConformanceDefinition(api.TypeOf()!, marker.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(api.TypeOf()!, marker.SymbolOf()!)?.IsVerified ?? false);
     }
 
     [Theory]

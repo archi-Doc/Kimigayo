@@ -82,7 +82,7 @@ public class InputDependentValueCallTest
     {
         var c = MinimalEmissionTest.Analyze(Box + "let box = Box<i32>.init(item: 5)\nlet get = Box<i32>.get\nlet r = get(box@ref)");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.InvocationKoto>(), x => x.BoundValueCall is not null);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.InvocationKoto>(), x => x.ValueCallOf() is not null);
         var origin = call.TypeOf()!.Origin!;
         Assert.Equal(OriginKind.Projection, origin.Kind);
     }

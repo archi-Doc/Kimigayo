@@ -28,7 +28,7 @@ public class GenericTypeArgumentBindingTest
         var f = Function(c, "f");
         var argument = Assert.Single(f.Parameters[0].Type.TypeOf()!.Components);
         var call = c.Kotonoha.GeneratedFunction!.Body!.Items.OfType<InvocationKoto>().Single();
-        Assert.Same(argument, Assert.Single(call.BoundCall!.TypeArguments.ToArray()));
+        Assert.Same(argument, Assert.Single(call.CallOf()!.TypeArguments.ToArray()));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Same(argument, Assert.Single(f.Parameters[0].Type.TypeOf()!.Components));
         Verify(CompilationTestHelper.Reload(c));
@@ -78,7 +78,7 @@ public class GenericTypeArgumentBindingTest
         var array = Assert.Single(f.Parameters[0].Type.TypeOf()!.Components);
         var element = Assert.Single(array.Components);
         Assert.Equal(SemanticsKind.Ref, element.Semantics);
-        Assert.Same(type.Contains("static", StringComparison.Ordinal) ? BoundOrigin.Static : f.BoundSymbol!.Schema!.Origins[0].Origin, element.Origin);
+        Assert.Same(type.Contains("static", StringComparison.Ordinal) ? BoundOrigin.Static : f.SymbolOf()!.Schema!.Origins[0].Origin, element.Origin);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 

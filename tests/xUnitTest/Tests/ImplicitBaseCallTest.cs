@@ -290,7 +290,7 @@ public class ImplicitBaseCallTest
         var constructor = c.SourceModules.SelectMany(static x => KotoTree.Walk(x.RootKoto)).OfType<FunctionKoto>().Single(static x => x.HasOmittedBaseInitializer);
         var query = c.Binding.OmittedBaseQueries![constructor];
         var call = constructor.BaseInitializer!;
-        (OmittedBaseOutcome Outcome, FunctionKoto? Winner) bound = call.BoundCall is { } selected ? (OmittedBaseOutcome.Selected, (FunctionKoto?)selected.Target.Declaration)
+        (OmittedBaseOutcome Outcome, FunctionKoto? Winner) bound = call.CallOf() is { } selected ? (OmittedBaseOutcome.Selected, (FunctionKoto?)selected.Target.Declaration)
             : call.Method.FailureOf() == BindingFailure.MissingName ? (OmittedBaseOutcome.NoBaseConstructor, null)
             : (call.FailureOf() switch
             {

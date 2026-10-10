@@ -164,8 +164,8 @@ public class ContainerNestingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var outer = Assert.Single(c.Kotonoha.RootKoto.NestedContainers);
         var inner = Assert.Single(outer.NestedContainers);
-        var parent = outer.BoundSymbol!.Schema!;
-        var child = inner.BoundSymbol!.Schema!;
+        var parent = outer.SymbolOf()!.Schema!;
+        var child = inner.SymbolOf()!.Schema!;
         Assert.Same(parent.GenericSlots[0].Symbol, child.GenericSlots[1].Symbol);
         Assert.NotSame(parent.GenericSlots[0], child.GenericSlots[1]);
         Assert.Same(parent.Origins[0].Origin, child.Origins[1].Origin);
@@ -173,7 +173,7 @@ public class ContainerNestingTest
         Assert.Equal(OriginVariance.Invariant, parent.Origins[0].Variance);
         Assert.Equal(OriginVariance.Invariant, child.Origins[1].Variance);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Same(child, inner.BoundSymbol.Schema);
+        Assert.Same(child, inner.SymbolOf()!.Schema);
     }
 
     [Fact]
@@ -196,11 +196,11 @@ public class ContainerNestingTest
         var c = CompilationTestHelper.Parse(source.ToString());
         Assert.True(c.Bind().IsComplete, Describe(c));
         var declaration = Assert.Single(c.Kotonoha.RootKoto.NestedContainers);
-        var outerSlot = Assert.Single(declaration.BoundSymbol!.Schema!.GenericSlots).Symbol;
+        var outerSlot = Assert.Single(declaration.SymbolOf()!.Schema!.GenericSlots).Symbol;
         for (var i = 0; i < depth; i++)
         {
             declaration = Assert.Single(declaration.NestedContainers);
-            Assert.Same(outerSlot, Assert.Single(declaration.BoundSymbol!.Schema!.GenericSlots).Symbol);
+            Assert.Same(outerSlot, Assert.Single(declaration.SymbolOf()!.Schema!.GenericSlots).Symbol);
         }
     }
 

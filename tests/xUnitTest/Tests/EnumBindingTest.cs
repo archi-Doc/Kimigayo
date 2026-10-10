@@ -64,7 +64,7 @@ public class EnumBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var invocation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.True(c.Binding.TryGetEnumConstruction(invocation, out var plan));
-        Assert.Null(invocation.BoundCall);
+        Assert.Null(invocation.CallOf());
         Assert.Equal(0, plan!.Case.Ordinal);
         Assert.Equal(AcquisitionKind.CopyOrMove, plan.Acquisitions[0]);
         Assert.Equal(AcquisitionKind.Move, plan.Acquisitions[1]);
@@ -172,7 +172,7 @@ public class EnumBindingTest
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(valid, c.Bind().IsComplete);
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
-        Assert.Equal(valid, call.BoundCall is not null);
+        Assert.Equal(valid, call.CallOf() is not null);
         if (!valid)
         {
             Assert.DoesNotContain(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));

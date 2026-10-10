@@ -63,7 +63,7 @@ public class NestedValueCallOriginTest
     {
         var c = MinimalEmissionTest.Analyze(EmptyCalls);
         Assert.True(c.Binding.Result.IsComplete && c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.BoundValueCall is not null).ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.ValueCallOf() is not null).ToArray();
         Assert.Equal(2, calls.Length);
         var first = calls[0].TypeOf()!.Components[0].Origin!;
         var second = calls[1].TypeOf()!.Components[0].Origin!;

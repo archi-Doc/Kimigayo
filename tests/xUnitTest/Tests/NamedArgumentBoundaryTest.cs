@@ -125,8 +125,8 @@ public class NamedArgumentBoundaryTest
         Assert.Equal(accepted, c.Binding.Result.IsComplete);
         if (accepted)
         {
-            var selected = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().BoundCall!.Target;
-            Assert.Equal("A", selected.Scope.Owner.BoundSymbol!.Name);
+            var selected = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single().CallOf()!.Target;
+            Assert.Equal("A", selected.Scope.Owner.SymbolOf()!.Name);
         }
     }
 
@@ -149,9 +149,9 @@ public class NamedArgumentBoundaryTest
         Assert.Equal(2, calls.Length);
         for (var i = 0; i < calls.Length; i++)
         {
-            var plan = calls[i].BoundCall!;
+            var plan = calls[i].CallOf()!;
             var target = Assert.IsType<FunctionKoto>(plan.Target.Declaration);
-            Assert.Equal("B", plan.Target.Scope.Owner.BoundSymbol!.Name);
+            Assert.Equal("B", plan.Target.Scope.Owner.SymbolOf()!.Name);
             Assert.Equal(0, c.Semantics.PositionalParameterCount(target));
             Assert.Equal("external", target.Parameters[0].ExternalName);
             Assert.Single(plan.DefaultArguments.ToArray());
@@ -192,7 +192,7 @@ public class NamedArgumentBoundaryTest
         Assert.True(c.Binding.Result.IsComplete);
         foreach (var call in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>())
         {
-            Assert.Equal(Enumerable.Range(0, count).Reverse(), call.BoundCall!.ArgumentToParameter.ToArray());
+            Assert.Equal(Enumerable.Range(0, count).Reverse(), call.CallOf()!.ArgumentToParameter.ToArray());
         }
 
         for (var i = 0; i < 100; i++)

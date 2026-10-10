@@ -141,7 +141,7 @@ public class KimiLibraryShapeTest
                 continue;
             }
 
-            Assert.Same(symbol, symbol.Declaration.BoundSymbol);
+            Assert.Same(symbol, symbol.Declaration.SymbolOf());
             Assert.Equal(BindingState.Resolved, symbol.Declaration.StateOf());
         }
 
@@ -212,7 +212,7 @@ public class KimiLibraryShapeTest
         var c = Library.Value;
         foreach (var group in new GroupKoto[] { c.Library.Intrinsics, c.Library.Console, c.Library.Test })
         {
-            Assert.All(group.Members, member => Assert.Contains(Assert.IsType<FunctionKoto>(member).BoundSymbol!, c.Library.RegisteredSymbols.ToArray()));
+            Assert.All(group.Members, member => Assert.Contains(Assert.IsType<FunctionKoto>(member).SymbolOf()!, c.Library.RegisteredSymbols.ToArray()));
         }
 
         Visit(c.Library.Kotonoha.RootKoto);
@@ -221,8 +221,9 @@ public class KimiLibraryShapeTest
         {
             for (var i = 0; container is not ContractKoto && i < container.Members.Count; i++)
             {
-                if (container.Members[i] is FunctionKoto { IsRequirement: false, AttributeChain: null, BoundSymbol: var symbol } function && !HasBody(function))
+                if (container.Members[i] is FunctionKoto { IsRequirement: false, AttributeChain: null } function && !HasBody(function))
                 {
+                    var symbol = function.SymbolOf();
                     Assert.True(
                         symbol?.LibraryDeclaration is { } id && ReferenceEquals(c.Library.GetSymbol(id), symbol) &&
                         (symbol.CompilerFunction != CompilerFunctionKind.None || KimiLibraryCatalog.ImplementationOf(id) is not null),
@@ -322,7 +323,7 @@ public class KimiLibraryShapeTest
     public void RecordFieldsAreFixed(string path, string shape)
     {
         var c = Library.Value;
-        var type = c.Binding.SelfType(Record(path).BoundSymbol!);
+        var type = c.Binding.SelfType(Record(path).SymbolOf()!);
         var lines = new List<string> { Line(Record(path)) };
         for (var i = 0; i < AdtDef.Count(type); i++)
         {
@@ -505,7 +506,7 @@ public class KimiLibraryShapeTest
     private static (AggregateLayout Layout, BoundType Type) Layout(string path)
     {
         var record = Record(path);
-        var type = Library.Value.Binding.SelfType(record.BoundSymbol!);
+        var type = Library.Value.Binding.SelfType(record.SymbolOf()!);
         var pool = new AggregateLayoutPool();
         if (AdtDef.Destructor(type) is { } destructor)
         {

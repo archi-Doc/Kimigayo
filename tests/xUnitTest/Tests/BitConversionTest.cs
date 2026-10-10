@@ -29,7 +29,7 @@ public class BitConversionTest
         Assert.Same(BoundType.F64, variables["l"].NameKoto.TypeOf());
         Assert.Same(BoundType.F32, variables["m"].NameKoto.TypeOf());
         Assert.Same(BoundType.F64, variables["n"].NameKoto.TypeOf());
-        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Bits, x.ConversionBinding));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => Assert.Equal(ConversionBinding.Bits, x.ConversionOf().Kind));
     }
 
     [Theory]
@@ -48,8 +48,8 @@ public class BitConversionTest
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         var expected = type.StartsWith("Wrapping<", StringComparison.Ordinal) ? BoundType.WrappingOf(BoundType.Primitives[type[9..^1]]) : BoundType.Primitives[type];
         Assert.Same(expected, conversion.TypeOf());
-        Assert.Equal(ConversionBinding.Bits, conversion.ConversionBinding);
-        Assert.Equal((Int128)payload, Assert.NotNull(conversion.FoldedConstant));
+        Assert.Equal(ConversionBinding.Bits, conversion.ConversionOf().Kind);
+        Assert.Equal((Int128)payload, Assert.NotNull(conversion.ConversionOf().Folded));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 

@@ -195,19 +195,19 @@ public class ConversionEmissionTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().ToArray();
         Assert.Equal(3, nodes.Length);
-        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
+        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionOf().Kind);
         Assert.Same(BoundType.I32, nodes[0].Left.TypeOf());
         Assert.Same(BoundType.I32, nodes[1].Left.TypeOf());
-        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionBinding);
+        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionOf().Kind);
         foreach (var node in nodes)
         {
-            node.ConversionBinding = ConversionBinding.Abrupt;
+            node.SetConversion(ConversionBinding.Abrupt);
         }
 
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionBinding);
-        Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionBinding);
-        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionBinding);
+        Assert.Equal(ConversionBinding.Integer, nodes[0].ConversionOf().Kind);
+        Assert.Equal(ConversionBinding.Integer, nodes[1].ConversionOf().Kind);
+        Assert.Equal(ConversionBinding.Literal, nodes[2].ConversionOf().Kind);
         var complete = true;
         var allocated = AllocationMeasurement.Measure(() => complete &= c.Bind().IsComplete, iterations: 128, warmupIterations: 100);
         Assert.True(complete);
@@ -240,7 +240,7 @@ public class ConversionEmissionTest
                 body.PlaceStorage[place] = body.Places[place] with { Type = BoundType.Primitives["u32"] };
                 break;
             case "unary": body.Values[id] = value with { Kind = OwnershipValueKind.Unary }; break;
-            case "classification": ((ConversionKoto)body.Operations[id].Source).ConversionBinding = ConversionBinding.Literal; break;
+            case "classification": ((ConversionKoto)body.Operations[id].Source).SetConversion(ConversionBinding.Literal); break;
         }
 
         using var writer = new StringWriter();
@@ -272,8 +272,8 @@ public class ConversionEmissionTest
         var c = MinimalEmissionTest.Analyze($"func stop() -> Never => loop => ()\nlet x = if false => ({operand})@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
-        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
-        Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.SymbolOf()?.Name == "x");
+        Assert.Same(BoundType.I32, field.SymbolOf()!.Type);
     }
 
     [Theory]
@@ -286,8 +286,8 @@ public class ConversionEmissionTest
         // evidence to bound Types only, so the unbound stop() operand counted as completing and the branches mismatched.
         var c = MinimalEmissionTest.Analyze($"{before}func stop() -> Never => loop => ()\nlet x = if false => stop()@i64 else => 300{after}");
         Assert.True(c.Binding.Result.IsComplete, string.Join("; ", c.Binding.Issues));
-        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.BoundSymbol?.Name == "x");
-        Assert.Same(BoundType.I32, field.BoundSymbol!.Type);
+        var field = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().Single(x => x.SymbolOf()?.Name == "x");
+        Assert.Same(BoundType.I32, field.SymbolOf()!.Type);
     }
 
     private static (BigInteger Min, BigInteger Max) Range(string name)

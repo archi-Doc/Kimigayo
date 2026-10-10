@@ -63,10 +63,10 @@ public class AssociatedSubjectConstraintBindingTest
         source = source[..source.IndexOf("group Consumer", StringComparison.Ordinal)] + "group Consumer\n    func take<U>() => ()\n    func call() => take<Box<Source>>()";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(c, "call").ExpressionBody).BoundCall is not null);
+        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(c, "call").ExpressionBody).CallOf() is not null);
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
-        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(restored, "call").ExpressionBody).BoundCall is not null);
+        Assert.Equal(valid, Assert.IsType<InvocationKoto>(Function(restored, "call").ExpressionBody).CallOf() is not null);
     }
 
     [Theory]

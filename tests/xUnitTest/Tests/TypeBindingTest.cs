@@ -55,7 +55,7 @@ public class TypeBindingTest
         var view = c.Kotonoha.RootKoto.NestedContainers.Single();
         c.Kotonoha.CreateCodeContext().Parse(view, "let exclusive: uniq/i32 during source");
         Assert.False(c.Bind().IsComplete);
-        Assert.Equal(LoanRequirement.Uniq, view.BoundSymbol!.Schema!.Origins[0].LoanRequirement);
+        Assert.Equal(LoanRequirement.Uniq, view.SymbolOf()!.Schema!.Origins[0].LoanRequirement);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidOriginBinding_Kd);
     }
 
@@ -65,7 +65,7 @@ public class TypeBindingTest
         var c = Parse("func f(x: ref/i32 during (first and second)) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        var schema = f.BoundSymbol!.Schema!;
+        var schema = f.SymbolOf()!.Schema!;
         var document = f.CodeContext.SourceDocument!;
         Assert.Equal("second", document.AsSpan().Slice(schema.Origins[1].Span.Start, schema.Origins[1].Span.Length).ToString());
         var origins = Nodes(c).OfType<IdentifierNameKoto>().Where(x => x.OriginOf() is not null).ToArray();
@@ -101,7 +101,7 @@ public class TypeBindingTest
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var call = Nodes(c).OfType<InvocationKoto>().Single();
         Assert.Same(f.Parameters[0].Type.TypeOf(), call.TypeOf());
-        Assert.Equal(GenericSlotKind.Pair, call.BoundCall!.Target.Schema!.GenericSlots[0].Kind);
+        Assert.Equal(GenericSlotKind.Pair, call.CallOf()!.Target.Schema!.GenericSlots[0].Kind);
     }
 
     [Fact]
@@ -131,7 +131,7 @@ public class TypeBindingTest
         var c = Parse("func f<length N>(x: [(N + 1) of i32]) => ()");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Equal(GenericSlotKind.Length, f.BoundSymbol!.Schema!.GenericSlots[0].Kind);
+        Assert.Equal(GenericSlotKind.Length, f.SymbolOf()!.Schema!.GenericSlots[0].Kind);
         Assert.NotNull(f.Parameters[0].Type.TypeOf()!.LengthExpression);
         Assert.Contains(c.Binding.Obligations, x => x.Deadline == BindingDeadline.Instantiation);
         var duplicate = Parse("func f<length N>(x: [(N + 1) of i32]) => ()\nfunc f<length M>(x: [(M + 1) of i32]) => ()");
@@ -177,10 +177,10 @@ public class TypeBindingTest
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Same(f.Parameters[0].Type.TypeOf(), f.Parameters[1].Type.TypeOf());
         Assert.Equal(OriginKind.Input, f.Parameters[0].Type.TypeOf()!.OriginArguments[0].Kind);
-        var schema = f.BoundSymbol!.Schema;
+        var schema = f.SymbolOf()!.Schema;
         var type = f.Parameters[0].Type.TypeOf();
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Same(schema, f.BoundSymbol.Schema);
+        Assert.Same(schema, f.SymbolOf()!.Schema);
         Assert.Same(type, f.Parameters[0].Type.TypeOf());
     }
 
@@ -203,7 +203,7 @@ public class TypeBindingTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var f = Nodes(c).OfType<FunctionKoto>().Single(x => x.Name == "f");
         Assert.Same(f.Parameters[0].Type.TypeOf(), f.Parameters[1].Type.TypeOf());
-        Assert.Same(f.BoundSymbol!.Schema!.Origins[0].Origin, f.Parameters[0].Type.TypeOf()!.Components[0].Origin);
+        Assert.Same(f.SymbolOf()!.Schema!.Origins[0].Origin, f.Parameters[0].Type.TypeOf()!.Components[0].Origin);
     }
 
     [Fact]
@@ -212,7 +212,7 @@ public class TypeBindingTest
         var c = Parse("struct A {a}\n    let b: B{bb}\n        origin bb.b == a\nstruct B {b}\n    let a: raw/(A{aa})\n        origin aa.a == b\n    let value: uniq/i32 during b");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var a = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "A");
-        Assert.Equal(LoanRequirement.Uniq, a.BoundSymbol!.Schema!.Origins[0].LoanRequirement);
+        Assert.Equal(LoanRequirement.Uniq, a.SymbolOf()!.Schema!.Origins[0].LoanRequirement);
     }
 
     private static Compilation Parse(string source)

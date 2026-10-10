@@ -194,7 +194,7 @@ public class BorrowOriginSuffixTest
         var field = Assert.IsType<FieldKoto>(Assert.Single(function.Body!.Items));
         var division = ParseTestHelper.Binary(KotoKind.Slash, field.InitializerKoto);
         var conversion = Assert.IsType<ConversionKoto>(division.Left);
-        Assert.Equal(BindingSymbolKind.Type, conversion.Right.BoundSymbol?.Kind);
+        Assert.Equal(BindingSymbolKind.Type, conversion.Right.SymbolOf()?.Kind);
         c.Binding.ReportDiagnostics();
         Assert.DoesNotContain(TestDiagnostics.Of(c, "Hello.kimi"), d => d.Message.Contains("brace borrow", StringComparison.Ordinal));
     }

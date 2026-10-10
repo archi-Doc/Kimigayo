@@ -30,7 +30,7 @@ public class GenericAdaptationLimitTest
             return;
         }
 
-        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static conversion => Assert.Null(conversion.Adaptation));
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static conversion => Assert.Null(conversion.ConversionOf().Adaptation));
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
         c.Binding.ReportDiagnostics();
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);

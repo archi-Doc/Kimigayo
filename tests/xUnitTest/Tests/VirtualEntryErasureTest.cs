@@ -28,10 +28,10 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Source(body));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var use = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "ordinary");
-        Assert.NotNull(use.CallStorage);
+        var use = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "ordinary");
+        Assert.NotNull(use.CallOf());
         var site = body.Contains("@objref/Base", StringComparison.Ordinal)
-            ? (Koto)Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionBinding == ConversionBinding.ObjectUpcast) : use;
+            ? (Koto)Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionOf().Kind == ConversionBinding.ObjectUpcast) : use;
         Assert.True(c.Binding.TryGetObjectErasure(site, out var evidence));
         Assert.True(evidence.Entry!.IsOverride);
         Assert.Equal("Leaf", evidence.Source.Symbol!.Name);

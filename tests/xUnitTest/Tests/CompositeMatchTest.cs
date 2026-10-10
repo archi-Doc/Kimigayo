@@ -65,7 +65,7 @@ public class CompositeMatchTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.Validate(out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
-        var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read && x.Source.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate);
+        var read = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Read && x.Source.SymbolOf()?.Kind == BindingSymbolKind.PatternCandidate);
         switch (defect)
         {
             case "position":

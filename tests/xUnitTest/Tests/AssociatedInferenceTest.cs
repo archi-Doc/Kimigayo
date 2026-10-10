@@ -134,7 +134,7 @@ public class AssociatedInferenceTest
         var c = Bound(source);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = type.NestedContainers.Single(x => x.Name == "C");
-        var bound = Assert.Single(c.Binding.GetConformanceDefinition(type.TypeOf()!, Assert.Single(type.ConstraintNodes).BoundConstraint!.Contract!)!.AssociatedTypes).Value;
+        var bound = Assert.Single(c.Binding.GetConformanceDefinition(type.TypeOf()!, Assert.Single(type.ConstraintNodes).ConstraintOf()!.Contract!)!.AssociatedTypes).Value;
         Assert.Equal(SemanticsKind.Ref, bound.Semantics);
         Assert.Same(type, bound.Origin!.Binder);
     }
@@ -396,7 +396,7 @@ public class AssociatedInferenceTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName);
-        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!;
     }
 
     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));

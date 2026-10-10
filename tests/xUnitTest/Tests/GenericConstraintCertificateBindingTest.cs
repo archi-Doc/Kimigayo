@@ -22,12 +22,12 @@ public class GenericConstraintCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         var property = Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.Single());
-        Assert.False(property.BoundSymbol!.Property!.IsVerified);
+        Assert.False(property.SymbolOf()!.Property!.IsVerified);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(property.BoundSymbol.Property.IsVerified);
+        Assert.False(property.SymbolOf()!.Property!.IsVerified);
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.False(Property(restored).BoundSymbol!.Property!.IsVerified);
+        Assert.False(Property(restored).SymbolOf()!.Property!.IsVerified);
     }
 
     [Theory]
@@ -45,9 +45,9 @@ public class GenericConstraintCertificateBindingTest
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedConstraint_Kd);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)?.IsVerified ?? false);
         Assert.False(c.Bind().IsComplete);
-        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)?.IsVerified ?? false);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)?.IsVerified ?? false);
     }
 
     [Theory]
@@ -58,7 +58,7 @@ public class GenericConstraintCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(TestDiagnostics.Of(c, "Hello.kimi"), x => x.Code == nameof(DiagnosticCode.MissingSyntax_Kd));
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.False(Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single().Members.Single()).BoundSymbol!.Property!.IsVerified);
+        Assert.False(Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single().Members.Single()).SymbolOf()!.Property!.IsVerified);
         Assert.False(c.Bind().IsComplete);
         Assert.False(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
@@ -70,7 +70,7 @@ public class GenericConstraintCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         var property = Property(c);
-        var certificate = property.BoundSymbol!.Property!;
+        var certificate = property.SymbolOf()!.Property!;
         var original = property.TypeKoto!;
         var replacement = Property(MinimalEmissionTest.Analyze(source.Replace("Box<i32>", "Box<string>", StringComparison.Ordinal))).TypeKoto!;
         Assert.True(KotoHelper.Replace(property, original, replacement));
@@ -86,7 +86,7 @@ public class GenericConstraintCertificateBindingTest
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    T is Copy\nstruct S<U>\n    U is Copy\n    var value: Box<U>");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(Property(c).BoundSymbol!.Property!.IsVerified);
+        Assert.True(Property(c).SymbolOf()!.Property!.IsVerified);
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 

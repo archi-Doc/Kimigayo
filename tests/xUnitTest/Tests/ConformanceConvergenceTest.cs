@@ -110,7 +110,7 @@ public class ConformanceConvergenceTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var derived = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "Derived");
         var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
-        var p = ((IsKoto)probe.TypeConstraints[0]).BoundConstraint!.Contract!;
+        var p = ((IsKoto)probe.TypeConstraints[0]).ConstraintOf()!.Contract!;
         var mapping = c.Binding.GetConformance(derived.TypeOf()!, p)!;
         Assert.Equal(2, Assert.Single(mapping.Paths).InheritedSourceCount);
         for (var i = 0; i < 4; i++)

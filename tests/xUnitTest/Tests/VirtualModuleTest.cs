@@ -88,7 +88,7 @@ public class VirtualModuleTest(ITestOutputHelper output)
         var original = Original(c);
         var references = c.SourceModules.SelectMany(x => KotoTree.Walk(x.RootKoto)).OfType<MemberAccessKoto>().Where(x => x.Right is IdentifierNameKoto { IdentifierName: "score" } && x.Left is not BaseReferenceKoto).ToArray();
         Assert.NotEmpty(references);
-        Assert.All(references, x => Assert.Same(original, x.BoundSymbol!.Declaration));
+        Assert.All(references, x => Assert.Same(original, x.SymbolOf()!.Declaration));
         ScalarEmissionTest.WriteFixture("VirtualModule" + access.Replace(" ", string.Empty, StringComparison.Ordinal) + mode, ir, string.Empty);
     }
 

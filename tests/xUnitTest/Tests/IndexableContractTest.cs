@@ -223,7 +223,7 @@ public class IndexableContractTest
             "let keyed = Keyed<Range<i32, i32>>.init(7)\nrequire pick(keyed) == 7 else => $abort(\"pick\")\nConsole.writeLine(\"ok\")";
         var c = MinimalEmissionTest.Analyze(Source);
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.ToString() == "items.index(0..2)");
-        Assert.NotNull(call.BoundCall!.RequirementContract);
+        Assert.NotNull(call.CallOf()!.RequirementContract);
         ScalarEmissionTest.EmitFixture("IndexableRequirementRangeArgument", Source, "ok\n");
     }
 

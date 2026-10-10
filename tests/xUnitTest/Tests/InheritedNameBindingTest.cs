@@ -53,7 +53,7 @@ public class InheritedNameBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Type(c).StateOf());
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.SymbolOf()!)!.IsVerified);
     }
 
     [Fact]

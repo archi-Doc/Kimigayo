@@ -32,7 +32,7 @@ public class TestAttributeCertificateBindingTest
         var c = MinimalEmissionTest.Analyze("struct S\n    #Test\n    var value: i32");
         Assert.False(c.Binding.Result.IsComplete);
         var property = Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single().Members.Single());
-        Assert.False(property.BoundSymbol!.Property!.IsVerified);
+        Assert.False(property.SymbolOf()!.Property!.IsVerified);
     }
 
     [Theory]
@@ -64,7 +64,7 @@ public class TestAttributeCertificateBindingTest
         Assert.False(c.Binding.Result.IsComplete);
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Outer").NestedContainers.Single();
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
     }
 
     [Fact]
@@ -92,6 +92,6 @@ public class TestAttributeCertificateBindingTest
     {
         var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!;
     }
 }

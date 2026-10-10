@@ -230,9 +230,9 @@ public class CallbackEmissionTest
         var c = MinimalEmissionTest.Analyze("let n: i32 = 6\nlet f: (i32) -> bool = func [n] (v: i32) => v == n\nf(6)");
         Assert.True(c.Emission.Validate(out var failure), failure);
         var body = c.Ownership.Bodies.Single(x => x.Values.Any(v => v.Kind == OwnershipValueKind.Closure));
-        var create = body.OperationStorage.FindIndex(x => x.Source is FunctionKoto { BoundClosure: not null } && x.Kind == OwnershipOperationKind.Produce);
-        var closure = ((FunctionKoto)body.Operations[create].Source).BoundClosure!;
-        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto { BoundValueCall: not null });
+        var create = body.OperationStorage.FindIndex(x => x.Source is FunctionKoto created && created.ClosureOf() is not null && x.Kind == OwnershipOperationKind.Produce);
+        var closure = ((FunctionKoto)body.Operations[create].Source).ClosureOf()!;
+        var call = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Source is InvocationKoto called && called.ValueCallOf() is not null);
         var invocation = (InvocationKoto)body.Operations[call].Source;
         switch (defect)
         {
@@ -243,7 +243,7 @@ public class CallbackEmissionTest
                 closure.Signature = BoundType.Unit;
                 break;
             case "argument":
-                var plan = invocation.BoundValueCall!;
+                var plan = invocation.ValueCallOf()!;
                 var arguments = plan.ArgumentOperations.ToArray();
                 arguments[0] = arguments[0] with { ParameterType = BoundType.Unit };
                 plan.SetValue(plan.CalleeValue, plan.Signature, arguments, plan.Signature, default, plan.ReceiverKind);

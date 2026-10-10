@@ -20,7 +20,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Declarations(parents));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
-        Assert.Equal(2, q.BoundSymbol!.Contract!.Requirements.Count);
+        Assert.Equal(2, q.SymbolOf()!.Contract!.Requirements.Count);
     }
 
     [Theory]
@@ -61,7 +61,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q");
-        Assert.Single(q.BoundSymbol!.Contract!.Requirements);
+        Assert.Single(q.SymbolOf()!.Contract!.Requirements);
     }
 
     [Theory]
@@ -74,7 +74,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "S");
-        var reference = Assert.Single(s.ConstraintNodes).BoundConstraint!.Contract!;
+        var reference = Assert.Single(s.ConstraintNodes).ConstraintOf()!.Contract!;
         Assert.Equal(count, reference.Contract!.Requirements.Count);
         Assert.Equal(count, c.Binding.GetConformance(s.TypeOf()!, reference)!.Witnesses.Count);
     }
@@ -157,7 +157,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
     public void RebindingRebuildsTheBoundMappings()
     {
         var c = MinimalEmissionTest.Analyze(Declarations("P<i32>, P<i64>"));
-        var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q").BoundSymbol!;
+        var q = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single(static x => x.Name == "Q").SymbolOf()!;
         var s = c.Kotonoha.RootKoto.NestedDeclarationContainers.OfType<StructKoto>().Single(static x => x.Name == "S");
         var mapping = c.Binding.GetConformance(s.TypeOf()!, q)!;
         var previous = mapping.Witnesses.ToArray();

@@ -38,10 +38,10 @@ public class PairAnnotationBindingTest
                 var f = Function(c);
                 var annotated = f.Parameters[0].Type.TypeOf()!;
                 Assert.Equal(BoundTypeKind.Parameter, annotated.Kind);
-                Assert.Same(f.BoundSymbol!.Schema!.GenericSlots[0].Symbol, annotated.Symbol);
-                Assert.Same(f.BoundSymbol.Schema.Origins[0].Origin, annotated.Origin);
+                Assert.Same(f.SymbolOf()!.Schema!.GenericSlots[0].Symbol, annotated.Symbol);
+                Assert.Same(f.SymbolOf()!.Schema!.Origins[0].Origin, annotated.Origin);
                 Assert.Empty(annotated.Components);
-                Assert.Null(f.BoundSymbol.Schema.GenericSlots[0].Symbol.WholeType!.Origin);
+                Assert.Null(f.SymbolOf()!.Schema!.GenericSlots[0].Symbol.WholeType!.Origin);
                 Assert.Contains(c.Binding.Obligations, x => x.Kind == BindingObligationKind.TypeFormation && x.Deadline == BindingDeadline.Definition);
                 Assert.All(c.Binding.Issues, x => Assert.Equal(DiagnosticCode.UnprovenConstraint_Kd, x.Code));
                 if (previous is not null)
@@ -206,7 +206,7 @@ public class PairAnnotationBindingTest
         var c = Parse("func f<s/T>(x: s/T, y: s/T during a, z: s/T during b) => ()");
         Assert.False(c.Bind().IsComplete);
         var f = Function(c);
-        var schema = f.BoundSymbol!.Schema!;
+        var schema = f.SymbolOf()!.Schema!;
         Assert.Same(schema.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.TypeOf());
         Assert.Null(f.Parameters[0].Type.TypeOf()!.Origin);
         Assert.Same(schema.Origins[0].Origin, f.Parameters[1].Type.TypeOf()!.Origin);
@@ -226,7 +226,7 @@ public class PairAnnotationBindingTest
         var arrayElement = Assert.Single(tuple.Components[1].Components);
         Assert.Same(pointerTarget, arrayElement);
         Assert.Equal(BoundTypeKind.Parameter, pointerTarget.Kind);
-        Assert.Same(f.BoundSymbol!.Schema!.Origins[0].Origin, pointerTarget.Origin);
+        Assert.Same(f.SymbolOf()!.Schema!.Origins[0].Origin, pointerTarget.Origin);
     }
 
     [Fact]
@@ -238,7 +238,7 @@ public class PairAnnotationBindingTest
         var clause = Parse("func g<s/T>(x: s/i32) -> s/i32\n    origin static outlives static\n    return x");
         Assert.True(plain.Bind().IsComplete, Describe(plain));
         Assert.True(clause.Bind().IsComplete, Describe(clause));
-        Assert.Equal(Function(plain).BoundSymbol!.Type!.Origin?.Kind, Function(clause).BoundSymbol!.Type!.Origin?.Kind);
+        Assert.Equal(Function(plain).SymbolOf()!.Type!.Origin?.Kind, Function(clause).SymbolOf()!.Type!.Origin?.Kind);
     }
 
     private static Compilation Parse(string source)

@@ -19,7 +19,7 @@ public class SignatureProjectionCertificateBindingTest
         Assert.False(Definition(c).IsVerified);
         if (property)
         {
-            Assert.False(Structure(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
+            Assert.False(Structure(c).Members.OfType<PropertyKoto>().Single().SymbolOf()!.Property!.IsVerified);
         }
 
         Assert.False(c.Bind().IsComplete);
@@ -54,7 +54,7 @@ public class SignatureProjectionCertificateBindingTest
         {
             var type = compilation.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Last");
             var contract = compilation.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "D");
-            Assert.Equal(valid, compilation.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+            Assert.Equal(valid, compilation.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         }
     }
 
@@ -96,7 +96,7 @@ public class SignatureProjectionCertificateBindingTest
         var c = MinimalEmissionTest.Analyze(Prefix("internal") + "group G\n    func take(x: Source.Origin.Item) -> i32 => x\n    func call() -> i32 => take(1)");
         Assert.False(c.Binding.Result.IsComplete);
         var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-        Assert.Null(Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall);
+        Assert.Null(Assert.IsType<InvocationKoto>(call.ExpressionBody).CallOf());
     }
 
     [Trait("Purpose", "Allocation")]
@@ -132,6 +132,6 @@ public class SignatureProjectionCertificateBindingTest
     private static BoundConformance Definition(Compilation c)
     {
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return c.Binding.GetConformanceDefinition(Structure(c).TypeOf()!, contract.BoundSymbol!)!;
+        return c.Binding.GetConformanceDefinition(Structure(c).TypeOf()!, contract.SymbolOf()!)!;
     }
 }

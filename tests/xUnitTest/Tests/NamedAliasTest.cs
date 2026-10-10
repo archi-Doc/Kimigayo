@@ -25,8 +25,8 @@ public class NamedAliasTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         Assert.All(
-            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall is not null),
-            x => Assert.Same(c.Library.WriteLine, x.BoundCall!.Target));
+            KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf() is not null),
+            x => Assert.Same(c.Library.WriteLine, x.CallOf()!.Target));
         using var writer = new StringWriter();
         Assert.True(c.Emission.WriteIr(writer, out error), error);
         Assert.Contains("@__kimi_write_line", writer.ToString());
@@ -109,8 +109,8 @@ public class NamedAliasTest
         var c = Parse("alias Core\ngroup Core\n    public func writeLine(text: string) => ()\nwriteLine(\"user\")\n::Kimi.Console.writeLine(\"library\")");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
-        Assert.NotSame(c.Library.WriteLine, calls[0].BoundCall!.Target);
-        Assert.Same(c.Library.WriteLine, calls[1].BoundCall!.Target);
+        Assert.NotSame(c.Library.WriteLine, calls[0].CallOf()!.Target);
+        Assert.Same(c.Library.WriteLine, calls[1].CallOf()!.Target);
     }
 
     [Theory]
@@ -146,8 +146,8 @@ public class NamedAliasTest
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
-            Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>(), x => ReferenceEquals(x.BoundSymbol, c.Library.WriteLine));
-            Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallStorage?.Kind == CalleeKind.Value);
+            Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>(), x => ReferenceEquals(x.SymbolOf(), c.Library.WriteLine));
+            Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.ValueCallOf() is not null);
             c.Kotonoha.OnDeserialized(c);
         }
     }

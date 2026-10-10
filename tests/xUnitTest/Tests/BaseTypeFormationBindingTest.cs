@@ -118,6 +118,6 @@ public class BaseTypeFormationBindingTest
     private static BoundConformance Definition(Compilation c)
     {
         var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.BoundSymbol!));
+        return Assert.IsType<BoundConformance>(c.Binding.GetConformanceDefinition(Type(c).TypeOf()!, contract.SymbolOf()!));
     }
 }

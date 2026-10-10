@@ -38,12 +38,12 @@ public class ScalarDefaultEmissionTest
         Assert.True(c.Emission.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var source = Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.LocateReceiver).Source;
-        var original = source.BoundSymbol!;
-        source.BoundSymbol = c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1);
+        var original = source.SymbolOf()!;
+        source.SetSymbol(c.Binding.ParameterSymbol((FunctionKoto)original.Scope.Owner, 1));
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
-        source.BoundSymbol = original;
+        source.SetSymbol(original);
         Assert.True(c.Ownership.Analyze().IsVerified);
         Assert.True(c.Emission.Validate(out error), error);
     }
@@ -351,7 +351,7 @@ public class ScalarDefaultEmissionTest
         Assert.True(c.Emission.Validate(out var error), error);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.IsGenerated);
         var call = (InvocationKoto)Assert.Single(body.Operations, x => x.Kind == OwnershipOperationKind.Call).Source;
-        var plan = call.BoundCall!;
+        var plan = call.CallOf()!;
         var defaults = plan.DefaultArguments.ToArray();
         if (mutation == "missing")
         {

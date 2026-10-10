@@ -39,7 +39,7 @@ public class SemanticsAdaptationTypeTest
     public void ClosingTheSelectorBeforeTheSourcePreservesPayloadSelection()
     {
         var (c, function, selector) = Parse("func f<s/T, u/U>(value: u/U)\n    s is object\n    u is owner or obj\n    T is ObjectPayload\n    U is ObjectPayload\n    ()");
-        var source = function.BoundSymbol!.Schema!.GenericSlots[1].Symbol;
+        var source = function.SymbolOf()!.Schema!.GenericSlots[1].Symbol;
         var type = c.Binding.SemanticsAdaptation(selector, source.WholeType!, null);
         ReadOnlySpan<PairCase> select = [new(selector, SemanticsKind.Obj)];
         var pending = c.Binding.CaseType(type, select);
@@ -117,7 +117,7 @@ public class SemanticsAdaptationTypeTest
     public void OwnerEvidenceDeterminesAPlainTypeParametersMode(string evidence)
     {
         var (c, function, _) = Parse($"func f<s/T, U>(value: U)\n    s is owner\n    U is {evidence}\n    ()");
-        var parameter = function.BoundSymbol!.Schema!.GenericSlots[1].Symbol;
+        var parameter = function.SymbolOf()!.Schema!.GenericSlots[1].Symbol;
         Assert.Equal(SemanticsMask.Owner, c.Binding.ResultSemantics(parameter.Type!, parameter.Scope));
     }
 
@@ -139,13 +139,13 @@ public class SemanticsAdaptationTypeTest
     {
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is object or ref\n    T is ObjectPayload\n    ()\nlet handle = 7@obj\nf(handle@move)\nlet number = 7\nf(number@ref)");
         var type = c.Binding.SemanticsAdaptation(pair, pair.WholeType!, BoundOrigin.Static);
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.BoundCall?.Target.Name == "f").ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(x => x.CallOf()?.Target.Name == "f").ToArray();
         Assert.Equal(2, calls.Length);
-        var owner = c.Binding.InstantiateStorageType(type, calls[0].BoundCall!);
+        var owner = c.Binding.InstantiateStorageType(type, calls[0].CallOf()!);
         Assert.NotNull(owner);
         Assert.Equal(SemanticsKind.Obj, owner.Semantics);
         Assert.Same(BoundType.I32, owner.Components[0]);
-        var borrow = c.Binding.InstantiateStorageType(type, calls[1].BoundCall!);
+        var borrow = c.Binding.InstantiateStorageType(type, calls[1].CallOf()!);
         Assert.NotNull(borrow);
         Assert.Equal(SemanticsKind.Ref, borrow.Semantics);
         Assert.Equal(SemanticsKind.Ref, borrow.Components[0].Semantics);
@@ -157,7 +157,7 @@ public class SemanticsAdaptationTypeTest
     {
         var (c, _, pair) = Parse("func pass<u/U>(value: u/U) -> u/U\n    u is obj or ref\n    return value@move\n" +
             "func f<s/T>(value: s/T)\n    s is obj or ref\n    T is ObjectPayload\n    let adapted = value@move@s\n    let carried = pass(adapted@move)\n    _ = carried@move");
-        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "pass").BoundCall!;
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallOf()?.Target.Name == "pass").CallOf()!;
         var parameter = call.Target.Schema!.GenericSlots[0].Symbol;
         var projected = c.Binding.InstantiateStorageType(parameter.Type!, call);
         Assert.NotNull(projected);
@@ -176,7 +176,7 @@ public class SemanticsAdaptationTypeTest
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
         var call = new CallPlan();
-        call.Set(callee.BoundSymbol!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
+        call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var substituted = c.Binding.InstantiateStorageType(callee.Parameters[0].Type.TypeOf()!, call);
         Assert.NotNull(substituted);
         ReadOnlySpan<PairCase> owner = [new(pair, SemanticsKind.Owner)];
@@ -194,7 +194,7 @@ public class SemanticsAdaptationTypeTest
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
         var call = new CallPlan();
-        call.Set(callee.BoundSymbol!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
+        call.Set(callee.SymbolOf()!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var original = callee.Parameters[0].Type.TypeOf()!;
         var written = new BoundType(original.Name, original.Kind, original.Symbol, original.Semantics, origin: BoundOrigin.Static);
         var substituted = c.Binding.InstantiateStorageType(written, call);
@@ -244,6 +244,6 @@ public class SemanticsAdaptationTypeTest
         var c = CompilationTestHelper.ParseSuccess(source, "adaptation-types.kimi");
         Assert.True(c.Bind().IsComplete, string.Join("; ", c.Binding.Issues));
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "f");
-        return (c, function, function.BoundSymbol!.Schema!.GenericSlots[0].Symbol);
+        return (c, function, function.SymbolOf()!.Schema!.GenericSlots[0].Symbol);
     }
 }

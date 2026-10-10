@@ -17,12 +17,12 @@ public class CallCompletionBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.False(restored.Bind().IsComplete);
-        Assert.Null(Call(restored).BoundCall);
+        Assert.Null(Call(restored).CallOf());
     }
 
     [Fact]
@@ -32,7 +32,7 @@ public class CallCompletionBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-        Assert.Null(Call(c).BoundCall);
+        Assert.Null(Call(c).CallOf());
     }
 
     [Theory]
@@ -42,10 +42,10 @@ public class CallCompletionBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(contractAccess, apiAccess));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Call(c).BoundCall);
+        Assert.NotNull(Call(c).CallOf());
         var restored = CompilationTestHelper.Reload(c);
         Assert.True(restored.Bind().IsComplete);
-        Assert.NotNull(Call(restored).BoundCall);
+        Assert.NotNull(Call(restored).CallOf());
     }
 
     [Fact]
@@ -54,7 +54,7 @@ public class CallCompletionBindingTest
         var c = MinimalEmissionTest.Analyze(Source("internal", "public").Replace("Api.identity(1)", "take(1)", StringComparison.Ordinal) + "\n    func take(value: i32) -> i32 => value");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access);
-        Assert.NotNull(Call(c).BoundCall);
+        Assert.NotNull(Call(c).CallOf());
     }
 
     [Fact]
@@ -68,14 +68,14 @@ public class CallCompletionBindingTest
         Assert.True(KotoHelper.Replace(target, original, replacement));
         Assert.True(c.Bind().IsComplete);
         var call = Call(c);
-        var plan = call.BoundCall;
+        var plan = call.CallOf();
         Assert.NotNull(plan);
         Assert.True(KotoHelper.Replace(target, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.True(KotoHelper.Replace(target, original, replacement));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(plan, call.BoundCall);
+        Assert.Same(plan, call.CallOf());
     }
 
     [Trait("Purpose", "Allocation")]

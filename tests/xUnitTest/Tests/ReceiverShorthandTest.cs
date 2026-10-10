@@ -21,7 +21,7 @@ public class ReceiverShorthandTest
         Assert.Equal(2, functions.Length);
         foreach (var function in functions)
         {
-            Assert.Equal(0, function.BoundSymbol!.ReceiverIndex);
+            Assert.Equal(0, function.SymbolOf()!.ReceiverIndex);
             var receiver = function.Parameters[0].Type.TypeOf()!;
             Assert.Equal(SemanticsKind.Ref, receiver.Semantics);
             Assert.Same(function, receiver.Origin!.Binder);
@@ -38,11 +38,11 @@ public class ReceiverShorthandTest
         var c = CompilationTestHelper.ParseSuccess("struct S\n    public func read(x: i32, self) -> i32 => x\n    public func constant() -> i32 => 7\nfunc use(s: ref/S) -> i32 => s.read(1) + S.read(2, s) + S.constant()");
         AssertComplete(c);
         var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().ToArray();
-        Assert.Equal(1, functions.Single(x => x.Name == "read").BoundSymbol!.ReceiverIndex);
-        Assert.Equal(-1, functions.Single(x => x.Name == "constant").BoundSymbol!.ReceiverIndex);
+        Assert.Equal(1, functions.Single(x => x.Name == "read").SymbolOf()!.ReceiverIndex);
+        Assert.Equal(-1, functions.Single(x => x.Name == "constant").SymbolOf()!.ReceiverIndex);
         var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().ToArray();
         Assert.Equal(3, calls.Length);
-        Assert.All(calls, call => Assert.NotNull(call.BoundCall));
+        Assert.All(calls, call => Assert.NotNull(call.CallOf()));
     }
 
     [Theory]
@@ -87,13 +87,13 @@ public class ReceiverShorthandTest
         var c = CompilationTestHelper.ParseSuccess("struct S<T> {source}\n    var measured: i32\n    computed item: i32\n        get() -> i32 => self.measured\n        set(value: i32) -> () => self.measured = value\n    computed annotated: i32\n        get(self: ref/Self during static) -> i32 => self.measured");
         AssertComplete(c);
         var properties = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().ToArray();
-        var property = properties.Single(x => x.NameKoto.IdentifierName == "item").BoundSymbol!.Property!;
+        var property = properties.Single(x => x.NameKoto.IdentifierName == "item").SymbolOf()!.Property!;
         AssertReceiver(property.Getter, SemanticsKind.Ref);
         AssertReceiver(property.Setter, SemanticsKind.Uniq);
-        var annotated = properties.Single(x => x.NameKoto.IdentifierName == "annotated").BoundSymbol!.Property!.Getter;
+        var annotated = properties.Single(x => x.NameKoto.IdentifierName == "annotated").SymbolOf()!.Property!.Getter;
         Assert.Equal(SemanticsKind.Ref, annotated.Receiver!.Semantics);
         Assert.Equal(OriginKind.Static, annotated.Receiver.Origin!.Kind);
-        Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(x => x.IdentifierName == "self"), self => Assert.Equal(BindingSymbolKind.Parameter, self.BoundSymbol!.Kind));
+        Assert.All(KotoTree.Walk(property.Declaration).OfType<IdentifierNameKoto>().Where(x => x.IdentifierName == "self"), self => Assert.Equal(BindingSymbolKind.Parameter, self.SymbolOf()!.Kind));
         var receiver = property.Getter.Receiver;
         AssertComplete(c);
         Assert.Same(receiver, property.Getter.Receiver);
@@ -106,9 +106,9 @@ public class ReceiverShorthandTest
         AssertComplete(c);
         foreach (var property in KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>())
         {
-            Assert.True(property.BoundSymbol!.Property!.IsVerified);
-            AssertReceiver(property.BoundSymbol.Property.Getter, SemanticsKind.Ref);
-            AssertReceiver(property.BoundSymbol.Property.Setter, SemanticsKind.Uniq);
+            Assert.True(property.SymbolOf()!.Property!.IsVerified);
+            AssertReceiver(property.SymbolOf()!.Property!.Getter, SemanticsKind.Ref);
+            AssertReceiver(property.SymbolOf()!.Property!.Setter, SemanticsKind.Uniq);
         }
     }
 
@@ -117,7 +117,7 @@ public class ReceiverShorthandTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct S {source}\n    var item: ref/i32 during source\n        get() -> ref/i32 during self.source => storage\n    computed view: ref/Self\n        get() -> ref/Self during self => self");
         AssertComplete(c);
-        var getter = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == "view").BoundSymbol!.Property!.Getter;
+        var getter = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(x => x.NameKoto.IdentifierName == "view").SymbolOf()!.Property!.Getter;
         Assert.Same(getter.Receiver, getter.Result);
     }
 

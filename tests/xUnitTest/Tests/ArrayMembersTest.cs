@@ -177,9 +177,9 @@ public class ArrayMembersTest
     {
         var source = user ? "struct Box<T>\n    public var size: isize = 0\n    public init(! repeating: T, count: isize)\n        T is Copy\n        self.size = count\nlet b = Box<i32>.init(repeating: 1, count: 2)" : "let a = Array<i32>.init(repeating: 1, count: 2)";
         var c = CompilationTestHelper.BindSuccess(source);
-        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(static x => x.BoundSymbol is { Declaration: FunctionKoto { IsConstructor: true } });
-        var constructor = call.BoundSymbol!;
-        Assert.Equal(user ? constructor : c.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation), call.BoundCall!.Target);
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(static x => x.SymbolOf() is { Declaration: FunctionKoto { IsConstructor: true } });
+        var constructor = call.SymbolOf()!;
+        Assert.Equal(user ? constructor : c.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation), call.CallOf()!.Target);
         Assert.Equal(user ? null : KimiDeclarationId.ArrayRepeating, constructor.LibraryDeclaration);
     }
 

@@ -66,7 +66,7 @@ public class ClosedProjectionConstraintBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(BindingState.Invalid, Target(c).StateOf());
-        Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
+        Assert.False(Target(c).Members.OfType<PropertyKoto>().Single().SymbolOf()!.Property!.IsVerified);
     }
 
     [Theory]

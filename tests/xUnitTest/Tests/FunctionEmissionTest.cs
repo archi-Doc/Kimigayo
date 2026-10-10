@@ -103,7 +103,7 @@ public class FunctionEmissionTest
         Assert.Equal(EmissionOpcode.Unreachable, main.Instructions[^1].Opcode);
         Assert.DoesNotContain(main.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar or EmissionOpcode.Phi);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Function.Name == "main");
-        var invoke = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && ((InvocationKoto)x.Source).BoundCall!.ReturnType == BoundType.Never);
+        var invoke = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && ((InvocationKoto)x.Source).CallOf()!.ReturnType == BoundType.Never);
         Assert.All(body.Edges.Where(x => x.From == invoke), x => Assert.Equal(OwnershipEdgeKind.Abort, x.Kind));
 
         c = MinimalEmissionTest.Analyze("func f() -> i32\n    defer => loop => ()\n    return 1\nf()");
@@ -163,7 +163,7 @@ public class FunctionEmissionTest
         }
         else
         {
-            var plan = ((InvocationKoto)caller.Operations[call].Source).BoundCall!;
+            var plan = ((InvocationKoto)caller.Operations[call].Source).CallOf()!;
             plan.Set(plan.Target, plan.ReturnType, null, [1], [], operations: plan.ArgumentOperations);
         }
 

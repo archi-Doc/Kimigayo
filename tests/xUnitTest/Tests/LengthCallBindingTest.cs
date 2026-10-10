@@ -24,11 +24,11 @@ public class LengthCallBindingTest
         Assert.Equal(BoundTypeKind.FixedArray, call.TypeOf()!.Kind);
         Assert.Equal(length, call.TypeOf()!.Length);
         Assert.Same(BoundType.I32, call.TypeOf()!.Components[0]);
-        Assert.NotNull(call.BoundCall);
-        Assert.Null(call.BoundCall.TypeArguments[0]);
-        Assert.Same(BoundType.I32, call.BoundCall.TypeArguments[1]);
-        Assert.Equal(length, call.BoundCall.LengthArguments[0]!.Value);
-        Assert.Null(call.BoundCall.LengthArguments[1]);
+        Assert.NotNull(call.CallOf());
+        Assert.Null(call.CallOf()!.TypeArguments[0]);
+        Assert.Same(BoundType.I32, call.CallOf()!.TypeArguments[1]);
+        Assert.Equal(length, call.CallOf()!.LengthArguments[0]!.Value);
+        Assert.Null(call.CallOf()!.LengthArguments[1]);
     }
 
     [Theory]
@@ -83,7 +83,7 @@ public class LengthCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nlet result = " + expression);
         Assert.False(c.Binding.Result.IsComplete);
-        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.Null(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
         using var writer = new StringWriter();
         Assert.False(c.Emission.WriteIr(writer, out _));
         Assert.Empty(writer.ToString());
@@ -98,7 +98,7 @@ public class LengthCallBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).BoundCall);
+        Assert.NotNull(Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>()).CallOf());
     }
 
     [Theory]
@@ -125,7 +125,7 @@ public class LengthCallBindingTest
         var c = MinimalEmissionTest.Analyze("struct Size\nlet Size: isize = 2\nfunc f<T>() => ()\nfunc f<length N>() => ()\nf<Size>()");
         Assert.False(c.Binding.Result.IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.Equal(BindingFailure.Unsupported, call.FailureOf());
         Assert.False(c.Emission.WriteIr(TextWriter.Null, out _));
     }
@@ -136,18 +136,18 @@ public class LengthCallBindingTest
         var c = MinimalEmissionTest.Analyze(Keep + "let a: [2 of i32] = [1, 2]\nkeep<2, i32>(a)");
         Assert.True(c.Binding.Result.IsComplete);
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var plan = call.BoundCall;
+        var plan = call.CallOf();
         var generic = Assert.IsType<GenericsKoto>(call.Method);
         var original = generic.TypeArguments[0];
         var donor = MinimalEmissionTest.Analyze("3");
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<NumberLiteralKoto>());
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
-        Assert.Null(call.BoundCall);
+        Assert.Null(call.CallOf());
         Assert.True(KotoHelper.Replace(generic, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.Same(plan, call.BoundCall);
-        Assert.Equal(2, call.BoundCall!.LengthArguments[0]!.Value);
+        Assert.Same(plan, call.CallOf());
+        Assert.Equal(2, call.CallOf()!.LengthArguments[0]!.Value);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -163,7 +163,7 @@ public class LengthCallBindingTest
         Assert.NotNull(tree);
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
-        Assert.All(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<InvocationKoto>(), call => Assert.Equal(2, call.BoundCall!.LengthArguments[0]!.Value));
+        Assert.All(KotoTree.Walk(restored.Kotonoha.RootKoto).OfType<InvocationKoto>(), call => Assert.Equal(2, call.CallOf()!.LengthArguments[0]!.Value));
         for (var i = 0; i < 100; i++)
         {
             Assert.True(c.Bind().IsComplete);

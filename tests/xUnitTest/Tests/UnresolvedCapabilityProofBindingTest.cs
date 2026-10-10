@@ -58,7 +58,7 @@ public class UnresolvedCapabilityProofBindingTest
         var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveCopy(bound, function));
         Assert.Equal(ConstraintProof.Unknown, c.Binding.ProveOwned(bound, function));
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).BoundConstraint!, function));
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(((IsKoto)function.TypeConstraints[0]).ConstraintOf()!, function));
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(bound, function));

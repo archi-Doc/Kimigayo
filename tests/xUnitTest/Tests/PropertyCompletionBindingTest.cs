@@ -106,5 +106,5 @@ public class PropertyCompletionBindingTest
     private const string Prefix = "public contract Hidden\npublic struct Source\n    Self is Hidden\npublic enum E<T>\n    T is Hidden\n    A\n";
 
     private static BoundProperty Property(Compilation c)
-        => Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<PropertyKoto>().Single()).BoundSymbol!.Property!;
+        => Assert.IsType<PropertyKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<PropertyKoto>().Single()).SymbolOf()!.Property!;
 }

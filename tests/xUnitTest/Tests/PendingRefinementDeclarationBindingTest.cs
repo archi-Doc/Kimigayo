@@ -24,12 +24,12 @@ public class PendingRefinementDeclarationBindingTest
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         Assert.Equal(BindingState.Unresolved, Container(c, "Child").StateOf());
         var function = Container(c, "G").Members.OfType<FunctionKoto>().Single(x => x.Name == "inspect");
-        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(Assert.IsType<IsKoto>(function.TypeConstraints[0]).BoundConstraint!, function));
-        Assert.Null(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
+        Assert.Equal(ConstraintProof.Unknown, c.Binding.Prove(Assert.IsType<IsKoto>(function.TypeConstraints[0]).ConstraintOf()!, function));
+        Assert.Null(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf());
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", (missing ? "public contract Future\n" : string.Empty) + "public struct Source\n    Self is " + (missing ? "Future" : "Origin")));
         Assert.True(c.Bind().IsComplete);
         Assert.Equal(BindingState.Resolved, Container(c, "Child").StateOf());
-        Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
+        Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf());
         Assert.True(CompilationTestHelper.Reload(c).Bind().IsComplete);
     }
 
@@ -82,10 +82,10 @@ public class PendingRefinementDeclarationBindingTest
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var child = Container(c, "Child");
         var target = Container(c, "Target");
-        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, child.BoundSymbol!)!.IsVerified);
+        Assert.False(c.Binding.GetConformanceDefinition(target.TypeOf()!, child.SymbolOf()!)!.IsVerified);
         c.Kotonoha.AddSource(new SourceDocument("Generated.kimi", "public struct Source\n    Self is Origin"));
         Assert.True(c.Bind().IsComplete);
-        Assert.True(c.Binding.GetConformanceDefinition(target.TypeOf()!, child.BoundSymbol!)!.IsVerified);
+        Assert.True(c.Binding.GetConformanceDefinition(target.TypeOf()!, child.SymbolOf()!)!.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]

@@ -148,8 +148,8 @@ public class NumericConversionEmissionTest
         var conversion = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>());
         Assert.Same(BoundType.Primitives[type], conversion.TypeOf());
         Assert.Same(BoundType.Primitives[type], Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<NumberLiteralKoto>()).TypeOf());
-        Assert.Equal(ConversionBinding.Literal, conversion.ConversionBinding);
-        Assert.Equal(Int128.Parse(payload, CultureInfo.InvariantCulture), Assert.NotNull(conversion.FoldedConstant));
+        Assert.Equal(ConversionBinding.Literal, conversion.ConversionOf().Kind);
+        Assert.Equal(Int128.Parse(payload, CultureInfo.InvariantCulture), Assert.NotNull(conversion.ConversionOf().Folded));
         Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
     }
 
@@ -226,7 +226,7 @@ public class NumericConversionEmissionTest
         var body = c.Ownership.Bodies[0];
         var id = body.Values.FindIndex(x => x.Kind == OwnershipValueKind.Convert);
         var conversion = Assert.IsType<ConversionKoto>(body.Operations[id].Source);
-        conversion.ConversionBinding = ConversionBinding.Integer;
+        conversion.SetConversion(ConversionBinding.Integer);
         using var failed = new StringWriter();
         Assert.False(c.Emission.WriteIr(failed, out _));
         Assert.Empty(failed.ToString());

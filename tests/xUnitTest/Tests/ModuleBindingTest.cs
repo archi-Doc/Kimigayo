@@ -317,7 +317,7 @@ public class ModuleBindingTest
             Assert.Empty(TestDiagnostics.Of(c, "root.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-            Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall is not null);
+            Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).CallOf() is not null);
         }
     }
 
@@ -343,7 +343,7 @@ public class ModuleBindingTest
             Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
-            Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall is not null);
+            Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).CallOf() is not null);
             if (!valid)
             {
                 Assert.Contains(c.Binding.Issues, x => x.Node.CodeContext.Kotonoha == c.SourceModules[1] && x.Node.FailureOf() == BindingFailure.Access);
@@ -371,7 +371,7 @@ public class ModuleBindingTest
         {
             Assert.Equal(valid, c.Bind().IsComplete);
             var storage = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Storage");
-            Assert.Equal(valid, storage.Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
+            Assert.Equal(valid, storage.Members.OfType<PropertyKoto>().Single().SymbolOf()!.Property!.IsVerified);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
             Assert.True(c.Binding.TryGetMatch(Assert.IsType<MatchKoto>(function.ExpressionBody), out var plan));
             Assert.Equal(valid ? MatchCoverageState.Exhaustive : MatchCoverageState.Invalid, plan!.Coverage.State);
@@ -433,7 +433,7 @@ public class ModuleBindingTest
             Assert.Equal(valid, c.Bind().IsComplete);
             var structure = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
             var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         }
     }
 
@@ -457,7 +457,7 @@ public class ModuleBindingTest
             Assert.Equal(valid, c.Bind().IsComplete);
             var structure = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
             var contract = c.SourceModules[1].RootKoto.NestedContainers.Single(x => x.Name == "Api").NestedContainers.Single(x => x.Name == "C");
-            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+            Assert.Equal(valid, c.Binding.GetConformanceDefinition(structure.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
         }
     }
 
@@ -481,7 +481,7 @@ public class ModuleBindingTest
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single();
             var test = Assert.IsType<IsKoto>(function.ExpressionBody);
-            Assert.Equal(valid, test.BoundRuntimeTest is not null);
+            Assert.Equal(valid, test.RuntimeTestOf() is not null);
             Assert.Equal(valid, test.StateOf() == BindingState.Resolved);
         }
     }
@@ -576,19 +576,19 @@ public class ModuleBindingTest
             if (form == 0)
             {
                 var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-                Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall is not null);
+                Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.ExpressionBody).CallOf() is not null);
                 return;
             }
 
             var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S");
             if (form == 1)
             {
-                Assert.Equal(valid, type.Members.OfType<PropertyKoto>().Single().BoundSymbol!.Property!.IsVerified);
+                Assert.Equal(valid, type.Members.OfType<PropertyKoto>().Single().SymbolOf()!.Property!.IsVerified);
                 return;
             }
 
             var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C");
-            Assert.All(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.Paths, path => Assert.Equal(valid, path.IsVerified));
+            Assert.All(c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!.Paths, path => Assert.Equal(valid, path.IsVerified));
         }
     }
 
@@ -644,14 +644,14 @@ public class ModuleBindingTest
             if (form is 0 or 3 or 4)
             {
                 var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-                Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
+                Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).CallOf() is not null);
             }
             else
             {
                 var owner = form == 1 ? c.Kotonoha.RootKoto : c.SourceModules[1].RootKoto.NestedContainers.Single(x => x.Name == "Api");
                 var type = owner.NestedContainers.Single(x => x.Name == "S");
                 var contract = owner.NestedContainers.Single(x => x.Name == "C");
-                Assert.Equal(valid, c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.BoundSymbol!)!.IsVerified);
+                Assert.Equal(valid, c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!.IsVerified);
             }
 
             if (pass == 0)
@@ -711,7 +711,7 @@ public class ModuleBindingTest
             Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-            Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall is not null);
+            Assert.Equal(valid, Assert.IsType<InvocationKoto>(call.ExpressionBody).CallOf() is not null);
             if (pass == 0)
             {
                 foreach (var module in c.SourceModules)
@@ -743,10 +743,10 @@ public class ModuleBindingTest
         var target = c.SourceModules[1].RootKoto.NestedContainers.Single().NestedContainers.Single(x => x.Name == "Target");
         Assert.Equal(BindingState.Invalid, target.StateOf());
         var call = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-        Assert.Null(Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall);
+        Assert.Null(Assert.IsType<InvocationKoto>(call.ExpressionBody).CallOf());
         Assert.True(KotoHelper.Replace(clause, replacement, original));
         Assert.True(c.Bind().IsComplete);
-        Assert.NotNull(Assert.IsType<InvocationKoto>(call.ExpressionBody).BoundCall);
+        Assert.NotNull(Assert.IsType<InvocationKoto>(call.ExpressionBody).CallOf());
     }
 
     [Theory]
@@ -794,7 +794,7 @@ public class ModuleBindingTest
             Assert.Equal(valid, c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
             Assert.Equal(valid ? ConstraintProof.Proven : ConstraintProof.Error, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
-            Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall is not null);
+            Assert.Equal(valid, Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf() is not null);
             foreach (var module in c.SourceModules)
             {
                 module.OnDeserialized(c);
@@ -812,7 +812,7 @@ public class ModuleBindingTest
         var c = Create((defaults ? string.Empty : "alias Lib.Api\n") + consumer, library, configure: (root, _) => root.Alias = defaults ? ["Lib.Api"] : []);
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-        Assert.Null(Assert.IsType<InvocationKoto>(function.ExpressionBody).BoundCall);
+        Assert.Null(Assert.IsType<InvocationKoto>(function.ExpressionBody).CallOf());
         c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "public group Api\n    public contract Future"));
         Assert.Empty(TestDiagnostics.Of(c, "Generated.kimi"));
         VerifyImportedProjectionCertificate(c, false, true);
@@ -831,12 +831,12 @@ public class ModuleBindingTest
         Assert.Equal(0, c.Binding.Bind(BindingMode.Provisional).InvalidCount);
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
         Assert.Equal(independent ? ConstraintProof.Proven : ConstraintProof.Unknown, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
-        Assert.Equal(independent, Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall is not null);
+        Assert.Equal(independent, Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf() is not null);
         c.SourceModules[1].AddSource(new SourceDocument("Generated.kimi", "public group Api\n    public struct Source\n        Self is Origin"));
         for (var pass = 0; pass < 2; pass++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
+            Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf());
             foreach (var module in c.SourceModules)
             {
                 module.OnDeserialized(c);
@@ -892,7 +892,7 @@ public class ModuleBindingTest
         {
             Assert.True(c.Bind().IsComplete);
             var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call");
-            Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).BoundCall);
+            Assert.NotNull(Assert.IsType<InvocationKoto>(function.Body!.Items.Single()).CallOf());
             foreach (var module in c.SourceModules)
             {
                 module.OnDeserialized(c);
@@ -963,7 +963,7 @@ public class ModuleBindingTest
             Assert.Empty(TestDiagnostics.Of(c, "library.kimi"));
             Assert.Equal(valid, c.Bind().IsComplete);
             var expression = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Consumer").Members.OfType<FunctionKoto>().Single(x => x.Name == "call").ExpressionBody;
-            Assert.Equal(valid, runtime ? Assert.IsType<IsKoto>(expression).BoundRuntimeTest is not null : Assert.IsType<InvocationKoto>(expression).BoundCall is not null);
+            Assert.Equal(valid, runtime ? Assert.IsType<IsKoto>(expression).RuntimeTestOf() is not null : Assert.IsType<InvocationKoto>(expression).CallOf() is not null);
             if (pass == 0)
             {
                 foreach (var module in c.SourceModules)

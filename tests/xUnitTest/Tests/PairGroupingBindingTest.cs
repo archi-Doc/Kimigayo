@@ -18,7 +18,7 @@ public class PairGroupingBindingTest
         var c = Parse($"func identity<s/T>(value: {type}) -> {type} => value\nfunc use(value: ref/i32) -> ref/i32 => identity(value)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var identity = Function(c, "identity");
-        Assert.Same(identity.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, identity.Parameters[0].Type.TypeOf());
+        Assert.Same(identity.SymbolOf()!.Schema!.GenericSlots[0].Symbol.WholeType, identity.Parameters[0].Type.TypeOf());
         Assert.Same(identity.Parameters[0].Type.TypeOf(), identity.ReturnType!.TypeOf());
         var use = Function(c, "use");
         Assert.Same(use.Parameters[0].Type.TypeOf(), use.ExpressionBody!.TypeOf());
@@ -101,7 +101,7 @@ public class PairGroupingBindingTest
         Assert.True(c.Bind().IsComplete);
         var f = Function(c, "f");
         Assert.Equal(BoundTypeKind.SemanticsApplication, f.Parameters[0].Type.TypeOf()!.Kind);
-        Assert.NotSame(f.BoundSymbol!.Schema!.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.TypeOf());
+        Assert.NotSame(f.SymbolOf()!.Schema!.GenericSlots[0].Symbol.WholeType, f.Parameters[0].Type.TypeOf());
     }
 
     [Fact]

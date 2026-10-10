@@ -38,7 +38,7 @@ public class ResultOnlyOriginTest
     {
         var c = MinimalEmissionTest.Analyze(None + "let a = none()\nlet b = none()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.BoundCall?.Target.Name == "none").ToArray();
+        var calls = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Where(static x => x.CallOf()?.Target.Name == "none").ToArray();
         Assert.Equal(2, calls.Length);
         var first = calls[0].TypeOf()!.Components[0].Origin!;
         var second = calls[1].TypeOf()!.Components[0].Origin!;

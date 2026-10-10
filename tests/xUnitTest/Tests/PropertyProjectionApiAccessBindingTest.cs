@@ -17,7 +17,7 @@ public class PropertyProjectionApiAccessBindingTest
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var property = Property(c);
         Assert.Equal(BindingFailure.Access, property.FailureOf());
-        Assert.False(property.BoundSymbol!.Property!.IsVerified);
+        Assert.False(property.SymbolOf()!.Property!.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -29,7 +29,7 @@ public class PropertyProjectionApiAccessBindingTest
         var c = MinimalEmissionTest.Analyze($"contract C\n    associate Element\npublic struct S\n    Self is C\n    associate C.Element is i32\npublic group Api\n    public computed item: i32\n        {accessors}");
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Node is PropertyAccessorKoto && x.Node.FailureOf() == BindingFailure.Access);
-        Assert.False(Property(c).BoundSymbol!.Property!.IsVerified);
+        Assert.False(Property(c).SymbolOf()!.Property!.IsVerified);
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -130,7 +130,7 @@ public class PropertyProjectionApiAccessBindingTest
         Check(c, false, inAccessor);
         var api = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api");
         var required = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Required");
-        var conformance = c.Binding.GetConformanceDefinition(api.TypeOf()!, required.BoundSymbol!);
+        var conformance = c.Binding.GetConformanceDefinition(api.TypeOf()!, required.SymbolOf()!);
         Assert.NotNull(conformance);
         Assert.False(conformance.IsVerified);
     }
@@ -150,7 +150,7 @@ public class PropertyProjectionApiAccessBindingTest
         Assert.Equal(valid, c.Bind().IsComplete);
         var restored = CompilationTestHelper.Reload(c);
         Assert.Equal(valid, restored.Bind().IsComplete);
-        Assert.Equal(valid, Property(restored).BoundSymbol!.Property!.IsVerified);
+        Assert.Equal(valid, Property(restored).SymbolOf()!.Property!.IsVerified);
         Assert.Equal(c.Binding.Issues.Select(x => x.Code), restored.Binding.Issues.Select(x => x.Code));
     }
 
@@ -168,10 +168,10 @@ public class PropertyProjectionApiAccessBindingTest
         var replacement = inAccessor ? (Koto)Property(valid).GetAccessor(PropertyAccessorKind.Get)! : Property(valid).TypeKoto!;
         Assert.True(KotoHelper.Replace(property, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(property.BoundSymbol!.Property!.IsVerified);
+        Assert.True(property.SymbolOf()!.Property!.IsVerified);
         Assert.True(KotoHelper.Replace(property, replacement, original));
         Assert.False(c.Bind().IsComplete);
-        Assert.False(property.BoundSymbol.Property.IsVerified);
+        Assert.False(property.SymbolOf()!.Property!.IsVerified);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -196,7 +196,7 @@ public class PropertyProjectionApiAccessBindingTest
     private static void Check(Compilation c, bool valid, bool accessor)
     {
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Property(c).BoundSymbol!.Property!.IsVerified);
+        Assert.Equal(valid, Property(c).SymbolOf()!.Property!.IsVerified);
         if (!valid)
         {
             Assert.Contains(c.Binding.Issues, x => x.Node.FailureOf() == BindingFailure.Access &&

@@ -25,7 +25,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsSpecialization);
-        Assert.Equal(OriginKind.Parameter, implementation.BoundSymbol!.Type!.Components[0].Origin!.Kind);
+        Assert.Equal(OriginKind.Parameter, implementation.SymbolOf()!.Type!.Components[0].Origin!.Kind);
     }
 
     [Theory]
@@ -37,7 +37,7 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var implementation = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out _));
-        Assert.Equal(OriginKind.Parameter, implementation.BoundSymbol!.Type!.Components[0].Origin!.Kind);
+        Assert.Equal(OriginKind.Parameter, implementation.SymbolOf()!.Type!.Components[0].Origin!.Kind);
     }
 
     [Fact]
@@ -83,12 +83,12 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         var original = functions.Single(x => !x.IsSpecialization);
         var implementation = functions.Single(x => x.IsSpecialization);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var previous = implementation.BoundSymbol!.Type!.Components[0].Origin!;
+        var previous = implementation.SymbolOf()!.Type!.Components[0].Origin!;
         var donor = MinimalEmissionTest.Analyze(Empty.Replace("fresh", "updated", StringComparison.Ordinal) + "()");
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "empty").ReturnType!;
         Assert.True(KotoHelper.Replace(original, original.ReturnType!, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
-        var current = implementation.BoundSymbol.Type!.Components[0].Origin!;
+        var current = implementation.SymbolOf()!.Type!.Components[0].Origin!;
         Assert.NotSame(previous, current);
         Assert.Equal("fresh", previous.Name);
         Assert.Equal("updated", current.Name);

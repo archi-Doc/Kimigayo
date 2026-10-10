@@ -81,7 +81,7 @@ public class ConditionalMemberAccessBindingTest
     {
         var c = MinimalEmissionTest.Analyze(Source(false, "Source.Hidden.Item", access) + "\nS<i32>.value()");
         Assert.Equal(valid, c.Binding.Result.IsComplete);
-        Assert.Equal(valid, Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last()).BoundCall is not null);
+        Assert.Equal(valid, Assert.IsType<InvocationKoto>(c.Kotonoha.GeneratedFunction!.Body!.Items.Last()).CallOf() is not null);
     }
 
     [Theory]
@@ -148,7 +148,7 @@ public class ConditionalMemberAccessBindingTest
         Assert.Equal(valid ? BindingState.Resolved : BindingState.Invalid, member.StateOf());
         if (property)
         {
-            Assert.Equal(valid, Assert.IsType<PropertyKoto>(member).BoundSymbol!.Property!.IsVerified);
+            Assert.Equal(valid, Assert.IsType<PropertyKoto>(member).SymbolOf()!.Property!.IsVerified);
         }
     }
 
@@ -156,8 +156,8 @@ public class ConditionalMemberAccessBindingTest
         => Assert.IsType<CodeBlockKoto>(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").Members.OfType<SyntaxFormKoto>().Single().Operands[2]);
 
     private static Koto Member(Compilation c)
-        => Block(c).Items.Single(x => x.BoundSymbol?.Name == "value");
+        => Block(c).Items.Single(x => x.SymbolOf()?.Name == "value");
 
     private static BoundConformance Definition(Compilation c)
-        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C").BoundSymbol!)!;
+        => c.Binding.GetConformanceDefinition(c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "S").TypeOf()!, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "C").SymbolOf()!)!;
 }
