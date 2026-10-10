@@ -263,6 +263,17 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 3.5, 8.9, 15.1.5: the bare acquisition of a Place storing the Type, taken by value without an operator: a Copy-proven Type
+    // Copies, a pair layer whose every admitted case Copies or Reborrows acquires by case, a stored exclusive reference Reborrows in its
+    // own mode, and any other Place needs an explicit Move; the proof tells an unproven Copy from a refuted one.
+    internal HirAcquire BareAcquire(BoundType type, Koto node, out ConstraintProof proof)
+    {
+        proof = this.ProveCopy(type, node);
+        return proof == ConstraintProof.Proven ? HirAcquire.Copy
+            : TryPairLayer(type, out _, out _) && this.BareAcquisition(type, node, out _) == SemanticsMask.None ? HirAcquire.ByCase
+            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } ? HirAcquire.Reborrow : HirAcquire.Move;
+    }
+
     /// <summary>Plans the bare acquisition of a pair-layer Place per admitted case (SPEC 3.5, 8.9): a Copy for a shared or raw
     /// reference and for an owner whose target is proven Copy, a Reborrow for an exclusive reference, and otherwise a case
     /// without a plan, which is a definition error naming that case.</summary>

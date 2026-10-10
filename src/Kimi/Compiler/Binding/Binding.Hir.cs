@@ -440,9 +440,8 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 3.5, 8.9, 15.1.5: the bare acquisition Binding applies: a Copy Place Copies, a pair-layer Place whose every admitted case Copies
-        // or Reborrows acquires by case, a Place storing an exclusive reference Reborrows it, a Copy unproven for an abstract Type is decided
-        // by case, and a raw referent that is not Copy Moves; a value that is not a Place is a Temporary.
+        // Binding's bare acquisition of a Place (BareAcquire), where a Copy unproven for an abstract Type is decided by case and a raw referent
+        // that is not Copy Moves; a value that is not a Place is a Temporary.
         private HirAcquire Bare(Koto child)
         {
             var place = this.IsPlace(child);
@@ -451,11 +450,8 @@ public sealed partial class Binding
                 return place ? HirAcquire.Unset : HirAcquire.Temporary;
             }
 
-            var proof = binding.ProveCopy(type, child);
-            return proof == ConstraintProof.Proven ? HirAcquire.Copy
-                : TryPairLayer(type, out _, out _) && binding.BareAcquisition(type, child, out _) == SemanticsMask.None ? HirAcquire.ByCase
-                : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? HirAcquire.Reborrow
-                : proof == ConstraintProof.Refuted ? HirAcquire.Move : proof == ConstraintProof.Unknown ? HirAcquire.ByCase : HirAcquire.Unset;
+            var bare = binding.BareAcquire(type, child, out var proof);
+            return bare != HirAcquire.Move ? bare : proof == ConstraintProof.Refuted ? HirAcquire.Move : proof == ConstraintProof.Unknown ? HirAcquire.ByCase : HirAcquire.Unset;
         }
 
         // Whether a node's consumer updates it or borrows it exclusively; the parent is the node's while it consumes its children.

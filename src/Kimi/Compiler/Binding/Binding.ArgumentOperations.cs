@@ -957,18 +957,12 @@ public sealed partial class Binding
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.CopyRead;
             }
-            else if (!fixedExpectation && actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source))
+            else if (!fixedExpectation && actual.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && IsBarePlace(source) &&
+                this.BareAcquire(actual, source, out _) == HirAcquire.Move && !this.RequireAcquisition(source, actual, pattern, BindingFailure.TransferRequired, false, fixedExpectation, deferAcquisition))
             {
-                // SPEC 3.5, 10.1: a bare Place never Moves, so a Non-Copy or Copy-unproven Place is not acquired by value, and
-                // the candidate that needs the Copy is inapplicable. A bare pair-layer Place whose every admitted case Copies or
-                // Reborrows is acquired by each case as its case Type is (SPEC 8.9, 8.10).
-                if (this.ProveCopy(actual, source) != ConstraintProof.Proven && !(TryPairLayer(actual, out _, out _) && this.BareAcquisition(actual, source, out _) == SemanticsMask.None))
-                {
-                    if (!this.RequireAcquisition(source, actual, pattern, BindingFailure.TransferRequired, false, fixedExpectation, deferAcquisition))
-                    {
-                        return false;
-                    }
-                }
+                // SPEC 3.5, 10.1: a bare Place never Moves, so a Place whose bare acquisition needs a Move is not acquired by value,
+                // and the candidate that needs the Copy is inapplicable.
+                return false;
             }
 
             return true;

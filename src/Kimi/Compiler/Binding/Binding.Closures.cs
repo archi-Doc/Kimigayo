@@ -511,18 +511,16 @@ public sealed partial class Binding
             case Constants.MoveOperation:
                 environment.CaptureAcquisition = CaptureAcquisition.Move;
                 return null;
-            case null when this.ProveCopy(type, function) == ConstraintProof.Proven:
-                environment.CaptureAcquisition = CaptureAcquisition.Copy;
-                return null;
-            case null when TryPairLayer(type, out _, out _) && this.BareAcquisition(type, function, out _) == SemanticsMask.None:
-                // SPEC 8.9: every admitted case Copies or Reborrows; each case run and instance acquires as its case Type does.
-                environment.CaptureAcquisition = CaptureAcquisition.Bare;
-                return null;
-            case null when type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 }:
-                environment.CaptureAcquisition = CaptureAcquisition.Reborrow;
-                return null;
             case null:
-                return BindingFailure.TransferRequired;
+                // SPEC 8.9: by case, each case run and instance acquires as its case Type does.
+                var bare = this.BareAcquire(type, function, out _);
+                if (bare == HirAcquire.Move)
+                {
+                    return BindingFailure.TransferRequired;
+                }
+
+                environment.CaptureAcquisition = bare == HirAcquire.Copy ? CaptureAcquisition.Copy : bare == HirAcquire.ByCase ? CaptureAcquisition.Bare : CaptureAcquisition.Reborrow;
+                return null;
         }
 
         var exclusive = capture.Operation == Constants.UniqKeyword;
