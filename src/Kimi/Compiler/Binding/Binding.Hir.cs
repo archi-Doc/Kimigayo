@@ -216,7 +216,8 @@ public sealed partial class Binding
         private HirOp KindOp(Koto node) => node switch
         {
             BoolLiteralKoto or CharLiteralKoto or NumberLiteralKoto or StringLiteralKoto or UnitLiteralKoto or NullLiteralKoto => HirOp.Literal,
-            InterpolatedStringKoto or MacroKoto { Formatting: not null } => HirOp.Interpolation,
+            InterpolatedStringKoto or MacroKoto when node.Formatting is not null => HirOp.Interpolation,
+            InterpolatedStringKoto => HirOp.Syntax, // The text a $tryWrite writes: its segments and expressions are the macro's writes.
             LabeledKoto or ParenthesizedKoto or MacroKoto or ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer } => HirOp.Group,
             ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address } => HirOp.Borrow,
             DereferenceKoto or ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => HirOp.Deref,
@@ -381,7 +382,7 @@ public sealed partial class Binding
                     this.Take((node as TestVerificationKoto)?.Message);
                     break;
                 case MatchKoto match:
-                    binding.TryGetMatch(match, out var plan);
+                    var plan = BoundMatch.Of(match);
                     this.Subject(match.Expression, plan?.SubjectBorrow);
                     this.Bindings(plan);
                     for (var i = 0; i < match.Arms.Count; i++)
@@ -393,13 +394,22 @@ public sealed partial class Binding
                     break;
                 case ForKoto loop:
                     this.Take(loop.Iterable);
-                    this.Bindings(loop.Iteration?.Decomposition);
+                    var decomposition = BoundMatch.Of(loop);
+                    for (var i = 0; decomposition is null && i < loop.Bindings.Count; i++)
+                    {
+                        this.Write(loop.Bindings[i], new(HirAcquire.Copy, HirAdaptation.None)); // SPEC 4.6.3.4: a ResolvedRange loop binds isize positions.
+                    }
+
+                    this.Bindings(decomposition);
+                    break;
+                case MacroKoto { Formatting.Acquisition.BoundCall.ArgumentOperations: [var writer, ..] }:
+                    this.Take(writer.Source, HirAdjust.Of(writer)); // A $tryWrite acquires its writer operand (utf8-formatting 5.3).
                     break;
             }
 
             // An enum Case's payloads, then each call of the node: a value call's callee in its receiver mode (SPEC 7.6.3), a reference to the
             // callable passed as it is in that mode. Of a user index's index and indexUniq, an update or an exclusive borrow of the element
-            // takes indexUniq (SPEC 4.6.9).
+            // takes indexUniq (SPEC 4.6.9), which its plan row records for its ExpansionPlan.
             if (op == HirOp.Aggregate && binding.TryGetEnumConstruction(node, out var construction))
             {
                 foreach (ref readonly var payload in construction!.PayloadOperations)
@@ -408,7 +418,14 @@ public sealed partial class Binding
                 }
             }
 
-            var unselected = node is IndexKoto user && binding.IndexerCall(user, true) is { } exclusive ? (this.exclusive ? binding.IndexerCall(user, false) : exclusive)?.CallStorage : null;
+            CallPlan? unselected = null;
+            if (node is IndexKoto)
+            {
+                var uniq = this.exclusive && binding.IndexerCall(node, true) is not null;
+                HirTables.PlanFor(node, uniq).Mode = uniq ? (byte)1 : (byte)0;
+                unselected = binding.IndexerCall(node, !uniq)?.CallStorage;
+            }
+
             for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
             {
                 if (ReferenceEquals(call, unselected))

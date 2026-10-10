@@ -18,7 +18,7 @@ public class ArchitectureRulesTest
     [
         "AdtDef", "BindingSymbol", "BindingSymbolKind", "BoundCapture", "BoundClosure", "BoundDefaultArgument", "BoundEnumCase",
         "BoundEnumConstruction", "BoundLength", "BoundMatch", "BoundMatchArm", "BoundOrigin", "BoundPattern", "BoundPatternKind",
-        "BoundType", "BoundTypeKind", "CallPlan", "CalleeKind", "ConversionBinding", "FunctionResultMode", "HirAcquire", "HirAdaptation",
+        "BoundType", "BoundTypeKind", "CallPlan", "CalleeKind", "ConversionBinding", "ExpansionKind", "ExpansionPlan", "FunctionResultMode", "HirAcquire", "HirAdaptation",
         "HirAdjust", "HirCompletion", "HirOp", "HirPlace", "HirPlaceKind", "HirRes", "HirTables", "KimiLibrary", "PairBinder", "PairCase", "PatternLiteral",
         "PatternLiteralKind", "PlanRow", "Subst", "TyCtxt",
     ];

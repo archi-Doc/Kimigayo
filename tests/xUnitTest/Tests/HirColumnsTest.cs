@@ -8,8 +8,9 @@ namespace XunitTest;
 
 /// <summary>The published HIR columns (docs/dev/COMPILER_ARCHITECTURE.md, R2b) over the Kimi library and every milestone program:
 /// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
-/// prepared slot, every jump its target, every evaluated node its completion and its Place, and every consumed child its Adjust;
-/// publishing changes no other result and allocates nothing again.</summary>
+/// prepared slot, every jump its target, every evaluated node its completion and its Place, every consumed child its Adjust, every
+/// match its Pattern plan, every closure its definition and every expansion its plan; publishing changes no other result and allocates
+/// nothing again.</summary>
 public sealed class HirColumnsTest
 {
     // Virtual bodies over a generic base whose applicability has premises, and over a closed base.
@@ -183,6 +184,40 @@ public sealed class HirColumnsTest
         Assert.Equal(expected, places);
     }
 
+    // SPEC 4.6.9, 11.3, 13.4, utf8-formatting 6.1: a Property update names its getter and its setter, which takes the computed value; a user
+    // index its selected index or indexUniq call, a view its element or slice call; a key resolution reads the evaluated receiver's length;
+    // an interpolation passed directly to writeLine is marked; a ResolvedRange loop Copies its positions.
+    [Fact]
+    public void ExpansionPlansNameTheirCalls()
+    {
+        const string Source = "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
+            "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
+            "    public func index(self, key: ref/isize) -> place ref/T during self => self.first\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.first\n" + CopyPropertyEmissionTest.Meter +
+            "var m = Meter.init()\nm.level += 1\nm.doubled -= 2\nvar pts = Pair<i32>.init(1, 2)\npts[0] += 5\nvar values: [2 of i32] = [1, 2]\nvar view = values.sliceUniq()\n" +
+            "view[0] = 7\nlet range = (0..2).resolve(2)\nlet tail = ^1\nvar total: isize = 0\nfor i in values.indices\n    total += i\n" +
+            "Console.writeLine(\"n=\\(total)\")\nlet text = \"\\(pts[1])\"\n" +
+            "require m.level == 4 and view[range][1] == 2 and values[tail] == 2 and text == \"6\" else => $abort(\"expansion\")\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var start = Source.IndexOf("var m = ", StringComparison.Ordinal);
+        var plans = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && ExpansionPlan.Of(x) is not null).Select(x => (Node: x, Plan: ExpansionPlan.Of(x)!.Value))
+            .Select(x => $"{Source.Substring(x.Node.Span.Start, x.Node.Span.Length)} {x.Plan.Kind} {x.Plan.First?.Target.Name}/{x.Plan.Second?.Target.Name} {x.Plan.Evaluated} {x.Plan.Direct}");
+        string[] expected =
+        [
+            "m.level += 1 CompoundAssign level.Get/level.Set 0 False", "m.doubled -= 2 CompoundAssign doubled.Get/doubled.Set 0 False", "pts[0] += 5 CompoundAssign / -1 False",
+            "pts[0] Index /indexUniq -1 False", "view[0] Index /indexPositionUniq -1 False", "for i in values.indices\n    total += i Iteration / -1 False",
+            "total += i CompoundAssign / -1 False", "\"n=\\(total)\" Format / -1 True", "\"\\(pts[1])\" Format / -1 False", "pts[1] Index /index -1 False",
+            "view[range][1] Index / -1 False", "view[range] Index /slice -1 False", "values[tail] Index resolved/ 1 False",
+        ];
+        Assert.Equal(expected, plans);
+        var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
+        Assert.Null(BoundMatch.Of(loop));
+        Assert.Equal(new HirAdjust(HirAcquire.Copy, HirAdaptation.None), HirTables.AdjustOf(loop.Bindings[0]));
+    }
+
     // Publishing before the ownership analysis leaves every Binding, control-flow and ownership fact and diagnostic unchanged.
     [Theory]
     [MemberData(nameof(Corpus))]
@@ -257,7 +292,9 @@ public sealed class HirColumnsTest
     // Every parsed node in the tree has an Op, a call Op its call, a selected symbol its Res (the prepared slot exactly where the
     // parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated node its completion;
     // every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a call that takes them,
-    // unless Binding recorded one at the node itself, and a Pattern binding its acquisition.
+    // unless Binding recorded one at the node itself, and a Pattern binding its acquisition; a match, a try and a user loop have their
+    // Pattern plan, a closure its environment, signature and substitution, an expansion Op its plan with the calls it names, and a
+    // requirement call its Contract.
     private static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
@@ -323,6 +360,24 @@ public sealed class HirColumnsTest
                 continue;
             }
 
+            if ((op is HirOp.Match or HirOp.Try && BoundMatch.Of(node) is not { IsCurrent: true }) || (op == HirOp.For && (BoundMatch.Of(node) is null) != (CallPlan.Of(node, 1) is null)) ||
+                (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null)))
+            {
+                problems.Add($"{where} without its Pattern plan or closure definition");
+            }
+
+            // An index names its key resolution, which reads the evaluated receiver, and a user or view selection its selected call; an update
+            // of a Property with an accessor its setter, which takes the computed value.
+            var expansion = ExpansionPlan.Of(node);
+            var updated = (node as BinaryKoto)?.Left ?? (node as UnaryKoto)?.Operand;
+            if ((expansion is null) == (op is HirOp.For or HirOp.Try or HirOp.Interpolation or HirOp.DictionaryLiteral or HirOp.Range or HirOp.CompoundAssign or HirOp.Index || (op == HirOp.Call && node is IndexKoto)) ||
+                (op is HirOp.Interpolation or HirOp.DictionaryLiteral && CallPlan.Of(node) is null) || (op == HirOp.Range && CallPlan.Of(node) is not null) ||
+                (node is IndexKoto && ((op == HirOp.Call) == (expansion?.Second is null) || (expansion?.First is not null) != (op == HirOp.Index && CallPlan.Of(node) is not null) || (expansion?.First is not null && expansion?.Evaluated < 0))) ||
+                (op == HirOp.CompoundAssign && HirTables.Op(updated!) == HirOp.Call && updated is not IndexKoto && (expansion?.Second is null || expansion?.Evaluated < 0)))
+            {
+                problems.Add($"{where} expansion {expansion}");
+            }
+
             foreach (var child in Consumed(node, op))
             {
                 if (Parsed(child) && HirTables.AdjustOf(child!).Acquire == HirAcquire.Unset)
@@ -333,6 +388,11 @@ public sealed class HirColumnsTest
 
             for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
             {
+                if (call.Kind == CalleeKind.Requirement && call.RequirementContract is null && call.Target.CompilerFunction == CompilerFunctionKind.None)
+                {
+                    problems.Add($"{where} calls {call.Target.Name} without its Contract");
+                }
+
                 if (call.Kind != CalleeKind.Value && call.Receiver is { } receiver)
                 {
                     Expect(receiver, HirAdjust.Of(call.ReceiverOperation));
@@ -398,11 +458,12 @@ public sealed class HirColumnsTest
             (TestVerificationKoto verification, _) => [verification.Condition, verification.Message],
             (DiscardKoto discard, _) => [discard.Operand],
             (MatchKoto match, _) => match.Arms.SelectMany(static x => new[] { x.Guard, Result(x.Body) }).Prepend(match.Expression),
-            (ForKoto loop, HirOp.For) => [loop.Iterable],
+            (ForKoto loop, HirOp.For) => loop.Bindings.Prepend(loop.Iterable),
+            (MacroKoto macro, HirOp.Interpolation) => [((InvocationKoto)macro.Operand).ArgumentNodes[0]],
             _ => [],
         };
 
-        var calls = Enumerable.Range(0, 8).Select(x => CallPlan.Of(node, x)).TakeWhile(static x => x is not null)
+        var calls = Enumerable.Range(0, int.MaxValue).Select(x => CallPlan.Of(node, x)).TakeWhile(static x => x is not null)
             .SelectMany(static x => x!.ArgumentOperations.ToArray().Select(static y => y.Source).Prepend(x.Kind == CalleeKind.Value ? x.CalleeValue : x.Receiver));
         var payloads = op == HirOp.Aggregate && node.CodeContext.Compilation.Binding.TryGetEnumConstruction(node, out var construction)
             ? construction!.PayloadOperations.ToArray().Select(static x => x.Source) : [];

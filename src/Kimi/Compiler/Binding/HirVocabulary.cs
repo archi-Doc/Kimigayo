@@ -10,12 +10,15 @@ namespace Kimi.Compiler;
 /// <summary>What the MIR builder does with a syntax node: the Op column of <see cref="HirTables"/>. The vocabulary is closed; a
 /// form no member describes keeps <see cref="Unset"/>, and the builder reports the located Unsupported.</summary>
 /// <remarks><see cref="Syntax"/>: not evaluated (a declaration without a buildable body, a Type, a qualifier, the callee of a selected
-/// call or construction, a member name, a binder, a Pattern, which its match plan describes, an attribute, or the inside of an Error).
+/// call or construction, a member name, a binder, a Pattern, which its match plan describes, the text a <c>$tryWrite</c> writes, an
+/// attribute, or the inside of an Error).
 /// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: Binding rejected
 /// the expression or left it unresolved; the builder replaces it whole. <see cref="Name"/>: its Res says what it reads.
 /// <see cref="Group"/>: evaluates its one operand (parentheses, a label, a macro, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
-/// <see cref="Continue"/>: the transfer to the target the node's plan row records.</remarks>
+/// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,
+/// <see cref="Interpolation"/>, <see cref="DictionaryLiteral"/>, <see cref="Range"/>, <see cref="Index"/>, <see cref="CompoundAssign"/> and a user
+/// or view index's <see cref="Call"/>: the expansion its <see cref="ExpansionPlan"/> describes.</remarks>
 internal enum HirOp : byte
 {
     Unset,
@@ -39,7 +42,7 @@ internal enum HirOp : byte
     Closure,
     RuntimeTypeTest,
     Range, // A position or range key its selection applies directly.
-    Interpolation, // A formatting plan.
+    Interpolation, // An interpolation or a $tryWrite with its formatting plan.
     DictionaryLiteral,
     Block,
     Let,

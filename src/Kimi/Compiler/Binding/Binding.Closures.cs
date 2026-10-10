@@ -32,6 +32,10 @@ public sealed class BoundClosure
     internal List<BoundCapture> Storage { get; } = new();
 
     internal List<BindingSymbol> SymbolPool { get; } = new();
+
+    // The closure definition (ClosureDef, plan 5.3) of an anonymous function Binding resolved; its substitution is TyCtxt.SubstOfClosure of
+    // its Type.
+    internal static BoundClosure? Of(FunctionKoto function) => function.BoundClosure;
 }
 
 // A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.6.2).

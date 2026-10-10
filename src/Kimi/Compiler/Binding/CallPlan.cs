@@ -119,13 +119,22 @@ public sealed class CallPlan
 
     /// <summary>Gets a call of a node, the one way to reach one: an invocation's call, an operator's, an object creation, a
     /// Property's getter and setter, an index expression's key resolution, indexer and view range, the construction of a range or
-    /// <c>^</c> value, a for loop's iterator entry and step, and a dictionary literal's key lookup.</summary>
+    /// <c>^</c> value, a for loop's iterator entry and step, a dictionary literal's key lookup, and the calls of a formatting plan
+    /// (an interpolation's buffer and adapter, then its writes; a <c>$tryWrite</c>'s writes, then its status).</summary>
     /// <param name="node">The node.</param>
     /// <param name="ordinal">The position of the call among the node's calls, in evaluation order.</param>
     /// <returns>The call, or null when the node has no call at that position.</returns>
     internal static CallPlan? Of(Koto node, int ordinal = 0)
     {
         var binding = node.CodeContext.Compilation.Binding;
+        if (node.Formatting is { } format)
+        {
+            // A $tryWrite's acquisition is no call: it only acquires the writer operand.
+            var write = format.Acquisition is null ? ordinal - 2 : ordinal;
+            return Plan(write < 0 ? ordinal == 0 ? format.Heap : format.Adapter : write < format.Writes.Count ? format.Writes[write]
+                : write == format.Writes.Count && format.Acquisition is not null ? format.Outcome : null);
+        }
+
         return node switch
         {
             InvocationKoto call => Nth(ordinal, Plan(call)),
