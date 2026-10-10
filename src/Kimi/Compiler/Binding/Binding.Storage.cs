@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<DeclarationContainerKoto, StorageShape> storageShapes = new(ReferenceEqualityComparer.Instance);
+    private readonly List<DeclarationContainerKoto> storageDeclarations = new();
     private readonly List<DeclarationContainerKoto> inlineLayoutStack = new();
     private readonly List<bool> inlineLayoutOwnDeclaration = new();
     private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
@@ -19,7 +19,9 @@ public sealed partial class Binding
 
     internal bool PrepareEnumCases(BoundType type)
     {
-        var count = Compiler.EnumStorage.Count(type);
+        var cases = type.Symbol?.Adt?.Cases;
+        var count = cases?.Count ?? 0;
+        AdtDef.Shadow(count == EnumStorage.Count(type), "EnumCount", type);
         if (type.StoredCases?.Length != count)
         {
             type.StoredCases = new BoundType[count];
@@ -28,7 +30,12 @@ public sealed partial class Binding
         for (var i = 0; i < count; i++)
         {
             this.enumPayloadTypes.Clear();
-            foreach (var syntax in Compiler.EnumStorage.Case(type, i)!.Payload)
+            if (cases![i] is not { } selected)
+            {
+                return false;
+            }
+
+            foreach (var syntax in selected.Payload)
             {
                 if (this.StoredType(syntax, type) is not { } payload)
                 {
@@ -44,9 +51,6 @@ public sealed partial class Binding
         this.enumPayloadTypes.Clear();
         return true;
     }
-
-    internal IReadOnlyList<Koto>? EnumStorage(BoundType type)
-        => type.Symbol?.Declaration is EnumKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape) ? shape.Types : null;
 
     internal BoundType? StoredType(Koto syntax, BoundType owner)
     {
@@ -81,7 +85,7 @@ public sealed partial class Binding
     {
         this.cyclicInlineLayouts.Clear();
         this.finiteInlineLayouts.Clear();
-        foreach (var container in this.storageShapes.Keys)
+        foreach (var container in this.storageDeclarations)
         {
             if (container.BoundSymbol?.Type is { } type)
             {
@@ -114,11 +118,12 @@ public sealed partial class Binding
             return;
         }
 
-        if ((!StructStorage.IsStruct(type) && !Compiler.EnumStorage.IsEnum(type)) || type.Symbol!.Declaration is not DeclarationContainerKoto container || !this.storageShapes.TryGetValue(container, out var shape))
+        if ((!AdtDef.IsStruct(type) && !AdtDef.IsEnum(type)) || type.Symbol!.Adt is not { } shape)
         {
             return; // Parameters, primitives, references, objects, Slices and pointers store no inline copy of this Type.
         }
 
+        var container = (DeclarationContainerKoto)type.Symbol.Declaration;
         var index = this.inlineLayoutStack.IndexOf(container);
         if (index >= 0)
         {
@@ -156,6 +161,7 @@ public sealed partial class Binding
 
     private void PrepareStorage()
     {
+        this.storageDeclarations.Clear();
         for (var n = 0; n < this.nodes.Count; n++)
         {
             if (this.nodes[n] is not (StructKoto or EnumKoto))
@@ -164,14 +170,9 @@ public sealed partial class Binding
             }
 
             var container = (DeclarationContainerKoto)this.nodes[n];
-            if (!this.storageShapes.TryGetValue(container, out var shape))
-            {
-                this.storageShapes.Add(container, shape = new());
-            }
-
-            shape.Types.Clear();
-            shape.CaseCount = 0;
-            shape.HasDestructor = false;
+            var shape = container.BoundSymbol!.Adt ??= new();
+            shape.Clear();
+            this.storageDeclarations.Add(container);
             var scope = this.scopes[container];
             if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
             {
@@ -188,7 +189,7 @@ public sealed partial class Binding
             for (var i = 0; i < container.Members.Count; i++)
             {
                 var member = container.Members[i];
-                if (member is VariableKoto field && IsStoredVariable(field))
+                if (member is PropertyKoto field && IsStoredVariable(field))
                 {
                     if (container is EnumKoto)
                     {
@@ -206,6 +207,7 @@ public sealed partial class Binding
                     }
 
                     shape.Types.Add(syntax);
+                    shape.Fields.Add(field);
                 }
                 else if (TryEnumPayload(member, out var payload))
                 {
@@ -216,10 +218,10 @@ public sealed partial class Binding
 
                     if (member.BoundSymbol?.EnumCase is { } enumeration)
                     {
-                        enumeration.Ordinal = shape.CaseCount;
+                        enumeration.Ordinal = shape.Cases.Count;
                     }
 
-                    shape.CaseCount++;
+                    shape.Cases.Add(member.BoundSymbol?.EnumCase);
 
                     // SPEC 15.3.3: the Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a
                     // Field, a payload Type that failed leaves the clauses unbound, so they add no record derived from that failure.
@@ -245,9 +247,9 @@ public sealed partial class Binding
                         }
                     }
                 }
-                else if (member is FunctionKoto { IsDestructor: true })
+                else if (member is FunctionKoto { IsDestructor: true } destructor)
                 {
-                    shape.HasDestructor = true;
+                    shape.DestructorKoto ??= destructor;
                     if (container is EnumKoto)
                     {
                         this.Fail(member, BindingFailure.InvalidTypeFormation);
@@ -259,7 +261,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (container is EnumKoto && shape.CaseCount == 0)
+            if (container is EnumKoto && shape.Cases.Count == 0)
             {
                 this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
@@ -388,14 +390,5 @@ public sealed partial class Binding
                 this.lengthScratch.Return(lengths, clearArray: true);
             }
         }
-    }
-
-    private sealed class StorageShape
-    {
-        internal List<Koto> Types { get; } = new();
-
-        internal int CaseCount { get; set; }
-
-        internal bool HasDestructor { get; set; }
     }
 }

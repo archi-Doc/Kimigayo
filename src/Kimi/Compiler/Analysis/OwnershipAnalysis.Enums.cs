@@ -50,16 +50,16 @@ public sealed partial class OwnershipAnalysis
             return true;
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
             if (type.StoredBase is { } parent && !IsZeroSized(parent))
             {
                 return false;
             }
 
-            for (var i = 0; i < StructStorage.Count(type); i++)
+            for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (StructStorage.FieldType(type, i) is not { } field || !IsZeroSized(field))
+                if (AdtDef.FieldType(type, i) is not { } field || !IsZeroSized(field))
                 {
                     return false;
                 }
@@ -149,9 +149,9 @@ public sealed partial class OwnershipAnalysis
             return supported;
         }
 
-        if (StructStorage.Declaration(type) is { } structure)
+        if (AdtDef.Declaration(type) is { } structure)
         {
-            if (StructStorage.Destructor(type) is { } destructor)
+            if (AdtDef.Destructor(type) is { } destructor)
             {
                 this.CollectLibraryBody(destructor);
             }
@@ -161,15 +161,15 @@ public sealed partial class OwnershipAnalysis
             type.StoredBase = this.compilation.Binding.StoredBase(type);
             supported = (type.StoredBase is null || this.SupportsType(type.StoredBase)) &&
                 type.OriginArguments.Count <= structure.OriginNames.Count;
-            var count = StructStorage.Count(type);
+            var count = AdtDef.Count(type);
             if (type.StoredFields?.Length != count)
             {
                 type.StoredFields = new BoundType[count];
             }
 
-            for (var i = 0; i < StructStorage.Count(type) && supported; i++)
+            for (var i = 0; i < AdtDef.Count(type) && supported; i++)
             {
-                var field = this.compilation.Binding.StoredType(StructStorage.Field(type, i), type);
+                var field = this.compilation.Binding.StoredType(AdtDef.Field(type, i), type);
                 // Collection fields retain their recursive destruction plans (SPEC 16.3.2).
                 supported = field is not null && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
                 type.StoredFields[i] = field!;
@@ -194,7 +194,7 @@ public sealed partial class OwnershipAnalysis
         if (type.Semantics != SemanticsKind.Owner || type.Origin is not null ||
             type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) ||
             type.Kind is not (BoundTypeKind.Nominal or BoundTypeKind.Constructed) ||
-            this.compilation.Binding.EnumStorage(type) is not { } storage)
+            type.Symbol is not { Declaration: EnumKoto, Adt.Types: { } storage })
         {
             this.supportedTypes[type] = false;
             return false;

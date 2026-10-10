@@ -571,11 +571,11 @@ public sealed partial class Binding
                 }
             }
 
-            if (StructStorage.IsStruct(type))
+            if (AdtDef.IsStruct(type))
             {
-                for (var i = 0; i < StructStorage.Count(type); i++)
+                for (var i = 0; i < AdtDef.Count(type); i++)
                 {
-                    if (this.ContainsRawPointer(StructStorage.FieldType(type, i), depth + 1))
+                    if (this.ContainsRawPointer(AdtDef.FieldType(type, i), depth + 1))
                     {
                         return true;
                     }
@@ -1381,11 +1381,11 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; StructStorage.IsStruct(this.receiverType) && i < StructStorage.Count(this.receiverType!); i++)
+            for (var i = 0; AdtDef.IsStruct(this.receiverType) && i < AdtDef.Count(this.receiverType!); i++)
             {
-                if (StructStorage.FieldType(this.receiverType!, i) is not { } stored || this.MentionsItemPart(binding.ContractType(stored, this.scope!)))
+                if (AdtDef.FieldType(this.receiverType!, i) is not { } stored || this.MentionsItemPart(binding.ContractType(stored, this.scope!)))
                 {
-                    blocking = StructStorage.Field(this.receiverType!, i);
+                    blocking = AdtDef.Field(this.receiverType!, i);
                     return DelegationFailure.Untraced;
                 }
             }
@@ -1560,11 +1560,11 @@ public sealed partial class Binding
             this.Queue(function.Body);
             this.Queue(function.ExpressionBody);
             this.Queue(function.BaseInitializer);
-            if (function.IsConstructor && (call?.DeclaringType ?? StructStorage.ReceiverType(function)) is { } owner)
+            if (function.IsConstructor && (call?.DeclaringType ?? AdtDef.ReceiverType(function)) is { } owner)
             {
-                for (var i = 0; i < StructStorage.Count(owner); i++)
+                for (var i = 0; i < AdtDef.Count(owner); i++)
                 {
-                    this.Queue(StructStorage.Field(owner, i).InitializerKoto);
+                    this.Queue(AdtDef.Field(owner, i).InitializerKoto);
                 }
             }
 
@@ -1789,8 +1789,8 @@ public sealed partial class Binding
         private void DestroyedLayer(OwnershipBody body, int path, BoundType type, Koto use, bool remainder)
         {
             var node = body.GetMovePath(path);
-            var first = type.StoredBase is { } parentType ? StructStorage.StorageCount(parentType) : 0;
-            var count = type.Kind == BoundTypeKind.FixedArray ? (int)type.Length : type.Kind == BoundTypeKind.Tuple ? type.Components.Count : StructStorage.StorageCount(type);
+            var first = type.StoredBase is { } parentType ? AdtDef.StorageCount(parentType) : 0;
+            var count = type.Kind == BoundTypeKind.FixedArray ? (int)type.Length : type.Kind == BoundTypeKind.Tuple ? type.Components.Count : AdtDef.StorageCount(type);
             for (var part = first; remainder && this.valid && part < count; part++)
             {
                 if (!HasPath(body, node, part))
@@ -1837,7 +1837,7 @@ public sealed partial class Binding
             {
                 BoundTypeKind.FixedArray => type.Components[0],
                 BoundTypeKind.Tuple => type.Components[selector],
-                _ => StructStorage.FieldType(type, selector),
+                _ => AdtDef.FieldType(type, selector),
             };
         }
 
@@ -1890,16 +1890,16 @@ public sealed partial class Binding
             {
                 this.Violate(EffectViolation.UnknownDestruction, use); // A Type parameter that is not proven Copy may have any destructor.
             }
-            else if (StructStorage.IsStruct(type))
+            else if (AdtDef.IsStruct(type))
             {
                 if (binding.DestructionCall(type) is { } destructor)
                 {
                     this.Function(destructor.Target, destructor);
                 }
 
-                for (var i = 0; i < StructStorage.Count(type); i++)
+                for (var i = 0; i < AdtDef.Count(type); i++)
                 {
-                    this.Destruction(StructStorage.FieldType(type, i), use);
+                    this.Destruction(AdtDef.FieldType(type, i), use);
                 }
 
                 if (binding.StoredBase(type) is { } parent)
@@ -1929,14 +1929,14 @@ public sealed partial class Binding
         private void StoredValues(BoundType? receiver)
         {
             this.storedValues.Clear();
-            if (!StructStorage.IsStruct(receiver))
+            if (!AdtDef.IsStruct(receiver))
             {
                 return;
             }
 
-            for (var i = 0; i < StructStorage.Count(receiver!); i++)
+            for (var i = 0; i < AdtDef.Count(receiver!); i++)
             {
-                if (StructStorage.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var value], Origin: { } storage })
+                if (AdtDef.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var value], Origin: { } storage })
                 {
                     this.storedValues.Add((value, storage));
                 }

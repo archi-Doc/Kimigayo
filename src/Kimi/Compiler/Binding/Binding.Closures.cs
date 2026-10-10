@@ -734,7 +734,7 @@ public sealed partial class Binding
                 while (use.Parent is ParenthesizedKoto ||
                     (use.Parent is IndexKoto index && ReferenceEquals(index.Left, use) && use.BoundType?.Kind == BoundTypeKind.FixedArray) ||
                     (use.Parent is MemberAccessKoto part && ReferenceEquals(part.Left, use) &&
-                        (use.BoundType?.Kind == BoundTypeKind.Tuple || (StructStorage.IsStruct(use.BoundType) && part.BoundSymbol?.Property?.IsStored == true && !IsGetterResult(part)))))
+                        (use.BoundType?.Kind == BoundTypeKind.Tuple || (AdtDef.IsStruct(use.BoundType) && part.BoundSymbol?.Property?.IsStored == true && !IsGetterResult(part)))))
                 {
                     // Reading or updating a captured stored part obtains that part's authority, not a whole-value Move.
                     use = use.Parent;

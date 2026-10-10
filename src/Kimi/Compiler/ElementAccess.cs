@@ -9,7 +9,7 @@ internal static class ElementAccess
     // Eligibility only; Lowering must also verify the owner's storage role and initialization.
     internal static bool SupportsBorrowRoot(OwnershipPlace place)
         => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
-            place.Type.Semantics == SemanticsKind.Owner && (place.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary || StructStorage.IsStruct(place.Type));
+            place.Type.Semantics == SemanticsKind.Owner && (place.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary || AdtDef.IsStruct(place.Type));
 
     internal static bool SupportsMoveRoot(OwnershipPlace place)
         => place.Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter && SupportsBorrowRoot(place);
@@ -52,7 +52,7 @@ internal static class ElementAccess
     internal static bool ReachesThroughBorrow(Koto source) => HasReceiverOnPath(source, owners: false);
 
     internal static bool IsSyntax(Koto source) => source is IndexKoto index ? !IsUserIndex(index) && index.CodeContext.Compilation.Binding.ViewRangeCall(index) is null : source is MemberAccessKoto { Right: NumberLiteralKoto } ||
-        (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && StructStorage.IsStruct(type));
+        (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true, Left.BoundType: { } type } && AdtDef.IsStruct(type));
 
     // SPEC 4.6.9: receiver[key] resolved through a user Indexable conformance: the Binding synthesized its index call, and
     // its indexUniq call where the use may update or borrow exclusively. Such an expression is a Place call, not an element projection.
@@ -383,7 +383,7 @@ internal static class ElementAccess
         if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left) || ObjectTypes.HandleMode(left) is not null)
         {
             owner = left!.Components[0];
-            return StructStorage.FindField(owner, field.BoundSymbol, out element, out var position) ? position : -1;
+            return AdtDef.FindField(owner, field.BoundSymbol, out element, out var position) ? position : -1;
         }
 
         owner = left;
@@ -421,9 +421,9 @@ internal static class ElementAccess
             return false;
         }
 
-        if (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true } && StructStorage.IsStruct(type))
+        if (source is MemberAccessKoto { BoundSymbol.Property.IsStored: true } && AdtDef.IsStruct(type))
         {
-            return StructStorage.FindField(type, source.BoundSymbol, out element, out position);
+            return AdtDef.FindField(type, source.BoundSymbol, out element, out position);
         }
 
         if (source is IndexKoto && type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Array && type.Components.Count == 1)

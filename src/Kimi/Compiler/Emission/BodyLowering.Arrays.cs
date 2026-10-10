@@ -28,7 +28,7 @@ internal sealed partial class BodyLowering
     // SPEC 22.1.2.5: the storage boundary writes a remainder record {storage, position, count[, capacity]} by Field name.
     private static RemainderFields GetRemainderFields(AggregateLayout layout, BoundType type, bool capacity)
     {
-        var storage = StructStorage.IndexOf(type, "storage");
+        var storage = AdtDef.IndexOf(type, "storage");
         return new(layout.Offset(storage), layout.Offset(type, "position"), layout.Offset(type, "count"), capacity ? layout.Offset(type, "capacity") : 0, layout.Fields[storage].Layout.Size);
     }
 

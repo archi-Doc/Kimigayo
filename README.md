@@ -1,6 +1,8 @@
 # Kimigayo
 
-Kimigayo is a pre-alpha programming language for AI, with a C# compiler, a core library written in Kimigayo and a VS Code extension. Native execution currently targets Windows x64. See [STATUS.md](docs/STATUS.md) for verified capabilities and remaining limitations.
+Kimigayo is a pre-alpha programming language.
+
+Native execution currently targets Windows x64. See [STATUS.md](docs/STATUS.md) for verified capabilities and remaining limitations.
 
 - [Repository layout](#repository-layout)
 - [Getting started](#getting-started)

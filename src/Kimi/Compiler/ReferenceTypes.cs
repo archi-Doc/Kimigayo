@@ -8,7 +8,7 @@ namespace Kimi.Compiler;
 internal static class ReferenceTypes
 {
     internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && StructStorage.IsStruct(type.Components[0]);
+        && AdtDef.IsStruct(type.Components[0]);
 
     internal static bool IsArray(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
         && type.Components[0].Kind == BoundTypeKind.FixedArray;
@@ -17,7 +17,7 @@ internal static class ReferenceTypes
         && type.Components[0].Kind == BoundTypeKind.Tuple;
 
     internal static bool IsEnum(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-        && EnumStorage.IsEnum(type.Components[0]);
+        && AdtDef.IsEnum(type.Components[0]);
 
     // SPEC 4.5: a borrowed Array is a reference to its handle storage.
     internal static bool IsDynamicArray(BoundType? type) => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }

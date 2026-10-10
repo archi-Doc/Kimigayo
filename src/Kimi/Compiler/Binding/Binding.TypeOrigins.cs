@@ -492,7 +492,7 @@ public sealed partial class Binding
 
             try
             {
-                if (!this.storageShapes.TryGetValue(container, out var shape))
+                if (container.BoundSymbol?.Adt is not { } shape)
                 {
                     return false;
                 }

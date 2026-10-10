@@ -38,7 +38,7 @@ public sealed partial class Binding
 
     internal CallPlan? DestructionCall(BoundType type)
     {
-        if (StructStorage.Destructor(type)?.BoundSymbol is not { } destructor)
+        if (AdtDef.Destructor(type)?.BoundSymbol is not { } destructor)
         {
             return null;
         }

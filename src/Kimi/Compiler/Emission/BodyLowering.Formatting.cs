@@ -30,7 +30,7 @@ internal sealed partial class BodyLowering
         failure = null;
         if (call.ArgumentOperations.Length != 1 || this.Resolve(call.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Components.Count: 1 } input ||
             input.Semantics != SemanticsKind.Uniq || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer ||
-            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[StructStorage.IndexOf(result, "loan")].Layout.Size != 0)
+            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[AdtDef.IndexOf(result, "loan")].Layout.Size != 0)
         {
             return Fail("Writer erasure requires a concrete exclusive input and its verified adapter layout.", out failure);
         }

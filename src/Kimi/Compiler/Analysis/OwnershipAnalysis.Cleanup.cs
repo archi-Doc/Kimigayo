@@ -13,16 +13,16 @@ public sealed partial class OwnershipAnalysis
             return true; // Conservatively retain a dependency through recursive destruction.
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
-            if (StructStorage.Destructor(type) is not null)
+            if (AdtDef.Destructor(type) is not null)
             {
                 return true;
             }
 
-            for (var i = 0; i < StructStorage.Count(type); i++)
+            for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (StructStorage.FieldType(type, i) is not { } field || CleanupObservesBorrows(field, depth + 1))
+                if (AdtDef.FieldType(type, i) is not { } field || CleanupObservesBorrows(field, depth + 1))
                 {
                     return true;
                 }

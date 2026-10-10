@@ -96,7 +96,7 @@ internal sealed partial class BodyLowering
         for (var p = 0; p < body.Places.Count; p++)
         {
             var place = body.Places[p];
-            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure) && !StructStorage.IsStruct(place.Type) && !EnumStorage.IsEnum(place.Type) && ObjectTypes.HandleMode(place.Type) is null)
+            if (place.Type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure) && !AdtDef.IsStruct(place.Type) && !AdtDef.IsEnum(place.Type) && ObjectTypes.HandleMode(place.Type) is null)
             {
                 continue;
             }
@@ -153,7 +153,7 @@ internal sealed partial class BodyLowering
             if (plan.Case is { } selected)
             {
                 if (ownerLayout.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length ||
-                    !ReferenceEquals(EnumStorage.Case(type, selected.Ordinal), selected) || !ReferenceEquals(body.Places[plan.Place].Source.BoundSymbol?.EnumCase, selected))
+                    !ReferenceEquals(AdtDef.Case(type, selected.Ordinal), selected) || !ReferenceEquals(body.Places[plan.Place].Source.BoundSymbol?.EnumCase, selected))
                 {
                     return Fail("Enum construction has no matching active Case.", out failure);
                 }
@@ -217,7 +217,7 @@ internal sealed partial class BodyLowering
             var offset = 0;
             if (plan.Case is { } selected)
             {
-                if (owner.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length || !ReferenceEquals(EnumStorage.Case(type, selected.Ordinal), selected))
+                if (owner.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length || !ReferenceEquals(AdtDef.Case(type, selected.Ordinal), selected))
                 {
                     return Fail("Pattern decomposition has the wrong enum Case.", out failure);
                 }

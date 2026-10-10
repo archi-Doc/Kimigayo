@@ -229,7 +229,7 @@ internal sealed partial class BodyLowering
             if (operation.Kind == OwnershipOperationKind.Consume && operation.Acquisition is AcquisitionKind.Copy or AcquisitionKind.Move &&
                 (uint)operation.Input < (uint)body.Places.Count &&
                 body.Places[operation.Input] is { Kind: OwnershipPlaceKind.Temporary } acquired &&
-                (acquired.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || StructStorage.IsStruct(acquired.Type) || EnumStorage.IsEnum(acquired.Type)))
+                (acquired.Type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray || AdtDef.IsStruct(acquired.Type) || AdtDef.IsEnum(acquired.Type)))
             {
                 if (this.slotFunctionInitializations[acquired.Id] >= 0 || this.constructionOwners[acquired.Id] >= 0 || this.slotFunctionPlaces[acquired.Id] != 0)
                 {

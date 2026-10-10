@@ -333,7 +333,7 @@ public sealed partial class Binding
         Complete(none, option);
         var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
         var borrowedTuple = layers != 0;
-        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: Compiler.EnumStorage.Case(option, 0)));
+        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, 0)));
         if (source.IsTupleBinding)
         {
             if (tuple.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count)
@@ -354,7 +354,7 @@ public sealed partial class Binding
             match.PositionStorage.Add(new(name, type, BoundPatternKind.Binding, source.IsTupleBinding ? 1 : 0, source.IsTupleBinding ? i : 0, match.Positions.Count + 1, BodySymbol: name.BoundSymbol, Acquisition: acquisition, WholePosition: true, AccessMode: access));
         }
 
-        match.PositionStorage.Add(new(none, option, BoundPatternKind.Case, -1, -1, end + 1, Case: Compiler.EnumStorage.Case(option, 1)));
+        match.PositionStorage.Add(new(none, option, BoundPatternKind.Case, -1, -1, end + 1, Case: AdtDef.Case(option, 1)));
         match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
         match.ArmStorage.Add(new(plan.Match.Arms[1], end));
     }

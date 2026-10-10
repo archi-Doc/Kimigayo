@@ -339,7 +339,7 @@ public sealed partial class Binding
         }
 
         if (type.Semantics != SemanticsKind.Owner || type.Symbol?.Declaration is not StructKoto structure || !HasCLayout(structure) ||
-            !this.storageShapes.TryGetValue(structure, out var shape) || shape.Types.Count == 0)
+            structure.BoundSymbol?.Adt is not { Types.Count: > 0 } shape)
         {
             return false;
         }
@@ -389,7 +389,7 @@ public sealed partial class Binding
             return;
         }
 
-        if (type.Symbol?.Declaration is StructKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape))
+        if (type.Symbol?.Declaration is StructKoto { BoundSymbol.Adt: { } shape })
         {
             foreach (var field in shape.Types)
             {

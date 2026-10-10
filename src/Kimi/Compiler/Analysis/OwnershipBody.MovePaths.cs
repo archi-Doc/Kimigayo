@@ -261,7 +261,7 @@ public sealed partial class OwnershipBody
 
 internal readonly record struct MovePath(int Root, int Parent, int Selector, BoundType Type, int Child = -1, int Next = -1, int Children = 0)
 {
-    internal int Count => this.Type.Kind == BoundTypeKind.FixedArray ? (int)this.Type.Length : this.Type.Kind == BoundTypeKind.Tuple ? this.Type.Components.Count : StructStorage.StorageCount(this.Type);
+    internal int Count => this.Type.Kind == BoundTypeKind.FixedArray ? (int)this.Type.Length : this.Type.Kind == BoundTypeKind.Tuple ? this.Type.Components.Count : AdtDef.StorageCount(this.Type);
 
     internal bool HasRemainder => this.Children < this.Count || this.Count == 0 || this.Type.StoredBase is not null;
 }

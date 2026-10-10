@@ -301,6 +301,9 @@ public sealed class BindingSymbol
 
     internal BoundType? WholeType { get; set; }
 
+    // The stored shape of a struct or enum declaration, refilled by each pass.
+    internal AdtDef? Adt { get; set; }
+
     // SPEC 8.4: the Contract whose dedicated Self Type parameter this symbol is; null for any other symbol.
     internal BindingSymbol? SelfOf { get; set; }
 

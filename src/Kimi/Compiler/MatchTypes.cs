@@ -47,16 +47,16 @@ internal static class MatchTypes
             return cache[type] = true;
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
             if (type.StoredBase is { } parent && !SupportsOwnedPatternValue(parent, cache))
             {
                 return false;
             }
 
-            for (var i = 0; i < StructStorage.Count(type); i++)
+            for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (StructStorage.FieldType(type, i) is not { } field || !SupportsOwnedPatternValue(field, cache))
+                if (AdtDef.FieldType(type, i) is not { } field || !SupportsOwnedPatternValue(field, cache))
                 {
                     return false;
                 }
@@ -65,7 +65,7 @@ internal static class MatchTypes
             return cache[type] = true;
         }
 
-        if (EnumStorage.IsEnum(type) && type.StoredCases is { } cases)
+        if (AdtDef.IsEnum(type) && type.StoredCases is { } cases)
         {
             for (var i = 0; i < cases.Length; i++)
             {

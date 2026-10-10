@@ -374,7 +374,7 @@ public sealed partial class OwnershipBody
                 this.loanParts.Add(new(projection.Root, parent, projection.Selector, type) { Next = owner.Child });
                 var parts = owner.Type.Kind == BoundTypeKind.Tuple ? owner.Type.Components.Count
                     : owner.Type.Kind == BoundTypeKind.FixedArray ? owner.Type.Length
-                    : StructStorage.IsStruct(owner.Type) && owner.Type.StoredBase is null ? StructStorage.Count(owner.Type) : -1;
+                    : AdtDef.IsStruct(owner.Type) && owner.Type.StoredBase is null ? AdtDef.Count(owner.Type) : -1;
                 this.loanParts[parent] = owner with { Child = slot, Children = owner.Children + 1, Remainder = parts != owner.Children + 1 };
             }
 
@@ -397,13 +397,13 @@ public sealed partial class OwnershipBody
             }
 
             var children = type.Kind == BoundTypeKind.Tuple ? type.Components.Count
-                : StructStorage.IsStruct(type) && type.StoredBase is null ? StructStorage.Count(type) : -1;
+                : AdtDef.IsStruct(type) && type.StoredBase is null ? AdtDef.Count(type) : -1;
             var retained = children < 0;
             for (var child = 0; child < children && !retained; child++)
             {
                 if (!this.loanPartIndex.ContainsKey((slot, child)))
                 {
-                    var field = type.Kind == BoundTypeKind.Tuple ? type.Components[child] : StructStorage.FieldType(type, child);
+                    var field = type.Kind == BoundTypeKind.Tuple ? type.Components[child] : AdtDef.FieldType(type, child);
                     retained = field is null || this.TypeKeepsRoot(field, root);
                 }
             }

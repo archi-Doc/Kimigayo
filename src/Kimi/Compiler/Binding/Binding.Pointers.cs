@@ -38,9 +38,9 @@ public sealed partial class Binding
             return true;
         }
 
-        if (type.Symbol?.Declaration is StructKoto declaration && this.storageShapes.TryGetValue(declaration, out var shape))
+        if (type.Symbol?.Declaration is StructKoto { BoundSymbol.Adt: { } shape })
         {
-            // StorageShape includes direct bases, as well as stored fields. Resolve
+            // The stored shape includes direct bases, as well as stored fields. Resolve
             // them in this instantiation, not the generic declaration's context.
             foreach (var syntax in shape.Types)
             {

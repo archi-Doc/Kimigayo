@@ -17,7 +17,7 @@ public sealed partial class Binding
         }
 
         // SPEC 11.4.2: an inherited Field is reached from the requirement receiver over the conforming Type by standard projection,
-        // as a direct access is (StructStorage.FindField), so a bridge for a base path has the same body as an own one. An edit that
+        // as a direct access is (AdtDef.FindField), so a bridge for a base path has the same body as an own one. An edit that
         // replaces the requirement, the implementing Property or the operation rebuilds the body; otherwise its Types are refreshed.
         var key = (path, witness.Requirement);
         if (!this.propertyBridges.TryGetValue(key, out var cached) || !ReferenceEquals(cached.Bridge.Declaration, witness.Requirement.Declaration) ||

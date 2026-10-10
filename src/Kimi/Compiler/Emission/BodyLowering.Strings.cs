@@ -130,7 +130,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (EnumStorage.IsEnum(type) && type.StoredCases is { } cases)
+        if (AdtDef.IsEnum(type) && type.StoredCases is { } cases)
         {
             foreach (var payload in cases)
             {
@@ -141,16 +141,16 @@ internal sealed partial class BodyLowering
             }
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
-            if (StructStorage.Destructor(type) is not null || (type.StoredBase is { } parent && HasOwnedStorage(parent)))
+            if (AdtDef.Destructor(type) is not null || (type.StoredBase is { } parent && HasOwnedStorage(parent)))
             {
                 return true;
             }
 
-            for (var i = 0; i < StructStorage.Count(type); i++)
+            for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (HasOwnedStorage(StructStorage.FieldType(type, i)!))
+                if (HasOwnedStorage(AdtDef.FieldType(type, i)!))
                 {
                     return true;
                 }

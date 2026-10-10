@@ -324,13 +324,13 @@ public class KimiLibraryShapeTest
         var c = Library.Value;
         var type = c.Binding.SelfType(Record(path).BoundSymbol!);
         var lines = new List<string> { Line(Record(path)) };
-        for (var i = 0; i < StructStorage.Count(type); i++)
+        for (var i = 0; i < AdtDef.Count(type); i++)
         {
-            Assert.NotNull(StructStorage.FieldType(type, i));
-            lines.Add(Line(StructStorage.Field(type, i)));
+            Assert.NotNull(AdtDef.FieldType(type, i));
+            lines.Add(Line(AdtDef.Field(type, i)));
         }
 
-        if (StructStorage.Destructor(type) is not null)
+        if (AdtDef.Destructor(type) is not null)
         {
             lines.Add("drop");
         }
@@ -507,7 +507,7 @@ public class KimiLibraryShapeTest
         var record = Record(path);
         var type = Library.Value.Binding.SelfType(record.BoundSymbol!);
         var pool = new AggregateLayoutPool();
-        if (StructStorage.Destructor(type) is { } destructor)
+        if (AdtDef.Destructor(type) is { } destructor)
         {
             pool.RegisterDestructor(destructor, 0);
         }

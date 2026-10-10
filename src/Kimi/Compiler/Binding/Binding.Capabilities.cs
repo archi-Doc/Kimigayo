@@ -353,12 +353,12 @@ public sealed partial class Binding
             {
                 if (work.Derivation)
                 {
-                    if (!this.storageShapes.TryGetValue(container, out var shape))
+                    if (container.BoundSymbol?.Adt is not { } shape)
                     {
                         return ConstraintProof.Unknown;
                     }
 
-                    return CombineProof(shape.HasDestructor ? ConstraintProof.Refuted : ConstraintProof.Proven, this.StoredCapability(work, shape), true);
+                    return CombineProof(shape.DestructorKoto is not null ? ConstraintProof.Refuted : ConstraintProof.Proven, this.StoredCapability(work, shape), true);
                 }
 
                 return this.NominalCopy(work, container);
@@ -376,7 +376,7 @@ public sealed partial class Binding
 
     private ConstraintProof NominalCopy(CapabilityWork work, DeclarationContainerKoto container)
     {
-        if (!this.storageShapes.TryGetValue(container, out var shape))
+        if (container.BoundSymbol?.Adt is not { } shape)
         {
             return ConstraintProof.Unknown;
         }
@@ -396,7 +396,7 @@ public sealed partial class Binding
 
         if (!this.copyByType.TryGetValue(container, out var declarations) || declarations.Count == 0)
         {
-            return this.capabilityMode == BindingMode.Final && this.storageShapes.ContainsKey(container) ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+            return this.capabilityMode == BindingMode.Final ? ConstraintProof.Refuted : ConstraintProof.Unknown;
         }
 
         var result = ConstraintProof.Refuted;
@@ -457,7 +457,7 @@ public sealed partial class Binding
 
         if (work.Type.Symbol?.Declaration is DeclarationContainerKoto container)
         {
-            return this.storageShapes.TryGetValue(container, out var shape) ? this.StoredCapability(work, shape) : ConstraintProof.Unknown;
+            return container.BoundSymbol?.Adt is { } shape ? this.StoredCapability(work, shape) : ConstraintProof.Unknown;
         }
 
         var result = ConstraintProof.Proven;
@@ -489,7 +489,7 @@ public sealed partial class Binding
         return result;
     }
 
-    private ConstraintProof StoredCapability(CapabilityWork work, StorageShape shape)
+    private ConstraintProof StoredCapability(CapabilityWork work, AdtDef shape)
     {
         var result = ConstraintProof.Proven;
         if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Symbol?.Declaration is DeclarationContainerKoto declaration)

@@ -46,7 +46,7 @@ internal sealed partial class BodyLowering
     private bool Dereferences(BoundType layer) => this.Matched(layer) is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 };
 
     private bool IsCompositeSubject(BoundType type) => (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && ReferenceTypes.IsStorage(type)) ||
-        ((type.Kind == BoundTypeKind.Tuple || EnumStorage.IsEnum(type) || StructStorage.IsStruct(type)) &&
+        ((type.Kind == BoundTypeKind.Tuple || AdtDef.IsEnum(type) || AdtDef.IsStruct(type)) &&
         this.aggregateLayouts.Get(type) is { } layout && (!layout.NeedsDestruction || MatchTypes.SupportsOwnedPatternValue(type, this.ownedPatternTypes)));
 
     private BoundType PatternType(BoundPattern pattern)
@@ -135,7 +135,7 @@ internal sealed partial class BodyLowering
 
             if (parent.Kind == BoundPatternKind.Case)
             {
-                if (parent.Case is not { } selected || !ReferenceEquals(EnumStorage.Case(type, selected.Ordinal), selected) || shape.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length)
+                if (parent.Case is not { } selected || !ReferenceEquals(AdtDef.Case(type, selected.Ordinal), selected) || shape.Cases is not { } cases || (uint)selected.Ordinal >= (uint)cases.Length)
                 {
                     return -1;
                 }
@@ -198,7 +198,7 @@ internal sealed partial class BodyLowering
             {
                 var count = node.Kind == BoundPatternKind.Case ? node.Case?.Payload.Length ?? -1 : this.PatternType(node).Components.Count;
                 if ((node.Kind == BoundPatternKind.Tuple && this.PatternType(node).Kind != BoundTypeKind.Tuple) ||
-                    (node.Kind == BoundPatternKind.Case && !ReferenceEquals(EnumStorage.Case(this.PatternType(node), node.Case!.Ordinal), node.Case)))
+                    (node.Kind == BoundPatternKind.Case && !ReferenceEquals(AdtDef.Case(this.PatternType(node), node.Case!.Ordinal), node.Case)))
                 {
                     return false;
                 }

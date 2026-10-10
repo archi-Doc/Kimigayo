@@ -17,7 +17,7 @@ public sealed partial class Binding
     internal bool PrepareTypeStorage(BoundType type) => this.PrepareInstantiatedStorage(type, 0);
 
     internal BoundType? StoredBase(BoundType type)
-        => StructStorage.Declaration(type) is { Bases.Count: 1 } declaration ? this.StoredType(declaration.Bases[0], type) : null;
+        => AdtDef.Declaration(type) is { Bases.Count: 1 } declaration ? this.StoredType(declaration.Bases[0], type) : null;
 
     internal BoundType? InstantiateStorageType(BoundType type, CallPlan call)
     {
@@ -55,14 +55,14 @@ public sealed partial class Binding
             return false;
         }
 
-        if (StructStorage.IsStruct(type))
+        if (AdtDef.IsStruct(type))
         {
             if (type.StoredFields is not null && type.StorageVersion == this.storageVersion)
             {
                 return true;
             }
 
-            var count = StructStorage.Count(type);
+            var count = AdtDef.Count(type);
             if (type.StoredFields?.Length != count)
             {
                 type.StoredFields = new BoundType[count];
@@ -78,7 +78,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.StoredFields.Length; i++)
             {
-                var field = this.StoredType(StructStorage.Field(type, i), type);
+                var field = this.StoredType(AdtDef.Field(type, i), type);
                 if (field is null || !this.PrepareInstantiatedStorage(field, depth + 1))
                 {
                     type.StoredFields = null;
@@ -88,7 +88,7 @@ public sealed partial class Binding
                 type.StoredFields[i] = field;
             }
         }
-        else if (Compiler.EnumStorage.IsEnum(type))
+        else if (AdtDef.IsEnum(type))
         {
             if (type.StoredCases is not null && type.StorageVersion == this.storageVersion)
             {
