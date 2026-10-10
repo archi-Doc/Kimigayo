@@ -1,16 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Checking;
+using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 
-namespace Kimi.Compiler;
+namespace Kimi.Checking;
 
-public sealed partial class Binding
+internal sealed partial class HoverBuilder
 {
     /// <summary>Projects source contracts through the ordinary syntax writers; never includes executable bodies.</summary>
     /// <param name="declaration">The established declaration.</param>
     /// <returns>The normalized header.</returns>
-    internal static string HoverHeader(Koto declaration)
+    internal static string Header(Koto declaration)
     {
         new HoverHeaderGuard().Visit(declaration);
         var builder = new IndentedStringBuilder();

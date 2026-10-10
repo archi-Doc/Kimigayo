@@ -316,15 +316,8 @@ public sealed partial class Binding
     /// <summary>Gets final failures that are explained by failed prerequisites; they are reported as derived problems.</summary>
     internal IReadOnlyList<Koto> DerivedIssues => this.derivedIssues;
 
-    /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
-    /// <param name="node">The node.</param>
-    /// <returns>The check keys, or <see langword="null"/>.</returns>
-    internal DiagnosticKey[]? FailureCauses(Koto node)
-        => node.BindingState != BindingState.Resolved && (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node))
-            ? this.CauseKeys(node) : null;
-
     // A recovery node, an ErrorKoto or synthesized syntax kept in place of a rejected form, stands for its syntax error.
-    private static bool IsRecovery(Koto node, out DiagnosticKey cause)
+    internal static bool IsRecovery(Koto node, out DiagnosticKey cause)
     {
         if (node is ErrorKoto error)
         {
@@ -341,6 +334,13 @@ public sealed partial class Binding
         cause = default;
         return false;
     }
+
+    /// <summary>Gets the Binding causes of a node that a later phase checks: none when Binding resolved it or recorded no cause.</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>The check keys, or <see langword="null"/>.</returns>
+    internal DiagnosticKey[]? FailureCauses(Koto node)
+        => node.BindingState != BindingState.Resolved && (IsRecovery(node, out _) || node.BindingFailure != BindingFailure.None || this.HasUnresolvedPrerequisite(node))
+            ? this.CauseKeys(node) : null;
 
     // A + whose operands are strings or string joins, through parentheses; the depth bound keeps pathological chains cheap.
     private static bool IsStringJoin(Koto node, int depth)

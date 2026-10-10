@@ -216,7 +216,7 @@ public sealed class HoverImprovementsTest
         compilation.Kotonoha.AddSource(new("z/second.kimi", "/// Second part.\nstruct Split\n"));
         compilation.Kotonoha.AddSource(new("a/first.kimi", "struct Split\n"));
         Assert.True(compilation.Bind().IsComplete);
-        var snapshot = compilation.Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(compilation);
         var document = snapshot.Documents[SourceIdentity.FromPath("a/first.kimi")];
         var entry = At(document, 7);
         var body = Render(entry, false);
@@ -335,7 +335,7 @@ public sealed class HoverImprovementsTest
         Assert.Empty(TestDiagnostics.Of(compilation));
         var result = compilation.Bind();
         Assert.Equal(accepted, result.IsComplete);
-        return compilation.Binding.CreateHoverSnapshot().Documents[SourceIdentity.FromPath("main.kimi")];
+        return HoverBuilder.Create(compilation).Documents[SourceIdentity.FromPath("main.kimi")];
     }
 
     private static HoverEntry At(HoverDocument document, int position)

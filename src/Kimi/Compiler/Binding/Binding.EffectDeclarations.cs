@@ -24,8 +24,6 @@ public sealed partial class Binding
     private Dictionary<EffectBoundKoto, EffectBoundRejection>? effectBoundRejections;
     private EffectSyntaxCompleter? effectSyntax;
 
-    internal readonly record struct EffectEvidence(EffectBoundKoto Bound, Koto Context, BoundConstraint? Premise = null, Koto? Clause = null, BoundType? Conforming = null, BindingSymbol? Contract = null);
-
     /// <summary>SPEC 8.4.10.6: the kind of the first effect of an implementation that violates a bound.</summary>
     internal enum EffectViolation : byte
     {
@@ -121,6 +119,16 @@ public sealed partial class Binding
         CallableDuplicate,
         CallableReceiver,
     }
+
+    // The Contract whose bound an effect item declares: the Contract itself, or the Contract of the requirement whose
+    // Constraint region holds it.
+    internal static ContractKoto? DeclaringContract(EffectBoundKoto effect)
+        => effect.Parent switch
+        {
+            ContractKoto contract => contract,
+            FunctionKoto { IsRequirement: true, Parent: ContractKoto contract } => contract,
+            _ => null,
+        };
 
     /// <summary>
     /// Gets the bound that a Contract or one of its ancestors declares for a requirement (SPEC 8.4.10.1): <c>T is C</c>
@@ -353,16 +361,6 @@ public sealed partial class Binding
         use.Report(requirement, code, note: note, at: violation.Site, evidence: [$"{effect}, which {spelling} excludes"], related: related);
         return true;
     }
-
-    // The Contract whose bound an effect item declares: the Contract itself, or the Contract of the requirement whose
-    // Constraint region holds it.
-    private static ContractKoto? DeclaringContract(EffectBoundKoto effect)
-        => effect.Parent switch
-        {
-            ContractKoto contract => contract,
-            FunctionKoto { IsRequirement: true, Parent: ContractKoto contract } => contract,
-            _ => null,
-        };
 
     private static EffectBoundKoto? OwnEffectBound(BoundContract shape, BoundRequirement requirement, EffectBoundKind bound)
     {
@@ -809,3 +807,6 @@ public sealed partial class Binding
 
     private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Requirement = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0, BoundType? Part = null, BoundType? Result = null, BoundOrigin? Atom = null);
 }
+
+// One premise or public guarantee behind an available effect bound, collected only for Hover provenance.
+internal readonly record struct EffectEvidence(EffectBoundKoto Bound, Koto Context, BoundConstraint? Premise = null, Koto? Clause = null, BoundType? Conforming = null, BindingSymbol? Contract = null);

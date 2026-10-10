@@ -19,7 +19,7 @@ public sealed class VirtualHoverTest
     public void CallsRetainThePublicContractAndSelectedDispatch(bool markdown)
     {
         var c = Create(Source);
-        var snapshot = c.Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(c);
         var direct = At(snapshot, Source.IndexOf("base.read", StringComparison.Ordinal) + 5);
         var dynamic = At(snapshot, Source.IndexOf("self.read", StringComparison.Ordinal) + 5);
         Assert.Same(Assert.Single(direct.Declarations), Assert.Single(dynamic.Declarations));
@@ -43,7 +43,7 @@ public sealed class VirtualHoverTest
     [Fact]
     public void OverrideDeclarationsRetainTheirOwnDocumentationAndInheritedContract()
     {
-        var snapshot = Create(Source).Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(Create(Source));
         var info = At(snapshot, Source.IndexOf("override func read", StringComparison.Ordinal) + "override func ".Length);
         Assert.Equal(2, info.Declarations.Length);
         Assert.Contains("Inherited public contract: A.read", info.Declarations[0].Details);
@@ -59,11 +59,11 @@ public sealed class VirtualHoverTest
     {
         var c = Create(Source);
         var offset = Source.IndexOf("base.read", StringComparison.Ordinal) + 5;
-        var before = At(c.Binding.CreateHoverSnapshot(), offset);
+        var before = At(HoverBuilder.Create(c), offset);
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.CallStorage?.VirtualDispatch is { IsDirect: true }).CallStorage!;
         call.VirtualDispatch!.Implementation = call.VirtualDispatch.Slot.Original;
         call.VirtualDispatch.ImplementingType = call.VirtualDispatch.Slot.DeclaringType;
-        var after = At(c.Binding.CreateHoverSnapshot(), offset) with { Use = before.Use };
+        var after = At(HoverBuilder.Create(c), offset) with { Use = before.Use };
         Assert.False(new HoverAgreement().Equal(new(default, before), new(default, after)));
     }
 
@@ -71,7 +71,7 @@ public sealed class VirtualHoverTest
     public void VirtualReferencesKeepTheBoundDeclaringTypeInAgreement()
     {
         const string Text = "open struct A<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\nlet first = A<i32>.read\nlet second = A<string>.read\n()";
-        var snapshot = Create(Text).Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(Create(Text));
         var first = At(snapshot, Text.IndexOf(".read", StringComparison.Ordinal) + 1);
         var second = At(snapshot, Text.LastIndexOf(".read", StringComparison.Ordinal) + 1);
         Assert.Contains("A<i32>.read", first.Use);
@@ -83,13 +83,13 @@ public sealed class VirtualHoverTest
     public void ContractEditsRevokeBoundsWithoutMutatingThePreviousSnapshot()
     {
         var c = Create(Source);
-        var old = c.Binding.CreateHoverSnapshot();
+        var old = HoverBuilder.Create(c);
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var donor = Create(Source.Replace("        effect confined\n", string.Empty, StringComparison.Ordinal));
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
         c.Bind();
-        var current = c.Binding.CreateHoverSnapshot();
+        var current = HoverBuilder.Create(c);
         var offset = Source.IndexOf("self.read", StringComparison.Ordinal) + 5;
         Assert.Contains("Available bound: confined", At(old, offset).Effects);
         Assert.Contains("Available bound: none", At(current, offset).Effects);
@@ -116,7 +116,7 @@ public sealed class VirtualHoverTest
     private static (HoverSnapshot Snapshot, WeakReference<Compilation> Compilation) Detached()
     {
         var c = Create(Source);
-        return (c.Binding.CreateHoverSnapshot(), new(c));
+        return (HoverBuilder.Create(c), new(c));
     }
 
     private static Compilation Create(string text)

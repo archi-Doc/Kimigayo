@@ -79,7 +79,7 @@ public sealed class HoverProjectionTest
             var inspect = Assert.Single(nodes.OfType<InvocationKoto>(), static x => x.BoundCall?.Target.Name == "inspect");
             var selected = inspect.BoundCall!;
             selected.Set(selected.Target, selected.ReturnType, null, [0], [closed]);
-            return At(compilation.Binding.CreateHoverSnapshot(), text.LastIndexOf("inspect(", StringComparison.Ordinal));
+            return At(HoverBuilder.Create(compilation), text.LastIndexOf("inspect(", StringComparison.Ordinal));
         }
 
         var first = ProjectContext(0);
@@ -96,7 +96,7 @@ public sealed class HoverProjectionTest
         var compilation = Create("/// First.\nstruct Split\n");
         compilation.Kotonoha.AddSource(new("other.kimi", "/// Second.\nstruct Split\n"));
         Assert.True(compilation.Bind().IsComplete);
-        var snapshot = compilation.Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(compilation);
         Assert.Equal(2, snapshot.Documents.Count);
         var declaration = Assert.Single(At(snapshot, "/// First.\nstruct ".Length).Declarations);
         Assert.Equal(2, declaration.Origins.Length);
@@ -139,7 +139,7 @@ public sealed class HoverProjectionTest
         var compilation = Create(text);
         compilation.Kotonoha.AddSource(new("other.kimi", "/// Second.\nstruct Split\nfunc broken(\n"));
         compilation.Bind();
-        var snapshot = compilation.Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(compilation);
         var declaration = Assert.Single(At(snapshot, text.IndexOf("Split", StringComparison.Ordinal)).Declarations);
         Assert.Equal("Documentation deferred: syntax errors", declaration.DocumentationNotice);
         Assert.Equal("First.", Extract(Assert.Single(declaration.Documentation)));
@@ -224,7 +224,7 @@ public sealed class HoverProjectionTest
         const string text = "func broken<T>(x: T)\n    T is Copy\n    T is not Copy\n    return\n";
         var compilation = Create(text);
         Assert.False(compilation.Bind().IsComplete);
-        var snapshot = compilation.Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(compilation);
         Assert.Equal(ConstraintProof.Error, At(snapshot, text.IndexOf("x: T", StringComparison.Ordinal) + 3).Copy);
     }
 
@@ -315,7 +315,7 @@ public sealed class HoverProjectionTest
     {
         var compilation = Create(text);
         Assert.True(compilation.Bind().IsComplete, string.Join('\n', compilation.Binding.Issues));
-        return compilation.Binding.CreateHoverSnapshot();
+        return HoverBuilder.Create(compilation);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -323,6 +323,6 @@ public sealed class HoverProjectionTest
     {
         var compilation = Create("/// A value.\nstruct Value\nfunc use(value: ref/Value) => ()\n");
         Assert.True(compilation.Bind().IsComplete);
-        return (compilation.Binding.CreateHoverSnapshot(), new(compilation));
+        return (HoverBuilder.Create(compilation), new(compilation));
     }
 }

@@ -56,6 +56,9 @@ public sealed partial class Binding
     /// <summary>Gets the valid foreign import declarations of the latest pass (SPEC 22.3), in source order.</summary>
     internal IReadOnlyList<LibraryImport> LibraryImports => this.libraryImports;
 
+    /// <summary>Gets the facts this Binding publishes to readers outside Binding.</summary>
+    internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.nodes, this.symbols, this.conformancesByType);
+
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
     public BindingResult CheckBound()

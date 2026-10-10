@@ -12,6 +12,10 @@ public sealed partial class Binding
 
     private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
 
+    // The declaring Type of a member of a generic container follows the bound function arguments as the last Component.
+    internal static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
+        => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
+
     // Generation-only context of an already selected declaration. An override never becomes a public Item.
     internal BoundCall? ImplementationContext(FunctionKoto function, BoundType declaring)
         => this.FunctionItemContext(this.FunctionItemType(function.BoundSymbol!, [], declaring));
@@ -136,10 +140,6 @@ public sealed partial class Binding
     // SPEC 7.3, 10.5: a member of a generic container is referenced through a Type that binds the container's slots.
     private static bool ContainerBound(BindingSymbol symbol, BoundType? declaringType)
         => declaringType is not null && ReferenceEquals(declaringType.Symbol, symbol.Scope.Owner.BoundSymbol);
-
-    // The declaring Type of a member of a generic container follows the bound function arguments as the last Component.
-    private static BoundType? ItemDeclaringType(BoundType item, FunctionKoto function)
-        => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
 
     private static int ItemTypeArgumentCount(FunctionKoto function)
     {

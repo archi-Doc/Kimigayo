@@ -76,7 +76,7 @@ internal static class HoverWorkloads
                 throw new InvalidOperationException("The variable and operation workload must bind");
             }
 
-            var document = compilation.Binding.CreateHoverSnapshot().Documents[Source];
+            var document = HoverBuilder.Create(compilation).Documents[Source];
             result[i] = new(new(SourceIdentity.FromPath("temp/hover-workload/App.kimiproj"), UnitKind.Product, "target" + i), i + 1, document);
         }
 

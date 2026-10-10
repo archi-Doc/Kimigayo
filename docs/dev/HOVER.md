@@ -10,11 +10,12 @@ they do not change language guarantees or mark pending work as supported.
 - Optional collection failures are recorded against their source without changing parsing or diagnostics. Shared static
   delegates wrap documentation-only mutations; span-based association and lexical creation have the same failure filter.
   Pending-input/cancellation exceptions propagate. Embedded candidate failures never publish a completed empty cache.
-- `Binding.Hover` builds detached own-source token indexes. Headers, comment inputs and complete Type identities are shared
-  within a projection. Structural identities form a DAG, avoiding expansion of repeated Type/Origin subgraphs.
+- `HoverBuilder` (`src/Kimi/Checking/Hover`) builds detached own-source token indexes and reads Binding only through
+  `SemanticQuery`. Headers, comment inputs and complete Type identities are shared within a projection. Structural
+  identities form a DAG, avoiding expansion of repeated Type/Origin subgraphs.
 - Copy reuses the existing judgment in the target's scope. Effect descriptions obtain provenance through existing
   availability checks; ordinary checks pass no collector and allocate no provenance list.
-- `Binding.HoverVariables` indexes established local and ordinary parameter bindings, sharing descriptions by binding,
+- `HoverBuilder.Variables` indexes established local and ordinary parameter bindings, sharing descriptions by binding,
   complete Type and contextual Copy result. Callable uses add variable facts to the existing call contract/effect facts.
   Complete generic Types and Semantics/target pairs retain their declarations and constraints without a guessed owner/Core.
   `HoverExplanations` owns common Semantics and operation wording; operation descriptions are shared by parsed form.

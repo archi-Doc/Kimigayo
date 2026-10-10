@@ -103,7 +103,7 @@ public sealed class HoverCollectionTest : IDisposable
         Assert.Empty(documentation.Comments);
         Assert.True(compilation.Bind().IsComplete);
         Assert.Empty(TestDiagnostics.Of(compilation));
-        var snapshot = compilation.Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(compilation);
         var failedIndex = snapshot.Documents[SourceIdentity.FromPath(failed.Path)];
         var failedInfo = failedIndex.Entries[failedIndex.Find(failed.SourceText.IndexOf("Failed", StringComparison.Ordinal))].Info;
         var failedDeclaration = Assert.Single(failedInfo.Declarations);

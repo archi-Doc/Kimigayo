@@ -96,7 +96,7 @@ public class NamedArgumentBoundaryTest
         var c = MinimalEmissionTest.Analyze("struct S\n    public func f(" + parameters + ") -> i32 => x\nfunc use(s: ref/S) -> i32 => " + bound + " + " + unbound);
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
         var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Equal(k, f.PositionalParameterCount);
+        Assert.Equal(k, c.Semantics.PositionalParameterCount(f));
     }
 
     [Theory]
@@ -137,7 +137,7 @@ public class NamedArgumentBoundaryTest
         Assert.True(c.Binding.Result.IsComplete);
         var specialized = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsSpecialization);
         Assert.Equal(-1, specialized.NameBoundaryIndex);
-        Assert.Equal(1, specialized.PositionalParameterCount);
+        Assert.Equal(1, c.Semantics.PositionalParameterCount(specialized));
     }
 
     [Fact]
@@ -152,7 +152,7 @@ public class NamedArgumentBoundaryTest
             var plan = calls[i].BoundCall!;
             var target = Assert.IsType<FunctionKoto>(plan.Target.Declaration);
             Assert.Equal("B", plan.Target.Scope.Owner.BoundSymbol!.Name);
-            Assert.Equal(0, target.PositionalParameterCount);
+            Assert.Equal(0, c.Semantics.PositionalParameterCount(target));
             Assert.Equal("external", target.Parameters[0].ExternalName);
             Assert.Single(plan.DefaultArguments.ToArray());
             Assert.Same(target.Parameters[0].DefaultValue, plan.DefaultArguments[0].Expression);

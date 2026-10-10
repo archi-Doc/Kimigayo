@@ -26,6 +26,24 @@ public sealed partial class Binding
     public ConstraintProof Prove(BoundConstraint constraint, Koto binder, ReadOnlySpan<BoundType?> arguments, Koto context)
         => this.ProveConstraint(this.SubstituteConstraint(constraint, binder, arguments), this.ConstraintScope(context));
 
+    internal BindingScope ConstraintScope(Koto node)
+    {
+        for (Koto? current = node; current is not null; current = current.Parent)
+        {
+            if (current is FunctionKoto { IsPropertyWitness: true, BoundSymbol.Scope: { } bridge })
+            {
+                return bridge; // SPEC 11.4.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
+            }
+
+            if (this.scopes.TryGetValue(current, out var scope))
+            {
+                return this.NodeScope(node, scope);
+            }
+        }
+
+        return this.ModuleScope(node);
+    }
+
     private static ConstraintProof NegateProof(ConstraintProof value) => value switch
     {
         ConstraintProof.Proven => ConstraintProof.Refuted,
@@ -284,24 +302,6 @@ public sealed partial class Binding
 
     private BoundConstraint NegateConstraint(BoundConstraint value)
         => value.Kind == ConstraintKind.Not ? value.Left! : value.Negation ??= this.InternConstraint(new(ConstraintKind.Not, left: value));
-
-    private BindingScope ConstraintScope(Koto node)
-    {
-        for (Koto? current = node; current is not null; current = current.Parent)
-        {
-            if (current is FunctionKoto { IsPropertyWitness: true, BoundSymbol.Scope: { } bridge })
-            {
-                return bridge; // SPEC 11.4.2: a standard witness bridge's premises are its conformance path's (PropertyWitnessFunction).
-            }
-
-            if (this.scopes.TryGetValue(current, out var scope))
-            {
-                return this.NodeScope(node, scope);
-            }
-        }
-
-        return this.ModuleScope(node);
-    }
 
     private void BindConstraints()
     {

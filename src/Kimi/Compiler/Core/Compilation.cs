@@ -118,6 +118,9 @@ public partial class Compilation
 
     internal Testing.TestCatalog Tests => field ??= new();
 
+    /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>
+    internal SemanticQuery Semantics => this.Binding.Semantics;
+
     #endregion
 
     /// <summary>

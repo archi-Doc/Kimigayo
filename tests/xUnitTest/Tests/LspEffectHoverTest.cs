@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text.Json;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Xunit;
 
@@ -23,7 +24,7 @@ public sealed class LspEffectHoverTest : IDisposable
     public void SnapshotDescribesOnlyValidContributingPremises()
     {
         var c = MinimalEmissionTest.Analyze(Source);
-        var record = Assert.Single(c.Binding.CreateCallableEffectHovers(), static x => x.Source.Value.EndsWith("Hello.kimi", StringComparison.Ordinal));
+        var record = Assert.Single(HoverBuilder.CallableEffects(c), static x => x.Source.Value.EndsWith("Hello.kimi", StringComparison.Ordinal));
         Assert.Contains("Call: f()", record.Text);
         Assert.Contains("Available bound: confined", record.Text);
         Assert.Contains("Callable: F is Callable<() -> i32>", record.Text);

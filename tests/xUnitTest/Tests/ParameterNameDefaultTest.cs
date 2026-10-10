@@ -157,7 +157,7 @@ public class ParameterNameDefaultTest
         tree.OnDeserialized(restored);
         Assert.True(restored.Bind().IsComplete);
         var function = KotoTree.Walk(tree.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
-        Assert.Equal(1, function.PositionalParameterCount);
+        Assert.Equal(1, restored.Semantics.PositionalParameterCount(function));
         Assert.Null(function.Parameters[0].DefaultValue);
         Assert.Equal(1, function.NameBoundaryIndex);
         Assert.NotNull(function.Parameters[1].DefaultValue);

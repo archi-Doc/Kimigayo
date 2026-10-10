@@ -11,6 +11,9 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, (IsKoto Clause, EffectBoundKoto Bound, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
     private EffectSummary? callableEffectSummary;
 
+    internal static BoundType? CallableCore(BoundType? type)
+        => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
+
     /// <summary>Gets explicit bounds available on a Callable subject and signature under the local premises.</summary>
     /// <param name="type">The callable Type, without its acquisition layer.</param>
     /// <param name="signature">The selected public signature.</param>
@@ -19,6 +22,47 @@ public sealed partial class Binding
     /// <returns>The bounds available from matching clauses with an equal or stronger receiver.</returns>
     internal (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, Koto at)
         => this.AvailableCallableEffects(type, signature, receiver, this.ConstraintScope(at));
+
+    internal (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
+    {
+        var confined = false;
+        var preserves = false;
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            if (current.Constraints is not { Invalid: false } environment)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < this.callableEffectClauses.Count; i++)
+            {
+                var clause = this.callableEffectClauses[i];
+                if (!ReferenceEquals(clause.Parent, current.Owner) || clause.BoundConstraint is not { Kind: ConstraintKind.Callable } fact ||
+                    !this.AvailableConstraintFact(environment, fact) ||
+                    !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), this.CallableContractType(type, scope)) ||
+                    !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), this.CallableContractType(signature, scope)) ||
+                    !ReceiverCovers(fact.Mask, receiver))
+                {
+                    continue;
+                }
+
+                for (var e = 0; e < clause.EffectBounds.Count; e++)
+                {
+                    var effect = clause.EffectBounds[e];
+                    if (this.effectBoundRejections?.ContainsKey(effect) == true || IsRecovery(effect, out _))
+                    {
+                        continue;
+                    }
+
+                    confined |= effect.Bound == EffectBoundKind.Confined;
+                    preserves |= effect.Bound == EffectBoundKind.PreservesResults;
+                    evidence?.Add(new(effect, current.Owner, fact, clause));
+                }
+            }
+        }
+
+        return (confined, preserves);
+    }
 
     /// <summary>Discharges selected-use bounds after ownership has supplied cleanup plans.</summary>
     /// <param name="rejected">The located failed arguments and Type formations.</param>
@@ -100,9 +144,6 @@ public sealed partial class Binding
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
 
-    private static BoundType? CallableCore(BoundType? type)
-        => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } ? type.Components[0] : type;
-
     // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.4.10.7).
     private void PrepareCallableEffects()
     {
@@ -164,47 +205,6 @@ public sealed partial class Binding
             note: "An implementation must be callable under its requirement's declared premises",
             related: [("bound", failure.Clause, "the implementation's bounded Callable Constraint"), ("requirement", failure.Requirement, "the requirement whose premises lack the bound")]);
         return true;
-    }
-
-    private (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
-    {
-        var confined = false;
-        var preserves = false;
-        for (var current = scope; current is not null; current = current.Parent)
-        {
-            if (current.Constraints is not { Invalid: false } environment)
-            {
-                continue;
-            }
-
-            for (var i = 0; i < this.callableEffectClauses.Count; i++)
-            {
-                var clause = this.callableEffectClauses[i];
-                if (!ReferenceEquals(clause.Parent, current.Owner) || clause.BoundConstraint is not { Kind: ConstraintKind.Callable } fact ||
-                    !this.AvailableConstraintFact(environment, fact) ||
-                    !ReferenceEquals(this.CallableContractType(fact.Subject!, scope), this.CallableContractType(type, scope)) ||
-                    !SameCallableSignature(this.CallableContractType(fact.RequiredType!, scope), this.CallableContractType(signature, scope)) ||
-                    !ReceiverCovers(fact.Mask, receiver))
-                {
-                    continue;
-                }
-
-                for (var e = 0; e < clause.EffectBounds.Count; e++)
-                {
-                    var effect = clause.EffectBounds[e];
-                    if (this.effectBoundRejections?.ContainsKey(effect) == true || IsRecovery(effect, out _))
-                    {
-                        continue;
-                    }
-
-                    confined |= effect.Bound == EffectBoundKind.Confined;
-                    preserves |= effect.Bound == EffectBoundKind.PreservesResults;
-                    evidence?.Add(new(effect, current.Owner, fact, clause));
-                }
-            }
-        }
-
-        return (confined, preserves);
     }
 
     private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, BoundCall? call, ReadOnlySpan<BoundLength?> lengths = default)

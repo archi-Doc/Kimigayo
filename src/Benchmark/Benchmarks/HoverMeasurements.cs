@@ -80,7 +80,7 @@ internal static class HoverMeasurements
 
                     if (enabled)
                     {
-                        GC.KeepAlive(compilation.Binding.CreateHoverSnapshot());
+                        GC.KeepAlive(HoverBuilder.Create(compilation));
                     }
                 },
                 16),

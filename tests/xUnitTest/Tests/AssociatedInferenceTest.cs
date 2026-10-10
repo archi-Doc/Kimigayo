@@ -228,7 +228,7 @@ public class AssociatedInferenceTest
         c.CollectHover = true;
         c.Kotonoha.AddSource(new("associated-inference.kimi", source));
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var snapshot = c.Binding.CreateHoverSnapshot();
+        var snapshot = HoverBuilder.Create(c);
         var document = Assert.Single(snapshot.Documents).Value;
         var entry = document.Entries[document.Find(source.IndexOf("struct S", StringComparison.Ordinal) + 7)];
         var rendered = HoverRenderer.Render(entry.Info, false).Body!;

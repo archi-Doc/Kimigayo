@@ -20,6 +20,13 @@ public sealed partial class Binding
     // Hover identifies the complete contextual Type, including every Origin; ordinary diagnostic spelling is unchanged.
     internal static string HoverTypeName(BoundType type) => DisplayTypeName(type, null, null, complete: true);
 
+    internal static string DiagnosticLengthName(BoundLength length, HoverBudget? budget = null)
+    {
+        var text = new StringBuilder();
+        AppendDiagnosticLength(text, length, budget);
+        return text.ToString();
+    }
+
     private static string DisplayTypeName(object value, BoundOrigin? shown, string? shownText, bool complete)
     {
         if (value is not BoundType type)
@@ -310,13 +317,6 @@ public sealed partial class Binding
         return position is { } location
             ? $"<{origin.Kind.ToString().ToLowerInvariant()} origin at {location.Line + 1}:{location.Character + 1}>"
             : $"<{origin.Kind.ToString().ToLowerInvariant()} origin>";
-    }
-
-    private static string DiagnosticLengthName(BoundLength length, HoverBudget? budget = null)
-    {
-        var text = new StringBuilder();
-        AppendDiagnosticLength(text, length, budget);
-        return text.ToString();
     }
 
     private static void AppendDiagnosticLength(StringBuilder text, BoundLength length, HoverBudget? budget = null)

@@ -96,22 +96,6 @@ public sealed class FunctionKoto : DeclarationKoto
     /// <summary>Gets the written parameter index after the ! boundary, or -1 when absent.</summary>
     public int NameBoundaryIndex { get; internal set; } = -1;
 
-    /// <summary>Gets normalized K after Binding, or -1 for an unverified specialization.</summary>
-    public int PositionalParameterCount
-    {
-        get
-        {
-            if (this.IsSpecialization)
-            {
-                return this.Kotonoha.Compilation.Binding.GetSpecializationOriginal(this)?.PositionalParameterCount ?? -1;
-            }
-
-            var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
-            var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
-            return limit - (receiver >= 0 && receiver < limit ? 1 : 0);
-        }
-    }
-
     internal bool AllowsPositionalArgument(int index)
         => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
 

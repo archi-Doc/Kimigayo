@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -46,13 +47,13 @@ public sealed class HoverSyntaxTest
     {
         var compilation = Create("func apply<T>(x: T, count: i32 = 42) -> T\n    T is Copy\n    return x\nstruct Record\n    public var value: i32 = 123\n        get\n        private set\n    drop => ()\n");
         var function = Assert.Single(compilation.HoverAnchors, static a => a.Syntax is FunctionKoto { Name: "apply" }).Syntax;
-        Assert.Equal("func apply<T>(x: T, count: i32 = <default omitted>) -> T\n    T is Copy", Binding.HoverHeader(function));
+        Assert.Equal("func apply<T>(x: T, count: i32 = <default omitted>) -> T\n    T is Copy", HoverBuilder.Header(function));
         Assert.Contains("42", function.ToString());
         var property = Assert.Single(compilation.HoverAnchors, static a => a.Syntax is PropertyKoto).Syntax;
-        Assert.Equal("public var value: i32\n    get\n    private set", Binding.HoverHeader(property));
+        Assert.Equal("public var value: i32\n    get\n    private set", HoverBuilder.Header(property));
         Assert.Contains("123", property.ToString());
         var destructor = Assert.Single(compilation.HoverAnchors, static a => a.Syntax is FunctionKoto { IsDestructor: true }).Syntax;
-        Assert.Equal("drop", Binding.HoverHeader(destructor));
+        Assert.Equal("drop", HoverBuilder.Header(destructor));
     }
 
     [Fact]
@@ -60,7 +61,7 @@ public sealed class HoverSyntaxTest
     {
         var compilation = Create("struct Box<T>\n    T is Copy\n    Self is Copy when T is Copy\n    var item: T\nstruct Box<T>\n    func get(self: ref/Self) -> T => self.item\n");
         var type = compilation.HoverAnchors.First(static a => a.Syntax is StructKoto).Syntax;
-        Assert.Equal("struct Box<T>\n    T is Copy\n    Self is Copy when T is Copy", Binding.HoverHeader(type));
+        Assert.Equal("struct Box<T>\n    T is Copy\n    Self is Copy when T is Copy", HoverBuilder.Header(type));
     }
 
     private static string Text(Compilation.HoverAnchor anchor) => anchor.Source.SourceText.Substring(anchor.Token.Start, anchor.Token.Length);
