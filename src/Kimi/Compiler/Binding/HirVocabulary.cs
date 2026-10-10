@@ -149,6 +149,31 @@ internal enum HirAcquire : byte
     Temporary, // A value, not a Place, taken as it is.
 }
 
+/// <summary>The Place a node designates: the PlaceShape column of <see cref="HirTables"/> (SPEC 3.4.1, 3.5, 13.5.5.1), set on every node
+/// the builder evaluates and on a Pattern binding its plan borrows. The builder forms a MIR Place from the Kind, the node's Res and its
+/// direct children, then follows <paramref name="Layers"/> layers of the node's own Type (a reference, pointer or object handle layer as a
+/// Deref, a pair layer as a PairLayer) that its consumer follows implicitly before it projects or borrows the node.</summary>
+/// <param name="Kind">The form of the node's Place.</param>
+/// <param name="Layers">The layers its consumer follows: of a stored Field's, a Tuple element's, a sequence metadata's or a built-in
+/// element's receiver down to the projected value, and the pair layers Binding follows at a receiver or Subject (SPEC 7.3, 15.1.6).</param>
+internal readonly record struct HirPlace(HirPlaceKind Kind, byte Layers);
+
+/// <summary>The form of a node's Place (SPEC 3.4, 3.5); the closed projection kinds the MIR builder starts from.</summary>
+internal enum HirPlaceKind : byte
+{
+    Unset,
+    Value, // Not a Place: a value its consumer takes as it is, or holds in a temporary where it needs a Place.
+    Local, // A local, a parameter, a prepared parameter or a capture, as its Res says.
+    Static,
+    Field, // A stored Field or a Tuple element of its receiver, an accessor's storage of its implicit self, or a Tuple position.
+    Deref, // The referent *p or p@follow selects through a reference, a pointer or an object handle.
+    PairLayer, // The target p@follow selects through a pair layer (SPEC 13.5.5.1).
+    Index, // An element at a runtime position or key.
+    ConstIndex, // A fixed-array element at a literal position in range (SPEC 15.1.3).
+    Downcast, // The payload of a Case position.
+    CallResult, // The referent a call publishes (SPEC 7.1.1): a place call, a user index or a getter's place result.
+}
+
 /// <summary>The implicit adaptation of a consumed child (SPEC 10.2); the child keeps its own Type.</summary>
 internal enum HirAdaptation : byte
 {

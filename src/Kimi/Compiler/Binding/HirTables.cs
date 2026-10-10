@@ -13,8 +13,8 @@ namespace Kimi.Compiler;
 /// Type or an Origin, which occupy different namespaces), selected symbol, erased Function Type and the index of its plan row.
 /// The module's <see cref="SyntaxTable"/> sizes them with its ids, keeps them across warm rebinds and moves each row, plan row
 /// included, with its node when it renumbers. A node without an id has the default row; its first write gives it one.
-/// The published columns, <see cref="Ops"/>, <see cref="Res"/>, <see cref="Completions"/> and <see cref="Adjusts"/>, are empty until
-/// <see cref="Publish"/> fills them for a pass.
+/// The published columns, <see cref="Ops"/>, <see cref="Res"/>, <see cref="Completions"/>, <see cref="Adjusts"/> and
+/// <see cref="Places"/>, are empty until <see cref="Publish"/> fills them for a pass.
 /// </summary>
 internal struct HirTables
 {
@@ -28,6 +28,7 @@ internal struct HirTables
     internal HirRes[]? Res;
     internal HirCompletion[]? Completions;
     internal HirAdjust[]? Adjusts;
+    internal HirPlace[]? Places;
 
     /// <summary>The plan rows from 1 to <see cref="PlanCount"/>; a node gets one at its first plan write and keeps it across passes.</summary>
     internal PlanRow[] Plans;
@@ -68,7 +69,9 @@ internal struct HirTables
 
     internal static HirAdjust AdjustOf(Koto node) => node.SyntaxOwner?.Hir.Adjusts is { } adjusts && node.SyntaxId < adjusts.Length ? adjusts[node.SyntaxId] : default;
 
-    /// <summary>Publishes the Op, Res, Completion and Adjust columns of every module from the latest completed Binding pass, once per pass.</summary>
+    internal static HirPlace PlaceOf(Koto node) => node.SyntaxOwner?.Hir.Places is { } places && node.SyntaxId < places.Length ? places[node.SyntaxId] : default;
+
+    /// <summary>Publishes the Op, Res, Completion, Adjust and PlaceShape columns of every module from the latest completed Binding pass, once per pass.</summary>
     /// <param name="compilation">The bound compilation.</param>
     internal static void Publish(Compilation compilation) => compilation.Binding.PublishHir();
 

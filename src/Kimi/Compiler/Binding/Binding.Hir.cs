@@ -4,8 +4,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The HIR publisher (plan R2b): the Op, Res, Completion and Adjust columns and the jump targets of every module, read from the facts the latest pass
-// keeps; it decides nothing Binding has not decided. Tests call it in R2b and the MIR builder from R3; R7 writes the columns inline.
+// The HIR publisher (plan R2b): the Op, Res, Completion, Adjust and PlaceShape columns and the jump targets of every module, read from the facts
+// the latest pass keeps; it decides nothing Binding has not decided. Tests call it in R2b and the MIR builder from R3; R7 writes the columns inline.
 public sealed partial class Binding
 {
     private HirPublisher? hirPublisher;
@@ -50,6 +50,7 @@ public sealed partial class Binding
         private Koto? parent;
         private HirOp parentOp;
         private HirPosition position;
+        private bool exclusive;
 
         // Binding's structural completion with its Never evidence, one per body (StructuralCompletion moves into Binding in R6).
         private StructuralCompletion? completion;
@@ -57,7 +58,7 @@ public sealed partial class Binding
 
         public override void Visit(Koto node)
         {
-            var (parent, parentOp, outer, defaults) = (this.parent, this.parentOp, this.position, this.defaultCount);
+            var (parent, parentOp, outer, defaults, exclusive) = (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive);
             var position = this.PositionOf(node);
             var op = this.OpOf(node, position);
             if (op == HirOp.Body)
@@ -65,12 +66,17 @@ public sealed partial class Binding
                 this.completion?.Clear();
             }
 
-            if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Res: { } res, Hir.Completions: { } completions } && node.SyntaxId < ops.Length)
+            this.exclusive = this.ExclusiveUse(node);
+            if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Res: { } res, Hir.Completions: { } completions, Hir.Places: { } places } && node.SyntaxId < ops.Length)
             {
                 ops[node.SyntaxId] = op;
                 res[node.SyntaxId] = this.ResOf(node);
                 completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
                     : (this.completion ??= new(binding.ResultNeverEvidence)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
+                if (completions[node.SyntaxId] != HirCompletion.Unset)
+                {
+                    places[node.SyntaxId] = new(this.KindOf(node, op, res[node.SyntaxId]), this.Layers(node));
+                }
             }
 
             if (op is HirOp.Jump or HirOp.Continue)
@@ -86,7 +92,7 @@ public sealed partial class Binding
 
             (this.parent, this.parentOp, this.position) = (node, op, position);
             node.VisitChildren(this);
-            (this.parent, this.parentOp, this.position, this.defaultCount) = (parent, parentOp, outer, defaults);
+            (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive) = (parent, parentOp, outer, defaults, exclusive);
         }
 
         internal void Publish(SyntaxTable table, Koto root)
@@ -94,7 +100,7 @@ public sealed partial class Binding
             ref var hir = ref table.Hir;
             if (hir.Ops?.Length != hir.States.Length)
             {
-                (hir.Ops, hir.Res, hir.Completions, hir.Adjusts) = (new HirOp[hir.States.Length], new HirRes[hir.States.Length], new HirCompletion[hir.States.Length], new HirAdjust[hir.States.Length]);
+                (hir.Ops, hir.Res, hir.Completions, hir.Adjusts, hir.Places) = (new HirOp[hir.States.Length], new HirRes[hir.States.Length], new HirCompletion[hir.States.Length], new HirAdjust[hir.States.Length], new HirPlace[hir.States.Length]);
             }
             else
             {
@@ -102,13 +108,17 @@ public sealed partial class Binding
                 Array.Clear(hir.Res!);
                 Array.Clear(hir.Completions!);
                 Array.Clear(hir.Adjusts!);
+                Array.Clear(hir.Places!);
             }
 
             this.table = table;
             this.completion?.Clear();
-            (this.parent, this.position) = (null, HirPosition.None);
+            (this.parent, this.position, this.exclusive) = (null, HirPosition.None, false);
             this.Visit(root);
         }
+
+        // The operand a parent projects, updates, groups or borrows.
+        private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
 
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length.
@@ -398,7 +408,7 @@ public sealed partial class Binding
                 }
             }
 
-            var unselected = node is IndexKoto user && binding.IndexerCall(user, true) is { } exclusive ? (this.Exclusive(node) ? binding.IndexerCall(user, false) : exclusive)?.CallStorage : null;
+            var unselected = node is IndexKoto user && binding.IndexerCall(user, true) is { } exclusive ? (this.exclusive ? binding.IndexerCall(user, false) : exclusive)?.CallStorage : null;
             for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
             {
                 if (ReferenceEquals(call, unselected))
@@ -454,10 +464,54 @@ public sealed partial class Binding
             return bare != HirAcquire.Move ? bare : proof == ConstraintProof.Refuted ? HirAcquire.Move : proof == ConstraintProof.Unknown ? HirAcquire.ByCase : HirAcquire.Unset;
         }
 
-        // Whether a node's consumer updates it or borrows it exclusively; the parent is the node's while it consumes its children.
-        private bool Exclusive(Koto node) => HirTables.AdjustOf(node).Adaptation == HirAdaptation.ExclusiveBorrow ||
-            (this.parentOp is HirOp.Assign or HirOp.CompoundAssign && ReferenceEquals((this.parent as BinaryKoto)?.Left ?? (this.parent as UnaryKoto)?.Operand, node)) ||
-            (this.parentOp == HirOp.Borrow && this.parent!.BoundType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
+        // Whether a node's consumer updates it or borrows it exclusively, directly or through the projections of a Place path, where the old
+        // path selects a user index's indexUniq (SPEC 4.6.9); the parent is the node's while the node is visited.
+        private bool ExclusiveUse(Koto node) => HirTables.AdjustOf(node).Adaptation == HirAdaptation.ExclusiveBorrow ||
+            (this.parentOp == HirOp.Borrow && this.parent!.BoundType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq) ||
+            ((this.parentOp is HirOp.Assign or HirOp.CompoundAssign || (this.exclusive && (this.parentOp is HirOp.Field or HirOp.Index || this.parent is ParenthesizedKoto))) &&
+                ReferenceEquals(Operand(this.parent), node));
+
+        // SPEC 3.4.1, 3.5, 7.1.1, 13.5.5.1, 15.1.3: the Place a node designates, as its Op, Res and Binding's element, follow and call facts
+        // give it; a parenthesized Place is its operand's.
+        private HirPlaceKind KindOf(Koto node, HirOp op, HirRes res) => op switch
+        {
+            HirOp.Name => res switch
+            {
+                HirRes.Local or HirRes.Param or HirRes.PreparedParam or HirRes.Capture => HirPlaceKind.Local,
+                HirRes.Static => HirPlaceKind.Static,
+                HirRes.Field => HirPlaceKind.Field, // An accessor's storage: Binding.StorageProjection, a Field of the implicit self.
+                _ => HirPlaceKind.Value,
+            },
+            HirOp.Field => HirPlaceKind.Field,
+            HirOp.Deref => binding.PairAdmitted(node) == SemanticsMask.None ? HirPlaceKind.Deref : HirPlaceKind.PairLayer,
+            HirOp.Index => ElementAccess.IsSlicing(node) ? HirPlaceKind.Value : ElementAccess.StaticSelector((IndexKoto)node) < 0 ? HirPlaceKind.Index : HirPlaceKind.ConstIndex,
+            HirOp.Call => ElementAccess.IsUserIndex(node) || ElementAccess.IsPlaceCall(binding.PropertyCall(node, PropertyAccessorKind.Get) ?? node) ? HirPlaceKind.CallResult : HirPlaceKind.Value,
+            HirOp.Group when node is ParenthesizedKoto && KotoHelper.UnwrapParentheses(node) is var inner => this.KindOf(inner, this.OpOf(inner, HirPosition.Evaluated), this.ResOf(inner)),
+            _ => HirPlaceKind.Value,
+        };
+
+        // The layers a node's consumer follows before it projects or borrows the node (SPEC 3.4.1, 13.5.5.1): every reference, object
+        // handle and pair layer of the receiver of a stored Field, a Tuple element, a sequence's metadata or a built-in element, and the pair
+        // layers Binding follows at a receiver or Subject down to their terminal target.
+        private byte Layers(Koto node)
+        {
+            var projected = (this.parentOp is HirOp.Field or HirOp.Index || (this.parentOp == HirOp.PrimitiveOp && this.parent is MemberAccessKoto)) && ReferenceEquals(Operand(this.parent), node);
+            var terminal = projected || !TryPairLayer(node.BoundType, out _, out _) || binding.ImplicitPairAdmitted(node) == SemanticsMask.None ? null : binding.PairTerminalOf(node);
+            byte layers = 0;
+            for (var type = node.BoundType; (projected || terminal is not null) && layers < 16 && !ReferenceEquals(type, terminal); layers++)
+            {
+                if (type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && (IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics)))
+                {
+                    type = type.Components[0];
+                }
+                else if (!TryPairLayer(type, out _, out type))
+                {
+                    break;
+                }
+            }
+
+            return layers;
+        }
 
         // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2) or a static.
         private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || this.ResOf(KotoHelper.UnwrapParentheses(child)) == HirRes.Static;
@@ -477,23 +531,31 @@ public sealed partial class Binding
             this.Write(subject, ReferenceEquals(borrow, subject.BoundType) ? new(HirAcquire.Reborrow, HirAdaptation.None) : new(HirAcquire.None, mode));
         }
 
+        // A Pattern binding its plan borrows, below a reference layer, designates the payload of its Case position or an element of its Tuple
+        // position (SPEC 15.1.6); a binding of the whole Subject acquires it.
         private void Bindings(BoundMatch? plan)
         {
             for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
             {
-                if (plan.Positions[i] is { Kind: BoundPatternKind.Binding } position)
+                if (plan.Positions[i] is { Kind: BoundPatternKind.Binding } position && HirAdjust.Of(position.Acquisition, position.AccessMode) is var adjust)
                 {
-                    this.Write(position.Source, HirAdjust.Of(position.Acquisition, position.AccessMode));
+                    var place = adjust.Acquire != HirAcquire.None || position.Parent < 0 ? HirPlaceKind.Unset
+                        : plan.Positions[position.Parent].Kind == BoundPatternKind.Case ? HirPlaceKind.Downcast : HirPlaceKind.Field;
+                    this.Write(position.Source, adjust, place);
                 }
             }
         }
 
         // Only the nodes of the module being published; a call shared across modules names nodes of another.
-        private void Write(Koto? node, HirAdjust adjust)
+        private void Write(Koto? node, HirAdjust adjust, HirPlaceKind place = HirPlaceKind.Unset)
         {
             if (node is not null && ReferenceEquals(node.SyntaxOwner, this.table) && this.table!.Hir.Adjusts is { } adjusts && node.SyntaxId < adjusts.Length)
             {
                 adjusts[node.SyntaxId] = adjust;
+                if (place != HirPlaceKind.Unset)
+                {
+                    this.table.Hir.Places![node.SyntaxId] = new(place, 0);
+                }
             }
         }
     }

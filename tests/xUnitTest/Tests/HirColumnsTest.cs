@@ -8,8 +8,8 @@ namespace XunitTest;
 
 /// <summary>The published HIR columns (docs/dev/COMPILER_ARCHITECTURE.md, R2b) over the Kimi library and every milestone program:
 /// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
-/// prepared slot, every jump its target and every evaluated node its completion; publishing changes no other result and allocates
-/// nothing again.</summary>
+/// prepared slot, every jump its target, every evaluated node its completion and its Place, and every consumed child its Adjust;
+/// publishing changes no other result and allocates nothing again.</summary>
 public sealed class HirColumnsTest
 {
     // Virtual bodies over a generic base whose applicability has premises, and over a closed base.
@@ -137,6 +137,39 @@ public sealed class HirColumnsTest
         Assert.Equal(expected, adjusted);
     }
 
+    // SPEC 3.4.1, 4.6.9, 7.1.1, 15.1.3, 15.1.6: a Field through two reference layers follows both, a literal fixed-array position is a
+    // ConstIndex and a runtime one an Index, a user index publishes the element Place, which an update through its Field takes by indexUniq
+    // (its receiver borrowed exclusively) and a read by index, and a borrowed Case payload is its Downcast.
+    [Fact]
+    public void PlaceShapeStatesThePlaceForms()
+    {
+        const string Source = "struct Point\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
+            "struct Pair<T>\n    Self is UniqIndexable<isize>\n    associate Element is T\n    var first: T\n    var second: T\n" +
+            "    public init(first: T, second: T)\n        self.first = first@move\n        self.second = second@move\n" +
+            "    public func index(self, key: ref/isize) -> place ref/T during self => self.first\n" +
+            "    public func indexUniq(self: uniq/Self, key: ref/isize) -> place uniq/T during self => self.first\n" +
+            "func through(p: ref/(ref/Point during a)) -> i32 => p.x\nfunc pick(value: Option<Point>) -> i32\n    match value\n        .Some(let inner) => return inner.x\n        .None => return 0\n" +
+            "var pts = Pair<Point>.init(Point.init(1), Point.init(2))\npts[0].x = 5\nlet fixed: [3 of i32] = [1, 2, 3]\nlet i: isize = 2\nlet p = Point.init(3)\nlet r = p@ref\n" +
+            "require through(r@ref) == 3 and pick(.Some(Point.init(4))) == 4 and pts[1].x == 5 and fixed[1] + (fixed)[i] == 5 else => $abort(\"place\")\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var start = Source.IndexOf("func through", StringComparison.Ordinal);
+        var places = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && HirTables.PlaceOf(x).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value))
+            .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {HirTables.PlaceOf(x).Kind}+{HirTables.PlaceOf(x).Layers} {HirTables.AdjustOf(x).Adaptation}");
+        // A Field's receiver keeps the access Binding recorded for it (SPEC 3.4.1: one reference through its layers, a shared access of a
+        // user index's element); its layers are followed from its own Type.
+        string[] expected =
+        [
+            "p.x Field+0 None", "p Local+2 ReferenceRead", "value Local+0 SharedBorrow", "let inner Downcast+0 SharedBorrow", "inner.x Field+0 None",
+            "inner Local+1 None", "pts[0].x Field+0 None", "pts[0] CallResult+0 SharedBorrow", "pts Local+0 ExclusiveBorrow", "p Local+0 None",
+            "r Local+0 None", "pts[1].x Field+0 None", "pts[1] CallResult+0 SharedBorrow", "pts Local+0 SharedBorrow", "fixed[1] ConstIndex+0 None",
+            "fixed Local+0 None", "(fixed)[i] Index+0 None", "(fixed) Local+0 None", "fixed Local+0 None", "i Local+0 None",
+        ];
+        Assert.Equal(expected, places);
+    }
+
     // Publishing before the ownership analysis leaves every Binding, control-flow and ownership fact and diagnostic unchanged.
     [Theory]
     [MemberData(nameof(Corpus))]
@@ -261,6 +294,17 @@ public sealed class HirColumnsTest
                 problems.Add($"{where} completion {completion}");
             }
 
+            // An evaluated node and a node used in place have their Place, a stored Field, an explicit follow and a read name a Place, and
+            // the layers a consumer follows are layers of the Type, every one of them under a stored Field, an element or a sequence's metadata.
+            var place = HirTables.PlaceOf(node);
+            var projection = op is HirOp.Field or HirOp.Index || (op == HirOp.PrimitiveOp && node is MemberAccessKoto);
+            if ((evaluated || HirTables.AdjustOf(node).Acquire == HirAcquire.None) == (place.Kind == HirPlaceKind.Unset) || !Peel(node.TypeOf(), place.Layers, out _) ||
+                ((op is HirOp.Field or HirOp.Deref || (op == HirOp.Name && HirTables.ResOf(node) != HirRes.Decl)) && place.Kind == HirPlaceKind.Value) ||
+                (projection && node is BinaryKoto { Left: var left } && (!Peel(left.TypeOf(), HirTables.PlaceOf(left).Layers, out var projected) || IsLayer(projected))))
+            {
+                problems.Add($"{where} place {place} of {node.TypeOf()}");
+            }
+
             if (op is HirOp.Unset or HirOp.Error || (op == HirOp.Syntax && node is not FunctionKoto))
             {
                 continue;
@@ -353,6 +397,21 @@ public sealed class HirColumnsTest
 
         // A body or operand that supplies its construct's value.
         static Koto? Result(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
+    }
+
+    // SPEC 3.4.1, 13.5.5.1: a reference, object handle or pair layer, which selection follows implicitly.
+    private static bool IsLayer(BoundType? type)
+        => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1, Semantics: not (SemanticsKind.Owner or SemanticsKind.Raw or SemanticsKind.Parameter) } || Binding.TryPairLayer(type, out _, out _);
+
+    private static bool Peel(BoundType? type, int layers, out BoundType? result)
+    {
+        for (; layers > 0 && IsLayer(type); layers--)
+        {
+            type = Binding.TryPairLayer(type, out _, out var target) ? target : type!.Components[0];
+        }
+
+        result = type;
+        return layers == 0;
     }
 
     private static bool IsWithin(Koto node, Koto ancestor)
