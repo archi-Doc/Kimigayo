@@ -95,53 +95,10 @@ public abstract class VariableKoto : DeclarationKoto
         OriginClauses.Write(this, ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.NameKoto);
-        if (this.TypeKoto is not null)
-        {
-            visitor.Visit(this.TypeKoto);
-        }
-
-        if (this.InitializerKoto is not null)
-        {
-            visitor.Visit(this.InitializerKoto);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.NameKoto;
-        if (this.TypeKoto is not null)
-        {
-            yield return this.TypeKoto;
-        }
-
-        if (this.InitializerKoto is not null)
-        {
-            yield return this.InitializerKoto;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.NameKoto == oldKoto && newKoto is IdentifierNameKoto name)
-        {
-            this.NameKoto = name;
-        }
-        else if (this.TypeKoto == oldKoto)
-        {
-            this.TypeKoto = newKoto;
-        }
-        else if (this.InitializerKoto == oldKoto)
-        {
-            this.InitializerKoto = newKoto;
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
+        this.NameKoto = slots.Slot(this.NameKoto);
+        this.TypeKoto = slots.Slot(this.TypeKoto);
+        this.InitializerKoto = slots.Slot(this.InitializerKoto);
     }
 }

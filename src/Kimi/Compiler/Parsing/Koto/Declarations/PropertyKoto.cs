@@ -128,39 +128,11 @@ public sealed class PropertyKoto : VariableKoto
     internal void CompleteSpan(int end)
         => this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, end));
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        base.VisitChildrenCore(visitor);
-
-        if (this.accessors is not null)
-        {
-            for (var accessorIndex = 0; accessorIndex < this.accessors.Count; accessorIndex++)
-            {
-                var accessor = this.accessors[accessorIndex];
-                visitor.Visit(accessor);
-            }
-        }
+        base.ForEachChildSlot(ref slots);
+        slots.List(this.accessors);
     }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        foreach (var child in base.GetChildNodes())
-        {
-            yield return child;
-        }
-
-        if (this.accessors is not null)
-        {
-            foreach (var accessor in this.accessors)
-            {
-                yield return accessor;
-            }
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => base.ReplaceChildCore(oldKoto, newKoto) ||
-            (oldKoto is PropertyAccessorKoto && ReplaceInList(this.accessors, oldKoto, newKoto));
 
     private void WritePropertyTo(ref IndentedStringBuilder builder, bool headerOnly)
     {

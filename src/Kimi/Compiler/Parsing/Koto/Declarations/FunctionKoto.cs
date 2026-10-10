@@ -518,183 +518,23 @@ public sealed class FunctionKoto : DeclarationKoto
         this.Body.AddLast(item);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.BaseInitializer is not null)
+        this.BaseInitializer = slots.Slot(this.BaseInitializer);
+        slots.List(this.typeConstraints);
+        slots.List(this.effectBounds);
+        slots.List(this.genericArguments);
+        for (var i = 0; this.parameters is { } parameters && i < parameters.Count; i++)
         {
-            visitor.Visit(this.BaseInitializer);
+            var parameter = parameters[i];
+            parameter.AttributeChain = slots.Slot(parameter.AttributeChain);
+            parameter.Type = slots.Slot(parameter.Type);
+            parameter.DefaultValue = slots.Slot(parameter.DefaultValue);
         }
 
-        if (this.typeConstraints is not null)
-        {
-            for (var constraintIndex = 0; constraintIndex < this.typeConstraints.Count; constraintIndex++)
-            {
-                var constraint = this.typeConstraints[constraintIndex];
-                visitor.Visit(constraint);
-            }
-        }
-
-        visitor.VisitMany(this.effectBounds);
-
-        if (this.genericArguments is not null)
-        {
-            for (var argumentIndex = 0; argumentIndex < this.genericArguments.Count; argumentIndex++)
-            {
-                var argument = this.genericArguments[argumentIndex];
-                visitor.Visit(argument);
-            }
-        }
-
-        if (this.parameters is not null)
-        {
-            for (var parameterIndex = 0; parameterIndex < this.parameters.Count; parameterIndex++)
-            {
-                var parameter = this.parameters[parameterIndex];
-                if (parameter.AttributeChain is not null)
-                {
-                    visitor.Visit(parameter.AttributeChain);
-                }
-
-                visitor.Visit(parameter.Type);
-                if (parameter.DefaultValue is not null)
-                {
-                    visitor.Visit(parameter.DefaultValue);
-                }
-            }
-        }
-
-        if (this.ReturnType is not null)
-        {
-            visitor.Visit(this.ReturnType);
-        }
-
-        if (this.Body is not null)
-        {
-            visitor.Visit(this.Body);
-        }
-
-        if (this.ExpressionBody is not null)
-        {
-            visitor.Visit(this.ExpressionBody);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.BaseInitializer is not null)
-        {
-            yield return this.BaseInitializer;
-        }
-
-        if (this.typeConstraints is not null)
-        {
-            foreach (var constraint in this.typeConstraints)
-            {
-                yield return constraint;
-            }
-        }
-
-        if (this.effectBounds is not null)
-        {
-            foreach (var effect in this.effectBounds)
-            {
-                yield return effect;
-            }
-        }
-
-        if (this.genericArguments is not null)
-        {
-            foreach (var argument in this.genericArguments)
-            {
-                yield return argument;
-            }
-        }
-
-        if (this.parameters is not null)
-        {
-            foreach (var parameter in this.parameters)
-            {
-                if (parameter.AttributeChain is not null)
-                {
-                    yield return parameter.AttributeChain;
-                }
-
-                yield return parameter.Type;
-                if (parameter.DefaultValue is not null)
-                {
-                    yield return parameter.DefaultValue;
-                }
-            }
-        }
-
-        if (this.ReturnType is not null)
-        {
-            yield return this.ReturnType;
-        }
-
-        if (this.Body is not null)
-        {
-            yield return this.Body;
-        }
-
-        if (this.ExpressionBody is not null)
-        {
-            yield return this.ExpressionBody;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.BaseInitializer == oldKoto && newKoto is InvocationKoto initializer)
-        {
-            this.BaseInitializer = initializer;
-            return true;
-        }
-
-        if (this.ExpressionBody == oldKoto)
-        {
-            this.ExpressionBody = newKoto;
-            return true;
-        }
-
-        if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
-        {
-            this.Body = block;
-            return true;
-        }
-
-        if (this.ReturnType == oldKoto)
-        {
-            this.ReturnType = newKoto;
-            return true;
-        }
-
-        if (this.parameters is not null)
-        {
-            foreach (var parameter in this.parameters)
-            {
-                if (parameter.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
-                {
-                    parameter.AttributeChain = attribute;
-                    return true;
-                }
-
-                if (parameter.Type == oldKoto)
-                {
-                    parameter.Type = newKoto;
-                    return true;
-                }
-
-                if (parameter.DefaultValue == oldKoto)
-                {
-                    parameter.DefaultValue = newKoto;
-                    return true;
-                }
-            }
-        }
-
-        return ReplaceInList(this.typeConstraints, oldKoto, newKoto) || ReplaceInList(this.effectBounds, oldKoto, newKoto) ||
-            (oldKoto is TypeKoto && newKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto));
+        this.ReturnType = slots.Slot(this.ReturnType);
+        this.Body = slots.Slot(this.Body);
+        this.ExpressionBody = slots.Slot(this.ExpressionBody);
     }
 
     private void AttachParameter(FunctionParameterKoto parameter)

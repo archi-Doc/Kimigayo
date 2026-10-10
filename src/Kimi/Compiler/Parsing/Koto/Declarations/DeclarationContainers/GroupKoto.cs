@@ -51,26 +51,12 @@ public sealed class GroupKoto : DeclarationContainerKoto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        base.VisitChildrenCore(visitor);
-
-        if (ReferenceEquals(this, this.Kotonoha.RootKoto) && this.Kotonoha.GeneratedFunction is { } generatedFunction)
+        base.ForEachChildSlot(ref slots);
+        if (ReferenceEquals(this, this.Kotonoha.RootKoto))
         {
-            visitor.Visit(generatedFunction);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        foreach (var child in base.GetChildNodes())
-        {
-            yield return child;
-        }
-
-        if (ReferenceEquals(this, this.Kotonoha.RootKoto) && this.Kotonoha.GeneratedFunction is { } generatedFunction)
-        {
-            yield return generatedFunction;
+            slots.Fixed(this.Kotonoha.GeneratedFunction);
         }
     }
 

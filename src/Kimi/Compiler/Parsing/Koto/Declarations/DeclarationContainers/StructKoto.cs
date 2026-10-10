@@ -73,13 +73,10 @@ public sealed class StructKoto : DeclarationContainerKoto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        base.VisitChildrenCore(visitor);
-        if (this.SynthesizedConstructor is { } constructor)
-        {
-            visitor.Visit(constructor);
-        }
+        base.ForEachChildSlot(ref slots);
+        slots.Fixed(this.SynthesizedConstructor);
     }
 
     /// <inheritdoc/>

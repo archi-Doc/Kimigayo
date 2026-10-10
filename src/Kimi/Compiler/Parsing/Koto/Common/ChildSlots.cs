@@ -32,10 +32,6 @@ public ref struct ChildSlots
     /// <summary>Gets a value indicating whether this walk has replaced a child.</summary>
     public bool Replaced { readonly get; private set; }
 
-    internal readonly KotoVisitor? Visitor => this.visitor;
-
-    internal readonly List<Koto>? Collected => this.collected;
-
     internal readonly Koto? Original => this.original;
 
     /// <summary>Walks one slot.</summary>
@@ -98,8 +94,15 @@ public ref struct ChildSlots
         }
     }
 
-    // Transitional (R2a U2a): a declaration that replaced a child through its earlier override.
-    internal void MarkReplaced() => this.Replaced = true;
+    /// <summary>Walks a child the node holds outside a replaceable slot, such as one it derives; a replacement passes over it.</summary>
+    /// <param name="child">The child, or null.</param>
+    public void Fixed(Koto? child)
+    {
+        if (this.original is null)
+        {
+            this.Slot(child);
+        }
+    }
 
     private T Other<T>(T child)
         where T : Koto?

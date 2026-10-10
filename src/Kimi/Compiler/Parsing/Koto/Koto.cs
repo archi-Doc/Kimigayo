@@ -402,7 +402,7 @@ public abstract class Koto
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     public Koto? Parent { get; internal set; }
 
-    /// <summary>Gets the direct syntax-tree children of this node.</summary>
+    /// <summary>Gets the direct syntax-tree children of this node, in the order <see cref="VisitChildren"/> visits them.</summary>
     public IEnumerable<Koto> ChildNodes
     {
         get
@@ -703,34 +703,6 @@ public abstract class Koto
         return true;
     }
 
-    /// <summary>Replaces an element of a list in place.</summary>
-    /// <typeparam name="T">The element type.</typeparam>
-    /// <param name="list">The list to update.</param>
-    /// <param name="oldKoto">The current element.</param>
-    /// <param name="newKoto">The replacement element.</param>
-    /// <returns><see langword="true"/> when the element was replaced.</returns>
-    protected static bool ReplaceInList<T>(IReadOnlyList<T>? list, Koto oldKoto, Koto newKoto)
-        where T : Koto
-    {
-        if (list is not IList<T> mutable ||
-            (mutable.IsReadOnly && list is not T[]) ||
-            oldKoto is not T current || newKoto is not T replacement)
-        {
-            return false;
-        }
-
-        for (var index = 0; index < list.Count; index++)
-        {
-            if (ReferenceEquals(list[index], current))
-            {
-                mutable[index] = replacement;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>Replaces a known child slot in constant time, retaining source and attribute provenance.</summary>
     /// <typeparam name="T">The child slot type.</typeparam>
     /// <param name="list">The owned mutable array or list.</param>
@@ -848,38 +820,7 @@ public abstract class Koto
     /// <param name="slots">The walk.</param>
     protected virtual void ForEachChildSlot(ref ChildSlots slots)
     {
-        // Transitional (R2a U2a): a declaration walks its children through the earlier overrides until it lists its slots.
-        if (slots.Visitor is { } visitor)
-        {
-            this.VisitChildrenCore(visitor);
-        }
-        else if (slots.Collected is { } collected)
-        {
-            collected.AddRange(this.GetChildNodes());
-        }
-        else if (slots.Replacement is { } replacement && this.ReplaceChildCore(slots.Original!, replacement))
-        {
-            slots.MarkReplaced();
-        }
     }
-
-    /// <summary>Enumerates children owned by the concrete node.</summary>
-    /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
-    protected virtual IEnumerable<Koto> GetChildNodes()
-        => [];
-
-    /// <summary>Visits direct child storage, excluding the attribute chain.</summary>
-    /// <param name="visitor">The reusable visitor.</param>
-    protected virtual void VisitChildrenCore(KotoVisitor visitor)
-    {
-    }
-
-    /// <summary>Replaces a child reference owned by the concrete node.</summary>
-    /// <param name="oldKoto">The current child.</param>
-    /// <param name="newKoto">The replacement child.</param>
-    /// <returns><see langword="true"/> when a child reference was replaced.</returns>
-    protected virtual bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => false;
 
     // The attribute chain, the Origin clauses, then the node's own slots. A replacement walks only the last two (ReplaceChild).
     private void ForEachSlot(ref ChildSlots slots)

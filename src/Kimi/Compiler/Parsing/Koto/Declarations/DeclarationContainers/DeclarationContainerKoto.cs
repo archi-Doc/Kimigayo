@@ -898,140 +898,35 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
     protected virtual void WriteTypeConstraintTo(IsKoto constraint, ref IndentedStringBuilder builder)
         => constraint.WriteTo(ref builder);
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.bases is { } bases)
+        slots.List(this.bases);
+        slots.List(this.genericArguments);
+        slots.List(this.typeConstraints);
+        slots.List(this.kotoList);
+
+        // A nested container is replaced where its lookup by name exists, by one that declares no second container of its name and
+        // arity; the lookup is then rebuilt.
+        if (slots.Replacement is DeclarationContainerKoto replacement && (this.NestedContainerTable is null || this.DeclaresAgain(replacement, slots.Original)))
         {
-            for (var i = 0; i < bases.Length; i++)
-            {
-                visitor.Visit(bases[i]);
-            }
+            return;
         }
 
-        if (this.genericArguments is { } genericArguments)
+        var replaced = slots.Replaced;
+        slots.List(this.nestedContainers);
+        if (replaced || !slots.Replaced || this.NestedContainerTable is not { } nested)
         {
-            for (var i = 0; i < genericArguments.Count; i++)
-            {
-                visitor.Visit(genericArguments[i]);
-            }
+            return;
         }
 
-        if (this.typeConstraints is { } typeConstraints)
+        ((DeclarationContainerKoto)slots.Original!).nextArity = null;
+        nested.Clear();
+        foreach (var candidate in this.nestedContainers!)
         {
-            for (var i = 0; i < typeConstraints.Count; i++)
-            {
-                visitor.Visit(typeConstraints[i]);
-            }
+            nested.TryGetValue(candidate.Name, out var previous);
+            candidate.nextArity = previous as DeclarationContainerKoto;
+            nested.AddOrUpdate(candidate.Name, candidate);
         }
-
-        if (this.kotoList is { } kotoList)
-        {
-            for (var i = 0; i < kotoList.Count; i++)
-            {
-                visitor.Visit(kotoList[i]);
-            }
-        }
-
-        if (this.nestedContainers is { } nestedContainers)
-        {
-            for (var i = 0; i < nestedContainers.Count; i++)
-            {
-                visitor.Visit(nestedContainers[i]);
-            }
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.bases is not null)
-        {
-            foreach (var type in this.bases)
-            {
-                yield return type;
-            }
-        }
-
-        if (this.genericArguments is not null)
-        {
-            foreach (var argument in this.genericArguments)
-            {
-                yield return argument;
-            }
-        }
-
-        if (this.typeConstraints is not null)
-        {
-            foreach (var constraint in this.typeConstraints)
-            {
-                yield return constraint;
-            }
-        }
-
-        if (this.kotoList is not null)
-        {
-            foreach (var koto in this.kotoList)
-            {
-                yield return koto;
-            }
-        }
-
-        if (this.nestedContainers is not null)
-        {
-            foreach (var container in this.nestedContainers)
-            {
-                yield return container;
-            }
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (ReplaceInList(this.bases, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (ReplaceInList(this.kotoList, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (oldKoto is TypeKoto && ReplaceInList(this.genericArguments, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (oldKoto is IsKoto && ReplaceInList(this.typeConstraints, oldKoto, newKoto))
-        {
-            return true;
-        }
-
-        if (this.NestedContainerTable is { } nested && this.nestedContainers is { } containers &&
-            oldKoto is DeclarationContainerKoto oldContainer && newKoto is DeclarationContainerKoto newContainer && containers.Contains(oldContainer))
-        {
-            foreach (var candidate in containers)
-            {
-                if (!ReferenceEquals(candidate, oldContainer) && candidate.Name == newContainer.Name &&
-                    (candidate.TokenKind != newContainer.TokenKind || candidate.GenericParameterNodes.Count == newContainer.GenericParameterNodes.Count))
-                {
-                    return false;
-                }
-            }
-
-            ReplaceInList(containers, oldContainer, newContainer);
-            oldContainer.nextArity = null;
-            nested.Clear();
-            foreach (var candidate in containers)
-            {
-                nested.TryGetValue(candidate.Name, out var previous);
-                candidate.nextArity = previous as DeclarationContainerKoto;
-                nested.AddOrUpdate(candidate.Name, candidate);
-            }
-
-            return true;
-        }
-
-        return false;
     }
 
     /// <summary>Warns when a member comes after a later kind of member, at the member's first token.</summary>
@@ -1048,6 +943,22 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         }
 
         current = next;
+    }
+
+    // Whether a nested container other than the replaced one declares the replacement's name with another kind or the same arity.
+    private bool DeclaresAgain(DeclarationContainerKoto replacement, Koto? original)
+    {
+        for (var i = 0; i < this.NestedContainers.Count; i++)
+        {
+            var candidate = this.NestedContainers[i];
+            if (!ReferenceEquals(candidate, original) && candidate.Name == replacement.Name &&
+                (candidate.TokenKind != replacement.TokenKind || candidate.GenericParameterNodes.Count == replacement.GenericParameterNodes.Count))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>Gets or creates a directly nested container.</summary>

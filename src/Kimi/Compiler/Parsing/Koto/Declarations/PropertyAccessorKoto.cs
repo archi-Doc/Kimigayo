@@ -105,79 +105,12 @@ public sealed class PropertyAccessorKoto : DeclarationKoto
         this.Span = SourceSpan.FromBounds(this.Span.Start, Math.Max(this.Span.End, body?.Span.End ?? 0));
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.ReceiverType is { } receiverType)
-        {
-            visitor.Visit(receiverType);
-        }
-
-        if (this.ValueType is { } valueType)
-        {
-            visitor.Visit(valueType);
-        }
-
-        if (this.ReturnType is { } returnType)
-        {
-            visitor.Visit(returnType);
-        }
-
-        if (this.Body is { } body)
-        {
-            visitor.Visit(body);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.ReceiverType is { } receiverType)
-        {
-            yield return receiverType;
-        }
-
-        if (this.ValueType is { } valueType)
-        {
-            yield return valueType;
-        }
-
-        if (this.ReturnType is { } returnType)
-        {
-            yield return returnType;
-        }
-
-        if (this.Body is { } body)
-        {
-            yield return body;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.ReceiverType == oldKoto)
-        {
-            this.ReceiverType = newKoto;
-            return true;
-        }
-
-        if (this.ValueType == oldKoto)
-        {
-            this.ValueType = newKoto;
-            return true;
-        }
-
-        if (this.ReturnType == oldKoto)
-        {
-            this.ReturnType = newKoto;
-            return true;
-        }
-
-        if (this.Body != oldKoto)
-        {
-            return false;
-        }
-
-        this.Body = newKoto;
-        return true;
+        this.ReceiverType = slots.Slot(this.ReceiverType);
+        this.ValueType = slots.Slot(this.ValueType);
+        this.ReturnType = slots.Slot(this.ReturnType);
+        this.Body = slots.Slot(this.Body);
     }
 
     private void WriteDeclarationTo(ref IndentedStringBuilder builder, bool headerOnly)
