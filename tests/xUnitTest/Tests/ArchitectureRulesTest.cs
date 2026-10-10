@@ -11,9 +11,9 @@ namespace XunitTest;
 public class ArchitectureRulesTest
 {
     [Theory]
-    [InlineData("Koto-keyed dictionaries in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"Dictionary<\w*Koto\b", 104)]
-    [InlineData("Supports* gates", "src/Kimi/Compiler", "*.cs", @"\bbool\s+Supports\w*\s*[(<]", 21)]
-    [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 448)]
+    [InlineData("Koto-keyed dictionaries in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"Dictionary<\w*Koto\b", 101)]
+    [InlineData("Supports* gates", "src/Kimi/Compiler", "*.cs", @"\bbool\s+Supports\w*\s*[(<]", 15)]
+    [InlineData("Emission failure strings", "src/Kimi/Compiler/Emission", "*.cs", @"\bFail\(\$?""", 446)]
     [InlineData("Unsupported diagnostic codes", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"Category=""Unsupported""", 1)]
     [InlineData("Advice in the diagnostic catalog", "src/Kimi/Diagnostics", "DiagnosticCode.tinyhand", @"(?m)^\s*Advice=", 0)]
     [InlineData("Parsing calls into Binding", "src/Kimi/Compiler/Parsing", "*.cs", @"\bBinding\.\w+\(", 1)]
@@ -26,7 +26,7 @@ public class ArchitectureRulesTest
     }
 
     [Theory]
-    [InlineData("Kimi.Compiler.OwnershipOperationKind", 39)]
+    [InlineData("Kimi.Compiler.OwnershipOperationKind", 38)]
     [InlineData("Kimi.Compiler.OwnershipValueKind", 31)]
     [InlineData("Kimi.Compiler.EmissionOpcode", 49)]
     [InlineData("Kimi.Compiler.CompilerFunctionKind", 76)]
