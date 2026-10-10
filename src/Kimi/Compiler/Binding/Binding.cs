@@ -1517,7 +1517,7 @@ public sealed partial class Binding
 
         public override void Visit(Koto node)
         {
-            node.BindingState = BindingState.Unvisited;
+            HirTables.Reset(node);
             if (node is BinaryKoto binary)
             {
                 binary.ComparisonActive = false;
@@ -1537,10 +1537,6 @@ public sealed partial class Binding
                 formatting.Active = false;
             }
 
-            node.BindingFailure = BindingFailure.None;
-            node.BoundMeaning = null;
-            node.ErasedFunctionType = null;
-            node.BoundSymbol = null;
             if (node is FunctionKoto test && TestDefinition.Marker(test) is { } marker && !TestDefinition.IsIncluded(test))
             {
                 // Product lookup and analysis never visit the test's signature names or body.

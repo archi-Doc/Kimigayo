@@ -481,29 +481,29 @@ public abstract class Koto
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
     public BindingState BindingState
     {
-        get;
-        internal set => field = this.NoteWrite(value, value != BindingState.Unvisited);
+        get => HirTables.State(this);
+        internal set => HirTables.Of(this).States[this.SyntaxId] = value;
     }
 
     /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
     public BoundType? BoundType
     {
-        get => this.boundMeaning as BoundType;
+        get => HirTables.Meaning(this) as BoundType;
         internal set => this.BoundMeaning = value;
     }
 
     /// <summary>Gets the resolved Origin when this syntax occurs in the Origin namespace.</summary>
     public BoundOrigin? BoundOrigin
     {
-        get => this.boundMeaning as BoundOrigin;
+        get => HirTables.Meaning(this) as BoundOrigin;
         internal set => this.BoundMeaning = value;
     }
 
     /// <summary>Gets the selected symbol, or null before selection.</summary>
     public BindingSymbol? BoundSymbol
     {
-        get;
-        internal set => field = this.NoteWrite(value, value is not null);
+        get => HirTables.Symbol(this);
+        internal set => HirTables.Of(this).Symbols[this.SyntaxId] = value;
     }
 
     internal bool HasCurrentBinding => this.BindingState == BindingState.Resolved &&
@@ -511,8 +511,8 @@ public abstract class Koto
 
     internal BoundType? ErasedFunctionType
     {
-        get;
-        set => field = this.NoteWrite(value, value is not null);
+        get => HirTables.ErasedType(this);
+        set => HirTables.Of(this).ErasedTypes[this.SyntaxId] = value;
     }
 
     internal BoundFormatting? FormattingStorage { get; set; }
@@ -521,19 +521,16 @@ public abstract class Koto
 
     internal BindingFailure BindingFailure
     {
-        get;
-        set => field = this.NoteWrite(value, value != BindingFailure.None);
+        get => HirTables.Failure(this);
+        set => HirTables.Of(this).Failures[this.SyntaxId] = value;
     }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
     internal object? BoundMeaning
     {
-        get => this.boundMeaning;
-        set => this.boundMeaning = this.NoteWrite(value, value is not null);
+        get => HirTables.Meaning(this);
+        set => HirTables.Of(this).Meanings[this.SyntaxId] = value;
     }
-
-    // Type and Origin syntax occupy different namespaces; they share one semantic reference slot.
-    private object? boundMeaning;
 
     /// <summary>Visits attributes and concrete child storage without creating iterators.</summary>
     /// <param name="visitor">The reusable visitor.</param>
@@ -851,17 +848,5 @@ public abstract class Koto
         slots.Slot(this.AttributeChain);
         slots.List(OriginClauses.Get(this));
         this.ForEachChildSlot(ref slots);
-    }
-
-    // A node outside every numbered tree, such as one Binding synthesizes, takes its module's next id at its first semantic write.
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private T NoteWrite<T>(T value, bool written)
-    {
-        if (written)
-        {
-            SyntaxTable.EnsureId(this);
-        }
-
-        return value;
     }
 }

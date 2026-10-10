@@ -120,6 +120,45 @@ public class SyntaxIdTest
     }
 
     [Fact]
+    public void RenumberingMovesEachRowWithItsNode()
+    {
+        // A larger statement of another compilation replaces one: the nodes after it take new ids, the transplanted ones bring
+        // their rows from the donor's table, and a parsed node that left the tree loses its row.
+        var c = MinimalEmissionTest.Analyze(Source);
+        var table = c.Kotonoha.Syntax;
+        var statement = Statement(c, "p");
+        var removed = new HashSet<Koto>(PreOrder(statement), ReferenceEqualityComparer.Instance);
+        var donor = Statement(MinimalEmissionTest.Analyze("let p = (1 + 2) * 3\n"), "p");
+        Assert.True(KotoHelper.Replace(statement.Parent!, statement, donor));
+        var nodes = table.Nodes[1..].ToArray().Concat(PreOrder(donor)).Select(x => x!).ToArray();
+        var (facts, ids) = (nodes.Select(Facts).ToArray(), nodes.Select(x => x.SyntaxId).ToArray());
+        Assert.NotEqual(default, Facts(statement));
+        Assert.NotEqual(default, Facts(donor));
+
+        table.Number(c.Kotonoha.RootKoto);
+        AssertConsistent(table);
+        var reachable = new HashSet<Koto>(PreOrder(c.Kotonoha.RootKoto), ReferenceEqualityComparer.Instance);
+        for (var i = 0; i < nodes.Length; i++)
+        {
+            if (nodes[i].SyntaxOwner is null)
+            {
+                Assert.DoesNotContain(nodes[i], reachable);
+                Assert.Equal(default, Facts(nodes[i]));
+            }
+            else
+            {
+                Assert.Same(table, nodes[i].SyntaxOwner);
+                Assert.Equal(facts[i], Facts(nodes[i]));
+            }
+        }
+
+        Assert.All(removed, x => Assert.Null(x.SyntaxOwner));
+        var transplanted = PreOrder(donor);
+        Assert.All(transplanted, x => Assert.Same(table, x.SyntaxOwner));
+        Assert.Contains(Enumerable.Range(0, nodes.Length), i => reachable.Contains(nodes[i]) && !transplanted.Contains(nodes[i]) && nodes[i].SyntaxId != ids[i]);
+    }
+
+    [Fact]
     public void ATransplantedSubtreeIsRehomedToTheModuleThatHoldsIt()
     {
         var c = MinimalEmissionTest.Analyze(Source);
@@ -167,6 +206,9 @@ public class SyntaxIdTest
             Assert.True(!ReferenceEquals(node.SyntaxOwner, table) || node.SyntaxId == id, $"Id {id} names a node numbered {node.SyntaxId}.");
         }
     }
+
+    private static (BindingState State, BindingFailure Failure, object? Meaning, BindingSymbol? Symbol, BoundType? Erased) Facts(Koto node)
+        => (node.StateOf(), node.FailureOf(), (object?)node.TypeOf() ?? node.OriginOf(), node.SymbolOf(), node.ErasedTypeOf());
 
     private static string[] Shape(SyntaxTable table)
     {

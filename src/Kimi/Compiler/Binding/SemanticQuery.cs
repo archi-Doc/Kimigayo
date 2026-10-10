@@ -19,19 +19,19 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
     /// <summary>Gets each declared symbol by its declaration syntax (a parameter by its parameter syntax). Read only.</summary>
     internal Dictionary<object, BindingSymbol> Declarations => declarations;
 
-    internal BoundType? TypeOf(Koto node) => node.BoundType;
+    internal BoundType? TypeOf(Koto node) => HirTables.Meaning(node) as BoundType;
 
-    internal BoundOrigin? OriginOf(Koto node) => node.BoundOrigin;
+    internal BoundOrigin? OriginOf(Koto node) => HirTables.Meaning(node) as BoundOrigin;
 
-    internal BindingSymbol? SymbolOf(Koto node) => node.BoundSymbol;
+    internal BindingSymbol? SymbolOf(Koto node) => HirTables.Symbol(node);
 
     internal CallPlan? CallOf(InvocationKoto node) => node.BoundCall;
 
     internal CallPlan? ValueCallOf(InvocationKoto node) => node.BoundValueCall;
 
-    internal BindingState StateOf(Koto node) => node.BindingState;
+    internal BindingState StateOf(Koto node) => HirTables.State(node);
 
-    internal BindingFailure FailureOf(Koto node) => node.BindingFailure;
+    internal BindingFailure FailureOf(Koto node) => HirTables.Failure(node);
 
     // Resolved by the running or the last completed pass, not by an earlier one.
     internal bool IsCurrent(Koto node) => node.HasCurrentBinding;
@@ -46,7 +46,7 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal (InvocationKoto? Entry, BoundIteration? Plan) IterationOf(ForKoto node) => (node.EntryCall, node.Iteration);
 
-    internal BoundType? ErasedTypeOf(Koto node) => node.ErasedFunctionType;
+    internal BoundType? ErasedTypeOf(Koto node) => HirTables.ErasedType(node);
 
     // A recovery node stands for its syntax error, never for a semantic result.
     internal bool IsRecovery(Koto node) => Binding.IsRecovery(node, out _);

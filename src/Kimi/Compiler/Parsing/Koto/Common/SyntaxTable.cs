@@ -3,6 +3,8 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
+#pragma warning disable SA1401 // Fields should be private: the HIR columns are indexed in place.
+
 namespace Kimi.Compiler.Parsing;
 
 /// <summary>
@@ -16,9 +18,13 @@ namespace Kimi.Compiler.Parsing;
 /// every edit outside Binding change it, Binding's own normalization does not, so a warm rebind keeps every id. Renumbering keeps
 /// the ids of nodes outside the tree after the reachable range in their relative order, takes over the nodes of a subtree that
 /// another module numbered, and clears the id of a parsed node that left the tree; an id the table owns always names its node.
+/// Each node's row of <see cref="Hir"/> moves with it, from another module's table too, and a cleared node's row is dropped.
 /// </remarks>
 public sealed class SyntaxTable
 {
+    /// <summary>The base HIR columns of the ids, sized with the nodes.</summary>
+    internal HirTables Hir;
+
     private static readonly Koto?[] Unnumbered = new Koto?[1];
     private Koto?[] nodes = Unnumbered;
     private Numbering? numbering;
@@ -62,6 +68,7 @@ public sealed class SyntaxTable
         if (id == this.nodes.Length)
         {
             Array.Resize(ref this.nodes, Math.Max(64, id * 2));
+            this.Hir.Resize(this.nodes.Length);
         }
 
         this.nodes[id] = node;
@@ -79,7 +86,7 @@ public sealed class SyntaxTable
         }
 
         this.numberedVersion = this.Version;
-        var (previous, previousCount, previousParsed) = (this.nodes, this.Count, this.ParsedCount);
+        var (previous, previousHir, previousCount, previousParsed) = (this.nodes, this.Hir, this.Count, this.ParsedCount);
         var count = (this.numbering ??= new(this)).Run(root, previousCount, previousCount - previousParsed);
         this.Count = this.ParsedCount = count;
         for (var id = 1; id <= previousCount; id++)
@@ -93,52 +100,70 @@ public sealed class SyntaxTable
             if (id > previousParsed)
             {
                 this.Allocate(node);
+                previousHir.Copy(id, this.Hir, node.SyntaxId);
             }
             else
             {
-                node.SyntaxOwner = null;
+                node.SyntaxOwner = null; // Its row is dropped.
                 node.SyntaxId = 0;
             }
         }
     }
 
+    private readonly record struct Walked(Koto Node, SyntaxTable? Owner, int Id);
+
     private sealed class Numbering(SyntaxTable table) : KotoVisitor
     {
-        private Koto?[] buffer = [];
+        private Walked[] walked = [];
         private int count;
 
         public override void Visit(Koto node)
         {
-            if (++this.count == this.buffer.Length)
+            if (ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId <= this.count && ReferenceEquals(this.walked[node.SyntaxId].Node, node))
             {
-                this.buffer = this.MoveTo(ArrayPool<Koto?>.Shared.Rent(this.count * 2), this.count);
+                return; // A node that two slots hold keeps the id of its first visit.
             }
 
-            this.buffer[this.count] = node;
+            if (++this.count == this.walked.Length)
+            {
+                var larger = ArrayPool<Walked>.Shared.Rent(this.count * 2);
+                this.walked.CopyTo(larger, 0);
+                this.Release();
+                this.walked = larger;
+            }
+
+            this.walked[this.count] = new(node, node.SyntaxOwner, node.SyntaxId);
             node.SyntaxOwner = table;
             node.SyntaxId = this.count;
             node.VisitChildren(this);
         }
 
-        // The walk fills a pooled buffer, so the table keeps one array: the tree, then room for the nodes outside it.
+        // The walk fills a pooled buffer, so the table keeps one array per column: the tree, then room for the nodes outside it.
+        // Each row follows its node from the table that held it, this one before renumbering included.
         internal int Run(Koto root, int previousCount, int room)
         {
-            this.buffer = ArrayPool<Koto?>.Shared.Rent(Math.Max(256, previousCount + 1));
+            this.walked = ArrayPool<Walked>.Shared.Rent(Math.Max(256, previousCount + 1));
             this.count = 0;
             this.Visit(root);
-            table.nodes = this.MoveTo(new Koto?[this.count + room + 1], this.count + 1);
-            this.buffer = [];
+            var nodes = new Koto?[this.count + room + 1];
+            var hir = new HirTables(nodes.Length);
+            for (var id = 1; id <= this.count; id++)
+            {
+                var (node, owner, previous) = this.walked[id];
+                nodes[id] = node;
+                owner?.Hir.Copy(previous, hir, id);
+            }
+
+            (table.nodes, table.Hir) = (nodes, hir);
+            this.Release();
+            this.walked = [];
             return this.count;
         }
 
-        // Copies the used part of the buffer and returns the buffer, cleared, to the pool.
-        private Koto?[] MoveTo(Koto?[] destination, int length)
+        private void Release()
         {
-            var used = this.buffer.AsSpan(0, length);
-            used.CopyTo(destination);
-            used.Clear();
-            ArrayPool<Koto?>.Shared.Return(this.buffer);
-            return destination;
+            this.walked.AsSpan(0, Math.Min(this.count + 1, this.walked.Length)).Clear();
+            ArrayPool<Walked>.Shared.Return(this.walked);
         }
     }
 }
