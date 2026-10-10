@@ -284,8 +284,9 @@ internal sealed class AggregateLayoutPool
             return this.ExceedLimit(type);
         }
 
-        var baseLayout = structure && type.StoredBase is { } parent ? this.Get(parent, depth + 1) : null;
-        if (structure && type.StoredBase is not null && baseLayout is null)
+        var parent = structure ? AdtDef.Base(type) : null;
+        var baseLayout = parent is null ? null : this.Get(parent, depth + 1);
+        if (parent is not null && baseLayout is null)
         {
             return this.resolved[type] = null;
         }
@@ -480,7 +481,7 @@ internal sealed class AggregateLayoutPool
         }
 
         if (type.Origin is not null ||
-            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) || type.StoredCases is not { Length: > 0 } types)
+            type.OriginArguments.Count != (type.Symbol?.Schema?.Origins.Count ?? 0) || AdtDef.CaseTypes(type) is not { Length: > 0 } types)
         {
             return null;
         }

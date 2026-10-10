@@ -17,7 +17,7 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        if (this.compilation.Binding.StoredBase(type) is { } parent)
+        if (AdtDef.Base(type) is { } parent)
         {
             var source = (Koto?)function.BaseInitializer ?? function;
             var place = this.Place(source, parent, OwnershipPlaceKind.Local, false);

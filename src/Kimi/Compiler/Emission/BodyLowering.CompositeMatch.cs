@@ -142,7 +142,7 @@ internal sealed partial class BodyLowering
 
                 offset += shape.PayloadOffset;
                 shape = cases[selected.Ordinal];
-                type = type.StoredCases![selected.Ordinal];
+                type = AdtDef.CaseTypes(type)![selected.Ordinal];
             }
             else if (parent.Kind != BoundPatternKind.Tuple)
             {

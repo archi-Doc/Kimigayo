@@ -159,7 +159,7 @@ internal sealed partial class BodyLowering
                 }
 
                 layout = cases[selected.Ordinal];
-                type = type.StoredCases![selected.Ordinal];
+                type = AdtDef.CaseTypes(type)![selected.Ordinal];
                 offset = ownerLayout.PayloadOffset;
             }
             else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto))
@@ -223,7 +223,7 @@ internal sealed partial class BodyLowering
                 }
 
                 shape = cases[selected.Ordinal];
-                type = type.StoredCases![selected.Ordinal];
+                type = AdtDef.CaseTypes(type)![selected.Ordinal];
                 offset = owner.PayloadOffset;
             }
             else if (type.Kind != BoundTypeKind.Tuple)

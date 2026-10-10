@@ -49,7 +49,7 @@ internal static class MatchTypes
 
         if (AdtDef.IsStruct(type))
         {
-            if (type.StoredBase is { } parent && !SupportsOwnedPatternValue(parent, cache))
+            if (AdtDef.Base(type) is { } parent && !SupportsOwnedPatternValue(parent, cache))
             {
                 return false;
             }
@@ -65,7 +65,7 @@ internal static class MatchTypes
             return cache[type] = true;
         }
 
-        if (AdtDef.IsEnum(type) && type.StoredCases is { } cases)
+        if (AdtDef.CaseTypes(type) is { } cases)
         {
             for (var i = 0; i < cases.Length; i++)
             {

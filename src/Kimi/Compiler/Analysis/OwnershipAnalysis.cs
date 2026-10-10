@@ -520,16 +520,6 @@ public sealed partial class OwnershipAnalysis
         this.body.Reset(function, this.instance, this.compilation.Binding, this.cases.AsSpan(0, this.caseCount), this.caseBit);
         this.body.DefaultParameter = declarationDefault;
         this.defaultContext = -1;
-        // Abstract Origin bindings affect field Types even when layout is fully
-        // concrete. Prepare the same substituted metadata used by closed calls.
-        for (var parameterIndex = 0; parameterIndex < function.Parameters.Count; parameterIndex++)
-        {
-            if (function.Parameters[parameterIndex].Type.BoundType is { } parameterType)
-            {
-                this.compilation.Binding.PrepareTypeStorage(parameterType);
-            }
-        }
-
         this.locals.Clear();
         this.temporaries.Clear();
         this.loops.Clear();

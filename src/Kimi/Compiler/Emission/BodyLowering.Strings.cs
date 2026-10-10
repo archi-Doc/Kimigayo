@@ -130,7 +130,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (AdtDef.IsEnum(type) && type.StoredCases is { } cases)
+        if (AdtDef.CaseTypes(type) is { } cases)
         {
             foreach (var payload in cases)
             {
@@ -143,7 +143,7 @@ internal sealed partial class BodyLowering
 
         if (AdtDef.IsStruct(type))
         {
-            if (AdtDef.Destructor(type) is not null || (type.StoredBase is { } parent && HasOwnedStorage(parent)))
+            if (AdtDef.Destructor(type) is not null || (AdtDef.Base(type) is { } parent && HasOwnedStorage(parent)))
             {
                 return true;
             }

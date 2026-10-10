@@ -221,7 +221,7 @@ public class EnumOwnershipTest
         var c = Parse("struct S<T>\n    var value: T\nenum E\n    Empty\nlet x = E.Empty");
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var body = Body(c);
-        var originalCases = body.Places[body.Constructions[0].Place].Type.StoredCases!;
+        var originalCases = AdtDef.CaseTypes(body.Places[body.Constructions[0].Place].Type)!;
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(body.Constructions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Again(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
@@ -229,9 +229,10 @@ public class EnumOwnershipTest
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var rebuilt = body.Places[Assert.Single(body.Constructions).Place].Type;
         Assert.Single(originalCases);
-        Assert.NotSame(originalCases, rebuilt.StoredCases);
-        Assert.Equal(2, rebuilt.StoredCases!.Length);
-        var reference = Assert.Single(rebuilt.StoredCases[1].Components);
+        var rebuiltCases = AdtDef.CaseTypes(rebuilt)!;
+        Assert.NotSame(originalCases, rebuiltCases);
+        Assert.Equal(2, rebuiltCases.Length);
+        var reference = Assert.Single(rebuiltCases[1].Components);
         Assert.Equal(SemanticsKind.Ref, reference.Semantics);
         Assert.Equal(OriginKind.Static, reference.Origin!.Kind);
     }

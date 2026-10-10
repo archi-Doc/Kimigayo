@@ -28,7 +28,7 @@ public sealed partial class OwnershipAnalysis
                 }
             }
 
-            if (type.StoredBase is { } parent && CleanupObservesBorrows(parent, depth + 1))
+            if (AdtDef.Base(type) is { } parent && CleanupObservesBorrows(parent, depth + 1))
             {
                 return true;
             }
@@ -45,7 +45,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        if (type.StoredCases is { } cases)
+        if (AdtDef.CaseTypes(type) is { } cases)
         {
             foreach (var payload in cases)
             {

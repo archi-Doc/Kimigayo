@@ -12,7 +12,7 @@ internal sealed partial class BodyLowering
 
     private static bool ValidateReceiverInitialization(OwnershipBody body, OwnershipOperation operation)
         => (operation.Kind == OwnershipOperationKind.CheckReceiverField ? body.Function.IsConstructor : body.Function.IsDestructor) && AdtDef.ReceiverType(body.Function) is { } type &&
-            operation.Place >= 0 && (operation.Place == body.ReceiverBase ? body.Function.CodeContext.Compilation.Binding.StoredBase(type) is not null && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local :
+            operation.Place >= 0 && (operation.Place == body.ReceiverBase ? AdtDef.Base(type) is not null && body.Places[operation.Place].Kind == OwnershipPlaceKind.Local :
             body.Places[operation.Place] is { Kind: OwnershipPlaceKind.Local, Source: PropertyKoto field } &&
             ReferenceEquals(field.Parent, AdtDef.Declaration(type)) && (operation.Kind == OwnershipOperationKind.CheckReceiverField || ReferenceEquals(operation.Source, field)) &&
             field.BoundSymbol is { } symbol && body.SymbolPlaces.TryGetValue(symbol, out var place) && place == operation.Place);
@@ -37,7 +37,7 @@ internal sealed partial class BodyLowering
         if (body.ReceiverBase >= 0)
         {
             var place = body.ReceiverBase;
-            if (type.StoredBase is null || layout.Base is null || !ReferenceTypes.StorageMatches(body.Places[place].Type, type.StoredBase))
+            if (AdtDef.Base(type) is not { } parent || layout.Base is null || !ReferenceTypes.StorageMatches(body.Places[place].Type, parent))
             {
                 return Fail("Special receiver base requires its complete instantiated prefix layout.", out failure);
             }

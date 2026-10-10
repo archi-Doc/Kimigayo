@@ -300,7 +300,7 @@ public sealed partial class Binding
                 return new(implementation, type, path);
             }
 
-            if (symbol.Declaration is not StructKoto { Bases.Count: 1 } declaration || this.StoredBase(type) is not { } parent)
+            if (symbol.Declaration is not StructKoto { Bases.Count: 1 } declaration || AdtDef.Base(type) is not { } parent)
             {
                 break;
             }

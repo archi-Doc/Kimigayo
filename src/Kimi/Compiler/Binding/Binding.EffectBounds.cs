@@ -582,7 +582,7 @@ public sealed partial class Binding
                 }
             }
 
-            for (var i = 0; type.StoredCases is { } cases && i < cases.Length; i++)
+            for (var i = 0; AdtDef.CaseTypes(type) is { } cases && i < cases.Length; i++)
             {
                 if (this.ContainsRawPointer(cases[i], depth + 1))
                 {
@@ -1789,7 +1789,7 @@ public sealed partial class Binding
         private void DestroyedLayer(OwnershipBody body, int path, BoundType type, Koto use, bool remainder)
         {
             var node = body.GetMovePath(path);
-            var first = type.StoredBase is { } parentType ? AdtDef.StorageCount(parentType) : 0;
+            var first = AdtDef.Base(type) is { } parentType ? AdtDef.StorageCount(parentType) : 0;
             var count = type.Kind == BoundTypeKind.FixedArray ? (int)type.Length : type.Kind == BoundTypeKind.Tuple ? type.Components.Count : AdtDef.StorageCount(type);
             for (var part = first; remainder && this.valid && part < count; part++)
             {
@@ -1807,7 +1807,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (type.StoredBase is { } parent)
+            if (AdtDef.Base(type) is { } parent)
             {
                 var complete = body.CurrentBaseComplete(path, first);
                 if (complete && remainder)
@@ -1902,7 +1902,7 @@ public sealed partial class Binding
                     this.Destruction(AdtDef.FieldType(type, i), use);
                 }
 
-                if (binding.StoredBase(type) is { } parent)
+                if (AdtDef.Base(type) is { } parent)
                 {
                     this.Destruction(parent, use);
                 }
@@ -1914,7 +1914,7 @@ public sealed partial class Binding
                     this.Destruction(type.Components[i], use);
                 }
 
-                if (type.StoredCases is { } cases)
+                if (AdtDef.CaseTypes(type) is { } cases)
                 {
                     for (var i = 0; i < cases.Length; i++)
                     {

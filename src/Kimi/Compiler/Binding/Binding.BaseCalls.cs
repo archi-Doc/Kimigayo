@@ -44,7 +44,7 @@ public sealed partial class Binding
             return this.FailExplained(ref this.baseCallFailures, reference, BindingFailure.BaseCall, "base in an anonymous function requires an explicit self capture at each function boundary");
         }
 
-        if (structure.BindingState == BindingState.Invalid || this.StoredBase(this.SelfType(type)) is not { } baseType)
+        if (structure.BindingState == BindingState.Invalid || AdtDef.Base(this.SelfType(type)) is not { } baseType)
         {
             return this.CompleteDependent(reference, structure);
         }

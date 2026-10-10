@@ -7,6 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    private readonly Dictionary<BoundType, AdtDef.InstanceStorage> instances = new(ReferenceEqualityComparer.Instance);
     private readonly List<DeclarationContainerKoto> storageDeclarations = new();
     private readonly List<PropertyKoto> storedFields = new();
     private readonly List<BoundEnumCase?> storedCases = new();
@@ -19,38 +20,23 @@ public sealed partial class Binding
     private readonly List<BoundType> enumPayloadTypes = new();
     private bool storagePrepared;
 
-    internal bool PrepareEnumCases(BoundType type)
+    // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
+    // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before.
+    internal AdtDef.InstanceStorage Instance(BoundType type)
     {
-        var cases = type.Symbol?.Adt?.Cases;
-        var count = cases?.Length ?? 0;
-        if (type.StoredCases?.Length != count)
+        var adt = type.Symbol!.Adt;
+        if (!this.instances.TryGetValue(type, out var instance))
         {
-            type.StoredCases = new BoundType[count];
+            this.instances.Add(type, instance = new());
         }
 
-        for (var i = 0; i < count; i++)
+        if (instance.Version != this.storageVersion || adt?.Version != this.storageVersion)
         {
-            this.enumPayloadTypes.Clear();
-            if (cases![i] is not { } selected)
-            {
-                return false;
-            }
-
-            foreach (var syntax in selected.Payload)
-            {
-                if (this.StoredType(syntax, type) is not { } payload)
-                {
-                    return false;
-                }
-
-                this.enumPayloadTypes.Add(payload);
-            }
-
-            type.StoredCases[i] = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+            this.Substitute(type, adt, instance);
+            instance.Version = adt?.Version ?? 0;
         }
 
-        this.enumPayloadTypes.Clear();
-        return true;
+        return instance;
     }
 
     internal BoundType? StoredType(Koto syntax, BoundType owner)
@@ -76,6 +62,53 @@ public sealed partial class Binding
 
         payload = null!;
         return false;
+    }
+
+    private void Substitute(BoundType type, AdtDef? adt, AdtDef.InstanceStorage instance)
+    {
+        if (type.Symbol!.Declaration is StructKoto declaration)
+        {
+            instance.Base = declaration.Bases.Count == 1 ? this.StoredType(declaration.Bases[0], type) : null;
+            var count = adt?.Fields.Length ?? 0;
+            if (instance.Fields.Length != count)
+            {
+                instance.Fields = new BoundType?[count];
+            }
+
+            for (var i = 0; i < count; i++)
+            {
+                instance.Fields[i] = this.StoredType(adt!.Fields[i], type);
+            }
+
+            return;
+        }
+
+        var cases = adt?.Cases ?? [];
+        var types = instance.Cases?.Length == cases.Length ? instance.Cases : new BoundType[cases.Length];
+        instance.Cases = null;
+        for (var i = 0; i < cases.Length; i++)
+        {
+            this.enumPayloadTypes.Clear();
+            if (cases[i] is not { } selected)
+            {
+                return;
+            }
+
+            foreach (var syntax in selected.Payload)
+            {
+                if (this.StoredType(syntax, type) is not { } payload)
+                {
+                    return;
+                }
+
+                this.enumPayloadTypes.Add(payload);
+            }
+
+            types[i] = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+        }
+
+        this.enumPayloadTypes.Clear();
+        instance.Cases = types;
     }
 
     // SPEC 21.3.5: a struct or enum that contains itself by value (through stored Fields and inline
@@ -271,6 +304,7 @@ public sealed partial class Binding
             }
 
             shape.SetParts(this.storedFields, this.storedCases);
+            shape.Version = this.storageVersion;
         }
 
         this.ValidateEnumProjections();

@@ -493,15 +493,6 @@ public sealed record BoundType
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
 
-    // Refilled by ownership preparation after each final bind; excluded from Type identity.
-    internal BoundType[]? StoredFields { get; set; }
-
-    internal BoundType? StoredBase { get; set; }
-
-    internal BoundType[]? StoredCases { get; set; }
-
-    internal ulong StorageVersion { get; set; }
-
     /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin.</summary>
     /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
     internal bool CarriesOrigin => this.carriesOrigin;

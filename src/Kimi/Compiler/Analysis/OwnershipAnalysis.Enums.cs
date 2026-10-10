@@ -52,7 +52,7 @@ public sealed partial class OwnershipAnalysis
 
         if (AdtDef.IsStruct(type))
         {
-            if (type.StoredBase is { } parent && !IsZeroSized(parent))
+            if (AdtDef.Base(type) is { } parent && !IsZeroSized(parent))
             {
                 return false;
             }
@@ -158,21 +158,12 @@ public sealed partial class OwnershipAnalysis
 
             // Reserve the key before following fields to reject recursive inline storage.
             this.supportedTypes[type] = false;
-            type.StoredBase = this.compilation.Binding.StoredBase(type);
-            supported = (type.StoredBase is null || this.SupportsType(type.StoredBase)) &&
-                type.OriginArguments.Count <= structure.OriginNames.Count;
-            var count = AdtDef.Count(type);
-            if (type.StoredFields?.Length != count)
-            {
-                type.StoredFields = new BoundType[count];
-            }
-
+            var parent = AdtDef.Base(type);
+            supported = (parent is null || this.SupportsType(parent)) && type.OriginArguments.Count <= structure.OriginNames.Count;
             for (var i = 0; i < AdtDef.Count(type) && supported; i++)
             {
-                var field = this.compilation.Binding.StoredType(AdtDef.Field(type, i), type);
                 // Collection fields retain their recursive destruction plans (SPEC 16.3.2).
-                supported = field is not null && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
-                type.StoredFields[i] = field!;
+                supported = AdtDef.FieldType(type, i) is { } field && (field.Kind == BoundTypeKind.Parameter || this.SupportsType(field));
             }
 
             this.supportedTypes[type] = supported;
@@ -224,7 +215,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.visitingTypes.RemoveAt(this.visitingTypes.Count - 1);
-        supported = supported && this.compilation.Binding.PrepareEnumCases(type);
+        supported = supported && AdtDef.CaseTypes(type) is not null;
         this.supportedTypes[type] = supported;
         return supported;
     }

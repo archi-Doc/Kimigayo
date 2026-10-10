@@ -19,36 +19,39 @@ internal sealed class AdtDef
 
     internal FunctionKoto? DestructorKoto { get; set; }
 
+    /// <summary>Gets or sets the storage version of the pass whose PrepareStorage refilled this shape.</summary>
+    internal ulong Version { get; set; }
+
     internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto };
 
     internal static bool IsEnum(BoundType? type) => type?.Semantics == SemanticsKind.Owner && type.Symbol?.Declaration is EnumKoto;
 
     internal static StructKoto? Declaration(BoundType? type) => IsStruct(type) ? (StructKoto)type!.Symbol!.Declaration : null;
 
-    // A constructed Type's stored Field Types are its substitution of the declared ones: the storage an analysis run or an
-    // instantiation prepared, and the same substitution on demand otherwise (a generic template whose Semantics cases are
-    // substituted declares Types that no run prepares, SPEC 8.10). Nominal Types with Origin arguments need substitution too.
-    internal static BoundType? FieldType(BoundType type, int index)
-        => type.StoredFields is { } fields ? fields[index]
-            : (type.Kind == BoundTypeKind.Constructed || type.OriginArguments.Count != 0) && Declaration(type) is { } declaration ? declaration.CodeContext.Compilation.Binding.StoredType(Field(type, index), type)
-            : Field(type, index).BoundType;
+    // An instance's stored Types are its substitution of the declared ones (SPEC 8.10): Type, Length and Origin arguments.
+    internal static BoundType? FieldType(BoundType type, int index) => Instance(type).Fields[index];
+
+    internal static BoundType? Base(BoundType type) => IsStruct(type) ? Instance(type).Base : null;
+
+    // Each Case's payload Types as one Tuple, by ordinal; null when a payload does not substitute.
+    internal static BoundType[]? CaseTypes(BoundType type) => IsEnum(type) ? Instance(type).Cases : null;
 
     internal static int Count(BoundType type) => Struct(type)?.Fields.Length ?? 0;
 
     // Selection identities include inherited fields, base first. Construction and destruction keep their separate layers.
     internal static int StorageCount(BoundType type)
-        => Count(type) + (type.StoredBase is { } parent ? StorageCount(parent) : 0);
+        => Count(type) + (Base(type) is { } parent ? StorageCount(parent) : 0);
 
     internal static bool FindField(BoundType type, BindingSymbol? symbol, out BoundType? fieldType, out int position)
     {
-        for (var layer = type; layer is not null; layer = layer.StoredBase)
+        for (var layer = type; layer is not null; layer = Base(layer))
         {
             var fields = Struct(layer)?.Fields;
             for (var i = 0; fields is not null && i < fields.Length; i++)
             {
                 if (ReferenceEquals(fields[i].BoundSymbol, symbol))
                 {
-                    position = i + (layer.StoredBase is { } parent ? StorageCount(parent) : 0);
+                    position = i + (Base(layer) is { } parent ? StorageCount(parent) : 0);
                     fieldType = FieldType(layer, i);
                     return fieldType is not null;
                 }
@@ -62,7 +65,7 @@ internal sealed class AdtDef
 
     internal static bool HasDestructorOnPath(BoundType type, BindingSymbol? field)
     {
-        for (var layer = type; layer is not null; layer = layer.StoredBase)
+        for (var layer = type; layer is not null; layer = Base(layer))
         {
             if (Destructor(layer) is not null)
             {
@@ -114,6 +117,8 @@ internal sealed class AdtDef
 
     private static AdtDef? Struct(BoundType? type) => IsStruct(type) ? type!.Symbol!.Adt : null;
 
+    private static InstanceStorage Instance(BoundType type) => type.Symbol!.Declaration.CodeContext.Compilation.Binding.Instance(type);
+
     private static T[] Refill<T>(T[] array, List<T> items)
     {
         if (array.Length != items.Count)
@@ -123,5 +128,20 @@ internal sealed class AdtDef
 
         items.CopyTo(array);
         return array;
+    }
+
+    /// <summary>The stored Types of one struct or enum instance under its substitution.</summary>
+    internal sealed class InstanceStorage
+    {
+        internal BoundType? Base { get; set; }
+
+        internal BoundType?[] Fields { get; set; } = [];
+
+        internal BoundType[]? Cases { get; set; }
+
+        // The pass that substituted these Types and the pass whose preparation validated them; neither is current otherwise.
+        internal ulong Version { get; set; }
+
+        internal ulong Prepared { get; set; }
     }
 }

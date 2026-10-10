@@ -305,7 +305,7 @@ internal sealed class VirtualGenerationPlan
             return known;
         }
 
-        var parent = type.StoredBase;
+        var parent = AdtDef.Base(type);
         var inherited = parent is null ? null : this.GetLayout(parent);
         if (parent is not null && inherited is null)
         {
@@ -366,7 +366,7 @@ internal sealed class VirtualGenerationPlan
             return count;
         }
 
-        count = type.StoredBase is { } parent ? this.Shape(parent) : 0;
+        count = AdtDef.Base(type) is { } parent ? this.Shape(parent) : 0;
         if (count < 0)
         {
             return -1;

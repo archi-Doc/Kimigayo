@@ -52,7 +52,7 @@ internal static class ObjectTypes
 
     internal static bool Supports(BoundType source, BoundType target)
     {
-        for (var current = source; current is not null; current = current.StoredBase)
+        for (var current = source; current is not null; current = AdtDef.Base(current))
         {
             if (ReferenceEquals(current, target))
             {

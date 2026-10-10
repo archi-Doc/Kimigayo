@@ -177,7 +177,7 @@ public sealed partial class Binding
     {
         var core = actual.Components[0];
         var supported = false;
-        for (var parent = core; parent is not null; parent = this.StoredBase(parent))
+        for (var parent = core; parent is not null; parent = AdtDef.Base(parent))
         {
             if (parent.Symbol?.Declaration.BindingState == BindingState.Invalid)
             {

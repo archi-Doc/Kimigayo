@@ -327,7 +327,7 @@ public class MatchOwnershipTest
         var body = Body(c);
         var matches = body.Matches;
         var decompositions = body.Decompositions;
-        var originalCases = body.Places[matches[0].Subject].Type.StoredCases!;
+        var originalCases = AdtDef.CaseTypes(body.Places[matches[0].Subject].Type)!;
         var declaration = (EnumKoto)Assert.IsType<BoundEnumCase>(decompositions[0].Case).Owner.Declaration;
         c.Kotonoha.CreateCodeContext().Parse(declaration, "Borrowed(ref/i32 during static)");
         Assert.True(c.Bind().IsComplete);
@@ -335,8 +335,8 @@ public class MatchOwnershipTest
         Assert.True(c.Ownership.Analyze().IsVerified, Describe(c));
         var rebuilt = body.Places[Assert.Single(matches).Subject].Type;
         Assert.Single(originalCases);
-        Assert.NotSame(originalCases, rebuilt.StoredCases);
-        Assert.Equal(2, rebuilt.StoredCases!.Length);
+        Assert.NotSame(originalCases, AdtDef.CaseTypes(rebuilt));
+        Assert.Equal(2, AdtDef.CaseTypes(rebuilt)!.Length);
         Assert.Single(decompositions);
     }
 

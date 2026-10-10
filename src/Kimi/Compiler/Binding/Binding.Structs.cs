@@ -16,9 +16,6 @@ public sealed partial class Binding
 
     internal bool PrepareTypeStorage(BoundType type) => this.PrepareInstantiatedStorage(type, 0);
 
-    internal BoundType? StoredBase(BoundType type)
-        => AdtDef.Declaration(type) is { Bases.Count: 1 } declaration ? this.StoredType(declaration.Bases[0], type) : null;
-
     internal BoundType? InstantiateStorageType(BoundType type, CallPlan call)
     {
         var result = this.MemberType(type, call.DeclaringType) is { } member &&
@@ -46,8 +43,8 @@ public sealed partial class Binding
         return false;
     }
 
-    // Complete physical field descriptions from already-bound declarations. This
-    // substitutes storage metadata only; it never rebinds or selects a body.
+    // Whether an instance's storage substitutes completely, nested Types included; validated once per pass. It reads
+    // storage metadata only; it never rebinds or selects a body.
     private bool PrepareInstantiatedStorage(BoundType type, int depth)
     {
         if (depth > 64)
@@ -55,67 +52,32 @@ public sealed partial class Binding
             return false;
         }
 
-        if (AdtDef.IsStruct(type))
+        if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
         {
-            if (type.StoredFields is not null && type.StorageVersion == this.storageVersion)
+            var instance = this.Instance(type);
+            if (instance.Prepared == this.storageVersion)
             {
                 return true;
             }
 
-            var count = AdtDef.Count(type);
-            if (type.StoredFields?.Length != count)
+            // Stamped first, so a Type reached again through its own storage is not walked twice.
+            instance.Prepared = this.storageVersion;
+            if ((AdtDef.IsEnum(type) && instance.Cases is null) || (instance.Base is { } parent && !this.PrepareInstantiatedStorage(parent, depth + 1)) ||
+                !this.PrepareEach(instance.Fields, depth) || !this.PrepareEach(instance.Cases, depth))
             {
-                type.StoredFields = new BoundType[count];
-            }
-
-            type.StorageVersion = this.storageVersion;
-            type.StoredBase = this.StoredBase(type);
-            if (type.StoredBase is { } parent && !this.PrepareInstantiatedStorage(parent, depth + 1))
-            {
-                type.StoredFields = null;
+                instance.Prepared = 0;
                 return false;
-            }
-
-            for (var i = 0; i < type.StoredFields.Length; i++)
-            {
-                var field = this.StoredType(AdtDef.Field(type, i), type);
-                if (field is null || !this.PrepareInstantiatedStorage(field, depth + 1))
-                {
-                    type.StoredFields = null;
-                    return false;
-                }
-
-                type.StoredFields[i] = field;
-            }
-        }
-        else if (AdtDef.IsEnum(type))
-        {
-            if (type.StoredCases is not null && type.StorageVersion == this.storageVersion)
-            {
-                return true;
-            }
-
-            type.StorageVersion = this.storageVersion;
-            if (!this.PrepareEnumCases(type))
-            {
-                // A stamped version must never publish partially substituted cases.
-                type.StoredCases = null;
-                return false;
-            }
-
-            foreach (var payload in type.StoredCases!)
-            {
-                if (!this.PrepareInstantiatedStorage(payload, depth + 1))
-                {
-                    type.StoredCases = null;
-                    return false;
-                }
             }
         }
 
-        for (var i = 0; i < type.Components.Count; i++)
+        return this.PrepareEach((BoundType[])type.Components, depth);
+    }
+
+    private bool PrepareEach(ReadOnlySpan<BoundType?> types, int depth)
+    {
+        foreach (var type in types)
         {
-            if (!this.PrepareInstantiatedStorage(type.Components[i], depth + 1))
+            if (type is null || !this.PrepareInstantiatedStorage(type, depth + 1))
             {
                 return false;
             }
@@ -225,7 +187,7 @@ public sealed partial class Binding
     // SPEC 6.2.3.3: the direct base's constructor group seen from a derived constructor, and the base Type it constructs.
     private BindingSymbol? BaseConstructorGroup(FunctionKoto constructor, out BoundType? parent)
     {
-        parent = this.StoredBase(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
+        parent = AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!));
         return parent?.Symbol?.Declaration is StructKoto declaration && this.scopes[declaration].Values.TryGetValue("init", out var group) ? group : null;
     }
 
@@ -313,7 +275,7 @@ public sealed partial class Binding
     {
         var owner = (StructKoto)function.BoundSymbol!.Scope.Owner;
         var type = call.Parent is FunctionKoto { IsConstructor: true } constructor && ReferenceEquals(constructor.BaseInitializer, call)
-            ? this.StoredBase(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!))!
+            ? AdtDef.Base(this.SelfType(constructor.BoundSymbol!.Scope.Owner.BoundSymbol!))!
             : ((MemberAccessKoto)call.Method).Left.BoundType!;
         var count = owner.BoundSymbol!.Schema!.Origins.Count;
         if (count == 0)

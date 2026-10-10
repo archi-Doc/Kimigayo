@@ -33,7 +33,7 @@ public sealed partial class Binding
         }
 
         var self = this.SelfType(symbol);
-        if (this.StoredBase(self) is not { } baseType)
+        if (AdtDef.Base(self) is not { } baseType)
         {
             return;
         }
@@ -171,8 +171,8 @@ public sealed partial class Binding
         call.VirtualImplementingType = null;
         if (call.VirtualIsDirect && ObjectTypes.ViewTarget(call.ReceiverOperation.SourceType) is { } receiver)
         {
-            call.VirtualBaseLookupType = this.StoredBase(receiver);
-            for (var current = call.VirtualBaseLookupType; current is not null; current = this.StoredBase(current))
+            call.VirtualBaseLookupType = AdtDef.Base(receiver);
+            for (var current = call.VirtualBaseLookupType; current is not null; current = AdtDef.Base(current))
             {
                 if (current.Symbol is { } symbol && this.overrideEntries.TryGetValue((symbol, original), out var implementation) &&
                     this.virtualOverrides.TryGetValue(implementation, out var entry) && ReferenceEquals(this.MemberType(entry.Slot.DeclaringType, current), declaring))
@@ -203,7 +203,7 @@ public sealed partial class Binding
             }
 
             var self = this.SelfType(typeSymbol);
-            var baseType = this.StoredBase(self);
+            var baseType = AdtDef.Base(self);
             if (structure.BindingState == BindingState.Invalid || (structure.Bases.Count != 0 && baseType is null))
             {
                 this.CompleteDependent(function, structure);
