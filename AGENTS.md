@@ -25,7 +25,7 @@ The specification and implementation are not set in stone. The specification gui
 # Coding Guidelines
 
 - Prefer solving problems by removing code rather than adding it. Before adding new code, consider whether deleting or consolidating existing code would suffice. Judge design quality by how few concepts are needed to meet requirements, not by the amount of abstraction.
-- Minimize memory allocations and optimize code for performance wherever practical.
+- Keep allocations in generated native code to a minimum. In the compiler, allocate when it makes compilation faster, and add no allocation that buys no speed. Optimize code for performance wherever practical.
 - Implement Kimi's core libraries, including Iterator and Dictionary, in Kimigayo rather than hand-written LLVM IR whenever possible.
 - Update `docs/SPEC.md` and `docs/STATUS.md` as needed to reflect the changes made. Write all updates in English.
 - Do not automatically update files in the `draft` folder unless explicitly instructed.
@@ -79,7 +79,7 @@ The specification and implementation are not set in stone. The specification gui
 - Both modes default to Release; use `-Configuration Debug` explicitly for Debug. The selected compiler configuration governs builds, tests, fixture selection and milestone harnesses; native O0/O2 coverage stays unchanged. Native parallelism: `-NativeParallel` (default up to 4; 1 for serial). Never edit sources during builds or verification.
 - Toolchain identity: setup/update or `kimi toolchain verify`; Verify's `-VerifyToolchain` checks once before tests, otherwise records it as not performed. Milestones build original sources once per O0/O2 and execute each binary directly once; feature/rejection and CLI tests remain separate. Use `run --no-build` for built CLI artifacts.
 - Separate functional regressions, allocation/reuse regressions (zero allocation, retained capacity, storage bounds), and opt-in performance measurements (timing, throughput, scaling). Tag allocation/reuse tests `Purpose=Allocation`; unmarked tests are functional. Unit includes both by default; narrow focused checks with `-TestPurpose Functional` or `Allocation`. Include related allocation/reuse regressions for hot-path changes. Session always runs both in full.
-- Keep timing-only repetition and measurement reports in `src/Benchmark`, outside normal Verify. Run relevant measurements explicitly for performance changes and at milestone completion. Share regression workload inputs where applicable; keep warm-up/measurement conditions fixed; never relax allocation assertions or warm until a failing measurement passes. Commands/isolation: [docs/dev/VERIFICATION.md](docs/dev/VERIFICATION.md).
+- Keep timing-only repetition and measurement reports in `src/Benchmark`, outside normal Verify. Run relevant measurements explicitly for performance changes and at milestone completion. Share regression workload inputs where applicable; keep warm-up/measurement conditions fixed; never relax a native allocation assertion or warm until a failing measurement passes. A compiler allocation assertion changes only with a change measured to make compilation faster, recorded in the commit. Commands/isolation: [docs/dev/VERIFICATION.md](docs/dev/VERIFICATION.md).
 
 # Diagnostic Development
 
