@@ -20,7 +20,7 @@ an executable change does not make that change documentation-only.
 | Change | Completion checks |
 | --- | --- |
 | Documentation only | Review diffs and affected references. Do not run builds, tests, native fixtures or milestone harnesses. |
-| Compiler, Kimi library or compiler tests | Related Unit verification and one final Session; select relevant native fixtures and milestones explicitly. |
+| Compiler, Kimi library or compiler tests | Related Unit verification and one final Session; select relevant native fixtures and milestones explicitly. A change under `src/Kimi/Library` includes `KimiLibraryShapeTest`. |
 | Benchmark or Playground code | Session verification, including the whole-solution build, before completion; execute the affected scenario or relevant fixed-condition measurements. |
 | Verification scripts, CI or other tooling | Related script regressions and affected build/execution paths. Native-runner changes require `NativeFixtureRunnerTest.ps1`. Changes affecting the managed build or test pipeline also require Session. A local check does not certify a hosted CI run. |
 | VS Code extension, including its build/distribution scripts | Follow [the extension instructions](../../src/kimi-ext/AGENTS.md). |
