@@ -29,13 +29,25 @@ public sealed class ForKoto : ExpressionKoto
     private readonly bool[]? mutableSlots;
 
     /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>
-    internal SubjectMode Mode { get; set; }
+    internal SubjectMode Mode
+    {
+        get => (SubjectMode)HirTables.PlanOf(this).Mode;
+        set => HirTables.PlanFor(this, value != SubjectMode.Shared).Mode = (byte)value;
+    }
 
     /// <summary>Gets or sets the owning user protocol entry, outside the source tree.</summary>
-    internal InvocationKoto? EntryCall { get; set; }
+    internal InvocationKoto? EntryCall
+    {
+        get => HirTables.PlanOf(this).Second as InvocationKoto;
+        set => HirTables.PlanFor(this, value is not null).Second = value;
+    }
 
     /// <summary>Gets or sets the calls and item decomposition of a user protocol loop.</summary>
-    internal BoundIteration? Iteration { get; set; }
+    internal BoundIteration? Iteration
+    {
+        get => HirTables.PlanOf(this).Plan as BoundIteration;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     /// <summary>Initializes a new instance of the <see cref="ForKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

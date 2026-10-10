@@ -515,7 +515,11 @@ public abstract class Koto
         set => HirTables.Of(this).ErasedTypes[this.SyntaxId] = value;
     }
 
-    internal BoundFormatting? FormattingStorage { get; set; }
+    internal BoundFormatting? FormattingStorage
+    {
+        get => HirTables.PlanOf(this).Formatting;
+        set => HirTables.PlanFor(this, value is not null).Formatting = value;
+    }
 
     internal BoundFormatting? Formatting => this.FormattingStorage is { Active: true } plan ? plan : null;
 

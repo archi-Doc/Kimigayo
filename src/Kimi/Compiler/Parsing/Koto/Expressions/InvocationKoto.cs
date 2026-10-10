@@ -27,7 +27,11 @@ public sealed class InvocationKoto : ApplicationKoto
     /// <summary>Gets the invoked expression.</summary>
     public Koto Method => this.Target;
 
-    internal CallPlan? CallStorage { get; set; }
+    internal CallPlan? CallStorage
+    {
+        get => HirTables.PlanOf(this).Plan as CallPlan;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     internal bool RightFirstArguments => this.Method is RequirementCalleeKoto && this.Parent is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
 

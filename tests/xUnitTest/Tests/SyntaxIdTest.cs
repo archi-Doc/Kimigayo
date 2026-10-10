@@ -123,7 +123,7 @@ public class SyntaxIdTest
     public void RenumberingMovesEachRowWithItsNode()
     {
         // A larger statement of another compilation replaces one: the nodes after it take new ids, the transplanted ones bring
-        // their rows from the donor's table, and a parsed node that left the tree loses its row.
+        // their rows from the donor's table, and a parsed node that left the tree loses its row; renumbering drops its plan row.
         var c = MinimalEmissionTest.Analyze(Source);
         var table = c.Kotonoha.Syntax;
         var statement = Statement(c, "p");
@@ -134,6 +134,9 @@ public class SyntaxIdTest
         var (facts, ids) = (nodes.Select(Facts).ToArray(), nodes.Select(x => x.SyntaxId).ToArray());
         Assert.NotEqual(default, Facts(statement));
         Assert.NotEqual(default, Facts(donor));
+        Assert.Contains(removed, x => !HirTables.PlanOf(x).Equals(default(PlanRow)));
+        Assert.Contains(Enumerable.Range(0, nodes.Length), i => !facts[i].Plan.Equals(default(PlanRow)) && !removed.Contains(nodes[i]));
+        var plans = table.Hir.PlanCount;
 
         table.Number(c.Kotonoha.RootKoto);
         AssertConsistent(table);
@@ -156,6 +159,7 @@ public class SyntaxIdTest
         var transplanted = PreOrder(donor);
         Assert.All(transplanted, x => Assert.Same(table, x.SyntaxOwner));
         Assert.Contains(Enumerable.Range(0, nodes.Length), i => reachable.Contains(nodes[i]) && !transplanted.Contains(nodes[i]) && nodes[i].SyntaxId != ids[i]);
+        Assert.True(table.Hir.PlanCount < plans);
     }
 
     [Fact]
@@ -207,8 +211,8 @@ public class SyntaxIdTest
         }
     }
 
-    private static (BindingState State, BindingFailure Failure, object? Meaning, BindingSymbol? Symbol, BoundType? Erased) Facts(Koto node)
-        => (node.StateOf(), node.FailureOf(), (object?)node.TypeOf() ?? node.OriginOf(), node.SymbolOf(), node.ErasedTypeOf());
+    private static (BindingState State, BindingFailure Failure, object? Meaning, BindingSymbol? Symbol, BoundType? Erased, PlanRow Plan) Facts(Koto node)
+        => (node.StateOf(), node.FailureOf(), (object?)node.TypeOf() ?? node.OriginOf(), node.SymbolOf(), node.ErasedTypeOf(), HirTables.PlanOf(node));
 
     private static string[] Shape(SyntaxTable table)
     {

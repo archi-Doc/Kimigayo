@@ -100,7 +100,7 @@ public sealed class SyntaxTable
             if (id > previousParsed)
             {
                 this.Allocate(node);
-                previousHir.Copy(id, this.Hir, node.SyntaxId);
+                previousHir.Move(id, ref this.Hir, node.SyntaxId);
             }
             else
             {
@@ -146,12 +146,14 @@ public sealed class SyntaxTable
             this.count = 0;
             this.Visit(root);
             var nodes = new Koto?[this.count + room + 1];
-            var hir = new HirTables(nodes.Length);
+
+            // About one node in fourteen has a plan row (the library: 658 of 9,596).
+            var hir = new HirTables(nodes.Length, Math.Max(table.Hir.PlanCount, this.count / 8) + 16);
             for (var id = 1; id <= this.count; id++)
             {
                 var (node, owner, previous) = this.walked[id];
                 nodes[id] = node;
-                owner?.Hir.Copy(previous, hir, id);
+                owner?.Hir.Move(previous, ref hir, id);
             }
 
             (table.nodes, table.Hir) = (nodes, hir);

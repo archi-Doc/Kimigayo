@@ -17,7 +17,11 @@ public sealed class ArrayLiteralKoto : ExpressionKoto
     /// <summary>Gets the compile-time length for fill construction, whose sole element is evaluated once.</summary>
     public Koto? FillLength { get; private set; }
 
-    internal BoundLength? FillCount { get; set; }
+    internal BoundLength? FillCount
+    {
+        get => HirTables.PlanOf(this).Plan as BoundLength;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     /// <summary>Initializes a new instance of the <see cref="ArrayLiteralKoto"/> class.</summary>
     /// <param name="reader">The token reader.</param>

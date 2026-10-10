@@ -42,9 +42,15 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal BoundClosure? ClosureOf(FunctionKoto node) => node.BoundClosure;
 
-    internal (ConversionBinding Kind, InvocationKoto? Creation, ExplicitAdaptationPlan? Adaptation, Int128? Folded) ConversionOf(ConversionKoto node) => (node.ConversionBinding, node.CreationCall, node.Adaptation, node.FoldedConstant);
+    // The kind and the folded constant are the conversion's plan row; the creation and the adaptation count only for their kind.
+    internal (ConversionBinding Kind, InvocationKoto? Creation, ExplicitAdaptationPlan? Adaptation, Int128? Folded) ConversionOf(ConversionKoto node)
+        => ((ConversionBinding)HirTables.PlanOf(node).Mode, node.CreationCall, node.Adaptation, HirTables.PlanOf(node).Folded);
 
-    internal (InvocationKoto? Entry, BoundIteration? Plan) IterationOf(ForKoto node) => (node.EntryCall, node.Iteration);
+    internal (InvocationKoto? Entry, BoundIteration? Plan) IterationOf(ForKoto node)
+    {
+        ref readonly var row = ref HirTables.PlanOf(node);
+        return (row.Second as InvocationKoto, row.Plan as BoundIteration);
+    }
 
     internal BoundType? ErasedTypeOf(Koto node) => HirTables.ErasedType(node);
 

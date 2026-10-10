@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using Kimi.Compiler.Lexing;
 using Kimi.Diagnostics;
 
@@ -98,13 +99,25 @@ public class BinaryKoto : ExpressionKoto
     /// <summary>Gets the infix operator spelling, including surrounding spaces.</summary>
     public string InfixText => this is IsKoto { IsNegated: true } ? " is not " : InfixTexts[(int)this.Akind] ?? string.Empty;
 
-    internal BoundArithmetic? ArithmeticStorage { get; set; }
+    internal BoundArithmetic? ArithmeticStorage
+    {
+        get => HirTables.PlanOf(this).Plan as BoundArithmetic;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
 
-    internal InvocationKoto? ComparisonStorage { get; set; }
+    internal InvocationKoto? ComparisonStorage
+    {
+        get => HirTables.PlanOf(this).Second as InvocationKoto;
+        set => HirTables.PlanFor(this, value is not null).Second = value;
+    }
 
-    internal bool ComparisonActive { get; set; }
+    internal bool ComparisonActive
+    {
+        get => HirTables.PlanOf(this).Flag;
+        set => HirTables.PlanFor(this, value).Flag = value;
+    }
 
     internal InvocationKoto? ComparisonCall => this.ComparisonActive && this.BindingState == BindingState.Resolved ? this.ComparisonStorage : null;
 
@@ -145,7 +158,11 @@ public sealed class MemberAccessKoto : BinaryKoto
     /// <summary>Gets the accessed member expression.</summary>
     public Koto Accessor => this.Right;
 
-    internal bool IsDirectStorage { get; set; }
+    internal bool IsDirectStorage
+    {
+        get => HirTables.PlanOf(this).Mode != 0;
+        set => HirTables.PlanFor(this, value).Mode = value ? (byte)1 : (byte)0;
+    }
 
     /// <inheritdoc/>
     public override void WriteTo(ref IndentedStringBuilder builder)
@@ -206,20 +223,36 @@ public sealed class ConversionKoto : BinaryKoto
     {
     }
 
-    internal ConversionBinding ConversionBinding { get; set; }
+    internal ConversionBinding ConversionBinding
+    {
+        get => (ConversionBinding)HirTables.PlanOf(this).Mode;
+        set => HirTables.PlanFor(this, value != ConversionBinding.None).Mode = (byte)value;
+    }
 
     // The syntax owns its retained plan; edits can release it with the source tree.
-    internal InvocationKoto? CreationStorage { get; set; }
+    internal InvocationKoto? CreationStorage
+    {
+        get => HirTables.PlanOf(this).Second as InvocationKoto;
+        set => HirTables.PlanFor(this, value is not null).Second = value;
+    }
 
     internal InvocationKoto? CreationCall => this.HasCurrentBinding && this.ConversionBinding == ConversionBinding.ObjectCreation ? this.CreationStorage : null;
 
-    internal ExplicitAdaptationPlan? AdaptationStorage { get; set; }
+    internal ExplicitAdaptationPlan? AdaptationStorage
+    {
+        get => HirTables.PlanOf(this).Plan as ExplicitAdaptationPlan;
+        set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     internal ExplicitAdaptationPlan? Adaptation => this.HasCurrentBinding && this.ConversionBinding == ConversionBinding.CaseAdaptation ? this.AdaptationStorage : null;
 
     /// <summary>Gets or sets the result of a direct-literal conversion folded at compile time (SPEC 13.5.4.2), as the
     /// sign-extended N-bit payload of the target Type, or null when the conversion runs on a value.</summary>
-    internal Int128? FoldedConstant { get; set; }
+    internal Int128? FoldedConstant
+    {
+        get => HirTables.PlanOf(this).Folded;
+        set => HirTables.PlanFor(this, value is not null).Folded = value;
+    }
 }
 
 /// <summary>Represents an <c>is</c> expression.</summary>
@@ -247,7 +280,11 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     public Koto? FormationType { get; internal set; }
 
     /// <summary>Gets the bound compile-time proposition; ordinary runtime tests leave this null.</summary>
-    public BoundConstraint? BoundConstraint { get; internal set; }
+    public BoundConstraint? BoundConstraint
+    {
+        get => HirTables.PlanOf(this).Plan as BoundConstraint;
+        internal set => HirTables.PlanFor(this, value is not null).Plan = value;
+    }
 
     /// <summary>Gets a value indicating whether syntax selected a runtime test rather than a Requirement Test.</summary>
     public bool IsRuntimeTest { get; internal set; }
@@ -256,7 +293,23 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     public bool IsNegated { get; internal set; }
 
     /// <summary>Gets this binding pass's runtime test, mutually exclusive with BoundConstraint.</summary>
-    public BoundRuntimeTypeTest? BoundRuntimeTest { get; internal set; }
+    public BoundRuntimeTypeTest? BoundRuntimeTest
+    {
+        get => (HirTables.PlanOf(this).Second as StrongBox<BoundRuntimeTypeTest?>)?.Value;
+        internal set
+        {
+            // The test is a value; one box per node keeps rebinding free of allocation.
+            ref var row = ref HirTables.PlanFor(this, value is not null);
+            if (row.Second is StrongBox<BoundRuntimeTypeTest?> box)
+            {
+                box.Value = value;
+            }
+            else if (value is not null)
+            {
+                row.Second = new StrongBox<BoundRuntimeTypeTest?>(value);
+            }
+        }
+    }
 
     List<OriginRelationKoto>? IOriginClauseOwner.OriginClauses { get; set; }
 
