@@ -35,7 +35,7 @@ During edits, build the test project incrementally and run the relevant methods.
 
 ```powershell
 dotnet build tests/xUnitTest/xUnitTest.csproj --no-restore -c Release
-dotnet tests/xUnitTest/bin/Release/net10.0/xUnitTest.dll -method XunitTest.ContinuationVerificationTest.ReplayCannotRestoreAbandonedGuardProtection -failSkips
+dotnet tests/xUnitTest/bin/Release/net10.0/xUnitTest.dll -method XunitTest.DeferredEmissionTest.RepeatedExpansionReusesLocalStorage -failSkips
 ```
 
 Choose an existing method from the test source or runner discovery (`-list methods`). For fast functional feedback within a class, use `-class <class> -trait- Purpose=Allocation`. Direct runner selections of a moved allocation method use `<outer-class>+AllocationTests.<method>`.
@@ -43,8 +43,8 @@ Choose an existing method from the test source or runner discovery (`-list metho
 At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. The existing analyzer check is retained in both modes. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
 
 ```powershell
-./scripts/verify.ps1 -Class XunitTest.ContinuationVerificationTest -Fixtures 'VerificationContinuation*.ll'
-./scripts/verify.ps1 -Class XunitTest.ContinuationVerificationTest -TestPurpose Allocation
+./scripts/verify.ps1 -Class XunitTest.DeferredEmissionTest -Fixtures 'Deferred*.ll'
+./scripts/verify.ps1 -Class XunitTest.DeferredEmissionTest -TestPurpose Allocation
 ./scripts/verify.ps1 -Mode Session
 ```
 

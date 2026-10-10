@@ -8,32 +8,8 @@ public sealed partial class OwnershipAnalysis
 {
     private int comparisonDepth;
 
-    private int CurrentLoanHead
-    {
-        get
-        {
-            var point = this.current;
-            if (point < 0 && this.checkingRegion > 0)
-            {
-                var region = this.body.CheckingRegions[this.checkingRegion];
-                var replay = region.Replay;
-                point = region.Seed;
-                if (region.SeedCount > 0)
-                {
-                    var seed = this.body.CheckingSeeds[region.SeedStart];
-                    point = seed.Operation;
-                    replay = seed.Replay;
-                }
-
-                if (replay >= 0)
-                {
-                    point = this.body.CheckingReplays[replay].End;
-                }
-            }
-
-            return (uint)point < (uint)this.body.LoanStates.Count ? this.body.LoanStates[point] : -1;
-        }
-    }
+    // Unreachable source (current < 0) starts with no active comparison Loans.
+    private int CurrentLoanHead => (uint)this.current < (uint)this.body.LoanStates.Count ? this.body.LoanStates[this.current] : -1;
 
     /// <summary>Gets the Place syntax a string argument borrows.</summary>
     /// <param name="argument">The written argument.</param>

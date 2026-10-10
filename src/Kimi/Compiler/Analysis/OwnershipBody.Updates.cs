@@ -144,14 +144,6 @@ public sealed partial class OwnershipBody
             }
         }
 
-        for (var from = 0; from < this.Operations.Count; from++)
-        {
-            for (var e = this.checkingBorrowHeads[from]; e >= 0; e = this.checkingBorrowEdges[e].Next)
-            {
-                Add(from, this.checkingBorrowEdges[e].To);
-            }
-        }
-
         void Add(int from, int to)
         {
             this.contentPredecessors.Add((from, this.contentHeads[to]));
@@ -240,7 +232,7 @@ public sealed partial class OwnershipBody
         return fallback;
     }
 
-    // All paths to this use must pass the recorded call without a later write. Back edges and checking continuations count.
+    // All paths to this use must pass the recorded call without a later write. Back edges count.
     private bool ContentsUnchangedSince(int holder, int definition, int before)
     {
         this.contentVisited.AsSpan(0, this.Operations.Count).Clear();

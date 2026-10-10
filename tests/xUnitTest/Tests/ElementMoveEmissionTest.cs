@@ -30,7 +30,6 @@ public class ElementMoveEmissionTest
         { "ExclusiveSibling", "var a = (40, \"first\")\na.0 += label work: do\n    let taken = a.1@move\n    exit to work 2\nif a.0 == 42 => Console.writeLine(\"ok\")", "first=1;ok=1" },
         { "CoveredArm", "var a = (\"first\", \"last\")\nmatch true\n    _ => ()\n    true => (label work: do\n        let taken = a.0@move\n    )\nConsole.writeLine(\"ok\")", "first=1;last=1;ok=1" },
         { "BranchSwapHoles", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.0@move\n    else\n        let taken = a.1@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
-        { "Dead", "func f()\n    return\n    var a = (\"first\", 0)\n    let taken = a.0@move\n    a.0 = \"new\"\n    let whole = a@move\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
         { "LoopLifetime", "var i = 0\nloop\n    let a = (\"first\", \"last\")\n    if i == 0\n        let taken = a.0@move\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")", "first=3;last=3;ok=1" },
         { "ConditionalWhole", "func f(take: bool)\n    let a = (\"first\", \"last\")\n    if take\n        let whole = a@move\n    else\n        let taken = a.0@move\nf(true)\nf(false)\nConsole.writeLine(\"ok\")", "first=2;last=2;ok=1" },
         { "BranchPhi", "func f(take: bool) -> i32\n    return if take => (label work: do\n        let a = (\"first\", \"last\")\n        if take\n            let taken = a.0@move\n        exit to work 40\n    ) else => 2\nif f(true) + f(false) == 42 => Console.writeLine(\"ok\")", "first=1;last=1;ok=1" },
@@ -94,7 +93,6 @@ public class ElementMoveEmissionTest
     [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\nlet twice = a.0@move")]
     [InlineData("let a: ([0 of string], i32) = ([], 0)\nlet taken = a.0@move\nlet twice = a.0@move")]
     [InlineData("func f(take: bool)\n    var a = ((\"first\", \"last\"), 0)\n    if take\n        let taken = a.0@move\n    a.0.0 = \"new\"")]
-    [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0@move\n    let twice = a.0@move")]
     [InlineData("var a = (\"first\", 0)\ndefer\n    let whole = a@move\nlet taken = a.0@move")]
     public void MissingValuesAreRejectedByOwnership(string source)
     {

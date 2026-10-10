@@ -19,7 +19,7 @@ internal struct BorrowLiveness()
 
     internal readonly void Clear() => this.places?.Clear();
 
-    internal void Solve(OwnershipBody body, PackedAnalysisTable dependencies, IReadOnlyList<int> roots, ReadOnlySpan<int> checkingHeads, ReadOnlySpan<(int To, int Next)> checkingEdges)
+    internal void Solve(OwnershipBody body, PackedAnalysisTable dependencies, IReadOnlyList<int> roots)
     {
         (this.places ??= new()).Clear();
         var count = body.Places.Count;
@@ -53,11 +53,6 @@ internal struct BorrowLiveness()
                         {
                             var edge = body.Edges[e];
                             live |= edge.Kind != OwnershipEdgeKind.Abort && this.live.IsSet((edge.To * liveWidth) + slot);
-                        }
-
-                        for (var e = checkingHeads[op]; e >= 0 && !live; e = checkingEdges[e].Next)
-                        {
-                            live |= this.live.IsSet((checkingEdges[e].To * liveWidth) + slot);
                         }
                     }
 

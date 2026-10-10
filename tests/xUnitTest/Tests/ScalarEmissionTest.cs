@@ -27,7 +27,7 @@ public class ScalarEmissionTest
         { "BooleanStorage", "var x = true\nlet y = x\nx = not y\nif x != y and y == true => Console.writeLine(\"ok\")", "ok\n", 0 },
         { "Increments", "var x = 3\nlet a = --x\nlet b = x--\nlet c = ++x\nif a == 2 and b == 2 and c == 2 and x == 2 => Console.writeLine(\"ok\")", "ok\n", 0 },
         { "Comparisons", "var x = -3\nlet y = +x\nif y <= -3 and y >= -3 and y != 0 and y > -4 => Console.writeLine(\"ok\")", "ok\n", 0 },
-        { "DeadArithmetic", "var x = 0\nwhile true\n    exit\n    x = 2147483647 + 1\nif x == 0 => Console.writeLine(\"ok\")", "ok\n", 0 },
+        { "DeadArithmetic", "var x = 0\nwhile true\n    exit\n    let y = 2147483647 + 1\nif x == 0 => Console.writeLine(\"ok\")", "ok\n", 0 },
         { "NestedLoops", "var x = 0\nwhile x < 3\n    x += 1\n    var y = 0\n    while true\n        y += 1\n        if y == 2 => exit\n    if x == 2 => continue\n    Console.writeLine(\"tick\")", "tick\ntick\n", 0 },
     };
 

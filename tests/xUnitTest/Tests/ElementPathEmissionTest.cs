@@ -79,7 +79,6 @@ public class ElementPathEmissionTest
     [Theory]
     [InlineData("func get(a: [2 of i32]) -> i32 => a[1]\nvar a: [1 of [2 of i32]] = [[40, 2]]\na[0][0] += get(a[0])")]
     [InlineData("var a: [2 of [2 of i32]] = [[40, 2], [0, 0]]\nvar i: isize = 0\nvar j: isize = 1\na[i][0] += a[j][1]")]
-    [InlineData("func f()\n    return\n    var a: [2 of i32] = [40, 2]\n    a[0] += a[0]\nf()")]
     public void AncestorReadsInTheRightSidePrecedeTheUpdate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

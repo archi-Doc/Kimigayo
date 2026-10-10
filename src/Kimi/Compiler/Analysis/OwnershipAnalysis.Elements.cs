@@ -116,7 +116,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         // SPEC 13.7.2: the RHS is secured before the element is located and read. A transfer in the RHS
-        // leaves a checking continuation; the target is still checked there.
+        // leaves the target unreachable.
         var right = source is BinaryKoto binary ? this.Value(this.Expression(binary.Right)) : 0;
         if (right < 0)
         {

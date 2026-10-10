@@ -311,10 +311,7 @@ public sealed partial class OwnershipAnalysis
         var next = this.ComputeUpdate(source, BoundType.ISize, this.Value(current), this.Value(this.SequenceConstant(source, BoundType.ISize, 1)), KotoKind.Plus);
 
         this.Emit(OwnershipOperationKind.Write, source, cursor, next);
-        var seeds = this.terminalSeeds.Count;
-        this.Block(source.Body, out var continuation);
-        this.RecordTerminalSeed(source.Body, continuation);
-        this.FilterTerminalSeeds(source, seeds);
+        this.Block(source.Body);
         this.Cleanup(this.temporaries.Count, bindingMark, source, CleanupReason.ScopeExit);
         this.locals.RemoveRange(bindingMark, this.locals.Count - bindingMark);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);

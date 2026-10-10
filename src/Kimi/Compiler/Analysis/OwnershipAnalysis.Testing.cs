@@ -32,7 +32,6 @@ public sealed partial class OwnershipAnalysis
         this.Connect(branch, join, OwnershipEdgeKind.True);
         this.Connect(branch, failed, OwnershipEdgeKind.False);
         this.current = failed;
-        var region = this.checkingRegion;
         if (node.Message is { } message)
         {
             var value = this.Expression(message);
@@ -51,7 +50,6 @@ public sealed partial class OwnershipAnalysis
             this.Connect(this.current, join);
         }
 
-        this.checkingRegion = region;
         this.current = join;
         this.body.RecordCompletion(entry, join, this.flow!.Nodes[node].CanCompleteNormally);
         return -1;

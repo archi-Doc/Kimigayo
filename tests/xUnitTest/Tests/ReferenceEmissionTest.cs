@@ -122,22 +122,13 @@ public class ReferenceEmissionTest
 
     [Theory]
     [InlineData("a == (return true)")]
-    [InlineData("(return true) == a")]
+    [InlineData("(return true) == \"a\"")]
     public void NoncompletingReferenceComparisonNeedsNoResult(string expression)
     {
         var source = "func test(a: ref/string) -> bool\n    " + expression + "\n    return false\nlet a = \"a\"\nif test(a) => Console.writeLine(a)";
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.Validate(out var error), MinimalEmissionTest.Describe(c, error));
         ScalarEmissionTest.EmitFixture("ReferenceAbruptComparison" + (expression.StartsWith('a') ? "Right" : "Left"), source, "a\n");
-    }
-
-    [Fact]
-    public void AbandonedLoansAreNotRestoredInCheckingContinuations()
-    {
-        var source = "func test(a: ref/string, flag: bool) -> bool => flag\nfunc run() -> string\n    let a = \"held\"\n    test(a, (label work: do\n        return \"ok\"\n        _ = a@move\n        exit to work true\n    ))\n    return \"bad\"\nConsole.writeLine(run())";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict);
-        ScalarEmissionTest.EmitFixture("ReferenceUnreachableContinuation", source, "ok\n");
     }
 
     [Fact]

@@ -2,7 +2,6 @@
 
 using System.Text;
 using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -155,15 +154,14 @@ public class DeferredEmissionTest
     }
 
     [Fact]
-    public void DivergentCleanupChecksRemainingBodiesAndRunsUntilKilled()
+    public void DivergentCleanupSkipsRemainingBodiesAndRunsUntilKilled()
     {
-        const string Source = "var x = 1\ndefer\n    x = 2\n    Console.writeLine(\"bad\")\ndefer => loop => ()\nConsole.writeLine(\"begin\")";
+        const string Source = "defer\n    Console.writeLine(\"bad\")\ndefer => loop => ()\nConsole.writeLine(\"begin\")";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
         var body = c.Ownership.Bodies[0];
-        var write = body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Write && x.Source is BinaryKoto);
-        Assert.False(body.IsReachable(write));
-        Assert.True(body.HasCheckingState(write));
+        var bad = Source.IndexOf("Console.writeLine(\"bad\")", StringComparison.Ordinal);
+        Assert.False(body.IsReachable(body.OperationStorage.FindIndex(x => x.Kind == OwnershipOperationKind.Call && x.Source.Span.Start == bad)));
         ScalarEmissionTest.EmitFixture("DeferredDivergent", Source, "begin\n", timeoutMilliseconds: 1000);
     }
 

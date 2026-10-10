@@ -10,7 +10,7 @@ public class OwnedPatternVerificationTest
     [Fact]
     public void DivergentGuardNeverDestroysOwnedStorageBeforeOrDuringDivergence()
     {
-        const string Source = "match \"held\"\n    let text if (loop => ()) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
+        const string Source = "match \"held\"\n    let text if (loop => ()) => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
         var c = MinimalEmissionTest.Analyze(Source);
         var ir = CompilationTestHelper.WriteIr(c);
         // No handle is allowed: any destruction terminates immediately with 121.

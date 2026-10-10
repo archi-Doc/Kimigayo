@@ -70,10 +70,7 @@ public sealed partial class OwnershipAnalysis
         var decomposition = this.body.DecompositionStorage.Count;
         this.AcquirePattern(plan, 0, subject, neededStart, armStart);
         this.body.MatchArmStorage[armStart] = new(matchIndex, 0, test, decomposition, this.body.DecompositionStorage.Count - decomposition, BodyEntry: enter);
-        var seeds = this.terminalSeeds.Count;
-        this.Block(source.Body, out var continuation);
-        this.RecordTerminalSeed(source.Body, continuation);
-        this.FilterTerminalSeeds(source, seeds);
+        this.Block(source.Body);
         this.Cleanup(loopTempMark, bindingMark, source, CleanupReason.ScopeExit);
         this.Connect(this.current, head, OwnershipEdgeKind.Back);
         this.locals.RemoveRange(bindingMark, this.locals.Count - bindingMark);

@@ -13,20 +13,15 @@ internal static class VerificationMeasurements
     internal static void Run()
     {
         var results = new List<object>();
-        foreach (var count in new[] { 4, 16, 64 })
+        foreach (var count in new[] { 8, 16 })
         {
-            results.Add(Measure("guard histories", count, false, VerificationWorkloads.GuardHistories(count), 64));
-        }
-
-        foreach (var (count, checking) in new[] { (8, false), (16, false), (8, true) })
-        {
-            results.Add(Measure("live part loans", count, checking, VerificationWorkloads.LivePartLoans(count, checking), 5));
+            results.Add(Measure("live part loans", count, VerificationWorkloads.LivePartLoans(count), 5));
         }
 
         Console.WriteLine(JsonSerializer.Serialize(new { compiler = Compilation.CompilerVersion, runtime = Environment.Version.ToString(), results }, new JsonSerializerOptions { WriteIndented = true }));
     }
 
-    private static object Measure(string workload, int count, bool checking, string source, int iterations)
+    private static object Measure(string workload, int count, string source, int iterations)
     {
         var c = Compilation.CreateForTest();
         if (!c.Prepare("x86_64-pc-windows-msvc"))
@@ -45,14 +40,13 @@ internal static class VerificationMeasurements
             Analyze();
         }
 
-        var retained = c.Ownership.Bodies.Sum(x => x.CheckingSeeds.Count + x.CheckingReplays.Count + x.CheckingRegions.Count);
         var start = Stopwatch.GetTimestamp();
         for (var i = 0; i < iterations; i++)
         {
             Analyze();
         }
 
-        return new { workload, count, checking, retainedRecords = retained, iterations, elapsedSeconds = Stopwatch.GetElapsedTime(start).TotalSeconds };
+        return new { workload, count, iterations, elapsedSeconds = Stopwatch.GetElapsedTime(start).TotalSeconds };
 
         void Analyze()
         {

@@ -1,39 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler;
-using Tinyhand;
-using Verification;
 using Xunit;
 
 namespace XunitTest;
 
 public class ContinuationVerificationTest
 {
-    [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public void MixedMatchCheckingAddsNoRuntimeExecution(bool early)
-    {
-        var source = MixedSource + "\nf(" + (early ? "true" : "false") + ")\nConsole.writeLine(\"done\")";
-        ScalarEmissionTest.EmitFixture(
-            "VerificationContinuation" + Configuration + early,
-            source,
-            early ? "done\n" : string.Empty,
-            early ? 0 : 1,
-            early ? string.Empty : "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");
-        var c = MinimalEmissionTest.Analyze(source);
-        foreach (var body in c.Ownership.Bodies)
-        {
-            foreach (var region in body.CheckingRegions.Skip(1))
-            {
-                if (region.Entry >= 0)
-                {
-                    Assert.False(body.IsReachable(region.Entry));
-                }
-            }
-        }
-    }
-
     [Fact]
     public void PreparedTupleCopiesPreserveNamedAndReturnedArgumentSnapshots()
     {
@@ -97,92 +69,9 @@ public class ContinuationVerificationTest
         }
     }
 
-    [Fact]
-    public void ReplayCannotRestoreAbandonedGuardProtection()
-    {
-        var c = MinimalEmissionTest.Analyze(MixedSource + "\nf(true)");
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.CheckingSeeds.Any(s => s.Replay >= 0 && x.LoanStates[s.Operation] != x.LoanStates[x.CheckingReplays[s.Replay].End]));
-        var seed = body.CheckingSeeds.First(s => s.Replay >= 0 && body.LoanStates[s.Operation] != body.LoanStates[body.CheckingReplays[s.Replay].End]);
-        var replay = body.CheckingReplays[seed.Replay];
-        foreach (var invalid in new[] { seed.Operation, -1, int.MaxValue })
-        {
-            body.CheckingReplays[seed.Replay] = replay with { End = invalid };
-            Assert.False(body.ValidateComparisonLoans());
-        }
-
-        body.CheckingReplays[seed.Replay] = replay;
-        Assert.True(body.ValidateComparisonLoans());
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out error), error);
-    }
-
-    private const string MixedSource = "func stop() -> Never => $abort(\"stop\")\nfunc same(a: ref/string, b: ref/string) -> bool => a == b\nfunc f(c: bool)\n    var x = 1\n    do\n        loop\n            if c => return else => exit\n            label choice: match \"subject\"\n                let text if (label guard: do\n                    x += 1\n                    exit to guard same(text, \"subject\")\n                )\n                    Console.writeLine(text)\n                    yield to choice\n                _ => return\n            match (c, x)@move\n                (true, var n) if n > 0\n                    n += 1\n                    return\n                (_, let n) => x = n\n            x = 3\n        stop()\n    let result = x";
-
 #if DEBUG
     private const string Configuration = "Debug";
 #else
     private const string Configuration = "Release";
 #endif
-
-    [TestClass(DisableParallelization = true)]
-    [Trait("Purpose", "Allocation")]
-    public class AllocationTests
-    {
-        [Fact]
-        public void ReloadAndWarmAnalysisPreserveGuardHistories()
-        {
-            var c = MinimalEmissionTest.Analyze(MixedSource + "\nf(true)");
-            Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-            c = CompilationTestHelper.Reload(c);
-            Assert.True(c.Bind().IsComplete);
-            Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-            for (var i = 0; i < 8; i++)
-            {
-                Assert.True(c.Ownership.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
-                Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-            }
-
-            Assert.Equal(0, AllocationMeasurement.Measure(() =>
-            {
-                if (!c.Ownership.Analyze().IsVerified)
-                {
-                    throw new InvalidOperationException("Reloaded guard verification failed.");
-                }
-            }));
-            Assert.Equal(0, AllocationMeasurement.Measure(() =>
-            {
-                if (!c.Emission.WriteIr(TextWriter.Null, out _))
-                {
-                    throw new InvalidOperationException("Reloaded guard emission failed.");
-                }
-            }));
-        }
-
-        [Fact]
-        public void RetainedHistoriesGrowWithGuardCountAndReuseTheirCapacity()
-        {
-            var previous = 0;
-            foreach (var count in new[] { 4, 16, 64 })
-            {
-                var source = VerificationWorkloads.GuardHistories(count);
-                var c = MinimalEmissionTest.Analyze(source);
-                Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-                var retained = c.Ownership.Bodies.Sum(x => x.CheckingSeeds.Count + x.CheckingReplays.Count + x.CheckingRegions.Count);
-                if (previous != 0)
-                {
-                    Assert.InRange(retained, previous, previous * 5);
-                }
-
-                previous = retained;
-                for (var i = 0; i < 8; i++)
-                {
-                    Assert.True(c.Ownership.Analyze().IsVerified);
-                }
-
-                var allocated = AllocationMeasurement.Measure(() => Assert.True(c.Ownership.Analyze().IsVerified));
-                Assert.Equal(0, allocated);
-                Assert.Equal(retained, c.Ownership.Bodies.Sum(x => x.CheckingSeeds.Count + x.CheckingReplays.Count + x.CheckingRegions.Count));
-            }
-        }
-    }
 }

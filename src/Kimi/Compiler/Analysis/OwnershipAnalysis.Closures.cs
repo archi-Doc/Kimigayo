@@ -201,7 +201,6 @@ public sealed partial class OwnershipAnalysis
         if (!acquired || ReferenceEquals(plan.ReturnType, BoundType.Never))
         {
             this.current = -1;
-            this.BeginChecking(invoke);
             this.EndComparisonLoans(depth, call);
             this.comparisonDepth = depth;
             return -1;

@@ -61,7 +61,7 @@ public class ComparisonOperatorTest
             func run() -> i32
                 let first = Key.init()
                 defer => Console.writeLine("deferred")
-                let ignored = {{(left ? "(do => return 7) == first" : "first == (do => return 7)")}}
+                let ignored = {{(left ? "(do => return 7) == Key.init()" : "first == (do => return 7)")}}
                 return 0
             require run() == 7 else => $abort("return")
             """;

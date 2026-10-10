@@ -31,7 +31,7 @@ public class GuardEmissionTest
         { "OuterYield", "let result = label outer: match 0\n    _ => match 1\n        _ if (yield 7) => 1\n        _ => 2\nif result == 7 => Console.writeLine(\"ok\")", "ok\n" },
         { "ReturnCandidate", "func f() -> i32\n    match 7\n        let n if (return n) => ()\n        _ => ()\n    return 0\nif f() == 7 => Console.writeLine(\"ok\")", "ok\n" },
         { "GuardContinue", "var n = 0\nwhile n < 2\n    n += 1\n    match n\n        _ if (if n == 1 => continue else => true) => Console.writeLine(\"ok\")\n        _ => ()", "ok\n" },
-        { "CheckedBody", "func f() -> i32\n    return match 7\n        let n if (return 9) => n\n        _ => 0\nif f() == 9 => Console.writeLine(\"ok\")", "ok\n" },
+        { "ReturningGuard", "func f() -> i32\n    return match 7\n        let n if (return 9) => 1\n        _ => 0\nif f() == 9 => Console.writeLine(\"ok\")", "ok\n" },
         { "ConditionalMove", "var text = \"a\"\nmatch 1\n    _ if (label check: do\n        Console.writeLine(text@move)\n        exit to check false\n    ) => ()\n    _ => ()\ntext = \"b\"\nConsole.writeLine(text)", "a\nb\n" },
     };
 

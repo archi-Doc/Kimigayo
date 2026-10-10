@@ -92,13 +92,6 @@ public class UserArithmeticUpdateTest
         Assert.DoesNotContain(c.Ownership.Issues, static x => x.Failure is OwnershipFailure.Internal or OwnershipFailure.Unsupported);
     }
 
-    [Fact]
-    public void ReturningRightHandSideSkipsLocationAndReplacement()
-    {
-        const string Program = "\nfunc select() -> isize\n    Console.writeLine(\"unexpected index\")\n    return 0\nfunc run() -> i32\n    var values: Array<Counter> = [Counter.init(21)]\n    values[select()] += do\n        return 7\n    return 0\nrequire run() == 7 else => $abort(\"transfer\")";
-        ScalarEmissionTest.EmitFixture("UserArithmeticUpdateTransfer", Counter + Program, string.Empty);
-    }
-
     [Theory]
     [InlineData(false, true)]
     [InlineData(true, true)]

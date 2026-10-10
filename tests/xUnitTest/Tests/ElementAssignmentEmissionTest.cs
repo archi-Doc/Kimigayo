@@ -25,7 +25,6 @@ public class ElementAssignmentEmissionTest
         { "Result", "var a = ((1, false), 2)\na.0 = if true => (42, true) else => (0, false)\nif a.0.0 == 42 and a.0.1 => Console.writeLine(\"ok\")" },
         { "Loop", "var a: [3 of i32] = [0, 0, 0]\nvar i: isize = 0\nwhile i < 3\n    a[i] = 14\n    i += 1\nif a[0] + a[1] + a[2] == 42 => Console.writeLine(\"ok\")" },
         { "Deferred", "var a = (0, true)\nvar i = 0\nloop\n    defer => a.0 = a.0 + 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    var a = (1, 2)\n    a.0 = 42\nf()\nConsole.writeLine(\"ok\")" },
         { "DeadArm", "var a = (0, true)\nmatch true\n    _ => a.0 = 42\n    true => a.0 = 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "ReadIndex", "var a: [2 of isize] = [1, 0]\na[a[0]] = 42\nif a[1] == 42 => Console.writeLine(\"ok\")" },
         { "Snapshot", "var a: [1 of i32] = [40]\nvar i: isize = 0\na[(label work: do\n    i = 1\n    exit to work 0\n)] = i@i32 + 42\nif a[0] == 42 and i == 1 => Console.writeLine(\"ok\")" },

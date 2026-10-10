@@ -252,46 +252,14 @@ public sealed partial class OwnershipBody
 
         foreach (var edge in this.EdgeStorage)
         {
-            // A checking-only tail can point at a runtime join without arriving there.
-            if (edge.Kind != OwnershipEdgeKind.Abort && (this.IsReachable(edge.From) || (!this.IsReachable(edge.To) && this.OperationRegions[edge.From] == this.OperationRegions[edge.To])) &&
-                this.LoanStates[edge.From] != this.LoanInputs[edge.To])
+            // Unreachable source starts without Loans and may point at a join it never arrives at.
+            if (edge.Kind != OwnershipEdgeKind.Abort && this.IsReachable(edge.From) && this.LoanStates[edge.From] != this.LoanInputs[edge.To])
             {
                 return false;
-            }
-        }
-
-        foreach (var region in this.CheckingRegions)
-        {
-            if (region.Seed >= 0 && region.Entry >= 0 && region.SeedCount == 0 && !this.CheckingSeedLoansMatch(region.Seed, region.Replay, region.Entry))
-            {
-                return false;
-            }
-
-            for (var i = 0; region.Entry >= 0 && i < region.SeedCount; i++)
-            {
-                var seed = this.CheckingSeeds[region.SeedStart + i];
-                if (!this.CheckingSeedLoansMatch(seed.Operation, seed.Replay, region.Entry))
-                {
-                    return false;
-                }
             }
         }
 
         return true;
-    }
-
-    private bool CheckingSeedLoansMatch(int operation, int replay, int entry)
-    {
-        if (replay < -1 || replay >= this.CheckingReplays.Count)
-        {
-            return false;
-        }
-
-        // Replay includes guard cleanup. The original seed can still carry a
-        // protection that was ended before this checking-only arrival.
-        var end = replay < 0 ? operation : this.CheckingReplays[replay].End;
-        return (uint)end < (uint)this.LoanStates.Count && (uint)entry < (uint)this.LoanInputs.Count &&
-            this.LoanStates[end] == this.LoanInputs[entry];
     }
 
     // The receiver Place has the plan's Type or lends its callee (IsBorrowedCallableReceiver). The analyzed Place Type is compared with
@@ -412,9 +380,9 @@ public sealed partial class OwnershipBody
             return arm.GuardEntry + 1 == loan.Read && ReferenceEquals(this.Operations[loan.Read].Source, this.Operations[arm.GuardEntry].Source);
         }
 
-        // Only a new candidate read in a transfer-seeded checking region may
-        // establish replacement protection after the original Loan has ended.
-        return !this.IsReachable(loan.Read) && this.OperationRegions[loan.Read] > 0 &&
+        // Only a new candidate read in unreachable source may establish
+        // replacement protection after the original Loan has ended.
+        return !this.IsReachable(loan.Read) &&
             (uint)arm.GuardLoan < (uint)index && this.ComparisonLoans[arm.GuardLoan].Depth == loan.Depth &&
             this.OperationSteps[loan.Read] == loan.Guard && this.Operations[loan.Read].Input >= 0 &&
             this.Values[loan.Read].Kind is OwnershipValueKind.Borrow or OwnershipValueKind.PatternProjection;

@@ -31,7 +31,6 @@ public class ElementReplacementEmissionTest
         { "CoveredArm", "var a = (\"old\", 0)\nmatch true\n    _ => a.0 = \"new\"\n    true => a.0 = \"unused\"\nConsole.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "StringMatch", "var a = (\"old\", 0)\na.0 = match true\n    true => \"new\"\n    false => \"unused\"\nConsole.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "CopyMatch", "var a = ((0, 0), 1)\na.0 = match true\n    true => (40, 2)\n    false => (0, 0)\nif a.0.0 + a.0.1 == 42 => Console.writeLine(\"ok\")", "ok=1" },
-        { "Dead", "func f()\n    return\n    var a = (\"old\", 0)\n    a.0 = \"new\"\nf()\nConsole.writeLine(\"ok\")", "ok=1" },
         { "RhsReplacesParent", "var a = (40, \"old\")\na.0 += label work: do\n    a = (0, \"new\")\n    exit to work 2\nif a.0 == 2 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "RhsReplacesTarget", "var a = ((\"old\", 40), 1)\na.0.1 += label work: do\n    a.0 = (\"new\", 0)\n    exit to work 2\nif a.0.1 == 2 => Console.writeLine(\"ok\")", "old=1;new=1;ok=1" },
         { "RhsReplacesSibling", "var a: [2 of (i32, string)] = [(40, \"old\"), (0, \"other\")]\nvar i: isize = 0\nvar j: isize = 1\na[i].0 += label work: do\n    a[j].1 = \"new\"\n    exit to work 2\nif a[i].0 == 42 => Console.writeLine(\"ok\")", "old=1;other=1;new=1;ok=1" },

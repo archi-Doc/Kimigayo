@@ -231,12 +231,13 @@ public class ScalarDefaultEmissionTest
     [Theory]
     [InlineData("f()")]
     [InlineData("f(3)")]
-    public void NoncompletingLocalInitializerReportsUninitializedUse(string call)
+    public void NoncompletingLocalInitializerMakesTheLaterUseUnsupported(string call)
     {
-        var c = MinimalEmissionTest.Analyze("func f(y: i32 = (label scope: do\n    let n: i32 = (loop => continue)\n    exit to scope n + 1\n)) => ()\n" + call);
+        const string Source = "func f(y: i32 = (label scope: do\n    let n: i32 = (loop => continue)\n    exit to scope n + 1\n)) => ()\n";
+        var c = MinimalEmissionTest.Analyze(Source + call);
         Assert.True(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.UninitializedUse);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.Equal((OwnershipFailure.Unsupported, Source.IndexOf("n + 1", StringComparison.Ordinal), 1), (issue.Failure, issue.Source.Span.Start, issue.Source.Span.Length));
         Assert.False(c.Emission.Validate(out _));
     }
 
@@ -383,19 +384,6 @@ public class ScalarDefaultEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete);
         Assert.False(c.Emission.Validate(out _));
-    }
-
-    [Fact]
-    public void DefaultResultSupportDoesNotBroadenScalarLoopSupport()
-    {
-        // The scalar loop/checking helper keeps its original boundary; default results now also include external references.
-        var c = MinimalEmissionTest.Analyze("func f(x: ref/i32) => ()");
-        var type = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Parameters.Count == 1).Parameters[0].Type.BoundType;
-        Assert.True(ReferenceTypes.IsScalarBorrow(type));
-        Assert.True(ScalarTypes.SupportsFlowValue(type));
-        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.I32));
-        Assert.True(ScalarTypes.SupportsFlowValue(BoundType.Unit));
-        Assert.False(ScalarTypes.SupportsFlowValue(BoundType.String));
     }
 
     [Trait("Purpose", "Allocation")]

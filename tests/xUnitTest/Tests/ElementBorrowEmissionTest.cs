@@ -37,7 +37,6 @@ public class ElementBorrowEmissionTest
         { "Defer", "func f()\n    let a = (\"first\", \"last\")\n    defer\n        if same(a.0, a.0) => Console.writeLine(\"ok\")\n    let taken = a.1@move\nf()" },
         { "ConditionalPartial", "func f(take: bool) -> bool\n    let a = (\"first\", \"last\")\n    if take\n        let taken = a.1@move\n    return same(a.0, a.0)\nif f(true) and f(false) => Console.writeLine(\"ok\")" },
         { "AggregateResult", "func inspect(a: ref/string) -> (string, i32) => (\"new\", 42)\nvar a = (\"first\", 0)\nlet result = inspect(a.0)\na.0 = \"last\"\nif result.1 == 42 => Console.writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    let a = (\"first\", 0)\n    let equal = same(a.0, a.0)\nf()\nConsole.writeLine(\"ok\")" },
         { "Covered", "let a = (\"first\", 0)\nmatch true\n    _ => ()\n    true => (label work: do\n        let equal = same(a.0, a.0)\n    )\nConsole.writeLine(\"ok\")" },
         { "GuardCandidate", "let a = (\"first\", 0)\nmatch \"other\"@move\n    let s if same(a.0, s) => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"ok\")" },
         { "NestedGuardCandidate", "func three(a: ref/string, b: ref/string, c: ref/string) -> bool => b == c\nlet a = (\"first\", 0)\nmatch \"other\"@move\n    let s if three(a.0, s, \"other\") => Console.writeLine(\"ok\")\n    _ => Console.writeLine(\"bad\")" },
@@ -87,7 +86,6 @@ public class ElementBorrowEmissionTest
     [InlineData("let a = (\"first\", 0)\nlet taken = a.0@move\nlet equal = same(a.0, a.0)")]
     [InlineData("let a = ((\"first\", \"last\"), 0)\nlet taken = a.0@move\nlet equal = same(a.0.0, a.0.0)")]
     [InlineData("func f(take: bool)\n    let a = (\"first\", 0)\n    if take\n        let taken = a.0@move\n    let equal = same(a.0, a.0)")]
-    [InlineData("func f()\n    return\n    let a = (\"first\", 0)\n    let taken = a.0@move\n    let equal = same(a.0, a.0)")]
     public void MissingElementsAreRejected(string source)
         => Reject(Same + source, OwnershipFailure.PossiblyMovedUse);
 

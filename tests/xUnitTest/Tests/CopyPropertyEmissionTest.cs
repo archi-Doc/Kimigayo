@@ -97,10 +97,6 @@ public class CopyPropertyEmissionTest
     public void UnusedGetterBorrowDoesNotExtendTheTemporaryLifetime()
         => ScalarEmissionTest.EmitFixture("CopyPropertyUnusedBorrow", Meter + "let m = Meter.init()\nlet unused = m.level@ref", "get\n");
 
-    [Fact]
-    public void AbruptAssignmentInputDoesNotEvaluateReceiverOrSetter()
-        => ScalarEmissionTest.EmitFixture("CopyPropertyAbruptInput", Meter + "func receiver(m: uniq/Meter during source) -> uniq/Meter during source\n    Console.writeLine(\"receiver\")\n    return m\nfunc test(m: uniq/Meter) -> i32\n    receiver(m).level = do\n        return 5\nvar m = Meter.init()\nrequire test(m@uniq) == 5 and m.level == 3 else => $abort(\"result\")", "get\n");
-
     [Theory]
     [InlineData("private set", "@move")]
     [InlineData("set(value: i32) -> () => storage = value", "@move")]

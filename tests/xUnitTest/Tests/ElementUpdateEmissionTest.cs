@@ -24,7 +24,6 @@ public class ElementUpdateEmissionTest
         { "Deferred", "var a = (0, \"held\")\nvar i = 0\nloop\n    defer => a.0 += 14\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "DeferredIncrement", "var a = (39, \"held\")\nvar i = 0\nloop\n    defer => ++a.0\n    i += 1\n    if i < 3 => continue\n    exit\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "Function", "func f(input: [1 of i32]) -> i32\n    var a = input\n    a[0] += 2\n    return a[0]\nlet input: [1 of i32] = [40]\nif f(input) == 42 and input[0] == 40 => Console.writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    var a = (40, true)\n    a.0 += 2\n    a.0++\nf()\nConsole.writeLine(\"ok\")" },
         { "Covered", "var a = (40, true)\nmatch true\n    _ => a.0 += 2\n    true => a.0 -= 1\nif a.0 == 42 => Console.writeLine(\"ok\")" },
         { "RhsTransfer", "func f() -> i32\n    var a = (0, true)\n    defer => a.0++\n    a.0 += (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
         { "IndexTransfer", "func f() -> i32\n    var a: [1 of i32] = [0]\n    a[(return 42)] += 2\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")" },
@@ -237,7 +236,6 @@ public class ElementUpdateEmissionTest
     [InlineData("var a: [2 of i32] = [21, 21]\na[0] += a[1 + 0]")]
     [InlineData("func count(a: [1 of i32]) -> i32 => a[0]\nvar a: [1 of i32] = [21]\na[0] += count(a)")]
     [InlineData("var a: [1 of i32] = [21]\na[0] += (label work: do\n    defer => a[0]\n    exit to work 21\n)")]
-    [InlineData("func f()\n    return\n    var a: [1 of i32] = [21]\n    a[0] += a[0]\nf()")]
     public void SelfReadsInTheRightSidePrecedeTheExclusiveUpdate(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);

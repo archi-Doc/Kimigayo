@@ -43,7 +43,6 @@ public class IdentityAcquisitionEmissionTest
     [InlineData("let value = \"value\"\nlet taken = value@move\nlet twice = value@move", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let value = \"value\"\nlet taken = value@move\nlet twice = value@move@string", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let pair = (\"first\", \"last\")\nlet first = pair.0@move\nlet whole = pair@move", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("func f()\n    let value = \"value\"\n    return\n    let first = value@move\n    let twice = value@move\nf()", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let value: i32 = 1\nlet taken = value@move\nlet twice = value", OwnershipFailure.PossiblyMovedUse)]
     [InlineData("let value = \"value\"\nlet same = value == value@move", OwnershipFailure.ComparisonLoanConflict)]
     [InlineData("func same(a: ref/string, b: string) => ()\nlet value = \"value\"\nsame(value, value@move)", OwnershipFailure.ComparisonLoanConflict)]

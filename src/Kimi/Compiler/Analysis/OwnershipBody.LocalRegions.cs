@@ -60,7 +60,7 @@ public sealed partial class OwnershipBody
         work.Clear();
         for (var id = operations - 1; id >= 0; id--)
         {
-            if (this.IsReachable(id) || this.HasCheckingState(id))
+            if (this.IsReachable(id))
             {
                 work.Add(id);
                 this.loanQueued[id] = true;
@@ -78,11 +78,6 @@ public sealed partial class OwnershipBody
                 {
                     Merge(id, this.Edges[edge].To);
                 }
-            }
-
-            for (var edge = this.checkingBorrowHeads[id]; edge >= 0; edge = this.checkingBorrowEdges[edge].Next)
-            {
-                Merge(id, this.checkingBorrowEdges[edge].To);
             }
         }
 

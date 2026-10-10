@@ -29,7 +29,7 @@ public sealed partial class OwnershipBody
             return PlaceState.None;
         }
 
-        this.LoadInput(operation, false);
+        this.LoadInput(operation);
         return this.State(place);
     }
 
@@ -40,13 +40,13 @@ public sealed partial class OwnershipBody
             return PlaceState.None;
         }
 
-        this.LoadInput(operation, false);
+        this.LoadInput(operation);
         return this.ElementState(projection, receiver);
     }
 
     // The cleanup collector loads one converged snapshot, then reads every sparse
     // remainder from it without replaying the block separately for each element.
-    internal void LoadPathInput(int operation) => this.LoadInput(operation, false);
+    internal void LoadPathInput(int operation) => this.LoadInput(operation);
 
     internal PlaceState CurrentPathState(int path) => this.PathState(path);
 

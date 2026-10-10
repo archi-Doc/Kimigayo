@@ -32,7 +32,6 @@ public class ElementEmissionTest
         { "BooleanArray", "let a: [3 of bool] = [false, true, false]\nif a[1] and not a[2] => Console.writeLine(\"ok\")" },
         { "CheckedPhi", "let a: [1 of i32] = [42]\nlet n = if true => a[0] else => 1\nif n == 42 => Console.writeLine(\"ok\")" },
         { "Deferred", "let a: [2 of i32] = [0, 42]\nvar i = 0\nloop\n    defer => if a[1] != 42 => Console.writeLine(\"bad\")\n    i += 1\n    if i < 3 => continue\n    exit\nConsole.writeLine(\"ok\")" },
-        { "Dead", "func f()\n    return\n    let a: [1 of i32] = [42]\n    a[0]\nf()\nConsole.writeLine(\"ok\")" },
         { "DeadArm", "let a: [1 of i32] = [42]\nlet n = match true\n    _ => a[0]\n    true => a[1]\nif n == 42 => Console.writeLine(\"ok\")" },
         { "UnitTuple", "let a = ((), 42)\nlet u = a.0\nif a.1 == 42 => Console.writeLine(\"ok\")" },
         { "EmptyCopy", "let a: ([0 of i32], i32) = ([], 42)\nlet b = a.0\nlet c = a.0\nif a.1 == 42 => Console.writeLine(\"ok\")" },

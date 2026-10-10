@@ -19,7 +19,7 @@ public class InternalInvariantTest
 
         // A construct recorded as completing whose exit the ownership graph never reaches.
         body.RecordCompletion(0, -1, true);
-        body.CheckUnreachable();
+        body.CheckUnreachable(earlierRejected: false);
         var issue = Assert.Single(body.Issues);
         Assert.Equal(OwnershipFailure.Internal, issue.Failure);
         Assert.Same(body.Operations[0].Source, issue.Source);

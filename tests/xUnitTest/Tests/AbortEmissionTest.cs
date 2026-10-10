@@ -22,7 +22,6 @@ public class AbortEmissionTest
         { "AbortArgumentReturn", "func f()\n    defer => Console.writeLine(\"cleanup\")\n    $abort((label message: do\n        return\n        exit to message \"unused\"\n    ))\nf()\nConsole.writeLine(\"after\")", "cleanup\nafter\n", 0, string.Empty },
         { "AbortCondition", "if $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:4: abort KIMI_E_ABORT: condition\n" },
         { "AbortArgumentOverflow", "$abort((label message: do\n    var x: i32 = 2147483647\n    x = x + 1\n    exit to message \"outer\"\n))", string.Empty, 1, "Hello.kimi:3:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n" },
-        { "AbortUnreachableLocal", "let text = \"kept\"\n$abort(\"stop\")\nConsole.writeLine(text)", string.Empty, 1, "Hello.kimi:2:1: abort KIMI_E_ABORT: stop\n" },
         { "AbortConditionalResult", "var flag = false\nlet text = if flag => $abort(\"bad\") else => \"ok\"\nConsole.writeLine(text)", "ok\n", 0, string.Empty },
         { "AbortWhileCondition", "while $abort(\"condition\") => Console.writeLine(\"bad\")", string.Empty, 1, "Hello.kimi:1:7: abort KIMI_E_ABORT: condition\n" },
         { "AbortRequireCondition", "require $abort(\"condition\") else => $abort(\"bad\")", string.Empty, 1, "Hello.kimi:1:9: abort KIMI_E_ABORT: condition\n" },
@@ -70,13 +69,23 @@ public class AbortEmissionTest
     [Theory]
     [InlineData("let text: string\n$abort(text@move)", OwnershipFailure.UninitializedUse)]
     [InlineData("let text = \"x\"\n_ = text@move\n$abort(text@move)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", OwnershipFailure.UninitializedUse)]
-    public void RejectsOwnershipViolationsIncludingUnreachableUses(string source, OwnershipFailure failure)
+    public void RejectsOwnershipViolations(string source, OwnershipFailure failure)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
         Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
+        Assert.False(c.Emission.Validate(out _));
+    }
+
+    // Code after $abort is unreachable: its first use of a Local is one location-only Unsupported at that use.
+    [Theory]
+    [InlineData("let text = \"x\"\n$abort(text@move)\nConsole.writeLine(text)", "text")]
+    [InlineData("let x: i32\n$abort(\"stop\")\nlet y = x", "x")]
+    public void UnreachableLocalUseIsUnsupported(string source, string at)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var issue = Assert.Single(c.Ownership.Issues);
+        Assert.Equal((OwnershipFailure.Unsupported, source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (issue.Failure, issue.Source.Span.Start, issue.Source.Span.Length));
         Assert.False(c.Emission.Validate(out _));
     }
 

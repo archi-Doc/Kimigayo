@@ -90,7 +90,6 @@ public sealed class ControlFlowAnalysis
     private readonly List<Koto> childBuffer = new();
     private readonly ChildCollector childCollector;
     private readonly List<JumpKoto> arrivedTransfers = new();
-    private readonly HashSet<JumpKoto> normalTransferArrivals = new(ReferenceEqualityComparer.Instance);
     private readonly Stack<List<ControlFlowResultSource>> candidateLists = new();
     private readonly Dictionary<string, ControlFlowType> pointeeTypes = new(StringComparer.Ordinal);
     private readonly List<ControlFlowNodeInfo> infoPool = new();
@@ -170,7 +169,6 @@ public sealed class ControlFlowAnalysis
         this.defaultDepth = 0;
         this.childBuffer.Clear();
         this.arrivedTransfers.Clear();
-        this.normalTransferArrivals.Clear();
         this.infoCursor = this.boundaryCursor = this.transferCursor = this.registrationCursor = 0;
         this.unsafeUsed = this.unsafeUncertain = false;
         this.Visit(root);
@@ -210,10 +208,6 @@ public sealed class ControlFlowAnalysis
     }
 
     internal void Append(Koto root) => this.Visit(root);
-
-    // Assumes entry to the resolved target, independently of its outer runtime
-    // reachability. Dead transfers still supply result Types, not normal arrivals.
-    internal bool ReachesTarget(JumpKoto jump) => this.normalTransferArrivals.Contains(jump);
 
     // Whether this analysis found an Error of the code at the node; a later phase that meets the same problem rests on it.
     internal bool Reported(Koto node, DiagnosticCode code) => this.reported.Contains((node, code));
@@ -1671,7 +1665,6 @@ public sealed class ControlFlowAnalysis
 
             foreach (var jump in arrived)
             {
-                this.normalTransferArrivals.Add(jump);
                 flow = flow with { Normal = flow.Normal || jump is not ContinueKoto };
                 transfers.Remove(jump);
             }

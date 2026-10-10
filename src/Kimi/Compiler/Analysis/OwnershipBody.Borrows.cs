@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.OwnershipFlow;
 
@@ -11,8 +10,6 @@ public sealed partial class OwnershipBody
     // The fourth packed authority state retains an exclusive call acquisition even when a descendant is shared.
     // borrowDependencies still records the descendant's access mode; no extra per-Place/root table is needed.
     private const LoanRequirement RetainedCallExclusive = (LoanRequirement)3;
-
-    private readonly List<(int To, int Next)> checkingBorrowEdges = new();
 
     // SPEC 8.4.10.4: each Place that keeps the result of a generic requirement call, with that result's index.
     private readonly List<(int Holder, int Result)> requirementHolders = new();
@@ -30,7 +27,6 @@ public sealed partial class OwnershipBody
     private int[] retentionStarts = [];
     private bool[] transferredOrigins = [];
     private BorrowLiveness borrowLiveness = new();
-    private int[] checkingBorrowHeads = [];
     private PackedAnalysisTable borrowDependencies = new(2);
     private PackedAnalysisTable retainedBorrowAuthority = new(2);
 
@@ -75,12 +71,12 @@ public sealed partial class OwnershipBody
 
     internal PlaceState GetBorrowInputState(int operation)
     {
-        if (!this.IsReachable(operation) && !this.HasCheckingState(operation))
+        if (!this.IsReachable(operation))
         {
             return PlaceState.None;
         }
 
-        this.LoadInput(operation, !this.IsReachable(operation));
+        this.LoadInput(operation);
         var borrow = this.Operations[operation];
         return this.TryOwnedBorrowState(borrow, out var state) ? state : this.CompleteState(borrow.Place);
     }
@@ -112,7 +108,7 @@ public sealed partial class OwnershipBody
         }
 
         // Short-lived call/guard inspections already have an explicit Loan extent,
-        // including abrupt checking continuations. A stored Copy or returned reference
+        // including abrupt transfers. A stored Copy or returned reference
         // is a separate Place and retains its ordinary Origin-based dependency.
         Grow(ref this.inspectionBorrows, count);
         this.inspectionBorrows.AsSpan(0, count).Clear();
@@ -180,7 +176,6 @@ public sealed partial class OwnershipBody
             }
         }
 
-        this.PrepareCheckingBorrowEdges();
         this.PrepareContentPredecessors();
         this.referentCache.Clear();
         this.referentTargets.Clear();
@@ -206,13 +201,12 @@ public sealed partial class OwnershipBody
 
         this.PrepareSlicePaths();
         this.PrepareStoredBorrowActivity();
-        this.borrowLiveness.Solve(this, this.borrowDependencies, this.borrowRoots!, this.checkingBorrowHeads.AsSpan(0, this.Operations.Count), CollectionsMarshal.AsSpan(this.checkingBorrowEdges));
+        this.borrowLiveness.Solve(this, this.borrowDependencies, this.borrowRoots!);
         var liveWidth = this.borrowLiveness.Count;
 
-        // SPEC 15.6.2, 15.6.5, 16.2.2: the destructions of lent roots are checked first, the reachable ones before those that only
-        // checking code reaches (passes 0 and 1), and then every operation in order (pass 2). A destruction's record states the
-        // Loan, so a later use of the dangling value, including a join that precedes the destruction in operation order, does
-        // not restate it.
+        // SPEC 15.6.2, 15.6.5, 16.2.2: the reachable destructions of lent roots are checked first (pass 0), and then every
+        // reachable operation in order (pass 1). A destruction's record states the Loan, so a later use of the dangling value,
+        // including a join that precedes the destruction in operation order, does not restate it.
         this.destroyedLoans.Clear();
         var operationCount = this.Operations.Count;
         for (var rootIndex = 0; rootIndex < this.borrowRoots!.Count; rootIndex++)
@@ -224,17 +218,11 @@ public sealed partial class OwnershipBody
             }
 
             this.PrepareLoanFlow(root, count);
-            for (var step = 0; step < 3 * operationCount; step++)
+            for (var step = 0; step < 2 * operationCount; step++)
             {
                 var pass = Math.DivRem(step, operationCount, out var op);
                 var destroyed = this.DestroyedRoot(op);
-                if (pass < 2 && destroyed < 0)
-                {
-                    continue;
-                }
-
-                var reachable = this.IsReachable(op);
-                if ((!reachable && !this.HasCheckingState(op)) || (pass < 2 && reachable != (pass == 0)))
+                if ((pass == 0 && destroyed < 0) || !this.IsReachable(op))
                 {
                     continue;
                 }
@@ -250,7 +238,7 @@ public sealed partial class OwnershipBody
                     {
                         var p = this.borrowLiveness.PlaceAt(slot);
                         if (!this.borrowLiveness.IsLive(op, slot) || (activating && this.SameReservedArgument(r, p)) ||
-                            (pass < 2 && this.borrowDependencies[(p * count) + destroyed] == LoanRequirement.None))
+                            (pass == 0 && this.borrowDependencies[(p * count) + destroyed] == LoanRequirement.None))
                         {
                             continue;
                         }
@@ -259,7 +247,7 @@ public sealed partial class OwnershipBody
                         {
                             // All validity/footprint queries below are read-only. Replay
                             // this block prefix once, only if some Loan needs its state.
-                            this.LoadInput(op, !this.IsReachable(op));
+                            this.LoadInput(op);
                             loaded = true;
                         }
 
@@ -269,7 +257,7 @@ public sealed partial class OwnershipBody
                         }
 
                         {
-                            if (pass < 2 && root != destroyed)
+                            if (pass == 0 && root != destroyed)
                             {
                                 continue;
                             }
@@ -304,14 +292,14 @@ public sealed partial class OwnershipBody
 
                             var rootLost = !external && (this.BorrowRootState(p, root) & PlaceState.MustInit) == 0;
 
-                            // SPEC 15.6.2: destroying the borrowed Place itself, checked only by the destruction passes.
+                            // SPEC 15.6.2: destroying the borrowed Place itself, checked only by the destruction pass.
                             var destruction = root == destroyed && !rootLost;
-                            if (destruction != (pass < 2))
+                            if (destruction != (pass == 0))
                             {
                                 continue;
                             }
 
-                            var conflict = rootLost || (!external && accessConflict) || (pass == 2 && this.InvalidatesContentChild(accessId, p));
+                            var conflict = rootLost || (!external && accessConflict) || (pass == 1 && this.InvalidatesContentChild(accessId, p));
                             var value = this.Values[accessId];
                             // SPEC 15.6.3: an access through a holder of an external root's Loan that is no descendant of the root, such
                             // as a reference stored through a contract (RetainBorrowAuthority), meets the Loans of the root's other
@@ -367,7 +355,7 @@ public sealed partial class OwnershipBody
                                 if (destruction)
                                 {
                                     // SPEC 15.6.5: one record per destroyed root and holder, at a destruction that a definition of the
-                                    // holder carrying the root's Loan reaches; a reachable destruction is preferred by the pass order.
+                                    // holder carrying the root's Loan reaches.
                                     // Where the walk cannot tell which definition reaches (-2), every destruction the Loan reaches keeps
                                     // its record, so the escaping one is never deduplicated away.
                                     lending = this.LoanCarryingDefinition(p, root, op, count);
@@ -894,7 +882,7 @@ public sealed partial class OwnershipBody
         {
             var effect = effects[e];
             var op = effect.Call;
-            if (op == checkedCall || (!this.IsReachable(op) && !this.HasCheckingState(op)) || this.HasIssueAt(this.Operations[op].Source))
+            if (op == checkedCall || !this.IsReachable(op) || this.HasIssueAt(this.Operations[op].Source))
             {
                 continue;
             }
@@ -911,7 +899,7 @@ public sealed partial class OwnershipBody
 
                 if (!loaded)
                 {
-                    this.LoadInput(op, !this.IsReachable(op));
+                    this.LoadInput(op);
                     loaded = true;
                 }
 
@@ -1618,43 +1606,6 @@ public sealed partial class OwnershipBody
         return -1;
     }
 
-    private void PrepareCheckingBorrowEdges()
-    {
-        Grow(ref this.checkingBorrowHeads, this.Operations.Count);
-        this.checkingBorrowHeads.AsSpan(0, this.Operations.Count).Fill(-1);
-        this.checkingBorrowEdges.Clear();
-        for (var i = 1; i < this.CheckingRegions.Count; i++)
-        {
-            var region = this.CheckingRegions[i];
-            if (region.Entry < 0 || !this.HasCheckingState(region.Entry))
-            {
-                continue;
-            }
-
-            for (var s = 0; s < Math.Max(1, region.SeedCount); s++)
-            {
-                var seed = region.SeedCount == 0 ? new OwnershipCheckingSeed(region.Seed, region.Target, region.Replay) : this.CheckingSeeds[region.SeedStart + s];
-                var next = region.Entry;
-                for (var replay = seed.Replay; replay >= 0; replay = this.CheckingReplays[replay].Previous)
-                {
-                    var path = this.CheckingReplays[replay];
-                    Add(path.End, next);
-                    next = path.Entry;
-                }
-
-                Add(seed.Operation, next);
-            }
-        }
-
-        // Liveness follows the same pre-cleanup seeds and replay order as state
-        // checking. These links never become runtime or cleanup-plan edges.
-        void Add(int from, int to)
-        {
-            this.checkingBorrowEdges.Add((to, this.checkingBorrowHeads[from]));
-            this.checkingBorrowHeads[from] = this.checkingBorrowEdges.Count - 1;
-        }
-    }
-
     // SPEC 15.6.2, 16.2: the owned root that a cleanup destroys while some Place depends on it, or -1. A root that holds a
     // reference ends a reference, not storage, and keeps the operation-order check.
     private int DestroyedRoot(int operation)
@@ -1696,8 +1647,8 @@ public sealed partial class OwnershipBody
             }
         }
 
-        // Liveness follows the same runtime and checking links (VerifyBorrows); the holder keeps a seed's value up to its next
-        // definition, which the walk does not pass.
+        // Liveness follows the same runtime links (VerifyBorrows); the holder keeps a seed's value up to its next definition,
+        // which the walk does not pass.
         Grow(ref this.carryingFrom, operations);
         var from = this.carryingFrom.AsSpan(0, operations);
         from.Fill(-1);
@@ -1710,28 +1661,15 @@ public sealed partial class OwnershipBody
             {
                 var at = work[^1];
                 work.RemoveAt(work.Count - 1);
-                var runtime = this.EdgeHeads[at];
-                var checking = this.checkingBorrowHeads[at];
-                while (runtime >= 0 || checking >= 0)
+                for (var e = this.EdgeHeads[at]; e >= 0; e = this.Edges[e].Next)
                 {
-                    int next;
-                    if (runtime >= 0)
+                    var edge = this.Edges[e];
+                    if (edge.Kind == OwnershipEdgeKind.Abort)
                     {
-                        var edge = this.Edges[runtime];
-                        runtime = edge.Next;
-                        if (edge.Kind == OwnershipEdgeKind.Abort)
-                        {
-                            continue;
-                        }
-
-                        next = edge.To;
-                    }
-                    else
-                    {
-                        next = this.checkingBorrowEdges[checking].To;
-                        checking = this.checkingBorrowEdges[checking].Next;
+                        continue;
                     }
 
+                    var next = edge.To;
                     if (from[next] >= 0)
                     {
                         continue;

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
@@ -12,6 +14,8 @@ public sealed partial class OwnershipBody
     private const int AssignedLane = 3;
     private const int OwnedLane = 4;
 
+    private readonly List<(int Entry, int Exit, bool CanComplete)> completionChecks = new();
+    private readonly HashSet<(Koto Source, OwnershipOperationKind Kind, int Place)> checkedUses = new();
     private int words;
     private int blockCount;
 
@@ -26,7 +30,7 @@ public sealed partial class OwnershipBody
             return PlaceState.None;
         }
 
-        this.LoadInput(operation, false);
+        this.LoadInput(operation);
         return this.CompleteState(place);
     }
 
@@ -51,7 +55,7 @@ public sealed partial class OwnershipBody
         // Operation 0 is Entry, so block 0 starts the body with every Place empty.
         this.BlockStates.AsSpan(0, width).Clear();
         this.BlockReachable[0] = true;
-        this.Converge(0, false);
+        this.Converge(0);
 
         // Diagnose and finalize plans only after convergence, never from intermediate loop states.
         for (var block = 0; block < blocks; block++)
@@ -62,6 +66,57 @@ public sealed partial class OwnershipBody
             }
         }
     }
+
+    // SPEC 14.10.3 type-checking continuations are not implemented by this analysis (compiler reduction R1, decision D2):
+    // runtime-unreachable operations are built but never solved or checked. A body without any other issue, in a program that
+    // no earlier check rejected, reports its first unreachable source use of a Local or Parameter as the location-only
+    // Unsupported. A use that a reachable
+    // operation of the same source also performs, such as a deferred body replayed at a dead scope exit, is a
+    // lexical-completion replica, not new source.
+    internal void CheckUnreachable(bool earlierRejected)
+    {
+        this.CheckCompletion();
+        if (earlierRejected || this.IssueStorage.Count != 0)
+        {
+            return;
+        }
+
+        var collected = false;
+        for (var i = 0; i < this.OperationStorage.Count; i++)
+        {
+            var operation = this.OperationStorage[i];
+            if (this.Reachable[i] || !this.IsSourceUse(operation))
+            {
+                continue;
+            }
+
+            if (!collected)
+            {
+                this.checkedUses.Clear();
+                for (var j = 0; j < this.OperationStorage.Count; j++)
+                {
+                    if (this.Reachable[j] && this.IsSourceUse(this.OperationStorage[j]))
+                    {
+                        this.checkedUses.Add((this.OperationStorage[j].Source, this.OperationStorage[j].Kind, this.OperationStorage[j].Place));
+                    }
+                }
+
+                collected = true;
+            }
+
+            if (!this.checkedUses.Contains((operation.Source, operation.Kind, operation.Place)))
+            {
+                this.ReportIssue(new(operation.Source, OwnershipFailure.Unsupported, operation.Place));
+                return;
+            }
+        }
+    }
+
+    internal void RecordCompletion(int entry, int exit, bool canComplete)
+        => this.completionChecks.Add((entry, exit, canComplete));
+
+    internal void ResetCompletion()
+        => this.completionChecks.Clear();
 
     private static void Grow<T>(ref T[] array, int length)
     {
@@ -149,51 +204,102 @@ public sealed partial class OwnershipBody
         return next != 0 && this.IncomingCounts[next] == 1 ? next : -1;
     }
 
-    private int NextInBlock(int operation, int block, bool checking = false)
+    private int NextInBlock(int operation, int block)
     {
-        if (checking)
-        {
-            return this.checkingNext[operation];
-        }
-
         var next = this.ChainSuccessor(operation);
         return next >= 0 && this.BlockOf[next] == block ? next : -1;
     }
 
-    private int LoadBlock(int block, bool checking = false, ulong[]? replayStates = null)
+    private int LoadBlock(int block)
     {
         var width = this.words * Lanes;
-        var states = replayStates ?? (checking ? this.checkingStates : this.BlockStates);
-        states.AsSpan(block * width, width).CopyTo(this.Scratch);
-        return checking ? this.checkingLeaders[block] : this.BlockLeaders[block];
+        this.BlockStates.AsSpan(block * width, width).CopyTo(this.Scratch);
+        return this.BlockLeaders[block];
     }
 
-    private int RunBlock(int block, bool finalize, bool checking = false, int stop = -1, ulong[]? replayStates = null)
+    private int RunBlock(int block, bool finalize)
     {
-        var operation = this.LoadBlock(block, checking, replayStates);
+        var operation = this.LoadBlock(block);
         while (true)
         {
             if (finalize)
             {
-                if (!checking)
-                {
-                    this.Reachable[operation] = true;
-                    this.Finalize(operation);
-                }
-                else if (this.OperationStorage[operation].Kind != OwnershipOperationKind.Deliver)
-                {
-                    this.CheckOperation(operation);
-                }
+                this.Reachable[operation] = true;
+                this.Finalize(operation);
             }
 
             this.Transfer(operation);
-            var next = this.NextInBlock(operation, block, checking);
-            if (next < 0 || operation == stop)
+            var next = this.NextInBlock(operation, block);
+            if (next < 0)
             {
                 return operation;
             }
 
             operation = next;
+        }
+    }
+
+    private void LoadInput(int operation)
+    {
+        // An operation may be in the middle of a block. Retain only block inputs and replay its prefix.
+        var block = this.BlockOf[operation];
+        var cursor = this.LoadBlock(block);
+        while (cursor != operation)
+        {
+            this.Transfer(cursor);
+            cursor = this.NextInBlock(cursor, block);
+            if (!this.Invariant(cursor >= 0))
+            {
+                break;
+            }
+        }
+    }
+
+    private void Converge(int entry)
+    {
+        var blocks = this.blockCount;
+        var width = this.words * Lanes;
+        this.BlockQueued[entry] = true;
+        this.BlockQueue[0] = entry;
+        var head = 0;
+        var size = 1;
+        while (size > 0)
+        {
+            var block = this.BlockQueue[head];
+            head = head + 1 == blocks ? 0 : head + 1;
+            size--;
+            this.BlockQueued[block] = false;
+            var last = this.RunBlock(block, false);
+            var output = this.Scratch.AsSpan(0, width);
+            for (var e = this.EdgeHeads[last]; e >= 0; e = this.EdgeStorage[e].Next)
+            {
+                var target = this.BlockOf[this.EdgeStorage[e].To];
+                if (!this.Invariant(target >= 0))
+                {
+                    continue;
+                }
+
+                var destination = this.BlockStates.AsSpan(target * width, width);
+                bool changed;
+                if (!this.BlockReachable[target])
+                {
+                    output.CopyTo(destination);
+                    this.BlockReachable[target] = true;
+                    changed = true;
+                }
+                else
+                {
+                    changed = Join(destination, output, this.words);
+                }
+
+                if (changed && !this.BlockQueued[target])
+                {
+                    this.BlockQueued[target] = true;
+                    var tail = head + size;
+                    this.BlockQueue[tail >= blocks ? tail - blocks : tail] = target;
+                    size++;
+                }
+            }
         }
     }
 
@@ -232,7 +338,7 @@ public sealed partial class OwnershipBody
         }
     }
 
-    // Shared diagnostics only: checking continuations must never finalize runtime plans.
+    // The diagnostics of one reachable operation from its converged input state.
     private void CheckOperation(int index)
     {
         var operation = this.OperationStorage[index];
@@ -342,6 +448,26 @@ public sealed partial class OwnershipBody
                 place));
         }
     }
+
+    // Control-flow completion and the ownership graph's runtime reachability must agree for every
+    // recorded construct; a disagreement is an internal issue at that construct.
+    private void CheckCompletion()
+    {
+        for (var i = 0; i < this.completionChecks.Count; i++)
+        {
+            var check = this.completionChecks[i];
+            this.Invariant(
+                check.Entry < 0 || !this.Reachable[check.Entry] || check.CanComplete == (check.Exit >= 0 && this.Reachable[check.Exit]),
+                check.Entry >= 0 ? this.Operations[check.Entry].Source : null);
+        }
+    }
+
+    // A source use of a named Place: a read, Move, borrow or receiver location of a Local or Parameter, an element or
+    // borrowed-field write through one, or an assignment to one. Synthetic cleanup and result delivery are not source uses.
+    private bool IsSourceUse(OwnershipOperation operation)
+        => operation.Place >= 0 && this.PlaceStorage[operation.Place].Kind is OwnershipPlaceKind.Local or OwnershipPlaceKind.Parameter &&
+            (operation.Kind is OwnershipOperationKind.LocateReceiver or OwnershipOperationKind.Read or OwnershipOperationKind.Consume or OwnershipOperationKind.Borrow or OwnershipOperationKind.WriteElement or OwnershipOperationKind.WriteBorrowedField ||
+                (operation.Kind == OwnershipOperationKind.Write && operation.Source is BinaryKoto));
 
     private void Transfer(int index)
     {

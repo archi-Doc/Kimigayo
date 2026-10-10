@@ -81,7 +81,6 @@ public class ConversionEmissionTest
     [InlineData("ConversionNeverEvidence", "func f() -> i32\n    let x = if false => (return 42)@u8 else => 300\n    return x\nif f() == 300 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionLoopEvidence", "let x = if false => (loop => ())@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")", "ok\n")]
     [InlineData("ConversionNeverCallEvidence", "func stop() -> Never => loop => ()\nlet x = if false => stop()@u8 else => 300\nif x == 300 => Console.writeLine(\"ok\")", "ok\n")]
-    [InlineData("ConversionAfterReturn", "func f() -> i32\n    return 42\n    let x = 300\n    x@u8\nif f() == 42 => Console.writeLine(\"ok\")", "ok\n")]
     public void SourceOrderAndConsumersUseTheSecuredValue(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 

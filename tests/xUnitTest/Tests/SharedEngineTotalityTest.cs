@@ -67,10 +67,9 @@ public class SharedEngineTotalityTest
     }
 
     [Theory]
-    [InlineData(false, false)]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void LivenessConsumesCleanupFactsAndDistinguishesCheckingFromAbort(bool observes, bool checking)
+    [InlineData(false)]
+    [InlineData(true)]
+    public void LivenessConsumesCleanupFactsAndDistinguishesAbort(bool observes)
     {
         var source = CompilationTestHelper.Parse("()").Kotonoha.RootKoto;
         var body = new OwnershipBody();
@@ -83,8 +82,8 @@ public class SharedEngineTotalityTest
         dependencies.Reset(1);
         dependencies[0] = LoanRequirement.Ref;
         var liveness = new BorrowLiveness();
-        liveness.Solve(body, dependencies, new[] { 0 }, new[] { checking ? 0 : -1, -1, -1, -1 }, new[] { (To: 2, Next: -1) });
-        Assert.Equal(observes || checking, liveness.IsLive(0, 0));
+        liveness.Solve(body, dependencies, new[] { 0 });
+        Assert.Equal(observes, liveness.IsLive(0, 0));
         Assert.Equal(observes, liveness.IsLive(1, 0));
         Assert.True(liveness.IsLive(2, 0));
         Assert.False(liveness.IsLive(3, 0));

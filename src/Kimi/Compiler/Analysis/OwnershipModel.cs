@@ -299,10 +299,6 @@ public sealed partial class OwnershipBody
     internal readonly List<OwnershipCallReservation> CallReservations = new();
     internal readonly List<int> LoanInputs = new();
     internal readonly List<int> LoanStates = new();
-    internal readonly List<int> OperationRegions = new();
-    internal readonly List<OwnershipCheckingRegion> CheckingRegions = new();
-    internal readonly List<OwnershipCheckingSeed> CheckingSeeds = new();
-    internal readonly List<OwnershipCheckingReplay> CheckingReplays = new();
     internal readonly Dictionary<BindingSymbol, int> SymbolPlaces = new(ReferenceEqualityComparer.Instance);
     internal int ReceiverBase = -1;
     internal bool[] Reachable = [];
@@ -454,12 +450,6 @@ public sealed partial class OwnershipBody
         this.LoanStates.Clear();
         this.reportedIssues.Clear();
         this.reservedElementWrites?.Clear();
-        this.OperationRegions.Clear();
-        this.CheckingRegions.Clear();
-        this.CheckingSeeds.Clear();
-        this.CheckingReplays.Clear();
-        this.CheckingRegions.Add(new(-1, -1)); // Region zero is ordinary source flow.
-        this.checkingSolved = false;
         this.ResetCompletion();
         this.SymbolPlaces.Clear();
     }
@@ -532,20 +522,6 @@ public sealed partial class OwnershipBody
         return false;
     }
 }
-
-// A checking-only seed edge. Its source is replayed after its containing region
-// converges; it never enters EdgeStorage or contributes a runtime predecessor.
-// Target is null for function-terminal paths. MixedTargets permits local checking;
-// constituent seeds retain their own effects when crossing an extent boundary.
-// CaughtTarget marks a source continuation after a transfer to a checking scope.
-// Its post-cleanup normal arrival is tracked separately; Target stays unchanged.
-internal readonly record struct OwnershipCheckingRegion(int Seed, int Entry, int SeedStart = 0, int SeedCount = 0, Koto? Target = null, bool MixedTargets = false, int Replay = -1, Koto? CaughtTarget = null);
-
-internal readonly record struct OwnershipCheckingSeed(int Operation, Koto? Target, int Replay = -1, Koto? CaughtTarget = null);
-
-// A proven closed checking path, applied to one constituent state before joining.
-// Previous links are strictly older; storage is reused across analysis passes.
-internal readonly record struct OwnershipCheckingReplay(int Entry, int End, int Previous, bool Graph = false);
 
 // Values use their defining operation ID; Input on OwnershipOperation remains a Place ID.
 internal enum OwnershipValueKind : byte
@@ -643,7 +619,7 @@ internal readonly record struct OwnershipResultArrival(int Edge, int Write);
 // Includes secured results whose cleanup prevents arrival.
 internal readonly record struct OwnershipResultWrite(int Operation, int Declare);
 
-// Persistent stack links preserve independent branch and checking-region environments.
+// Persistent stack links preserve independent branch environments.
 // Calls, comparisons, guard inspection and element access share the same lexical chain.
 // Read anchors acquisition: Read/Borrow, LocateReceiver for storage protection,
 // and final ProjectElement for an exclusive write.

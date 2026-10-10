@@ -56,10 +56,6 @@ public class OwnershipPropertyEmissionTest
     }
 
     [Fact]
-    public void InputAbruptCompletionDoesNotAcquireReceiverOrInvokeSetter()
-        => ScalarEmissionTest.EmitFixture("OwnershipPropertyAbrupt", Resource + Holder + "func update(h: uniq/Holder) -> i32\n    h.item = do\n        return 7\nvar h = Holder.init(Resource.init(1))\nrequire update(h@uniq) == 7 and h.item.id == 1 else => $abort(\"early return\")", "1\n");
-
-    [Fact]
     public void SetterMoveFailureKeepsTheUnavailableRootInCliAndLsp()
     {
         var source = Resource + Holder + "var h = Holder.init(Resource.init(1))\nlet value = Resource.init(2)\nh.item = value@move\n_ = value.id";

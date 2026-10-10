@@ -24,11 +24,10 @@ public class StringGuardEmissionTest
     [InlineData("ShortCircuit", "match \"a\"@move\n    let s if false and same(s, s) => ()\n    let s if true or same(s, s) => Console.writeLine(s)\n    _ => ()", "a\n")]
     [InlineData("Deferred", "defer\n    match \"a\"@move\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()\nConsole.writeLine(\"ok\")", "ok\na\n")]
     [InlineData("Cleanup", "var flag = true\nmatch \"a\"@move\n    let s if (label check: do\n        defer => flag = false\n        exit to check same(s, s)\n    ) => if not flag => Console.writeLine(s)\n    _ => ()", "a\n")]
-    [InlineData("Transfer", "func run() -> string\n    match \"a\"@move\n        let s if (return \"ok\") => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
+    [InlineData("Transfer", "func run() -> string\n    match \"a\"@move\n        let s if (return \"ok\") => \"unused\"\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
     [InlineData("Loop", "var n = 0\nwhile n < 3\n    n += 1\n    match \"a\"@move\n        let s if same(s, \"a\") => Console.writeLine(s)\n        _ => ()", "a\na\na\n")]
     [InlineData("Nested", "match \"a\"@move\n    let outer if (match \"a\"@move\n        let inner if same(outer, inner) => true\n        _ => false\n    ) => Console.writeLine(outer)\n    _ => ()", "a\n")]
     [InlineData("OuterLoan", "let text = \"a\"\nif text == (match \"a\"@move\n    let s if same(s, \"a\") => \"a\"\n    _ => \"b\"\n) => Console.writeLine(text)", "a\n")]
-    [InlineData("CheckingRead", "func run() -> string\n    match \"a\"@move\n        let s if (label check: do\n            return \"ok\"\n            same(s, s)\n            exit to check true\n        ) => s@move\n        _ => \"other\"\n    return \"bad\"\nConsole.writeLine(run())", "ok\n")]
     public void Execute(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("StringGuard" + name, Same + source, stdout);
 

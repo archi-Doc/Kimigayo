@@ -69,8 +69,8 @@ public class FunctionEmissionTest
     [InlineData("func unused() -> ()\n    " + MinimalEmissionTest.FloatExpression + "\n()", true)]
     [InlineData("public func main() -> i32 => 0")]
     [InlineData("public func main() => ()\n()")]
-    [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nvar x = 1\nf(spin(), x++)", true)]
-    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nvar x = 1\nlet y = label outer: do\n    f((label inner: do => exit to outer 7), x++)", true)]
+    [InlineData("func spin() -> Never => loop => ()\nfunc f(a: i32, b: i32) => ()\nf(spin(), 2)", true)]
+    [InlineData("func f(a: i32, b: i32) -> i32 => a + b\nlet y = label outer: do\n    f((label inner: do => exit to outer 7), 2)", true)]
     public void SelectedBodiesAndStartupRespectSupportedFeatures(string source, bool emitted = false)
     {
         var c = MinimalEmissionTest.Analyze(source);

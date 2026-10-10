@@ -9,31 +9,6 @@ namespace XunitTest;
 public class TerminalGuardContinuationTest
 {
     [Theory]
-    [InlineData("return")]
-    [InlineData("exit")]
-    [InlineData("exit to scope")]
-    [InlineData("if c => return else => false")]
-    [InlineData("not (return)")]
-    [InlineData("(return) and c")]
-    [InlineData("(return) or c")]
-    public void GuardTransfersPreserveMixedSourceExtents(string guard)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var x = 1", guard, "x = 2", "let y = x"));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-        foreach (var body in c.Ownership.Bodies)
-        {
-            foreach (var region in body.CheckingRegions.Skip(1))
-            {
-                if (region.Entry >= 0)
-                {
-                    Assert.False(body.IsReachable(region.Entry));
-                }
-            }
-        }
-    }
-
-    [Theory]
     [InlineData("not 1")]
     [InlineData("(return) and 1")]
     [InlineData("(return) or 1")]
@@ -74,56 +49,18 @@ public class TerminalGuardContinuationTest
     }
 
     [Fact]
-    public void GuardYieldTargetsAnEnclosingSelection()
+    public void GuardTransfersReleaseExactlyOnce()
     {
-        var source = Source("var x = 1", "yield to scope", "x = 2", "let y = x")
-            .Replace("label scope: do", "label scope: if true", StringComparison.Ordinal);
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-    }
-
-    [Theory]
-    [InlineData("return")]
-    [InlineData("if c => return else => false")]
-    [InlineData("label guard: do\n                    return\n                    flag == flag\n                    exit to guard true\n                ")]
-    public void AbandonedStringProtectionDoesNotEscapeIntoBodyAcquisition(string guard)
-    {
-        var c = MinimalEmissionTest.Analyze(Source("var x = 1", guard, "Console.writeLine(flag)", "let y = x", "\"subject\""));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.All(c.Ownership.Bodies, body => Assert.True(body.ValidateComparisonLoans()));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-    }
-
-    [Theory]
-    [InlineData("stop()", "c", "()")]
-    [InlineData("$abort(\"direct\")", "\"subject\"", "Console.writeLine(flag)")]
-    [InlineData("halt(flag)", "\"subject\"", "Console.writeLine(flag)")]
-    [InlineData("loop => ()", "\"subject\"", "Console.writeLine(flag)")]
-    [InlineData("if c => stop() else => false", "\"subject\"", "Console.writeLine(flag)")]
-    public void NoncompletingGuardsKeepCheckingWithoutRuntimeSelection(string guard, string subject, string body)
-    {
-        var c = MinimalEmissionTest.Analyze("func halt(text: ref/string) -> Never => $abort(\"halt\")\n" +
-            Source("var x = 1", guard, body, "let y = x", subject));
-        Assert.True(c.Ownership.Result.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.All(c.Ownership.Bodies, body => Assert.True(body.ValidateComparisonLoans()));
-        Assert.True(c.Emission.WriteIr(TextWriter.Null, out var error), error);
-    }
-
-    [Fact]
-    public void GuardTransfersReleaseExactlyOnceAndDoNotExecuteCheckingBodies()
-    {
-        var source = "func run(early: bool)\n    let outer = \"outer\"\n    match \"subject\"\n        let candidate if (if early => return else => false) => Console.writeLine(candidate)\n        _ => Console.writeLine(\"fallback\")\n    Console.writeLine(outer)\nrun(true)\nrun(false)\n" +
-            Source("var x = 1", "return", "Console.writeLine(flag)", "let y = x", "\"unselected\"");
+        const string Source = "func run(early: bool)\n    let outer = \"outer\"\n    match \"subject\"\n        let candidate if (if early => return else => false) => Console.writeLine(candidate)\n        _ => Console.writeLine(\"fallback\")\n    Console.writeLine(outer)\nrun(true)\nrun(false)";
         const string Name = "TerminalGuardWindowTransfers";
-        var ir = ScalarEmissionTest.EmitFixture(Name, source, "fallback\nouter\n");
-        StringEmissionTest.WriteAuditedFixture(Name, source, ir, "fallback\nouter\n", "outer=2;subject=2;fallback=1;unselected=0");
+        var ir = ScalarEmissionTest.EmitFixture(Name, Source, "fallback\nouter\n");
+        StringEmissionTest.WriteAuditedFixture(Name, Source, ir, "fallback\nouter\n", "outer=2;subject=2;fallback=1");
     }
 
     [Fact]
     public void AbortingGuardDoesNotAcquireOrDestroySubject()
     {
-        const string Source = "func halt(text: ref/string) -> Never => $abort(\"halt\")\nmatch \"held\"\n    let text if halt(text) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
+        const string Source = "func halt(text: ref/string) -> Never => $abort(\"halt\")\nmatch \"held\"\n    let text if halt(text) => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
         const string Name = "TerminalGuardWindowAbort";
         var stderr = "Hello.kimi:1:" + (Source.IndexOf("$abort", StringComparison.Ordinal) + 1) + ": abort KIMI_E_ABORT: halt\n";
         var ir = ScalarEmissionTest.EmitFixture(Name, Source, string.Empty, 1, stderr);
@@ -133,49 +70,17 @@ public class TerminalGuardContinuationTest
     [Fact]
     public void DivergentGuardKeepsCleanupUnreachable()
     {
-        const string Source = "match \"held\"\n    let text if (loop => ()) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
+        const string Source = "match \"held\"\n    let text if (loop => ()) => Console.writeLine(\"selected\")\n    _ => Console.writeLine(\"fallback\")";
         ScalarEmissionTest.EmitFixture("TerminalGuardWindowDivergence", Source, string.Empty, timeoutMilliseconds: 300);
         var c = MinimalEmissionTest.Analyze(Source);
         var body = Assert.Single(c.Ownership.Bodies, x => x.Matches.Count != 0);
         Assert.False(body.IsReachable(body.MatchArms[0].BodyEntry));
         // Ownership conservatively retains Pattern failure; lowering proves the
-        // catch-all always enters this guard. Its protection end is checking-only.
+        // catch-all always enters this guard. Its protection end is unreachable.
         // The writeLine calls end their own argument borrows (SPEC 22.4) and are excluded.
         Assert.All(
             body.Operations.Select((op, id) => (op, id)).Where(x => x.op.Kind == OwnershipOperationKind.EndComparisonLoans && x.op.Source is not InvocationKoto),
             x => Assert.False(body.IsReachable(x.id)));
-    }
-
-    // A divergent guard that is not state-neutral checks its arm body in a fresh region seeded from the guard's state. Ending
-    // the guard's protection there adds no runtime edge into the body, so the plan stays emittable, and the body's uses are
-    // still checked.
-    [Fact]
-    public void EffectfulDivergentGuardChecksTheBodyWithoutARuntimeEdge()
-    {
-        const string Source = "func work() => ()\nmatch \"held\"\n    let text if (loop => work()) => Console.writeLine(text)\n    _ => Console.writeLine(\"fallback\")";
-        ScalarEmissionTest.EmitFixture("TerminalGuardWindowEffectfulDivergence", Source, string.Empty, timeoutMilliseconds: 300);
-        var c = MinimalEmissionTest.Analyze(Source);
-        var body = Assert.Single(c.Ownership.Bodies, x => x.Matches.Count != 0);
-        Assert.False(body.IsReachable(body.MatchArms[0].BodyEntry));
-        Assert.True(body.HasCheckingState(body.MatchArms[0].BodyEntry));
-
-        var moved = MinimalEmissionTest.Analyze("func work() => ()\nfunc f(s: string)\n    let t = s@move\n    match \"held\"\n        let text if (loop => work()) => Console.writeLine(s)\n        _ => ()\npublic func main() => ()");
-        Assert.True(moved.Binding.Result.IsComplete, MinimalEmissionTest.Describe(moved, null));
-        var issue = Assert.Single(moved.Ownership.Issues);
-        Assert.Equal(OwnershipFailure.PossiblyMovedUse, issue.Failure);
-    }
-
-    [Theory]
-    [InlineData("let s = \"s\"", "return", "_ = s@move", "Console.writeLine(s)", OwnershipFailure.PossiblyMovedUse)]
-    [InlineData("let x: i32", "if c => return else => false", "x = 2", "x = 3", OwnershipFailure.ReassignedLet)]
-    public void UnselectedBodiesStillCheckEffects(string declaration, string guard, string body, string tail, OwnershipFailure failure)
-    {
-        var c = MinimalEmissionTest.Analyze(Source(declaration, guard, body, tail));
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Empty(c.Ownership.ControlFlow!.Issues);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == failure);
-        Assert.DoesNotContain(c.Ownership.Issues, x => x.Failure == OwnershipFailure.Unsupported);
-        Assert.False(c.Emission.Validate(out _));
     }
 
     private static string Source(string declaration, string guard, string body, string tail, string subject = "c")

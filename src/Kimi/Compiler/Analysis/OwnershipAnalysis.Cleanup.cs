@@ -90,13 +90,6 @@ public sealed partial class OwnershipAnalysis
         this.deferredDepth--;
         this.deferredLoopBase = loopBase;
         this.deferredSelectionBase = selectionBase;
-        if (!completes)
-        {
-            // A checking-only continuation preserves diagnostics after divergent cleanup.
-            // It has no runtime edge and cannot deliver the pending transfer/result.
-            this.checkingRegion = this.body.CheckingRegions.Count;
-            this.body.CheckingRegions.Add(new(entry, -1));
-        }
     }
 
     private sealed class DeferredExpansionLimitException(Koto source) : Exception
