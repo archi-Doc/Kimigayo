@@ -123,7 +123,7 @@ public sealed class CodeContext
             this.Kotonoha.RecordSource(sourceDocument, producingModId, additionOrder);
         }
 
-        this.Compilation.BeginSourceParsing();
+        this.Compilation.BeginSourceParsing(this.Kotonoha);
         // One target bound to the document serves the lexer and the parser, so parser recovery can rest on a lexical Error.
         var diagnostics = this.DiagnosticCollection.For(sourceDocument);
         var tokenizer = new Tokenizer(diagnostics, sourceDocument) { CollectDocumentation = this.Compilation.CollectDocumentation, OptionalHoverOwner = this.Compilation.CollectHover ? this.Compilation : null };

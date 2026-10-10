@@ -402,6 +402,12 @@ public abstract class Koto
     /// <summary>Gets the parent node, or <see langword="null"/> for the root.</summary>
     public Koto? Parent { get; internal set; }
 
+    /// <summary>Gets the table that numbers this node, or <see langword="null"/> while the node has no id.</summary>
+    public SyntaxTable? SyntaxOwner { get; internal set; }
+
+    /// <summary>Gets the dense id of this node in <see cref="SyntaxOwner"/>; 0 is none.</summary>
+    public int SyntaxId { get; internal set; }
+
     /// <summary>Gets the direct syntax-tree children of this node, in the order <see cref="VisitChildren"/> visits them.</summary>
     public IEnumerable<Koto> ChildNodes
     {
@@ -473,41 +479,57 @@ public abstract class Koto
     }
 
     /// <summary>Gets the current semantic binding state; this does not certify descendants.</summary>
-    public BindingState BindingState { get; internal set; }
+    public BindingState BindingState
+    {
+        get;
+        internal set => field = this.NoteWrite(value, value != BindingState.Unvisited);
+    }
 
     /// <summary>Gets the resolved complete type, or null while unavailable.</summary>
     public BoundType? BoundType
     {
         get => this.boundMeaning as BoundType;
-        internal set => this.boundMeaning = value;
+        internal set => this.BoundMeaning = value;
     }
 
     /// <summary>Gets the resolved Origin when this syntax occurs in the Origin namespace.</summary>
     public BoundOrigin? BoundOrigin
     {
         get => this.boundMeaning as BoundOrigin;
-        internal set => this.boundMeaning = value;
+        internal set => this.BoundMeaning = value;
     }
 
     /// <summary>Gets the selected symbol, or null before selection.</summary>
-    public BindingSymbol? BoundSymbol { get; internal set; }
+    public BindingSymbol? BoundSymbol
+    {
+        get;
+        internal set => field = this.NoteWrite(value, value is not null);
+    }
 
     internal bool HasCurrentBinding => this.BindingState == BindingState.Resolved &&
         (this.CodeContext.Compilation.Binding.IsRunning || this.CodeContext.Compilation.Binding.Result != default);
 
-    internal BoundType? ErasedFunctionType { get; set; }
+    internal BoundType? ErasedFunctionType
+    {
+        get;
+        set => field = this.NoteWrite(value, value is not null);
+    }
 
     internal BoundFormatting? FormattingStorage { get; set; }
 
     internal BoundFormatting? Formatting => this.FormattingStorage is { Active: true } plan ? plan : null;
 
-    internal BindingFailure BindingFailure { get; set; }
+    internal BindingFailure BindingFailure
+    {
+        get;
+        set => field = this.NoteWrite(value, value != BindingFailure.None);
+    }
 
     /// <summary>Gets or sets the shared Type/Origin slot as a whole, so snapshots never clear one meaning through the other.</summary>
     internal object? BoundMeaning
     {
         get => this.boundMeaning;
-        set => this.boundMeaning = value;
+        set => this.boundMeaning = this.NoteWrite(value, value is not null);
     }
 
     // Type and Origin syntax occupy different namespaces; they share one semantic reference slot.
@@ -557,6 +579,7 @@ public abstract class Koto
 
                 current.Parent = default;
                 current.AttributeChain = default;
+                this.CodeContext.Compilation.NoteSyntaxEdit(this);
                 return true;
             }
 
@@ -699,7 +722,7 @@ public abstract class Koto
 
         oldKoto.Parent = default;
         newKoto.Parent = this;
-        this.CodeContext.Compilation.NoteSyntaxEdit();
+        this.CodeContext.Compilation.NoteSyntaxEdit(this);
         return true;
     }
 
@@ -749,7 +772,7 @@ public abstract class Koto
         this.BoundMeaning = null;
         this.BoundSymbol = null;
         this.BindingFailure = BindingFailure.None;
-        this.CodeContext.Compilation.NoteSyntaxEdit();
+        this.CodeContext.Compilation.NoteSyntaxEdit(this);
     }
 
     /// <summary>Writes the attribute chain, if any, followed by the requested trailing text.</summary>
@@ -828,5 +851,17 @@ public abstract class Koto
         slots.Slot(this.AttributeChain);
         slots.List(OriginClauses.Get(this));
         this.ForEachChildSlot(ref slots);
+    }
+
+    // A node outside every numbered tree, such as one Binding synthesizes, takes its module's next id at its first semantic write.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private T NoteWrite<T>(T value, bool written)
+    {
+        if (written)
+        {
+            SyntaxTable.EnsureId(this);
+        }
+
+        return value;
     }
 }

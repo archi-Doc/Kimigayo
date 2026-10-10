@@ -87,6 +87,14 @@ public sealed partial class Binding
         this.running = true;
         try
         {
+            // SyntaxIds: each module is renumbered only when parsing or an edit changed its syntax since it was last numbered.
+            foreach (var module in this.compilation.SourceModules)
+            {
+                module.Syntax.Number(module.RootKoto);
+            }
+
+            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto);
+
             // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
             // leaves no result behind.
             this.Result = default;

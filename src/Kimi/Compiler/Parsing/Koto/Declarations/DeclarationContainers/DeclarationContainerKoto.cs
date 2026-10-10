@@ -378,6 +378,8 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         {
             this.Kotonoha.ClearGeneratedFunction();
         }
+
+        this.CodeContext.Compilation.NoteSyntaxEdit(this);
     }
 
     /// <summary>Writes this Declaration Container and all nested Declaration Containers as source text.</summary>

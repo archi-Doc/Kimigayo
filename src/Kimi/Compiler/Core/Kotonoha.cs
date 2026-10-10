@@ -57,6 +57,10 @@ public sealed partial class Kotonoha
     [IgnoreMember]
     public GroupKoto RootKoto { get; private set; }
 
+    /// <summary>Gets the SyntaxId numbering of this source unit's syntax.</summary>
+    [IgnoreMember]
+    public SyntaxTable Syntax { get; private set; } = new();
+
     /// <summary>
     /// Gets the generated function that owns executable top-level syntax.
     /// </summary>
@@ -165,6 +169,7 @@ public sealed partial class Kotonoha
         compilation.Diagnostics.InvalidateSyntax(this);
         this.Compilation = compilation;
         this.RootKoto = new(new CodeContext(this), default, default);
+        this.Syntax = new();
         this.GeneratedFunction = null;
         this.documentationSources = null;
 
@@ -265,7 +270,7 @@ public sealed partial class Kotonoha
 
     private void ParseSource(SourceDocument sourceDocument, string? modId = null, int additionOrder = 0)
     {
-        this.Compilation.BeginSourceParsing();
+        this.Compilation.BeginSourceParsing(this);
         var path = sourceDocument.Path;
         var directory = this.Compilation.Project.Directory;
         if (path.Length > 0 && directory.Length > 0)

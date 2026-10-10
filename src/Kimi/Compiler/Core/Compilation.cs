@@ -315,21 +315,25 @@ public partial class Compilation
     }
 
     /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and
-    /// certificates published by one declaration are used everywhere; only Binding's own normalization of the syntax it
-    /// is binding, such as a try selection, is not an edit.</summary>
-    internal void NoteSyntaxEdit()
+    /// certificates published by one declaration are used everywhere, and renumbers the edited module at the next Bind; only
+    /// Binding's own normalization of the syntax it is binding, such as a try selection, is not an edit.</summary>
+    /// <param name="parent">The node whose children changed.</param>
+    internal void NoteSyntaxEdit(Koto parent)
     {
         if (this.binding is { IsRunning: true })
         {
             return;
         }
 
+        // The table that numbered the parent holds it, also after a transplant re-homed it from its source module.
+        (parent.SyntaxOwner ?? parent.Kotonoha.Syntax).Edit();
         this.InvalidateSourceAnalysis();
     }
 
-    internal void BeginSourceParsing()
+    internal void BeginSourceParsing(Kotonoha module)
     {
         this.hasParsedSource = true;
+        module.Syntax.Edit();
         this.InvalidateSourceAnalysis();
     }
 
