@@ -9,13 +9,14 @@ namespace XunitTest;
 public class CompilerSizeBudgetTest
 {
     // R2a exit (2026-10-11): an area may grow by at most 2% over its size at the R2a exit (Core, which grew in R2a,
-    // keeps its lower R1 cap), and the total (126,611 lines, closed above the R2a ceiling of 125,000) may not grow.
-    private const int TotalCap = 126_611;
+    // keeps its lower R1 cap). R2b (a parallel stage, plan section 10.4) checks the R2b ceiling as the total and lets
+    // Binding, which builds the HIR columns and plans, take the whole stage room (55,155 + 2,389 lines).
+    private const int TotalCap = 129_000;
 
     private static readonly Dictionary<string, int> Caps = new(StringComparer.Ordinal)
     {
         ["Analysis"] = 17_942,
-        ["Binding"] = 56_258,
+        ["Binding"] = 57_544,
         ["Core"] = 1_614,
         ["Documentation"] = 4_424,
         ["Emission"] = 21_320,
