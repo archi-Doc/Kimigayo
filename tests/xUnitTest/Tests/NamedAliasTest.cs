@@ -147,7 +147,7 @@ public class NamedAliasTest
         {
             Assert.True(c.Bind().IsComplete, Describe(c));
             Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>(), x => ReferenceEquals(x.BoundSymbol, c.Library.WriteLine));
-            Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.IsValueCall);
+            Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallStorage?.Kind == CalleeKind.Value);
             c.Kotonoha.OnDeserialized(c);
         }
     }

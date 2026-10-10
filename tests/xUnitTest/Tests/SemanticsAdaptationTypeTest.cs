@@ -175,7 +175,7 @@ public class SemanticsAdaptationTypeTest
         var callee = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "take");
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
-        var call = new BoundCall();
+        var call = new CallPlan();
         call.Set(callee.BoundSymbol!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var substituted = c.Binding.InstantiateStorageType(callee.Parameters[0].Type.BoundType!, call);
         Assert.NotNull(substituted);
@@ -193,7 +193,7 @@ public class SemanticsAdaptationTypeTest
         var callee = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.Name == "take");
         var view = c.Binding.AdaptedType(SemanticsKind.ObjRef, BoundType.I32, c.Binding.PairOuterOrigin(pair));
         var type = c.Binding.SemanticsAdaptation(pair, view, BoundOrigin.Static);
-        var call = new BoundCall();
+        var call = new CallPlan();
         call.Set(callee.BoundSymbol!, BoundType.Unit, null, [0], [type], origins: [BoundOrigin.Static], inputOrigins: [BoundOrigin.Static]);
         var original = callee.Parameters[0].Type.BoundType!;
         var written = new BoundType(original.Name, original.Kind, original.Symbol, original.Semantics, origin: BoundOrigin.Static);

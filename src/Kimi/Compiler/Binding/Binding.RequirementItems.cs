@@ -101,7 +101,7 @@ public sealed partial class Binding
         return selected;
     }
 
-    private BoundCall? RequirementItemContext(BoundType item, FunctionKoto function, BoundType result)
+    private CallPlan? RequirementItemContext(BoundType item, FunctionKoto function, BoundType result)
     {
         if (item.Components.Count != 2)
         {
@@ -125,7 +125,7 @@ public sealed partial class Binding
                 operations[i] = new(function.Parameters[i].Type, parameter, parameter, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: i);
             }
 
-            var context = new BoundCall();
+            var context = new CallPlan();
             context.Set(item.Symbol!, result, null, [], [], conformingType: self, inputOrigins: inputs.AsSpan(0, InputOriginCount(function)), operations: operations);
             context.RequirementContract = contract;
             return item.ContainsParameter ? context : this.InstantiateRequirementCall(context, context);

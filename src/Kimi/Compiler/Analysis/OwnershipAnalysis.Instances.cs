@@ -10,7 +10,7 @@ public sealed partial class OwnershipAnalysis
     private readonly List<OwnershipBody> instancePool = new();
     private int instanceCount;
     private OwnershipBody? instanceBody;
-    private BoundCall? instance;
+    private CallPlan? instance;
     private bool instanceFailed;
 
     // SPEC 8.10: the Semantics case of the current definition run, one admitted Semantics per resolved pair binder in scope;
@@ -46,7 +46,7 @@ public sealed partial class OwnershipAnalysis
     /// <param name="call">A closed call whose substitution selects the instance.</param>
     /// <param name="defaultParameter">The default to execute, or -1 for the ordinary function body.</param>
     /// <returns>The verified instance plan, valid until <see cref="ClearInstances"/>.</returns>
-    internal OwnershipBody? AnalyzeInstance(OwnershipBody generic, BoundCall call, int defaultParameter = -1)
+    internal OwnershipBody? AnalyzeInstance(OwnershipBody generic, CallPlan call, int defaultParameter = -1)
     {
         if (!generic.IsVerified || this.flow is null || this.Substituting)
         {

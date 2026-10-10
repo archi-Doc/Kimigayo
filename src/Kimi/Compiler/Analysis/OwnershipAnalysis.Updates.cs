@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private int WholeValueUpdate(InvocationKoto call, BoundCall plan)
+    private int WholeValueUpdate(InvocationKoto call, CallPlan plan)
     {
         var depth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;

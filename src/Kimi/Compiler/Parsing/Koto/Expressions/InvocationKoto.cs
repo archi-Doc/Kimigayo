@@ -15,11 +15,11 @@ public sealed class InvocationKoto : ApplicationKoto
     {
     }
 
-    /// <summary>Gets the selected call plan for the current Binding, or null before selection.</summary>
-    public BoundCall? BoundCall => this.HasCurrentBinding && !this.IsValueCall ? this.CallStorage : null;
+    /// <summary>Gets the selected call plan of a named callee for the current Binding, or null before selection.</summary>
+    public CallPlan? BoundCall => this.HasCurrentBinding && this.CallStorage is { Kind: not CalleeKind.Value } plan ? plan : null;
 
-    /// <summary>Gets a checked invocation of a common function value.</summary>
-    public BoundValueCall? BoundValueCall => this.HasCurrentBinding && this.IsValueCall ? this.ValueCallStorage : null;
+    /// <summary>Gets the checked invocation of a callable value for the current Binding.</summary>
+    public CallPlan? BoundValueCall => this.HasCurrentBinding && this.CallStorage is { Kind: CalleeKind.Value } plan ? plan : null;
 
     /// <inheritdoc/>
     public override KotoKind Akind => KotoKind.Invocation;
@@ -27,11 +27,7 @@ public sealed class InvocationKoto : ApplicationKoto
     /// <summary>Gets the invoked expression.</summary>
     public Koto Method => this.Target;
 
-    internal BoundCall? CallStorage { get; set; }
-
-    internal BoundValueCall? ValueCallStorage { get; set; }
-
-    internal bool IsValueCall { get; set; }
+    internal CallPlan? CallStorage { get; set; }
 
     internal bool RightFirstArguments => this.Method is RequirementCalleeKoto && this.Parent is BinaryKoto { Akind: >= KotoKind.PlusEquals and <= KotoKind.PercentEquals };
 

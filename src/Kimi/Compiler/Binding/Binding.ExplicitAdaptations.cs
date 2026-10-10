@@ -9,7 +9,7 @@ public sealed partial class Binding
     private readonly ScratchBuffers<PairCase> adaptationCaseScratch = new();
 
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
-    internal BoundCall ResolveObjectCreation(ConversionKoto conversion, BoundType source, BoundType target, BoundCall destination)
+    internal CallPlan ResolveObjectCreation(ConversionKoto conversion, BoundType source, BoundType target, CallPlan destination)
     {
         var factory = this.Library.GetSymbol(ObjectFactoryId(target.Semantics))!;
         var argument = new BoundArgumentOperation(conversion.Left, source, source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: 0);

@@ -44,11 +44,11 @@ public class ValueCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var plan = Assert.IsType<BoundValueCall>(call.BoundValueCall);
+        var plan = Assert.IsType<CallPlan>(call.BoundValueCall);
         Assert.Null(call.BoundCall);
-        Assert.Same(call.Method, plan.Receiver);
+        Assert.Same(call.Method, plan.CalleeValue);
         Assert.Same(call.BoundType, plan.ReturnType);
-        Assert.Equal(call.ArgumentNodes.Count, plan.Arguments.Length);
+        Assert.Equal(call.ArgumentNodes.Count, plan.ArgumentOperations.Length);
     }
 
     // SPEC 7.3, 13.5.5.1: an object callee records the acquisition of its complete payload; a value reference keeps none.
@@ -62,8 +62,8 @@ public class ValueCallBindingTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
-        var plan = Assert.IsType<BoundValueCall>(call.BoundValueCall);
-        Assert.Same(call.Method, plan.Receiver);
+        var plan = Assert.IsType<CallPlan>(call.BoundValueCall);
+        Assert.Same(call.Method, plan.CalleeValue);
         Assert.Equal(payload ? ArgumentOperationKind.PayloadProjection : ArgumentOperationKind.Value, plan.ReceiverOperation.Kind);
         if (payload)
         {

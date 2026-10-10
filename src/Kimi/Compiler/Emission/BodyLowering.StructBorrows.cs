@@ -8,7 +8,7 @@ internal sealed partial class BodyLowering
 {
     private bool[] materializedScalars = [];
 
-    private static BoundArgumentOperation CallReceiverOperation(BoundCall call)
+    private static BoundArgumentOperation CallReceiverOperation(CallPlan call)
     {
         if (call.Receiver is null && call.Target.ReceiverIndex >= 0)
         {

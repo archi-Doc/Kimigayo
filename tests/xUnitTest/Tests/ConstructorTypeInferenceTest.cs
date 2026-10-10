@@ -22,7 +22,7 @@ public class ConstructorTypeInferenceTest
         var c = MinimalEmissionTest.Analyze(Box + use);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Declaration is FunctionKoto { IsConstructor: true });
-        var plan = Assert.IsType<BoundCall>(call.BoundCall);
+        var plan = Assert.IsType<CallPlan>(call.BoundCall);
         Assert.True(plan.TypeArguments.IsEmpty);
         Assert.Equal(name, Assert.Single(plan.DeclaringType!.Components).Name);
         Assert.Same(plan.DeclaringType, call.BoundType);

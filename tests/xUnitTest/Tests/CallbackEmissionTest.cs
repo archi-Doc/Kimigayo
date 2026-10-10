@@ -244,9 +244,9 @@ public class CallbackEmissionTest
                 break;
             case "argument":
                 var plan = invocation.BoundValueCall!;
-                var arguments = plan.Arguments.ToArray();
+                var arguments = plan.ArgumentOperations.ToArray();
                 arguments[0] = arguments[0] with { ParameterType = BoundType.Unit };
-                plan.Set(plan.Receiver, plan.Signature, arguments);
+                plan.SetValue(plan.CalleeValue, plan.Signature, arguments, plan.Signature, default, plan.ReceiverKind);
                 break;
             case "loan":
                 var loan = body.ComparisonLoans[0];

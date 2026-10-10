@@ -19,7 +19,7 @@ public sealed partial class Binding
     internal BoundType? StoredBase(BoundType type)
         => StructStorage.Declaration(type) is { Bases.Count: 1 } declaration ? this.StoredType(declaration.Bases[0], type) : null;
 
-    internal BoundType? InstantiateStorageType(BoundType type, BoundCall call)
+    internal BoundType? InstantiateStorageType(BoundType type, CallPlan call)
     {
         var result = this.MemberType(type, call.DeclaringType) is { } member &&
             this.SubstituteType(member, call.Target.Declaration, call.TypeArguments, call.LengthArguments) is { } substituted

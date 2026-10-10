@@ -23,7 +23,7 @@ internal sealed partial class BodyLowering
             ReferenceEquals(type, BoundType.String) ? 16 : FormattingTypes.IsUtf8Slice(type) ? 17 : -1;
     }
 
-    internal bool PrepareWriterDispatch(BoundCall call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
+    internal bool PrepareWriterDispatch(CallPlan call, EmissionFunction function, BoundType result, out long kind, out EmissionOperand dispatch, out string? failure)
     {
         kind = -1;
         dispatch = new(EmissionOperandKind.NullAddress, 0);
@@ -72,7 +72,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private int BuiltinFormatKind(BoundCall call)
+    private int BuiltinFormatKind(CallPlan call)
     {
         var logical = call.Target.CompilerFunction == CompilerFunctionKind.WriterWrite ? 1 : 0;
         var required = call.Receiver is not null && call.ReceiverOperation.ParameterIndex == logical ? call.ReceiverOperation.ParameterType : null;

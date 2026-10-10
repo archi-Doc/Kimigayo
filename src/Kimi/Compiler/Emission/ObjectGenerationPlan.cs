@@ -16,7 +16,7 @@ internal sealed class ObjectGenerationPlan
 {
     private static readonly Dictionary<SemanticsKind, string> SemanticsNames = Enum.GetValues<SemanticsKind>().ToDictionary(static x => x, static x => x.ToString());
     private static readonly Dictionary<BoundTypeKind, string> KindNames = Enum.GetValues<BoundTypeKind>().ToDictionary(static x => x, static x => x.ToString());
-    private readonly Dictionary<BoundCall, ObjectCall> calls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<CallPlan, ObjectCall> calls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundType, int> runtimeTypes = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, int> identities = new(StringComparer.Ordinal);
     private readonly Dictionary<BoundType, string> typeKeys = new(ReferenceEqualityComparer.Instance);
@@ -27,7 +27,7 @@ internal sealed class ObjectGenerationPlan
     private readonly List<(int Drop, ObjectCreation Entry)> physical = new();
     private int preparedEntries;
 
-    internal IReadOnlyDictionary<BoundCall, ObjectCall> Calls => this.calls;
+    internal IReadOnlyDictionary<CallPlan, ObjectCall> Calls => this.calls;
 
     internal IReadOnlyDictionary<BoundType, int> RuntimeTypes => this.runtimeTypes;
 
@@ -154,7 +154,7 @@ internal sealed class ObjectGenerationPlan
         return true;
     }
 
-    internal bool AddCall(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, out string? failure)
+    internal bool AddCall(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallPlan call, out string? failure)
     {
         failure = null;
         if (call.Target.CompilerFunction is not (CompilerFunctionKind.MakeObj or CompilerFunctionKind.MakeRc or CompilerFunctionKind.MakeArc) || this.calls.ContainsKey(call))

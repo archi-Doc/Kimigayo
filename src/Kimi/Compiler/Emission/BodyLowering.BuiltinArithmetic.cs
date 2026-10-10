@@ -12,7 +12,7 @@ internal sealed partial class BodyLowering
             body.Resolve(conforming, InterpretationContext.Root) is { } self && ArithmeticContracts.Supports(self, identity)
             ? NumericArithmetic.Check(ArithmeticContracts.Operator(identity), self) : ArithmeticCheckKind.None;
 
-    private bool LowerBuiltinArithmetic(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, BoundCall call, int id, out string? failure)
+    private bool LowerBuiltinArithmetic(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, CallPlan call, int id, out string? failure)
     {
         failure = null;
         if (body.Resolve(call.ConformingType, InterpretationContext.Root) is not { } self ||

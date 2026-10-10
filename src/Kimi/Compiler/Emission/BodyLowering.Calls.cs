@@ -85,15 +85,15 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    internal IReadOnlyDictionary<BoundCall, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, GenericStoragePlan.CallEntry>? GenericCalls { get; set; }
 
-    internal IReadOnlyDictionary<BoundCall, FunctionAbi>? FormattingCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, FunctionAbi>? FormattingCalls { get; set; }
 
-    internal IReadOnlyDictionary<BoundCall, FunctionAbi>? ComparisonCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, FunctionAbi>? ComparisonCalls { get; set; }
 
     internal IReadOnlyDictionary<BoundComparison, FunctionAbi>? ComparisonHelpers { get; set; }
 
-    internal IReadOnlyDictionary<BoundCall, ObjectCall>? ObjectCalls { get; set; }
+    internal IReadOnlyDictionary<CallPlan, ObjectCall>? ObjectCalls { get; set; }
 
     internal IReadOnlyDictionary<BoundType, int>? ObjectRuntimeTypes { get; set; }
 
@@ -121,7 +121,7 @@ internal sealed partial class BodyLowering
     private bool CannotCompleteCall(InvocationKoto call) => !this.flow!.Nodes[call].CanCompleteNormally;
 
     // A forwarded generic call inside a monomorphized instance binds to the callee's own instance entry (SPEC 21.3.1).
-    private GenericStoragePlan.CallEntry? ForwardedEntry(BoundCall call)
+    private GenericStoragePlan.CallEntry? ForwardedEntry(CallPlan call)
     {
         if (this.instanceEntry is not { } entry)
         {
@@ -204,14 +204,14 @@ internal sealed partial class BodyLowering
         var virtualReceiver = -1;
         if (target.IsVirtual)
         {
-            if (plan.VirtualDispatch is not { } dispatch || this.Virtuals is null)
+            if (plan.Kind != CalleeKind.Virtual || this.Virtuals is null)
             {
                 return Fail("A virtual call has no verified slot selection.", out failure);
             }
 
-            if (dispatch.IsDirect)
+            if (plan.VirtualIsDirect)
             {
-                callee = dispatch.Implementation is { } implementation ? this.Virtuals.Entry(implementation, dispatch.ImplementingType) : null;
+                callee = plan.VirtualImplementation is { } implementation ? this.Virtuals.Entry(implementation, plan.VirtualImplementingType) : null;
             }
             else if (!this.Virtuals.TrySlot(target, callee, out virtualSlot, out virtualReceiver))
             {

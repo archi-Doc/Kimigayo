@@ -160,41 +160,37 @@ public sealed partial class Binding
         return slot.Original is not null && this.VirtualApplicability(slot) == ConstraintProof.Refuted;
     }
 
-    // Called by the common BoundCall setter, including instantiated calls and Function Item contexts.
+    // Called by the common call-plan setter, including instantiated calls and Function Item contexts.
     // Target and its defaults always remain the original public contract.
-    internal BoundVirtualCall SelectVirtualCall(BoundCall call, FunctionKoto original, BoundVirtualCall? record)
+    internal void SelectVirtualCall(CallPlan call, FunctionKoto original)
     {
         var declaring = call.DeclaringType ?? this.SelfType(original.BoundSymbol!.Scope.Owner.BoundSymbol!);
-        record ??= new();
-        record.Slot = new(original, declaring);
-        record.IsDirect = call.Receiver is BaseReferenceKoto;
-        record.BaseLookupType = null;
-        record.Implementation = null;
-        record.ImplementingType = null;
-        if (record.IsDirect && ObjectTypes.ViewTarget(call.ReceiverOperation.SourceType) is { } receiver)
+        call.VirtualSlotType = declaring;
+        call.VirtualBaseLookupType = null;
+        call.VirtualImplementation = null;
+        call.VirtualImplementingType = null;
+        if (call.VirtualIsDirect && ObjectTypes.ViewTarget(call.ReceiverOperation.SourceType) is { } receiver)
         {
-            record.BaseLookupType = this.StoredBase(receiver);
-            for (var current = record.BaseLookupType; current is not null; current = this.StoredBase(current))
+            call.VirtualBaseLookupType = this.StoredBase(receiver);
+            for (var current = call.VirtualBaseLookupType; current is not null; current = this.StoredBase(current))
             {
                 if (current.Symbol is { } symbol && this.overrideEntries.TryGetValue((symbol, original), out var implementation) &&
                     this.virtualOverrides.TryGetValue(implementation, out var entry) && ReferenceEquals(this.MemberType(entry.Slot.DeclaringType, current), declaring))
                 {
                     // An invalid implementation remains selected; later proof checks must not fall back.
-                    record.Implementation = implementation;
-                    record.ImplementingType = current;
+                    call.VirtualImplementation = implementation;
+                    call.VirtualImplementingType = current;
                     break;
                 }
 
                 if (ReferenceEquals(current, declaring))
                 {
-                    record.Implementation = original;
-                    record.ImplementingType = declaring;
+                    call.VirtualImplementation = original;
+                    call.VirtualImplementingType = declaring;
                     break;
                 }
             }
         }
-
-        return record;
     }
 
     private void PrepareVirtualOverrides()

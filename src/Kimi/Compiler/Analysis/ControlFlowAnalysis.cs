@@ -368,7 +368,7 @@ public sealed class ControlFlowAnalysis
         }
 
         var bound = call.BoundCall;
-        receiver = bound?.Receiver ?? call.BoundValueCall?.Receiver;
+        receiver = bound?.Receiver ?? call.BoundValueCall?.CalleeValue;
         return bound is not null || call.BoundValueCall is not null;
     }
 

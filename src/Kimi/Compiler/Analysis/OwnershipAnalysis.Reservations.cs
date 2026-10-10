@@ -47,7 +47,7 @@ public sealed partial class OwnershipAnalysis
         var acquired = input.BoundType?.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq ? "reborrowed" : "borrowed";
         if (call.BoundValueCall is { } value)
         {
-            return Contains(value.Receiver, input) && !IsDirectExclusiveBorrow(value.Receiver) ? $"`{input}` implicitly {acquired} exclusively as the receiver of its call" : null;
+            return Contains(value.CalleeValue, input) && !IsDirectExclusiveBorrow(value.CalleeValue) ? $"`{input}` implicitly {acquired} exclusively as the receiver of its call" : null;
         }
 
         if (call.BoundCall is not { } bound)

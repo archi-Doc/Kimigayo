@@ -32,7 +32,7 @@ internal sealed partial class HoverBuilder
             var original = presented is FunctionKoto specialized && query.SpecializationOriginal(specialized) is { } originalFunction
                 ? originalFunction : presented;
             info = new([this.Declaration(original)], this.CallUse(call, syntax), TypeIdentity: this.CallIdentity(call));
-            if (call.VirtualDispatch is not null && query.TryGetObjectErasure(syntax, out var erasure))
+            if (call.Kind == CalleeKind.Virtual && query.TryGetObjectErasure(syntax, out var erasure))
             {
                 info = info with { TypeIdentity = new("erased receiver", [info.TypeIdentity!, this.TypeIdentity(erasure.Source), this.TypeIdentity(erasure.Target), this.BinderIdentity(erasure.Entry)]) };
             }
@@ -53,7 +53,7 @@ internal sealed partial class HoverBuilder
                 WriteBounds(text, available);
             }
         }
-        else if (query.ValueCallOf(syntax) is { ReceiverType: { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType } virtualItem)
+        else if (query.ValueCallOf(syntax) is { CalleeType: { Kind: BoundTypeKind.FunctionItem, Symbol.Declaration: FunctionKoto { IsVirtual: true } originalSlot } itemType } virtualItem)
         {
             info = new(
                 [this.Declaration(originalSlot)],
@@ -70,8 +70,8 @@ internal sealed partial class HoverBuilder
         {
             info = new(
                 [new("Call contract", string.Empty, this.TypeName(valueCall.DeclaredSignature), [], [])],
-                TypeIdentity: new("value call;" + valueCall.ReceiverKind, [this.TypeIdentity(valueCall.Signature), this.TypeIdentity(valueCall.ReceiverType)]));
-            if (query.CallableCore(valueCall.ReceiverType) is { } type && AbstractTypes.IsAbstract(type))
+                TypeIdentity: new("value call;" + valueCall.ReceiverKind, [this.TypeIdentity(valueCall.Signature), this.TypeIdentity(valueCall.CalleeType)]));
+            if (query.CallableCore(valueCall.CalleeType) is { } type && AbstractTypes.IsAbstract(type))
             {
                 evidence = [];
                 text = new();

@@ -362,7 +362,7 @@ public sealed partial class OwnershipBody
     internal List<int>? Anchors { get; set; }
 
     /// <summary>Gets or sets the closed call whose substitution this instance plan carries; null for a source body (SPEC 21.3.1).</summary>
-    internal BoundCall? Instance { get; set; }
+    internal CallPlan? Instance { get; set; }
 
     internal Binding? InstanceBinding { get; set; }
 
@@ -385,7 +385,7 @@ public sealed partial class OwnershipBody
         };
     }
 
-    internal void Reset(FunctionKoto function, BoundCall? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
+    internal void Reset(FunctionKoto function, CallPlan? instance, Binding? instanceBinding, ReadOnlySpan<PairCase> cases = default, ulong caseBit = 0)
     {
         this.ResetResolvedCalls();
         this.ResetCleanupEffects();

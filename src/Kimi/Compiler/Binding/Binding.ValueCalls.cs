@@ -4,45 +4,6 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-#pragma warning disable SA1402, CS1591 // The retained invocation plan accompanies its binder.
-
-/// <summary>A positional callable invocation with retained signature and receiver acquisition.</summary>
-public sealed class BoundValueCall
-{
-    private BoundArgumentOperation[] arguments = [];
-
-    public Koto Receiver { get; private set; } = null!;
-
-    public BoundType Signature { get; private set; } = null!;
-
-    public BoundType DeclaredSignature { get; private set; } = null!;
-
-    public BoundType ReturnType => this.Signature.Components[1];
-
-    public SemanticsKind ReceiverKind { get; internal set; } = SemanticsKind.Ref;
-
-    public BoundType ReceiverType => this.Receiver.BoundType!;
-
-    public ReadOnlySpan<BoundArgumentOperation> Arguments => this.arguments;
-
-    /// <summary>Gets the acquisition of an object callee's complete payload (SPEC 7.3, 13.5.5.1), or the default operation.</summary>
-    public BoundArgumentOperation ReceiverOperation { get; private set; }
-
-    internal void Set(Koto receiver, BoundType signature, ReadOnlySpan<BoundArgumentOperation> arguments, BoundType? declaredSignature = null, in BoundArgumentOperation receiverOperation = default)
-    {
-        this.Receiver = receiver;
-        this.ReceiverOperation = receiverOperation;
-        this.Signature = signature;
-        this.DeclaredSignature = declaredSignature ?? signature;
-        if (this.arguments.Length != arguments.Length)
-        {
-            this.arguments = new BoundArgumentOperation[arguments.Length];
-        }
-
-        arguments.CopyTo(this.arguments);
-    }
-}
-
 public sealed partial class Binding
 {
     private readonly BorrowAnnotationVisitor borrowAnnotationVisitor = new();
@@ -589,10 +550,7 @@ public sealed partial class Binding
             var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));
             var declaredSignature = signature;
             signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result], resultMode: signature.ResultMode);
-            call.ValueCallStorage ??= new();
-            call.ValueCallStorage.Set(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation);
-            call.ValueCallStorage.ReceiverKind = receiver;
-            call.IsValueCall = true;
+            (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
             return Complete(call, signature.ResultMode == FunctionResultMode.Value ? result : result.Components[0]);
         }
         finally

@@ -25,9 +25,9 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal BindingSymbol? SymbolOf(Koto node) => node.BoundSymbol;
 
-    internal BoundCall? CallOf(InvocationKoto node) => node.BoundCall;
+    internal CallPlan? CallOf(InvocationKoto node) => node.BoundCall;
 
-    internal BoundValueCall? ValueCallOf(InvocationKoto node) => node.BoundValueCall;
+    internal CallPlan? ValueCallOf(InvocationKoto node) => node.BoundValueCall;
 
     internal BindingState StateOf(Koto node) => node.BindingState;
 

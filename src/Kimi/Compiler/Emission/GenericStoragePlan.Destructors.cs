@@ -4,14 +4,14 @@ namespace Kimi.Compiler;
 
 internal sealed partial class GenericStoragePlan
 {
-    private readonly Dictionary<BoundCall, string> destructorNames = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BoundCall, int> requestedSourceCalls = new(ReferenceEqualityComparer.Instance);
-    private readonly List<(BoundCall Call, CallEntry? Parent)> sourceCallQueue = new();
+    private readonly Dictionary<CallPlan, string> destructorNames = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<CallPlan, int> requestedSourceCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly List<(CallPlan Call, CallEntry? Parent)> sourceCallQueue = new();
     private int preparedSourceCalls;
 
     internal bool HasPendingSourceCalls => this.preparedSourceCalls < this.sourceCallQueue.Count;
 
-    internal int RequireSourceCall(BoundCall call)
+    internal int RequireSourceCall(CallPlan call)
     {
         if (!this.requestedSourceCalls.TryGetValue(call, out var reference))
         {
@@ -69,7 +69,7 @@ internal sealed partial class GenericStoragePlan
     }
 
     // Descriptor-selected implementations enter the same bounded dependency graph as direct calls and destructors.
-    internal bool PrepareSourceEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, out FunctionAbi? abi, out string? failure, bool implementationBody = true)
+    internal bool PrepareSourceEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallPlan call, out FunctionAbi? abi, out string? failure, bool implementationBody = true)
     {
         abi = null;
         if (call.Target.Declaration is not Parsing.FunctionKoto function || !this.templates.TryGetValue(function, out var template))

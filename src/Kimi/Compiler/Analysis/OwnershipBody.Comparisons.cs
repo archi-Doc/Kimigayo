@@ -23,7 +23,7 @@ public sealed partial class OwnershipBody
     /// <param name="receiver">The plan's receiver Type where the call reads it.</param>
     /// <param name="plan">The value call.</param>
     /// <returns>Whether the Place lends the callee.</returns>
-    internal static bool IsBorrowedCallableReceiver(OwnershipPlace place, BoundType receiver, BoundValueCall plan)
+    internal static bool IsBorrowedCallableReceiver(OwnershipPlace place, BoundType receiver, CallPlan plan)
     {
         var payload = plan.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection;
         var callee = payload && (ObjectTypes.HandleMode(receiver) is not null || ObjectTypes.IsBorrow(receiver)) ? receiver.Components[0] : receiver;
@@ -264,10 +264,10 @@ public sealed partial class OwnershipBody
 
     // The receiver Place has the plan's Type or lends its callee (IsBorrowedCallableReceiver). The analyzed Place Type is compared with
     // the plan's declared receiver Type interpreted where the Loan reads it (SPEC 8.10).
-    private bool CallableReceiverType(int place, BoundValueCall plan, int read)
+    private bool CallableReceiverType(int place, CallPlan plan, int read)
     {
         var type = this.Places[place].Type;
-        var receiver = this.Resolve(plan.ReceiverType, this.ContextAt(read));
+        var receiver = this.Resolve(plan.CalleeType, this.ContextAt(read));
         return ReferenceEquals(type, receiver) || (receiver is not null && IsBorrowedCallableReceiver(this.Places[place], receiver, plan));
     }
 
@@ -279,7 +279,7 @@ public sealed partial class OwnershipBody
             (uint)loan.Place < (uint)this.Places.Count && (uint)loan.Read < (uint)this.Operations.Count && loan.Parent < index && loan.Depth > 0 &&
             loan.Call is null && loan.Guard == -1 && !loan.Access && loan.Projection == -1 &&
             this.Operations[loan.Read].Kind == OwnershipOperationKind.Read && this.Operations[loan.Read].Place == loan.Place &&
-            ReferenceEquals(this.Operations[loan.Read].Source, plan.Receiver) && this.CallableReceiverType(loan.Place, plan, loan.Read) &&
+            ReferenceEquals(this.Operations[loan.Read].Source, plan.CalleeValue) && this.CallableReceiverType(loan.Place, plan, loan.Read) &&
             (loan.Mode != LoanRequirement.Uniq || this.Places[loan.Place].Type.Semantics == SemanticsKind.Uniq || this.Places[loan.Place].Mutable) &&
             this.LoanInputs[loan.Read] == loan.Parent && this.LoanStates[loan.Read] == index &&
             (loan.Parent < 0 || this.ComparisonLoans[loan.Parent].Depth <= loan.Depth) &&

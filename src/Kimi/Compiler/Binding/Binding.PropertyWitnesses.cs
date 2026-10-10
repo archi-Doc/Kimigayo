@@ -106,7 +106,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundCall? InstantiatePropertyRequirementCall(BoundCall call, BoundCall outer, BoundCall? destination)
+    private CallPlan? InstantiatePropertyRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination)
     {
         var requirement = ((FunctionKoto)call.Target.Declaration).Accessor!;
         if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
@@ -138,7 +138,7 @@ public sealed partial class Binding
                 origins[i] = witness.Kind != PropertyWitnessKind.AccessorCall ? call.Origins[i] : witness.Origins[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement.Binder, call.Origins, call.InputOrigins) : null!;
             }
 
-            var result = destination ?? new BoundCall();
+            var result = destination ?? new CallPlan();
             result.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: storage ? self : declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
             return storage || this.ProjectWitnessCall(result, witness.BasePath, declaring) ? result : null;
         }

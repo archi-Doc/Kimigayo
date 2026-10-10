@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private bool LowerBuiltinComparison(OwnershipBody body, EmissionFunction function, BoundCall call, int id, out string? failure)
+    private bool LowerBuiltinComparison(OwnershipBody body, EmissionFunction function, CallPlan call, int id, out string? failure)
     {
         failure = null;
         if (this.ComparisonCalls?.GetValueOrDefault(call) is { } composite)

@@ -151,13 +151,13 @@ internal sealed class DefaultGenerationPlan
         return new(name, FunctionAbi.ResultType(result, layouts)!, parameters, resultSlot: resultSlot);
     }
 
-    internal sealed class Entry(FunctionKoto function, int parameter, BoundCall call, BoundType[] parameters, BoundType result, FunctionAbi abi)
+    internal sealed class Entry(FunctionKoto function, int parameter, CallPlan call, BoundType[] parameters, BoundType result, FunctionAbi abi)
     {
         internal FunctionKoto Function { get; } = function;
 
         internal int Parameter { get; } = parameter;
 
-        internal BoundCall Call { get; set; } = call;
+        internal CallPlan Call { get; set; } = call;
 
         internal BoundType[] Parameters { get; } = parameters;
 

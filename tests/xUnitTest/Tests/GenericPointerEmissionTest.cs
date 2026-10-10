@@ -87,7 +87,7 @@ public class GenericPointerEmissionTest
         var generic = c.Ownership.Bodies.Single(x => x.Function.Name == "take");
         var input = c.Ownership.Bodies.Single(x => x.Function.Name == "input");
         var element = input.Function.Parameters[0].Type.BoundType!.Components[0];
-        var call = new BoundCall();
+        var call = new CallPlan();
         call.Set(generic.Function.BoundSymbol!, element, null, [0], [element]);
         Assert.NotNull(c.Ownership.AnalyzeInstance(generic, call));
     }

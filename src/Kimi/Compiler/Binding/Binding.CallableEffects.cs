@@ -207,7 +207,7 @@ public sealed partial class Binding
         return true;
     }
 
-    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, BoundCall? call, ReadOnlySpan<BoundLength?> lengths = default)
+    private void CheckCallableEffectUses(Koto use, IReadOnlyList<Koto> clauses, Koto binder, ReadOnlySpan<BoundType?> arguments, BoundType? declaring, CallPlan? call, ReadOnlySpan<BoundLength?> lengths = default)
     {
         var scope = this.ConstraintScope(use);
         for (var i = 0; i < clauses.Count; i++)

@@ -24,10 +24,10 @@ internal sealed partial class GenericStoragePlan
 
     // Warm emission reuses the previous emission's templates and entries when they are unchanged, so an unchanged program
     // rebuilds no entry, entry name or physical signature; the current and previous sets rotate at each Clear.
-    private readonly List<BoundCall> directScratch = new();
+    private readonly List<CallPlan> directScratch = new();
     private readonly List<string> entryNameCache = new();
-    private readonly Dictionary<BoundCall, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BoundCall, FunctionAbi> formattingCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<CallPlan, CallEntry> calls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<CallPlan, FunctionAbi> formattingCalls = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<FunctionAbi, FunctionAbi> formattingWrites = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(FunctionAbi Write, CompilerFunctionKind Kind), FunctionAbi> formattingConversions = new();
     private readonly Dictionary<FunctionKoto, int> chainCounts = new(ReferenceEqualityComparer.Instance);
@@ -49,11 +49,11 @@ internal sealed partial class GenericStoragePlan
         set => substitutionSetLimitOverride = value;
     }
 
-    internal Dictionary<BoundCall, CallEntry> Calls => this.calls; // The concrete type enumerates without allocation.
+    internal Dictionary<CallPlan, CallEntry> Calls => this.calls; // The concrete type enumerates without allocation.
 
     internal IReadOnlyList<CallEntry> Entries => this.implementations;
 
-    internal IReadOnlyDictionary<BoundCall, FunctionAbi> FormattingCalls => this.formattingCalls;
+    internal IReadOnlyDictionary<CallPlan, FunctionAbi> FormattingCalls => this.formattingCalls;
 
     internal int LoweredCount { get; set; }
 
@@ -172,13 +172,13 @@ internal sealed partial class GenericStoragePlan
         var context = previous is not null && ReferenceEquals(previous.Template, template) ? previous :
             new CallEntry(template, evaluator.Abi, null, evaluator.Parameters, evaluator.Result, evaluator.Call.DeclaringType, evaluator.Call.TypeArguments.ToArray(), evaluator.Call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
-                ConcreteCalls = new BoundCall[template.DirectCalls.Length],
+                ConcreteCalls = new CallPlan[template.DirectCalls.Length],
             };
         evaluator.Context = context;
         return this.PrepareEntryDependencies(compilation, module, layouts, evaluator.Call, template, context, 0, out failure);
     }
 
-    internal bool PrepareFormatting(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall site, out string? failure, int depth = 0)
+    internal bool PrepareFormatting(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallPlan site, out string? failure, int depth = 0)
     {
         failure = null;
         if (!IsFormattingCallback(site) || this.formattingCalls.ContainsKey(site))
@@ -250,12 +250,12 @@ internal sealed partial class GenericStoragePlan
         return false;
     }
 
-    private static bool IsFormattingCallback(BoundCall call)
+    private static bool IsFormattingCallback(CallPlan call)
         => Binding.HasFormattingCallback(call);
 
     // SPEC 7.6.4: a generic Function Item is called and erased through the instance of its bound arguments. Its entry is
     // requested where the Item is produced, under the producing body's own substitution.
-    private bool PrepareFunctionItems(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? call, int depth, out string? failure)
+    private bool PrepareFunctionItems(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, CallPlan? call, int depth, out string? failure)
     {
         failure = null;
         var binding = compilation.Binding;
@@ -296,7 +296,7 @@ internal sealed partial class GenericStoragePlan
         return true;
     }
 
-    private bool PrepareClosures(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, BoundCall? call, int depth, out string? failure)
+    private bool PrepareClosures(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, OwnershipBody body, CallPlan? call, int depth, out string? failure)
     {
         failure = null;
         for (var i = 0; i < body.Operations.Count; i++)
@@ -350,7 +350,7 @@ internal sealed partial class GenericStoragePlan
         return this.entryNameCache[index];
     }
 
-    private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth = 0, bool implementationBody = false)
+    private bool PrepareEntry(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallPlan call, Template template, out CallEntry? entry, out string? failure, int depth = 0, bool implementationBody = false)
     {
         failure = null;
         if (this.calls.TryGetValue(call, out entry))
@@ -389,7 +389,7 @@ internal sealed partial class GenericStoragePlan
         }
     }
 
-    private bool PrepareEntryCore(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, out CallEntry? entry, out string? failure, int depth, bool implementationBody)
+    private bool PrepareEntryCore(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallPlan call, Template template, out CallEntry? entry, out string? failure, int depth, bool implementationBody)
     {
         entry = null;
         failure = null;
@@ -464,7 +464,7 @@ internal sealed partial class GenericStoragePlan
         entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
             new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol), function.IsAnonymous), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
-                ConcreteCalls = new BoundCall[template.DirectCalls.Length],
+                ConcreteCalls = new CallPlan[template.DirectCalls.Length],
             };
         this.entries.Add(entry);
         this.calls.Add(call, entry);
@@ -504,7 +504,7 @@ internal sealed partial class GenericStoragePlan
         }
     }
 
-    private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, BoundCall call, Template template, CallEntry entry, int depth, out string? failure)
+    private bool PrepareEntryDependencies(Compilation compilation, EmissionModule module, AggregateLayoutPool layouts, CallPlan call, Template template, CallEntry entry, int depth, out string? failure)
     {
         var binding = compilation.Binding;
         if (!this.PrepareFunctionItems(compilation, module, layouts, template.Body, call, depth + 1, out failure) ||
@@ -571,7 +571,7 @@ internal sealed partial class GenericStoragePlan
 
     /// <summary>A universally verified generic body and the calls its instances forward.</summary>
     // The previous emission's entry of the same name, template and substitution whose physical signature still holds.
-    private CallEntry? PreviousEntry(string name, Template template, ReadOnlySpan<BoundType> parameters, BoundType result, bool resultSlot, BoundCall call, FunctionAbi? selected, AggregateLayoutPool layouts)
+    private CallEntry? PreviousEntry(string name, Template template, ReadOnlySpan<BoundType> parameters, BoundType result, bool resultSlot, CallPlan call, FunctionAbi? selected, AggregateLayoutPool layouts)
     {
         foreach (var previous in this.previousEntries)
         {
@@ -587,7 +587,7 @@ internal sealed partial class GenericStoragePlan
         return null;
     }
 
-    internal sealed record Template(OwnershipBody Body, BoundCall[] DirectCalls);
+    internal sealed record Template(OwnershipBody Body, CallPlan[] DirectCalls);
 
     /// <summary>
     /// One closed call context: the caller-facing entry ABI (or the selected explicit specialization's ABI),
@@ -598,9 +598,9 @@ internal sealed partial class GenericStoragePlan
     {
         internal bool ImplementationPrepared { get; set; }
 
-        internal BoundCall? Context { get; set; }
+        internal CallPlan? Context { get; set; }
 
-        internal BoundCall[]? ConcreteCalls { get; set; }
+        internal CallPlan[]? ConcreteCalls { get; set; }
 
         internal CallEntry? Parent { get; set; }
     }

@@ -8,7 +8,7 @@ public sealed partial class OwnershipAnalysis
 {
     // Publish declared result ancestry while the selected declaration and parameter mapping are available.
     // Equal instantiated Origins never choose between two independently acquired caller Loans.
-    private void RecordCall(int operation, int start, BoundCall plan)
+    private void RecordCall(int operation, int start, CallPlan plan)
     {
         var count = this.body.CallInputCount - start;
         var source = CallResultSource.None;

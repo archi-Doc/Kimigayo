@@ -171,9 +171,9 @@ public sealed partial class Binding
         private readonly HashSet<(Koto Node, int Context)> seen = new();
         private readonly HashSet<BoundType> destroyed = new(ReferenceEqualityComparer.Instance);
         private readonly List<(Koto Node, int Context, Koto? Site)> pending = new();
-        private readonly List<BoundCall?> contexts = new();
-        private readonly Dictionary<BoundCall, int> contextIndex = new(CallInstanceComparer.Instance);
-        private readonly List<BoundCall> calls = new();
+        private readonly List<CallPlan?> contexts = new();
+        private readonly Dictionary<CallPlan, int> contextIndex = new(CallInstanceComparer.Instance);
+        private readonly List<CallPlan> calls = new();
         private readonly List<(BoundType Value, BoundOrigin Storage)> storedValues = new();
         private readonly List<int> selectedArms = new();
 
@@ -471,7 +471,7 @@ public sealed partial class Binding
         private static LoanRequirement Mode(BoundType? type)
             => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
 
-        private static bool MaySelect(Specialization candidate, BoundCall call)
+        private static bool MaySelect(Specialization candidate, CallPlan call)
         {
             for (var i = 0; i < call.TypeArguments.Length; i++)
             {
@@ -518,7 +518,7 @@ public sealed partial class Binding
         }
 
         // The receiver parameter of a bound or unbound call, in its declared slot.
-        private static BoundType? Receiver(BoundCall call)
+        private static BoundType? Receiver(CallPlan call)
         {
             var receiver = call.ReceiverOperation.ParameterType;
             for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
@@ -966,7 +966,7 @@ public sealed partial class Binding
             }
         }
 
-        private void Call(BoundCall call, Koto use)
+        private void Call(CallPlan call, Koto use)
         {
             this.Argument(call.ReceiverOperation, use);
             for (var i = 0; i < call.ArgumentOperations.Length; i++)
@@ -996,14 +996,14 @@ public sealed partial class Binding
             this.Target(call, use);
         }
 
-        private void Callable(BoundValueCall call, Koto use)
+        private void Callable(CallPlan call, Koto use)
         {
-            for (var i = 0; i < call.Arguments.Length; i++)
+            for (var i = 0; i < call.ArgumentOperations.Length; i++)
             {
-                this.Argument(call.Arguments[i], use);
+                this.Argument(call.ArgumentOperations[i], use);
             }
 
-            var type = CallableCore(this.Type(call.ReceiverType));
+            var type = CallableCore(this.Type(call.CalleeType));
             if (type is null)
             {
                 this.Violate(EffectViolation.Limit, use);
@@ -1066,7 +1066,7 @@ public sealed partial class Binding
             }
         }
 
-        private void Target(BoundCall call, Koto use)
+        private void Target(CallPlan call, Koto use)
         {
             var kind = call.Target.CompilerFunction;
             if (kind is CompilerFunctionKind.ArrayClear or CompilerFunctionKind.Replace)
@@ -1135,7 +1135,7 @@ public sealed partial class Binding
             }
         }
 
-        private void Function(BindingSymbol symbol, BoundCall? call)
+        private void Function(BindingSymbol symbol, CallPlan? call)
         {
             // A closed requirement Item has already retained its verified witness mapping.
             symbol = call?.Target ?? symbol;
@@ -1164,9 +1164,9 @@ public sealed partial class Binding
 
             if (function.IsVirtual)
             {
-                if (call?.VirtualDispatch is { IsDirect: true } direct)
+                if (call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true })
                 {
-                    if (direct.Implementation is not { BoundSymbol: { } implementation } body || direct.ImplementingType is null)
+                    if (call.VirtualImplementation is not { BoundSymbol: { } implementation } body || call.VirtualImplementingType is null)
                     {
                         this.Violate(EffectViolation.Limit, null);
                         return;
@@ -1176,7 +1176,7 @@ public sealed partial class Binding
                     if (!ReferenceEquals(body, function))
                     {
                         context = this.NextCall();
-                        context.Set(implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: direct.ImplementingType, origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments);
+                        context.Set(implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: call.VirtualImplementingType, origins: call.Origins, inputOrigins: call.InputOrigins, operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments);
                     }
 
                     this.Body(body, context);
@@ -1242,7 +1242,7 @@ public sealed partial class Binding
         // results, a call of the one delegated requirement on the one stored value is covered (SPEC 8.4.10.5). Without
         // confined, its environment effects are unknown, which a bound check counts as a conflict. Its inputs are affected
         // in their parameters' modes, which only preserves results classifies.
-        private void Requirement(BindingSymbol symbol, BoundCall? call)
+        private void Requirement(BindingSymbol symbol, CallPlan? call)
         {
             if (call is null || symbol.Declaration is not FunctionKoto requirement)
             {
@@ -1416,7 +1416,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            var receiver = call.BoundValueCall?.Receiver ?? (call.Method as MemberAccessKoto)?.Left;
+            var receiver = call.BoundValueCall?.CalleeValue ?? (call.Method as MemberAccessKoto)?.Left;
             while (receiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow)
             {
                 receiver = KotoHelper.UnwrapParentheses(borrow.Left);
@@ -1541,7 +1541,7 @@ public sealed partial class Binding
             return false;
         }
 
-        private void Specialization(FunctionKoto function, BoundCall call)
+        private void Specialization(FunctionKoto function, CallPlan call)
         {
             // The specialization has its own input/Origin binders but inherits their slots from the original.
             var specialized = this.NextCall();
@@ -1549,7 +1549,7 @@ public sealed partial class Binding
             this.Body(function, specialized);
         }
 
-        private void Body(FunctionKoto function, BoundCall? call)
+        private void Body(FunctionKoto function, CallPlan? call)
         {
             var previous = this.context;
             if (call is not null)
@@ -2054,7 +2054,7 @@ public sealed partial class Binding
             return false;
         }
 
-        private BoundCall NextCall()
+        private CallPlan NextCall()
         {
             if (this.callCount == this.calls.Count)
             {
@@ -2108,7 +2108,7 @@ public sealed partial class Binding
 
         // A call instantiates the callee's parameters, lengths and Origins; a call that substitutes nothing reads
         // the callee's Types as declared.
-        private int Context(BoundCall call)
+        private int Context(CallPlan call)
         {
             if (call.TypeArguments.Length == 0 && call.LengthArguments.Length == 0 && call.Origins.Length == 0 && call.InputOrigins.Length == 0 &&
                 call.DeclaringType is null or { Components.Count: 0, OriginArguments.Count: 0 })
@@ -2153,7 +2153,7 @@ public sealed partial class Binding
                         this.Replace(transfer.Left, node);
                         break;
                     case ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } borrow:
-                        if (borrow.Parent is not InvocationKoto { BoundValueCall: { } own } || !ReferenceEquals(own.Receiver, borrow))
+                        if (borrow.Parent is not InvocationKoto { BoundValueCall: { } own } || !ReferenceEquals(own.CalleeValue, borrow))
                         {
                             this.Replace(borrow.Left, node);
                         }
@@ -2177,11 +2177,11 @@ public sealed partial class Binding
 
                         break;
                     case InvocationKoto { BoundValueCall: { } callable }:
-                        for (var i = 0; i < callable.Arguments.Length; i++)
+                        for (var i = 0; i < callable.ArgumentOperations.Length; i++)
                         {
-                            if (IsExclusive(callable.Arguments[i].ParameterType))
+                            if (IsExclusive(callable.ArgumentOperations[i].ParameterType))
                             {
-                                this.Replace(callable.Arguments[i].Source, node);
+                                this.Replace(callable.ArgumentOperations[i].Source, node);
                             }
                         }
 
@@ -2204,16 +2204,16 @@ public sealed partial class Binding
     }
 
     // Two calls read the callee's Types identically when they agree on target, declaring Type and every substitution.
-    private sealed class CallInstanceComparer : IEqualityComparer<BoundCall>
+    private sealed class CallInstanceComparer : IEqualityComparer<CallPlan>
     {
         internal static readonly CallInstanceComparer Instance = new();
 
-        public bool Equals(BoundCall? x, BoundCall? y)
+        public bool Equals(CallPlan? x, CallPlan? y)
             => ReferenceEquals(x, y) || (x is not null && y is not null && ReferenceEquals(x.Target, y.Target) && ReferenceEquals(x.DeclaringType, y.DeclaringType) &&
                 x.TypeArguments.SequenceEqual(y.TypeArguments) && x.LengthArguments.SequenceEqual(y.LengthArguments) &&
                 x.Origins.SequenceEqual(y.Origins) && x.InputOrigins.SequenceEqual(y.InputOrigins));
 
-        public int GetHashCode(BoundCall call)
+        public int GetHashCode(CallPlan call)
         {
             var hash = HashCode.Combine(call.Target, call.DeclaringType, call.TypeArguments.Length, call.Origins.Length, call.InputOrigins.Length);
             for (var i = 0; i < call.TypeArguments.Length; i++)

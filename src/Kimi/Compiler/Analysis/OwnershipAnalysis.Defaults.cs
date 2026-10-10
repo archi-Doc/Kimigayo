@@ -16,7 +16,7 @@ public sealed partial class OwnershipAnalysis
     // The builder's active interpretation context: the innermost default being evaluated, or the root.
     private InterpretationContext Active => new(this.defaultContext);
 
-    private void PrepareDefaults(Koto call, BoundCall plan, int mark)
+    private void PrepareDefaults(Koto call, CallPlan plan, int mark)
     {
         if (plan.DefaultArguments.IsEmpty || plan.Target.Declaration is not FunctionKoto target)
         {
@@ -121,7 +121,7 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 7.2.3: an evaluator only inspects the slots already acquired by the pending call. It takes no ownership of them;
     // its one normal result becomes the next pending argument. Recursive evaluator entries are registered before their bodies.
-    private int EvaluateDefault(BoundCall call, int parameter, Koto expression)
+    private int EvaluateDefault(CallPlan call, int parameter, Koto expression)
     {
         var inputs = this.body.DefaultInputs ??= new();
         var evaluations = this.body.DefaultEvaluations ??= new();

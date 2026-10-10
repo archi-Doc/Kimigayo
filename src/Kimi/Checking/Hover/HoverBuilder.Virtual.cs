@@ -8,27 +8,27 @@ namespace Kimi.Checking;
 
 internal sealed partial class HoverBuilder
 {
-    private HoverKey VirtualIdentity(BoundVirtualCall? call)
-        => call is null ? HoverKey.Missing : new(
-            call.IsDirect ? "direct base" : "dynamic slot",
-            [this.BinderIdentity(call.Slot.Original), this.TypeIdentity(call.Slot.DeclaringType),
-            this.TypeIdentity(call.BaseLookupType), this.BinderIdentity(call.Implementation), this.TypeIdentity(call.ImplementingType)]);
+    private HoverKey VirtualIdentity(CallPlan call)
+        => call.Kind != CalleeKind.Virtual ? HoverKey.Missing : new(
+            call.VirtualIsDirect ? "direct base" : "dynamic slot",
+            [this.BinderIdentity(call.VirtualSlot.Original), this.TypeIdentity(call.VirtualSlot.DeclaringType),
+            this.TypeIdentity(call.VirtualBaseLookupType), this.BinderIdentity(call.VirtualImplementation), this.TypeIdentity(call.VirtualImplementingType)]);
 
-    private void VirtualCallDetails(StringBuilder text, BoundCall call, Koto syntax)
+    private void VirtualCallDetails(StringBuilder text, CallPlan call, Koto syntax)
     {
-        if (call.VirtualDispatch is not { } dispatch)
+        if (call.Kind != CalleeKind.Virtual)
         {
             return;
         }
 
-        text.AppendLine().Append("Dispatch: ").Append(dispatch.IsDirect ? "direct base" : "dynamic");
-        text.AppendLine().Append("Bound slot: ").Append(this.TypeName(dispatch.Slot.DeclaringType)).Append('.').Append(dispatch.Slot.Original.Name);
-        if (dispatch.BaseLookupType is { } lookup)
+        text.AppendLine().Append("Dispatch: ").Append(call.VirtualIsDirect ? "direct base" : "dynamic");
+        text.AppendLine().Append("Bound slot: ").Append(this.TypeName(call.VirtualSlot.DeclaringType)).Append('.').Append(call.VirtualSlot.Original.Name);
+        if (call.VirtualBaseLookupType is { } lookup)
         {
             text.AppendLine().Append("Base lookup: ").Append(this.TypeName(lookup));
         }
 
-        if (dispatch.Implementation is { } implementation && dispatch.ImplementingType is { } implementing)
+        if (call.VirtualImplementation is { } implementation && call.VirtualImplementingType is { } implementing)
         {
             text.AppendLine().Append("Implementation: ").Append(this.TypeName(implementing)).Append('.').Append(implementation.Name);
         }

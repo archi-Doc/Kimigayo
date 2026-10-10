@@ -45,7 +45,7 @@ public sealed partial class OwnershipBody
     }
 
     // A closed caller sees only its selected case. A still-symbolic binder keeps every case not ruled out by the call.
-    internal ulong ApplicableCleanupCases(Binding binding, BoundCall? call)
+    internal ulong ApplicableCleanupCases(Binding binding, CallPlan? call)
     {
         if (call is null || this.cleanupCaseWidth == 0)
         {

@@ -60,9 +60,9 @@ public sealed class VirtualHoverTest
         var c = Create(Source);
         var offset = Source.IndexOf("base.read", StringComparison.Ordinal) + 5;
         var before = At(HoverBuilder.Create(c), offset);
-        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.CallStorage?.VirtualDispatch is { IsDirect: true }).CallStorage!;
-        call.VirtualDispatch!.Implementation = call.VirtualDispatch.Slot.Original;
-        call.VirtualDispatch.ImplementingType = call.VirtualDispatch.Slot.DeclaringType;
+        var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(x => x.CallStorage is { Kind: CalleeKind.Virtual, VirtualIsDirect: true }).CallStorage!;
+        call.VirtualImplementation = call.VirtualSlot.Original;
+        call.VirtualImplementingType = call.VirtualSlot.DeclaringType;
         var after = At(HoverBuilder.Create(c), offset) with { Use = before.Use };
         Assert.False(new HoverAgreement().Equal(new(default, before), new(default, after)));
     }

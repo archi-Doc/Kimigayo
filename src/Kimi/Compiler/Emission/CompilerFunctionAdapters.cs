@@ -207,7 +207,7 @@ internal sealed class CompilerFunctionAdapters
         return abi;
     }
 
-    private bool ContextOperand(BoundCall call, EmissionFunction function, AbiParameter physical, BoundType[] inputs, BoundType result, out EmissionOperand operand)
+    private bool ContextOperand(CallPlan call, EmissionFunction function, AbiParameter physical, BoundType[] inputs, BoundType result, out EmissionOperand operand)
     {
         operand = default;
         var kind = call.Target.CompilerFunction;

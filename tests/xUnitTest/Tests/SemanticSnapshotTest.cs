@@ -446,7 +446,7 @@ public sealed class SemanticSnapshotTest
             var text = this.text;
             if (invocation.BoundCall is { } call)
             {
-                text.Append(label).Append('=').Append(call.VirtualDispatch is { } virtualCall ? virtualCall.IsDirect ? "virtual-direct" : "virtual" : "direct")
+                text.Append(label).Append('=').Append(call.Kind == CalleeKind.Virtual ? call.VirtualIsDirect ? "virtual-direct" : "virtual" : "direct")
                     .Append(' ').Append(Symbol(call.Target)).Append(" -> ").Append(this.Type(call.ReturnType));
                 if (call.ResultMode != FunctionResultMode.Value)
                 {

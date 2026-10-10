@@ -534,7 +534,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         return string.Join('.', names);
     }
 
-    private string CallUse(BoundCall call, Koto syntax)
+    private string CallUse(CallPlan call, Koto syntax)
     {
         var text = new StringBuilder("Result: ").Append(this.TypeName(call.ReturnType));
         if (call.TypeArguments.Length != 0 || call.LengthArguments.Length != 0)
@@ -622,7 +622,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         return result;
     }
 
-    private HoverKey CallIdentity(BoundCall call)
+    private HoverKey CallIdentity(CallPlan call)
     {
         var text = FormattableString.Invariant($"call;{call.TypeArguments.Length},{call.LengthArguments.Length},{call.Origins.Length},{call.InputOrigins.Length}");
         var parts = new HoverKey[6 + call.TypeArguments.Length + call.LengthArguments.Length + call.Origins.Length + call.InputOrigins.Length];
@@ -631,7 +631,7 @@ internal sealed partial class HoverBuilder(SemanticQuery query)
         parts[2] = this.TypeIdentity(call.ConformingType);
         parts[3] = this.SymbolIdentity(call.RequirementContract);
         parts[4] = this.TypeIdentity(call.RequirementContract?.Type);
-        parts[5] = this.VirtualIdentity(call.VirtualDispatch);
+        parts[5] = this.VirtualIdentity(call);
         var index = 6;
         foreach (var type in call.TypeArguments)
         {

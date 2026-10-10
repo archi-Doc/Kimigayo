@@ -34,7 +34,7 @@ internal sealed partial class BodyLowering
     private int[] deliveries = [];
     private int pointerWidth;
     private Binding? instanceBinding;
-    private BoundCall? instance;
+    private CallPlan? instance;
     private GenericStoragePlan.CallEntry? instanceEntry;
 
     internal BodyLowering()
@@ -45,7 +45,7 @@ internal sealed partial class BodyLowering
 
     // Selects the closed call whose substitution the lowered generic body's signature uses (SPEC 21.3.1);
     // the entry binds the body's forwarded generic calls to their own instances.
-    internal void SetInstance(Binding? binding, BoundCall? call, GenericStoragePlan.CallEntry? entry)
+    internal void SetInstance(Binding? binding, CallPlan? call, GenericStoragePlan.CallEntry? entry)
     {
         this.instanceBinding = binding;
         this.instance = call;

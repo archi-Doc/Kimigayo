@@ -485,7 +485,7 @@ public sealed record BoundType
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
     // A generic closure keeps the enclosing substitution even when none of its slots occupy capture storage.
-    internal BoundCall? ClosureContext { get; init; }
+    internal CallPlan? ClosureContext { get; init; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];

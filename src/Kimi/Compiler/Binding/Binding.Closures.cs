@@ -742,7 +742,7 @@ public sealed partial class Binding
 
                 var valueCall = use.Parent as InvocationKoto;
                 var called = valueCall?.BoundValueCall;
-                var receiver = called is not null && ReferenceEquals(called.Receiver, use);
+                var receiver = called is not null && ReferenceEquals(called.CalleeValue, use);
                 var memberCall = use.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selected } } member &&
                     ReferenceEquals(member.Left, use) && ReferenceEquals(selected.Receiver, use) ? selected :
                     use.Parent is MemberAccessKoto property && ReferenceEquals(property.Left, use)
@@ -836,7 +836,7 @@ public sealed partial class Binding
                 target.Parent is ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ||
                 (target.Parent is MemberAccessKoto { Parent: InvocationKoto { BoundCall: { } selectedCall } } receiverAccess && ReferenceEquals(receiverAccess.Left, target) &&
                     ReferenceEquals(selectedCall.Receiver, target) && selectedCall.ReceiverOperation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq) ||
-                (target.Parent is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Uniq } valueCall } && ReferenceEquals(valueCall.Receiver, target));
+                (target.Parent is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Uniq } valueCall } && ReferenceEquals(valueCall.CalleeValue, target));
         }
     }
 

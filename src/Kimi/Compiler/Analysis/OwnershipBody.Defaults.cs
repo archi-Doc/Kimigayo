@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipBody
 {
-    internal readonly record struct DefaultEvaluation(int Operation, BoundCall Call, int Parameter, int Start);
+    internal readonly record struct DefaultEvaluation(int Operation, CallPlan Call, int Parameter, int Start);
 
     internal List<DefaultEvaluation>? DefaultEvaluations { get; set; }
 
@@ -217,7 +217,7 @@ public sealed partial class OwnershipBody
     // A nested default's call is recorded already resolved in its enclosing context, so it composes every enclosing substitution
     // and one application of it, then the body's case or instance, interprets the replica (Resolve).
     // Anchor is the root default invocation in this body, whose Constraint scope proves capabilities of the replica's Types.
-    internal List<(int Start, int End, BoundCall Call, int Parent, Koto Anchor)>? DefaultContexts { get; set; }
+    internal List<(int Start, int End, CallPlan Call, int Parent, Koto Anchor)>? DefaultContexts { get; set; }
 
     internal Dictionary<(BindingSymbol Symbol, int Context), int>? DefaultSymbolPlaces { get; set; }
 
@@ -286,6 +286,6 @@ public sealed partial class OwnershipBody
         => type is null || context.IsRoot ? type : this.Function.CodeContext.Compilation.Binding.InstantiateStorageType(type, this.DefaultContexts![context.Index].Call);
 
     // A declared call as interpreted in a context; a call plan that a default context already resolved is never resolved again.
-    internal BoundCall? ResolveCall(BoundCall? call, InterpretationContext context)
+    internal CallPlan? ResolveCall(CallPlan? call, InterpretationContext context)
         => call is null || context.IsRoot ? call : this.Function.CodeContext.Compilation.Binding.InstantiateDefaultCall(call, this.DefaultContexts![context.Index].Call);
 }

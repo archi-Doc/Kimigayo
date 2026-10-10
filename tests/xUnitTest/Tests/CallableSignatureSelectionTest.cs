@@ -114,7 +114,7 @@ public class CallableSignatureSelectionTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.BoundValueCall is not null);
         var plan = call.BoundValueCall!;
-        Assert.Equal(confined, c.Binding.AvailableCallableEffects(plan.ReceiverType!.Components[0], plan.DeclaredSignature, plan.ReceiverKind, call).Confined);
+        Assert.Equal(confined, c.Binding.AvailableCallableEffects(plan.CalleeType.Components[0], plan.DeclaredSignature, plan.ReceiverKind, call).Confined);
     }
 
     [Fact]

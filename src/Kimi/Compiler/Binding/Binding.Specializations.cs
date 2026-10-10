@@ -10,12 +10,12 @@ public sealed partial class Binding
 
     // The intermediate call of a forwarded requirement call, before its witness is resolved into the destination.
     // Each template call retains its shape; one shared buffer reallocates when get and set alternate.
-    private readonly Dictionary<BoundCall, BoundCall> forwardedRequirements = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<(BoundCall Inner, BoundCall Outer), BoundCall> defaultCalls = new();
+    private readonly Dictionary<CallPlan, CallPlan> forwardedRequirements = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(CallPlan Inner, CallPlan Outer), CallPlan> defaultCalls = new();
 
     // Defaults are replicated into pending calls. Retain one selected call per declaration and enclosing call context;
     // unlike a syntax-keyed table, this distinguishes two instantiations of the same default in one caller.
-    internal BoundCall? InstantiateDefaultCall(BoundCall inner, BoundCall outer)
+    internal CallPlan? InstantiateDefaultCall(CallPlan inner, CallPlan outer)
     {
         var key = (inner, outer);
         this.defaultCalls.TryGetValue(key, out var previous);
@@ -84,7 +84,7 @@ public sealed partial class Binding
     /// <param name="outer">The closed call context.</param>
     /// <param name="destination">A call to overwrite, such as the previous emission's result for the same position, or null.</param>
     /// <returns>The concrete call, or null when the context has no complete instantiation.</returns>
-    internal BoundCall? InstantiateForwardedCall(BoundCall inner, BoundCall outer, BoundCall? destination = null)
+    internal CallPlan? InstantiateForwardedCall(CallPlan inner, CallPlan outer, CallPlan? destination = null)
     {
         var types = this.typeScratch.Rent(inner.TypeArguments.Length);
         var lengths = this.lengthScratch.Rent(inner.LengthArguments.Length);
@@ -145,7 +145,7 @@ public sealed partial class Binding
 
             // A requirement call is resolved from an intermediate call into the destination, so the two never share storage.
             var requirement = inner.Target.Declaration is FunctionKoto { IsRequirement: true };
-            BoundCall call;
+            CallPlan call;
             if (requirement)
             {
                 if (!this.forwardedRequirements.TryGetValue(inner, out call!))
@@ -155,7 +155,7 @@ public sealed partial class Binding
             }
             else
             {
-                call = destination ?? new BoundCall();
+                call = destination ?? new CallPlan();
             }
 
             call.Set(inner.Target, result, inner.Receiver, inner.ArgumentToParameter, types.AsSpan(0, inner.TypeArguments.Length), conformingType: inner.ConformingType is { } self ? this.InstantiateStorageType(self, outer) : null, declaringType: declaring, origins: origins.AsSpan(0, inner.Origins.Length), inputOrigins: inputs.AsSpan(0, inner.InputOrigins.Length), operations: operations.AsSpan(0, inner.ArgumentOperations.Length), receiverOperation: receiver, lengthArguments: lengths.AsSpan(0, inner.LengthArguments.Length), defaults: defaults.AsSpan(0, inner.DefaultArguments.Length));
@@ -211,7 +211,7 @@ public sealed partial class Binding
     /// <returns>The specializations, or null when it has none.</returns>
     internal List<FunctionKoto>? Specializations(BindingSymbol original) => this.specializationsByOriginal.GetValueOrDefault(original);
 
-    internal FunctionKoto? SelectSpecialization(BoundCall call)
+    internal FunctionKoto? SelectSpecialization(CallPlan call)
     {
         if (!this.specializationsByOriginal.TryGetValue(call.Target, out var candidates))
         {

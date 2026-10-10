@@ -28,7 +28,7 @@ public class VirtualEntryErasureTest(ITestOutputHelper output)
     {
         var c = MinimalEmissionTest.Analyze(Source(body));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var use = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.CallStorage?.Target.Name == "ordinary");
+        var use = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.BoundCall?.Target.Name == "ordinary");
         Assert.NotNull(use.CallStorage);
         var site = body.Contains("@objref/Base", StringComparison.Ordinal)
             ? (Koto)Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), x => x.ConversionBinding == ConversionBinding.ObjectUpcast) : use;

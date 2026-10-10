@@ -97,30 +97,30 @@ public sealed partial class OwnershipAnalysis
         return this.RegisterTemporary(result);
     }
 
-    private int CallValue(InvocationKoto call, BoundValueCall plan)
+    private int CallValue(InvocationKoto call, CallPlan plan)
     {
         var depth = this.comparisonDepth++;
         var reservationMark = this.body.CallReservations.Count;
         // SPEC 7.3, 13.5.5.1: an object callee lends its complete payload through the same checked borrow as `h@follow@ref`/`@uniq`,
         // also when the callee is a written object view (`(h@objuniq)()`).
         var payload = plan.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection;
-        var explicitReceiver = !payload && plan.ReceiverKind == SemanticsKind.Uniq && IsDirectExclusiveBorrow(plan.Receiver);
+        var explicitReceiver = !payload && plan.ReceiverKind == SemanticsKind.Uniq && IsDirectExclusiveBorrow(plan.CalleeValue);
         var reserved = explicitReceiver || (payload && plan.ReceiverKind == SemanticsKind.Uniq);
 
         // A common Function value stored in a field or element is called through a shared borrow of that part, as `@ref`
         // would take it, since reading the Non-Copy value out would transfer it.
-        var direct = KotoHelper.UnwrapParentheses(plan.Receiver);
+        var direct = KotoHelper.UnwrapParentheses(plan.CalleeValue);
         // SPEC 7.6.3, 7.1.1: a user-Indexable element (`m[k]`) and a Place result (`first(xs@ref)`) are such parts too.
-        var part = plan.ReceiverKind == SemanticsKind.Ref && plan.ReceiverType.Kind == BoundTypeKind.Function &&
+        var part = plan.ReceiverKind == SemanticsKind.Ref && plan.CalleeType.Kind == BoundTypeKind.Function &&
             (direct is MemberAccessKoto || (direct is BinaryKoto element && ElementAccess.IsSyntax(element)) || ElementAccess.IsUserIndex(direct) ||
                 (direct is InvocationKoto && ElementAccess.PlaceCallReference(direct) is not null));
         var receiver = explicitReceiver
-            ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, plan.ReceiverType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
+            ? this.PrepareCallArgument(call, plan.CalleeValue, new(plan.CalleeValue, plan.CalleeType, plan.CalleeType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
             : payload ? this.PrepareCallArgument(call, plan.ReceiverOperation.Source!, plan.ReceiverOperation, immediate: plan.ReceiverKind != SemanticsKind.Uniq)
-            : part ? this.PrepareCallArgument(call, plan.Receiver, new(plan.Receiver, plan.ReceiverType, this.compilation.Binding.Reference(SemanticsKind.Ref, plan.ReceiverType), ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow), immediate: true)
-            : plan.ReceiverKind == SemanticsKind.Uniq && KotoHelper.UnwrapParentheses(plan.Receiver) is IdentifierNameKoto { BoundSymbol: { } binding } && this.body.SymbolPlaces.TryGetValue(binding, out var local)
+            : part ? this.PrepareCallArgument(call, plan.CalleeValue, new(plan.CalleeValue, plan.CalleeType, this.compilation.Binding.Reference(SemanticsKind.Ref, plan.CalleeType), ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow), immediate: true)
+            : plan.ReceiverKind == SemanticsKind.Uniq && KotoHelper.UnwrapParentheses(plan.CalleeValue) is IdentifierNameKoto { BoundSymbol: { } binding } && this.body.SymbolPlaces.TryGetValue(binding, out var local)
             ? local // SPEC 15.6.7: the reserved read below acquires an exclusive receiver binding, as a method receiver's entry does.
-            : this.Expression(plan.Receiver, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
+            : this.Expression(plan.CalleeValue, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
         if (receiver < 0)
         {
             this.comparisonDepth = depth;
@@ -130,7 +130,7 @@ public sealed partial class OwnershipAnalysis
         // Even a temporary has a distinct read marking the receiver Loan's start.
         var reservation = plan.ReceiverKind == SemanticsKind.Uniq && !reserved ? this.NewCallReservation(call) : -1;
         var receiverValue = this.Value(receiver);
-        var read = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver, reservation: reservation);
+        var read = this.Emit(OwnershipOperationKind.Read, plan.CalleeValue, receiver, reservation: reservation);
         if (ReferenceTypes.IsBorrow(this.body.Places[receiver].Type) && this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
         {
             this.SetValue(read, OwnershipValueKind.Alias, [receiverValue]);
@@ -151,16 +151,16 @@ public sealed partial class OwnershipAnalysis
         }
 
         var mark = this.arguments.Count;
-        for (var i = 0; i < plan.Arguments.Length; i++)
+        for (var i = 0; i < plan.ArgumentOperations.Length; i++)
         {
-            this.arguments.Add(this.PrepareCallArgument(call, call.ArgumentNodes[i], plan.Arguments[i]));
+            this.arguments.Add(this.PrepareCallArgument(call, call.ArgumentNodes[i], plan.ArgumentOperations[i]));
         }
 
         if (!reserved && reservation < 0 && ReferenceTypes.IsBorrow(this.body.Places[receiver].Type))
         {
             // A reference receiver is used again at the call, so the Place it borrows stays lent while the arguments run; an
             // exclusive receiver is instead held by its call reservation.
-            read = this.Emit(OwnershipOperationKind.Read, plan.Receiver, receiver);
+            read = this.Emit(OwnershipOperationKind.Read, plan.CalleeValue, receiver);
             if (this.body.Places[receiver].Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result)
             {
                 this.SetValue(read, OwnershipValueKind.Alias, [receiverValue]);
@@ -175,7 +175,7 @@ public sealed partial class OwnershipAnalysis
             // Preparation owns the receiver until every argument completes. An early return in an argument
             // must still destroy that prepared value; ownership enters the call only at this common boundary.
             // The argument entries follow, contiguous before the call, as an ordinary call's are.
-            this.Emit(OwnershipOperationKind.CallEntry, plan.Receiver, receiver);
+            this.Emit(OwnershipOperationKind.CallEntry, plan.CalleeValue, receiver);
         }
 
         var inputStart = this.body.CallInputCount;
@@ -189,7 +189,7 @@ public sealed partial class OwnershipAnalysis
             else
             {
                 var entry = this.Emit(OwnershipOperationKind.CallEntry, call, this.arguments[i]);
-                this.body.RecordCallInput(entry, i - mark, this.Resolve(plan.Arguments[i - mark].ParameterType, this.Active));
+                this.body.RecordCallInput(entry, i - mark, this.Resolve(plan.ArgumentOperations[i - mark].ParameterType, this.Active));
             }
         }
 
@@ -228,9 +228,9 @@ public sealed partial class OwnershipAnalysis
     // SPEC 8.4.10.7: abstract input effects use the same regions as requirement calls. The callable value, rather than a
     // requirement's receiver, identifies earlier calls covered by preserves results. No result borrows its environment. The plan's
     // declared Types are interpreted in the active context, so a default's replica with a concrete callable records none.
-    private void CallableEffects(InvocationKoto call, BoundValueCall plan, int invoke, int result)
+    private void CallableEffects(InvocationKoto call, CallPlan plan, int invoke, int result)
     {
-        if (this.Resolve(plan.ReceiverType, this.Active) is not { } type)
+        if (this.Resolve(plan.CalleeType, this.Active) is not { } type)
         {
             return;
         }
@@ -245,7 +245,7 @@ public sealed partial class OwnershipAnalysis
             return;
         }
 
-        var path = KotoHelper.UnwrapParentheses(plan.Receiver);
+        var path = KotoHelper.UnwrapParentheses(plan.CalleeValue);
         while (path is ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Follow or ConversionBinding.PayloadFollow } conversion)
         {
             path = KotoHelper.UnwrapParentheses(conversion.Left);
@@ -258,9 +258,9 @@ public sealed partial class OwnershipAnalysis
         var acquired = plan.ReceiverKind == SemanticsKind.Owner ? type : this.compilation.Binding.Reference(plan.ReceiverKind, type);
         this.RequirementEffect(call, acquired, type, invoke, receiver, receiver, null, ref bounds, ref preserves);
         var mark = effects.Count;
-        for (var i = 0; i < plan.Arguments.Length; i++)
+        for (var i = 0; i < plan.ArgumentOperations.Length; i++)
         {
-            var argument = plan.Arguments[i];
+            var argument = plan.ArgumentOperations[i];
             var input = argument.Source is { } source ? this.ValueIdentity(source) : new(-1, null);
             this.RequirementEffect(call, this.Resolve(argument.ParameterType, this.Active), type, invoke, input, receiver, null, ref bounds, ref preserves);
         }

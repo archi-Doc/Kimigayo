@@ -835,7 +835,7 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, BoundCall? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
+    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
     {
         if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
         {

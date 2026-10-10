@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<BoundType, BoundCall> functionItemContexts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<BoundType, CallPlan> functionItemContexts = new(ReferenceEqualityComparer.Instance);
     private Dictionary<Koto, ReferenceConstraintFailure>? referenceConstraints;
 
     private readonly record struct ReferenceConstraintFailure(IsKoto Clause, BoundConstraint Constraint, ConstraintProof Proof, BindingSymbol? Declaration = null);
@@ -17,7 +17,7 @@ public sealed partial class Binding
         => !function.IsRequirement && item.Components.Count > ItemTypeArgumentCount(function) ? item.Components[^1] : null;
 
     // Generation-only context of an already selected declaration. An override never becomes a public Item.
-    internal BoundCall? ImplementationContext(FunctionKoto function, BoundType declaring)
+    internal CallPlan? ImplementationContext(FunctionKoto function, BoundType declaring)
         => this.FunctionItemContext(this.FunctionItemType(function.BoundSymbol!, [], declaring));
 
     // A declaration and its bound generic arguments are the complete identity of its zero-sized Item. Its signature is a
@@ -58,7 +58,7 @@ public sealed partial class Binding
 
     // The call context of an Item: generation requires closed arguments, while public effect checks also inspect
     // symbolic contracts. One context per Item Type lets repeated preparation reuse both operands and substitutions.
-    internal BoundCall? FunctionItemContext(BoundType type, bool requireClosed = true)
+    internal CallPlan? FunctionItemContext(BoundType type, bool requireClosed = true)
     {
         if (type.Kind != BoundTypeKind.FunctionItem || (requireClosed && type.ContainsParameter) ||
             type.Symbol is not { Type: { } result, Declaration: FunctionKoto function })
@@ -91,7 +91,7 @@ public sealed partial class Binding
             return requirement;
         }
 
-        var created = new BoundCall();
+        var created = new CallPlan();
         var own = this.typeScratch.Rent(function.GenericArguments.Count);
         try
         {

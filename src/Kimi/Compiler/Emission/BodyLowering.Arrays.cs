@@ -156,7 +156,7 @@ internal sealed partial class BodyLowering
         return helper;
     }
 
-    private bool LowerArrayOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerArrayOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -321,7 +321,7 @@ internal sealed partial class BodyLowering
 
     // SPEC 22.1.2.5: borrowStorage and ownStorage transfer the Array handle to a remainder; lend and split
     // publish one pointer-backed capability. The source functions advance the untaken range.
-    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -461,7 +461,7 @@ internal sealed partial class BodyLowering
     }
 
     // The Kimi caller has initialized the reserved tail. This boundary only publishes its length.
-    private bool LowerArrayLength(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerArrayLength(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
@@ -493,7 +493,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool PrepareCollectionArguments(OwnershipBody body, int id, InvocationKoto call, BoundCall plan, FunctionKoto target, out bool complete, out string? failure)
+    private bool PrepareCollectionArguments(OwnershipBody body, int id, InvocationKoto call, CallPlan plan, FunctionKoto target, out bool complete, out string? failure)
     {
         failure = null;
         Grow(ref this.parameterArguments, target.Parameters.Count);

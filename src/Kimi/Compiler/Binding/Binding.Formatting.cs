@@ -6,18 +6,18 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, string? Name), (ulong Version, BoundCall Call)> requirementCalls = new();
-    private readonly Dictionary<BoundType, BoundCall> destructionCalls = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, string? Name), (ulong Version, CallPlan Call)> requirementCalls = new();
+    private readonly Dictionary<BoundType, CallPlan> destructionCalls = new(ReferenceEqualityComparer.Instance);
     private BindingSymbol? builtinFormat;
     private BindingSymbol? builtinEquals;
     private BindingSymbol? builtinCompare;
 
-    internal static bool HasFormattingCallback(BoundCall call)
+    internal static bool HasFormattingCallback(CallPlan call)
         => call.Target.CompilerFunction is CompilerFunctionKind.TextWriter or CompilerFunctionKind.WriterWrite or CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat;
 
     // The same finalized callback is consumed by effect checking and generation.
     // Text.writer retains its reserve callback; creating the adapter does not invoke it.
-    internal bool TryResolveFormattingCallback(BoundCall site, out BoundCall? implementation)
+    internal bool TryResolveFormattingCallback(CallPlan site, out CallPlan? implementation)
     {
         implementation = null;
         if (!HasFormattingCallback(site) || site.TypeArguments.Length != (site.Target.CompilerFunction == CompilerFunctionKind.TextTryFormat ? 2 : 1) ||
@@ -36,7 +36,7 @@ public sealed partial class Binding
         return implementation is not null;
     }
 
-    internal BoundCall? DestructionCall(BoundType type)
+    internal CallPlan? DestructionCall(BoundType type)
     {
         if (StructStorage.Destructor(type)?.BoundSymbol is not { } destructor)
         {
@@ -54,10 +54,10 @@ public sealed partial class Binding
 
     // Compiler-created calls use the same verified witness and storage substitution as source calls.
     // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
-    internal BoundCall? RequirementImplementation(BoundCall site, BoundType self, KimiDeclarationId identity, string? name = null)
+    internal CallPlan? RequirementImplementation(CallPlan site, BoundType self, KimiDeclarationId identity, string? name = null)
         => this.RequirementImplementation(site.Target, self, identity, name);
 
-    private BoundCall? RequirementImplementation(BindingSymbol site, BoundType self, KimiDeclarationId identity, string? name = null)
+    private CallPlan? RequirementImplementation(BindingSymbol site, BoundType self, KimiDeclarationId identity, string? name = null)
     {
         var key = (site, self, identity, name);
         if (this.requirementCalls.TryGetValue(key, out var cached) && cached.Version == this.storageVersion)
@@ -91,7 +91,7 @@ public sealed partial class Binding
                 origins[i] = implementation.Schema!.Origins[i].Origin;
             }
 
-            var call = cached.Call ?? new BoundCall();
+            var call = cached.Call ?? new CallPlan();
             call.Set(implementation, implementation.Type!, null, [], [], declaringType: declaring, origins: origins, inputOrigins: inputs);
             if (this.InstantiateStorageType(implementation.Type!, call) is not { } result)
             {

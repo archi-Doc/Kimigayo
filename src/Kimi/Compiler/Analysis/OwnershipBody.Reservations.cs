@@ -246,7 +246,7 @@ public sealed partial class OwnershipBody
 
                 // A value call's owned receiver enters first, under its own source.
                 var entry = op + 1;
-                var owner = operation.Source is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Owner } valueCall } ? valueCall.Receiver : null;
+                var owner = operation.Source is InvocationKoto { BoundValueCall: { ReceiverKind: SemanticsKind.Owner } valueCall } ? valueCall.CalleeValue : null;
                 if (owner is not null && entry < this.Operations.Count && this.Operations[entry].Kind == OwnershipOperationKind.CallEntry && ReferenceEquals(this.Operations[entry].Source, owner))
                 {
                     entry++;

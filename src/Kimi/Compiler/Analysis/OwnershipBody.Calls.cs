@@ -16,13 +16,13 @@ internal enum CallResultSource : byte
 
 internal readonly record struct OwnershipCallInput(int Entry, int Parameter, BoundType Type, bool IsDefault);
 
-internal readonly record struct OwnershipCall(int Start, int Count, BoundCall? Target, CallResultSource ResultSource, int ResultInput = -1, bool RetainsEnvironment = false);
+internal readonly record struct OwnershipCall(int Start, int Count, CallPlan? Target, CallResultSource ResultSource, int ResultInput = -1, bool RetainsEnvironment = false);
 
 public sealed partial class OwnershipBody
 {
     private readonly List<OwnershipCall> calls = new();
     private readonly List<OwnershipCallInput> callInputs = new();
-    private List<BoundCall>? resolvedCallStorage;
+    private List<CallPlan>? resolvedCallStorage;
     private int resolvedCallCount;
 
     internal int CallInputCount => this.callInputs.Count;
@@ -37,7 +37,7 @@ public sealed partial class OwnershipBody
         return this.CallInputStorage.Slice(call.Start, call.Count);
     }
 
-    internal BoundCall? CallAt(int operation) => this.CallInfo(operation).Target;
+    internal CallPlan? CallAt(int operation) => this.CallInfo(operation).Target;
 
     internal void RecordCall(int operation, OwnershipCall call)
     {
@@ -61,7 +61,7 @@ public sealed partial class OwnershipBody
 
     // A case-dependent operation keeps its selected call in this body's context, never in the shared syntax.
     // The call's arrays are retained across analysis requests; Reset releases its previous source and Type references.
-    internal BoundCall NextResolvedCall()
+    internal CallPlan NextResolvedCall()
     {
         var storage = this.resolvedCallStorage ??= new();
         if (this.resolvedCallCount == storage.Count)

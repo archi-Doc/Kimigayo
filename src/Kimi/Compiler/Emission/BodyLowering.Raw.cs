@@ -12,7 +12,7 @@ internal sealed partial class BodyLowering
     // SPEC 5.6: Kimi.Raw. allocate checks the count and the byte size and allocates through the runtime, returning a nonnull
     // aligned substitute for zero bytes; release frees an allocate result and ignores null and that substitute; initialize
     // moves its value into the storage and destroys nothing; slice forms the Slice record over the storage.
-    private bool LowerRawOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerRawOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var kind = plan.Target.CompilerFunction;

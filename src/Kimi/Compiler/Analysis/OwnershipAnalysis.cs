@@ -324,7 +324,7 @@ public sealed partial class OwnershipAnalysis
         void ReportCallEffect(in OwnershipIssue issue)
         {
             var call = issue.Source as InvocationKoto;
-            var name = (call?.BoundCall is { } bound ? this.compilation.Binding.Library.PresentedTarget(bound.Target).Name : null) ?? call?.BoundValueCall?.Receiver.ToString() ?? "the callable";
+            var name = (call?.BoundCall is { } bound ? this.compilation.Binding.Library.PresentedTarget(bound.Target).Name : null) ?? call?.BoundValueCall?.CalleeValue.ToString() ?? "the callable";
             var holder = issue.LoanSource is VariableKoto { NameKoto.IdentifierName: { } named } ? named : issue.LoanSource?.ToString() ?? "a value";
             (string Role, Koto At, string? Label)[]? related = issue.LoanSource is not { } loan ? null
                 : issue.Related is { } earlier ? [("loan", loan, "value retaining the conflicting loan"), ("call", earlier, "the earlier call whose result keeps the loan")]
@@ -1560,7 +1560,7 @@ public sealed partial class OwnershipAnalysis
         return this.CompleteResult(conditional, output, join);
     }
 
-    private int Call(InvocationKoto call, int preparedInput = -1, int preparedReceiver = -1, BoundCall? selected = null, ReadOnlySpan<int> preparedArguments = default)
+    private int Call(InvocationKoto call, int preparedInput = -1, int preparedReceiver = -1, CallPlan? selected = null, ReadOnlySpan<int> preparedArguments = default)
     {
         if (call.BoundValueCall is { } valueCall)
         {
@@ -1720,7 +1720,7 @@ public sealed partial class OwnershipAnalysis
     // modes, and its result may keep those Loans. A requirement call's effects are bounded by the bounds available to it; an
     // ordinary generic function's are not, since its body is not part of the caller's contract. Concrete inputs keep their
     // Origins, which the ordinary Loans track. Each instance runs concrete code, so only the definition records these effects.
-    private void RequirementEffects(InvocationKoto call, BoundCall plan, FunctionKoto requirement, int invoke, int result)
+    private void RequirementEffects(InvocationKoto call, CallPlan plan, FunctionKoto requirement, int invoke, int result)
     {
         var receiver = plan.Receiver is { } syntax ? this.ValueIdentity(syntax) : new(-1, null);
         var effects = this.body.RequirementEffects ??= new();

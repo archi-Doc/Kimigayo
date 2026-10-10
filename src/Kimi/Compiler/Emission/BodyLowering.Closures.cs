@@ -258,19 +258,19 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, BoundValueCall plan, out string? failure)
+    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
         // A monomorphized instance or a default's replica calls the value through the signature of the call's own context (SPEC 8.10,
         // 21.3.1); the plan's declared Types are interpreted there once.
         var context = body.ContextAt(id);
-        var receiver = body.Resolve(plan.ReceiverType, context);
+        var receiver = body.Resolve(plan.CalleeType, context);
         var signature = body.Resolve(plan.Signature, context);
         var returnType = body.Resolve(plan.ReturnType, context);
-        if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.Receiver, call.Method) || receiver is null || signature is null || returnType is null ||
+        if ((uint)operation.Input >= (uint)body.Places.Count || !ReferenceEquals(plan.CalleeValue, call.Method) || receiver is null || signature is null || returnType is null ||
             !(ReferenceEquals(body.Places[operation.Input].Type, receiver) || OwnershipBody.IsBorrowedCallableReceiver(body.Places[operation.Input], receiver, plan)) || !ReferenceEquals(ElementAccess.PlaceCallReference(call) ?? call.BoundType, plan.ReturnType) ||
-            plan.Arguments.Length != call.ArgumentNodes.Count ||
+            plan.ArgumentOperations.Length != call.ArgumentNodes.Count ||
             !(ScalarTypes.Supports(returnType) || ReferenceTypes.IsPointer(returnType) || ReferenceTypes.IsBorrow(returnType) || SlotTypes.IsResult(returnType) || ReferenceEquals(returnType, BoundType.Unit) || ReferenceEquals(returnType, BoundType.Never)))
         {
             return Fail("Unsupported common-function call signature or receiver.", out failure);
@@ -281,7 +281,7 @@ internal sealed partial class BodyLowering
         {
             var loan = body.ComparisonLoans[l];
             protectedReceiver |= loan.Place == operation.Input && loan.Mode == (plan.ReceiverKind == SemanticsKind.Uniq ? LoanRequirement.Uniq : LoanRequirement.Ref) && body.HasComparisonLoan(id, l) &&
-                ReferenceEquals(body.Operations[loan.Read].Source, plan.Receiver) && (!body.IsReachable(id) || this.Dominates(loan.Read, id));
+                ReferenceEquals(body.Operations[loan.Read].Source, plan.CalleeValue) && (!body.IsReachable(id) || this.Dominates(loan.Read, id));
         }
 
         if (plan.ReceiverKind == SemanticsKind.Owner)
@@ -290,7 +290,7 @@ internal sealed partial class BodyLowering
             for (var entry = 0; entry < id && !protectedReceiver; entry++)
             {
                 var input = body.Operations[entry];
-                protectedReceiver = input.Kind == OwnershipOperationKind.CallEntry && input.Place == operation.Input && ReferenceEquals(input.Source, plan.Receiver);
+                protectedReceiver = input.Kind == OwnershipOperationKind.CallEntry && input.Place == operation.Input && ReferenceEquals(input.Source, plan.CalleeValue);
             }
         }
 
@@ -300,16 +300,16 @@ internal sealed partial class BodyLowering
         }
 
         var inputs = signature.Components[0];
-        if (plan.Arguments.Length != (ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count))
+        if (plan.ArgumentOperations.Length != (ReferenceEquals(inputs, BoundType.Unit) ? 0 : inputs.Components.Count))
         {
             return Fail("Common-function arguments do not match the selected signature.", out failure);
         }
 
         var complete = true;
         var cursor = 0;
-        for (var i = 0; i < plan.Arguments.Length; i++)
+        for (var i = 0; i < plan.ArgumentOperations.Length; i++)
         {
-            var argument = plan.Arguments[i];
+            var argument = plan.ArgumentOperations[i];
             var parameterType = body.Resolve(argument.ParameterType, context);
             if (argument.ParameterIndex != i ||
                 argument.Kind is not (ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead or ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow) ||

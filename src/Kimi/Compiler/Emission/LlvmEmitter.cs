@@ -46,7 +46,7 @@ public sealed partial class LlvmEmitter
     /// <summary>Gets a value indicating whether the last failure exceeded a generation resource limit (SPEC 21.3.5: generic contexts, instance ownership storage or inline layout depth, size or count), not a semantic or representation obligation.</summary>
     public bool FailureIsResourceLimit => this.resourceLimit;
 
-    internal BoundCall? FailureInstance { get; private set; }
+    internal CallPlan? FailureInstance { get; private set; }
 
     /// <summary>Writes inspection IR after checking the latest analysis. Does not certify a published artifact or native execution.</summary>
     /// <param name="writer">The caller-owned output.</param>
@@ -483,7 +483,7 @@ public sealed partial class LlvmEmitter
         }
     }
 
-    private Koto? FindInstanceSite(BoundCall call, GenericStoragePlan.CallEntry entry)
+    private Koto? FindInstanceSite(CallPlan call, GenericStoragePlan.CallEntry entry)
     {
         var root = entry;
         while (root.Parent is { } parent)

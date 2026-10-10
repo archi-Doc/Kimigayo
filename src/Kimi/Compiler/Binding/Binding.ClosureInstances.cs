@@ -6,13 +6,13 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<(FunctionKoto Function, BoundCall Context)> closureContexts = new();
+    private readonly List<(FunctionKoto Function, CallPlan Context)> closureContexts = new();
 
     internal BoundType? ClosureSignature(BoundType type)
         => type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure }
             ? type.ClosureContext is { } context ? this.InstantiateStorageType(closure.Signature, context) : closure.Signature : null;
 
-    private BoundType? CloseClosureTypes(BoundType type, BoundCall call)
+    private BoundType? CloseClosureTypes(BoundType type, CallPlan call)
     {
         if (type.ClosureContext is not null || (type.Components.Count == 0 && type.Kind != BoundTypeKind.Closure))
         {
@@ -34,7 +34,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(part, type.Components[i]);
             }
 
-            BoundCall? context = null;
+            CallPlan? context = null;
             if (type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { RequiresInstantiation: true, BoundClosure: { } closure } function)
             {
                 var enclosing = function.BoundSymbol!.Scope.Function;

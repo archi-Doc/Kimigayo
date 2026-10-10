@@ -9,7 +9,7 @@ namespace Kimi.Compiler;
 /// inlineBase publishes that storage's element address for the Kimigayo remainder operations.</summary>
 internal sealed partial class BodyLowering
 {
-    private bool LowerFixedStorageOwn(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
+    private bool LowerFixedStorageOwn(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         if (plan.Target.Declaration is not FunctionKoto target || plan.Receiver is not null || call.AttributeChain is not null || plan.DefaultArguments.Length != 0 ||
