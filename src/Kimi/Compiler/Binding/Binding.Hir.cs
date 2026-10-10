@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The HIR publisher (plan R2b): the Op and Res columns and the jump targets of every module, read from the facts the latest pass
+// The HIR publisher (plan R2b): the Op, Res and Completion columns and the jump targets of every module, read from the facts the latest pass
 // keeps; it decides nothing Binding has not decided. Tests call it in R2b and the MIR builder from R3; R7 writes the columns inline.
 public sealed partial class Binding
 {
@@ -51,15 +51,25 @@ public sealed partial class Binding
         private HirOp parentOp;
         private HirPosition position;
 
+        // Binding's structural completion with its Never evidence, one per body (StructuralCompletion moves into Binding in R6).
+        private StructuralCompletion? completion;
+
         public override void Visit(Koto node)
         {
             var (parent, parentOp, outer, defaults) = (this.parent, this.parentOp, this.position, this.defaultCount);
             var position = this.PositionOf(node);
             var op = this.OpOf(node, position);
-            if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Res: { } res } && node.SyntaxId < ops.Length)
+            if (op == HirOp.Body)
+            {
+                this.completion?.Clear();
+            }
+
+            if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Res: { } res, Hir.Completions: { } completions } && node.SyntaxId < ops.Length)
             {
                 ops[node.SyntaxId] = op;
                 res[node.SyntaxId] = this.ResOf(node);
+                completions[node.SyntaxId] = op is HirOp.Unset or HirOp.Syntax or HirOp.Body ? HirCompletion.Unset
+                    : (this.completion ??= new(binding.ResultNeverEvidence)).CanComplete(node) ? HirCompletion.Completes : HirCompletion.Diverges;
             }
 
             if (op is HirOp.Jump or HirOp.Continue)
@@ -78,14 +88,16 @@ public sealed partial class Binding
             ref var hir = ref table.Hir;
             if (hir.Ops?.Length != hir.States.Length)
             {
-                (hir.Ops, hir.Res) = (new HirOp[hir.States.Length], new HirRes[hir.States.Length]);
+                (hir.Ops, hir.Res, hir.Completions) = (new HirOp[hir.States.Length], new HirRes[hir.States.Length], new HirCompletion[hir.States.Length]);
             }
             else
             {
                 Array.Clear(hir.Ops);
                 Array.Clear(hir.Res!);
+                Array.Clear(hir.Completions!);
             }
 
+            this.completion?.Clear();
             (this.parent, this.position) = (null, HirPosition.None);
             this.Visit(root);
         }

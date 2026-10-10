@@ -16,7 +16,7 @@ namespace XunitTest;
 /// <c>check</c> compares the current snapshot with that directory and, when <c>KIMI_SEMANTIC_OUTPUT</c> names a directory, writes the
 /// current snapshot and its differences there. Without the variable nothing is requested and the test does nothing.
 /// <c>KIMI_SEMANTIC_HIR=1</c> publishes the HIR columns before the ownership analysis and adds a <c>.hir.txt</c> file per case: one
-/// line per node with its id, Op, Res and a jump's target (R2b).</remarks>
+/// line per node with its id, Op, Res, a jump's target and its completion (R2b).</remarks>
 public sealed class SemanticSnapshotTest
 {
     [Fact]
@@ -371,6 +371,11 @@ public sealed class SemanticSnapshotTest
                 if (HirTables.Op(node) is HirOp.Jump or HirOp.Continue && HirTables.PlanOf(node).Plan is Koto target)
                 {
                     hir.Append(" ->").Append(target.SyntaxId);
+                }
+
+                if (HirTables.CompletionOf(node) is not HirCompletion.Unset and var completion)
+                {
+                    hir.Append(' ').Append(completion);
                 }
 
                 hir.Append('\n');

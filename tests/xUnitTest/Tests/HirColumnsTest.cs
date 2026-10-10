@@ -8,7 +8,8 @@ namespace XunitTest;
 
 /// <summary>The published HIR columns (docs/dev/COMPILER_ARCHITECTURE.md, R2b) over the Kimi library and every milestone program:
 /// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
-/// prepared slot, and every jump its target; publishing changes no other result and allocates nothing again.</summary>
+/// prepared slot, every jump its target and every evaluated node its completion; publishing changes no other result and allocates
+/// nothing again.</summary>
 public sealed class HirColumnsTest
 {
     // Virtual bodies over a generic base whose applicability has premises, and over a closed base.
@@ -76,6 +77,34 @@ public sealed class HirColumnsTest
         Assert.All(functions, static x => Assert.Equal(HirOp.Body, HirTables.Op(x)));
     }
 
+    // SPEC 14.10: a return, an exit, a call of a Never function and a loop no exit leaves diverge, and so does an if or a match
+    // whose every arm diverges; a loop an exit leaves completes.
+    [Fact]
+    public void CompletionFollowsTheNeverRule()
+    {
+        var c = MinimalEmissionTest.Analyze("func choose(c: bool) -> i32\n    if c\n        return 1\n    else\n        return 2\n" +
+            "func pick(x: i32) -> i32\n    match x\n        0 => return 1\n        _ => $abort(\"pick\")\n" +
+            "func spin() -> i32\n    var i: i32 = 0\n    loop\n        i = i + 1\n" +
+            "func count() -> i32\n    var i: i32 = 0\n    loop\n        require i < 3 else => exit\n        i = i + 1\n    return i\n" +
+            "require choose(true) == 1 and pick(0) == 1 and count() == 3 else => $abort(\"completion\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var nodes = Reachable(c.Kotonoha);
+        var functions = nodes.OfType<FunctionKoto>().Where(static x => x.Name is "choose" or "pick" or "spin" or "count").ToDictionary(static x => x.Name);
+        HirCompletion First<T>(string function)
+            where T : Koto => HirTables.CompletionOf(nodes.OfType<T>().First(x => IsWithin(x, functions[function])));
+
+        Assert.Equal(HirCompletion.Diverges, First<IfKoto>("choose"));
+        Assert.Equal(HirCompletion.Diverges, First<JumpKoto>("choose"));
+        Assert.Equal(HirCompletion.Diverges, First<MatchKoto>("pick"));
+        Assert.Equal(HirCompletion.Diverges, First<InvocationKoto>("pick"));
+        Assert.Equal(HirCompletion.Diverges, First<LoopKoto>("spin"));
+        Assert.Equal(HirCompletion.Completes, First<LoopKoto>("count"));
+        Assert.Equal(HirCompletion.Diverges, First<JumpKoto>("count"));
+        Assert.Equal(HirCompletion.Completes, First<RequireKoto>("count"));
+    }
+
     // Publishing before the ownership analysis leaves every Binding, control-flow and ownership fact and diagnostic unchanged.
     [Theory]
     [MemberData(nameof(Corpus))]
@@ -127,6 +156,14 @@ public sealed class HirColumnsTest
             if (op is HirOp.Jump or HirOp.Continue && (HirTables.PlanOf(node).Plan is not Koto target || !ReferenceEquals(target, KotoHelper.ResolveTransferTarget((JumpKoto)node))))
             {
                 problems.Add($"{where} without its target");
+            }
+
+            // An evaluated node has its completion, a Never-typed one diverging; a node the builder does not evaluate has none.
+            var evaluated = op is not (HirOp.Unset or HirOp.Syntax or HirOp.Body);
+            var completion = HirTables.CompletionOf(node);
+            if (evaluated == (completion == HirCompletion.Unset) || (evaluated && ReferenceEquals(node.TypeOf(), BoundType.Never) && completion != HirCompletion.Diverges))
+            {
+                problems.Add($"{where} completion {completion}");
             }
         }
 

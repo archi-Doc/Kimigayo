@@ -71,3 +71,13 @@ internal enum HirRes : byte
     Field, // A Property of a receiver, or the storage of an accessor.
     Variant,
 }
+
+/// <summary>Whether a node's evaluation can complete normally: the Completion column of <see cref="HirTables"/>, the structural
+/// completion Binding's Never rule applies (SPEC 14.10). The builder ends a block that has no runtime successor where a node
+/// <see cref="Diverges"/> and gives it the check-only continuation. Set on every node whose Op the builder evaluates.</summary>
+internal enum HirCompletion : byte
+{
+    Unset,
+    Completes,
+    Diverges,
+}
