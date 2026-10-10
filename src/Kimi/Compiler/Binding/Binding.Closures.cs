@@ -7,7 +7,11 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Retained closure conversion and capture vocabulary.
 
-public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol Environment);
+public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol Environment)
+{
+    // How the entry initializes its environment binding (SPEC 7.6.2), as the HIR Adjust column states acquisitions.
+    internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
+}
 
 /// <summary>A retained capture environment, signature and minimum call receiver.</summary>
 public sealed class BoundClosure

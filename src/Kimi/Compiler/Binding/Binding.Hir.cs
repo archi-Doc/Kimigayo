@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The HIR publisher (plan R2b): the Op, Res and Completion columns and the jump targets of every module, read from the facts the latest pass
+// The HIR publisher (plan R2b): the Op, Res, Completion and Adjust columns and the jump targets of every module, read from the facts the latest pass
 // keeps; it decides nothing Binding has not decided. Tests call it in R2b and the MIR builder from R3; R7 writes the columns inline.
 public sealed partial class Binding
 {
@@ -53,6 +53,7 @@ public sealed partial class Binding
 
         // Binding's structural completion with its Never evidence, one per body (StructuralCompletion moves into Binding in R6).
         private StructuralCompletion? completion;
+        private SyntaxTable? table;
 
         public override void Visit(Koto node)
         {
@@ -78,6 +79,11 @@ public sealed partial class Binding
                 HirTables.PlanFor(node, target is not null).Plan = target;
             }
 
+            if (op is not (HirOp.Unset or HirOp.Error) && (op != HirOp.Syntax || (node is FunctionKoto && (position & HirPosition.Replaced) == 0)))
+            {
+                this.Consume(node, op);
+            }
+
             (this.parent, this.parentOp, this.position) = (node, op, position);
             node.VisitChildren(this);
             (this.parent, this.parentOp, this.position, this.defaultCount) = (parent, parentOp, outer, defaults);
@@ -88,15 +94,17 @@ public sealed partial class Binding
             ref var hir = ref table.Hir;
             if (hir.Ops?.Length != hir.States.Length)
             {
-                (hir.Ops, hir.Res, hir.Completions) = (new HirOp[hir.States.Length], new HirRes[hir.States.Length], new HirCompletion[hir.States.Length]);
+                (hir.Ops, hir.Res, hir.Completions, hir.Adjusts) = (new HirOp[hir.States.Length], new HirRes[hir.States.Length], new HirCompletion[hir.States.Length], new HirAdjust[hir.States.Length]);
             }
             else
             {
                 Array.Clear(hir.Ops);
                 Array.Clear(hir.Res!);
                 Array.Clear(hir.Completions!);
+                Array.Clear(hir.Adjusts!);
             }
 
+            this.table = table;
             this.completion?.Clear();
             (this.parent, this.position) = (null, HirPosition.None);
             this.Visit(root);
@@ -287,6 +295,209 @@ public sealed partial class Binding
                     return HirRes.Variant;
                 default:
                     return HirRes.Decl;
+            }
+        }
+
+        // The children a node's Op consumes (SPEC 3.5, 10.2, 15.1.5): its own operands first, then its calls' receivers and arguments by
+        // their operations, in evaluation order; a deeper consumer, such as a setter taking an assignment's value, is written last.
+        private void Consume(Koto node, HirOp op)
+        {
+            switch (node)
+            {
+                case FunctionKoto function:
+                    for (var i = 0; i < function.Parameters.Count; i++)
+                    {
+                        this.Take(function.Parameters[i].DefaultValue);
+                    }
+
+                    this.Result(op is HirOp.Body or HirOp.Closure ? function.ExpressionBody : null);
+                    break;
+                case PropertyAccessorKoto or CodeBlockKoto or DoKoto:
+                    this.Result(node is PropertyAccessorKoto accessor ? accessor.Body : node is DoKoto scoped ? scoped.Body : ((CodeBlockKoto)node).TrailingExpression);
+                    break;
+                case VariableKoto or PropertyKoto:
+                    this.Take(node is VariableKoto variable ? variable.InitializerKoto : ((PropertyKoto)node).InitializerKoto);
+                    break;
+                case ParenthesizedKoto or MacroKoto or LabeledKoto when op == HirOp.Group:
+                    this.Write(node is LabeledKoto label ? label.Target : ((UnaryKoto)node).Operand, new(HirAcquire.None, HirAdaptation.None)); // Its group acquires it.
+                    break;
+                case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
+                    this.Write(transfer.Left, new(HirAcquire.Move, HirAdaptation.None));
+                    break;
+                case ConversionKoto or DereferenceKoto or IsKoto: // A borrow, a followed referent and a runtime test take their operand in place.
+                    this.Take(node is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)node).Left, inPlace: op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest);
+                    break;
+                case MemberAccessKoto member when op is HirOp.Field or HirOp.PrimitiveOp: // A stored Field or Tuple element, or a sequence's metadata.
+                    this.Take(member.Left, binding.receiverOperations.TryGetValue(member, out var receiver) ? HirAdjust.Of(receiver) : HirAdaptation.None, true);
+                    break;
+                case IndexKoto index when op == HirOp.Index:
+                    this.Take(index.Left, inPlace: true);
+                    this.Take(index.Right);
+                    break;
+                case BinaryKoto or UnaryKoto when op is HirOp.Assign or HirOp.CompoundAssign:
+                    this.Write(node is BinaryKoto target ? target.Left : ((UnaryKoto)node).Operand, new(HirAcquire.None, HirAdaptation.None));
+                    this.Take((node as BinaryKoto)?.Right);
+                    break;
+                case BinaryKoto or UnaryKoto or RangeKoto when op is HirOp.PrimitiveOp or HirOp.Logical or HirOp.Range:
+                    this.Take(node is BinaryKoto binary ? binary.Left : node is RangeKoto range ? range.Start : ((UnaryKoto)node).Operand);
+                    this.Take((node as BinaryKoto)?.Right ?? (node as RangeKoto)?.End);
+                    break;
+                case TupleLiteralKoto or ArrayLiteralKoto:
+                    foreach (var element in node is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)node).Elements)
+                    {
+                        this.Take(element);
+                    }
+
+                    break;
+                case DictionaryLiteralKoto dictionary:
+                    foreach (var entry in dictionary.Entries)
+                    {
+                        this.Take(entry.Key);
+                        this.Take(entry.Value);
+                    }
+
+                    break;
+                case IfKoto conditional:
+                    for (var i = 0; i < conditional.Branches.Count; i++)
+                    {
+                        this.Take(conditional.Branches[i].Condition);
+                        this.Result(conditional.Branches[i].Body);
+                    }
+
+                    this.Result(conditional.ElseBody);
+                    break;
+                case JumpKoto or WhileKoto or RequireKoto or TestVerificationKoto or DiscardKoto:
+                    this.Take(node switch { JumpKoto jump => jump.Expression, WhileKoto loop => loop.Condition, RequireKoto require => require.Condition, DiscardKoto discard => discard.Operand, _ => ((TestVerificationKoto)node).Condition });
+                    this.Take((node as TestVerificationKoto)?.Message);
+                    break;
+                case MatchKoto match:
+                    binding.TryGetMatch(match, out var plan);
+                    this.Subject(match.Expression, plan?.SubjectBorrow);
+                    this.Bindings(plan);
+                    for (var i = 0; i < match.Arms.Count; i++)
+                    {
+                        this.Take(match.Arms[i].Guard);
+                        this.Result(match.Arms[i].Body);
+                    }
+
+                    break;
+                case ForKoto loop:
+                    this.Take(loop.Iterable);
+                    this.Bindings(loop.Iteration?.Decomposition);
+                    break;
+            }
+
+            // An enum Case's payloads, then each call of the node: a value call's callee in its receiver mode (SPEC 7.6.3), a reference to the
+            // callable passed as it is in that mode. Of a user index's index and indexUniq, an update or an exclusive borrow of the element
+            // takes indexUniq (SPEC 4.6.9).
+            if (op == HirOp.Aggregate && binding.TryGetEnumConstruction(node, out var construction))
+            {
+                foreach (ref readonly var payload in construction!.PayloadOperations)
+                {
+                    this.Take(payload.Source, HirAdjust.Of(payload));
+                }
+            }
+
+            var unselected = node is IndexKoto user && binding.IndexerCall(user, true) is { } exclusive ? (this.Exclusive(node) ? binding.IndexerCall(user, false) : exclusive)?.CallStorage : null;
+            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+            {
+                if (ReferenceEquals(call, unselected))
+                {
+                    continue;
+                }
+
+                if (call.Kind == CalleeKind.Value && call.ReceiverOperation.Source is null)
+                {
+                    var reference = call.CalleeType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } callee ? callee.Semantics : SemanticsKind.Owner;
+                    var mode = call.ReceiverKind == SemanticsKind.Owner || reference == call.ReceiverKind ? HirAdaptation.None : reference != SemanticsKind.Owner ? HirAdaptation.ReferenceRead
+                        : call.ReceiverKind == SemanticsKind.Uniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow;
+                    this.Take(call.CalleeValue, mode);
+                }
+                else
+                {
+                    this.Take(call.Kind == CalleeKind.Value ? call.ReceiverOperation.Source : call.Receiver, HirAdjust.Of(call.ReceiverOperation));
+                }
+
+                foreach (ref readonly var argument in call.ArgumentOperations)
+                {
+                    this.Take(argument.Source, HirAdjust.Of(argument));
+                }
+            }
+        }
+
+        // A body or operand that supplies its construct's value (SPEC 14.9).
+        private void Result(Koto? source) => this.Take(source is not null && KotoHelper.IsValueContext(source) ? source : null);
+
+        // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver) wins over its
+        // consumer's operation. A Place adapted or used in place is not acquired, an adapted value is a Temporary, and an unadapted one taken
+        // by value is acquired by the bare rule.
+        private void Take(Koto? child, HirAdaptation adaptation = HirAdaptation.None, bool inPlace = false)
+        {
+            if (child is not null)
+            {
+                adaptation = binding.adaptations.TryGetValue(child, out var recorded) ? HirAdjust.Of(recorded, child.BoundType) : adaptation;
+                this.Write(child, new(adaptation != HirAdaptation.None || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary : this.Bare(child), adaptation));
+            }
+        }
+
+        // SPEC 3.5, 8.9, 15.1.5: the bare acquisition Binding applies: a Copy Place Copies, a pair-layer Place whose every admitted case Copies
+        // or Reborrows acquires by case, a Place storing an exclusive reference Reborrows it, a Copy unproven for an abstract Type is decided
+        // by case, and a raw referent that is not Copy Moves; a value that is not a Place is a Temporary.
+        private HirAcquire Bare(Koto child)
+        {
+            var place = this.IsPlace(child);
+            if (!place || child.BoundType is not { } type)
+            {
+                return place ? HirAcquire.Unset : HirAcquire.Temporary;
+            }
+
+            var proof = binding.ProveCopy(type, child);
+            return proof == ConstraintProof.Proven ? HirAcquire.Copy
+                : TryPairLayer(type, out _, out _) && binding.BareAcquisition(type, child, out _) == SemanticsMask.None ? HirAcquire.ByCase
+                : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? HirAcquire.Reborrow
+                : proof == ConstraintProof.Refuted ? HirAcquire.Move : proof == ConstraintProof.Unknown ? HirAcquire.ByCase : HirAcquire.Unset;
+        }
+
+        // Whether a node's consumer updates it or borrows it exclusively; the parent is the node's while it consumes its children.
+        private bool Exclusive(Koto node) => HirTables.AdjustOf(node).Adaptation == HirAdaptation.ExclusiveBorrow ||
+            (this.parentOp is HirOp.Assign or HirOp.CompoundAssign && ReferenceEquals((this.parent as BinaryKoto)?.Left ?? (this.parent as UnaryKoto)?.Operand, node)) ||
+            (this.parentOp == HirOp.Borrow && this.parent!.BoundType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq);
+
+        // A bare Place (SPEC 3.5), a raw Place (SPEC 5.2) or a static.
+        private bool IsPlace(Koto child) => IsBarePlace(child) || ElementAccess.IsRawPlace(child) || this.ResOf(KotoHelper.UnwrapParentheses(child)) == HirRes.Static;
+
+        // SPEC 15.1.6: a Subject is acquired as written, but a bare Place is borrowed in place: its stored exclusive reference Reborrowed, a
+        // stored exclusive reference reached through a shared layer read as one shared reference, and any other Place borrowed in its mode.
+        private void Subject(Koto subject, BoundType? borrow)
+        {
+            if (borrow is null)
+            {
+                this.Take(subject);
+                return;
+            }
+
+            var mode = borrow.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow
+                : subject.BoundType is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? HirAdaptation.ReferenceRead : HirAdaptation.SharedBorrow;
+            this.Write(subject, ReferenceEquals(borrow, subject.BoundType) ? new(HirAcquire.Reborrow, HirAdaptation.None) : new(HirAcquire.None, mode));
+        }
+
+        private void Bindings(BoundMatch? plan)
+        {
+            for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
+            {
+                if (plan.Positions[i] is { Kind: BoundPatternKind.Binding } position)
+                {
+                    this.Write(position.Source, HirAdjust.Of(position.Acquisition, position.AccessMode));
+                }
+            }
+        }
+
+        // Only the nodes of the module being published; a call shared across modules names nodes of another.
+        private void Write(Koto? node, HirAdjust adjust)
+        {
+            if (node is not null && ReferenceEquals(node.SyntaxOwner, this.table) && this.table!.Hir.Adjusts is { } adjusts && node.SyntaxId < adjusts.Length)
+            {
+                adjusts[node.SyntaxId] = adjust;
             }
         }
     }

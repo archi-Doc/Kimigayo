@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 #pragma warning disable SA1402 // The HIR column vocabularies belong together.
 #pragma warning disable SA1649 // The file names the vocabulary.
 
@@ -80,4 +82,83 @@ internal enum HirCompletion : byte
     Unset,
     Completes,
     Diverges,
+}
+
+/// <summary>How a parent takes a child it consumes: the Adjust column of <see cref="HirTables"/> (SPEC 3.5, 10.2, 15.1.5, 15.1.6), written
+/// for each child an Op consumes from the operation Binding recorded, which the builder reads instead of re-deriving an acquisition or an
+/// adaptation. An explicit conversion is its node's Op with its <see cref="ConversionBinding"/> (the plan row's Mode). The static members
+/// are the one conversion from Binding's acquisition vocabularies.</summary>
+/// <param name="Acquire">What happens to the child's own value or Place.</param>
+/// <param name="Adaptation">The implicit adaptation that gives the parent another Type.</param>
+internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adaptation)
+{
+    // A Pattern binding (SPEC 15.1.6): Copied, moved, by case, or borrowed in the mode its path grants.
+    internal static HirAdjust Of(PatternAcquisition acquisition, PatternAccessMode access) => acquisition switch
+    {
+        PatternAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
+        PatternAcquisition.Move => new(HirAcquire.Move, HirAdaptation.None),
+        PatternAcquisition.CopyOrMove => new(HirAcquire.ByCase, HirAdaptation.None),
+        PatternAcquisition.Borrow => new(HirAcquire.None, access == PatternAccessMode.Exclusive ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow),
+        _ => default,
+    };
+
+    // A capture entry, as `let x = x` or `let x = x@op` acquires (SPEC 7.6.2).
+    internal static HirAdjust Of(CaptureAcquisition acquisition) => acquisition switch
+    {
+        CaptureAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
+        CaptureAcquisition.Move => new(HirAcquire.Move, HirAdaptation.None),
+        CaptureAcquisition.Reborrow => new(HirAcquire.Reborrow, HirAdaptation.None),
+        CaptureAcquisition.Bare => new(HirAcquire.ByCase, HirAdaptation.None),
+        _ => new(HirAcquire.None, acquisition == CaptureAcquisition.SharedSlotBorrow ? HirAdaptation.SharedBorrow : HirAdaptation.ExclusiveBorrow),
+    };
+
+    // A call's argument, receiver or payload operation (SPEC 7.3, 10.2); a Reborrow in the same mode keeps the Type, the bare acquisition.
+    internal static HirAdaptation Of(in BoundArgumentOperation operation) => operation.Kind switch
+    {
+        ArgumentOperationKind.Value => operation.Adaptation == ArgumentAdaptation.Erasure ? HirAdaptation.Erasure : HirAdaptation.None,
+        ArgumentOperationKind.Borrow => operation.ParameterType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow,
+        ArgumentOperationKind.Reborrow => operation.Adaptation == ArgumentAdaptation.SameSemanticsReborrow ? HirAdaptation.None : HirAdaptation.ReferenceRead,
+        ArgumentOperationKind.BaseBorrow => HirAdaptation.BaseBorrow,
+        ArgumentOperationKind.StorageProjection => HirAdaptation.StorageProjection,
+        ArgumentOperationKind.PayloadProjection => HirAdaptation.PayloadProjection,
+        ArgumentOperationKind.CopyRead => HirAdaptation.ReferentRead,
+        _ => HirAdaptation.ReferenceRead,
+    };
+
+    // An adaptation recorded at a node's fixed expected Type or for a receiver (SPEC 3.4.1, 3.5.3, 10.2); a Reborrow in the node's own mode
+    // keeps the Type, the bare acquisition.
+    internal static HirAdaptation Of(in BoundAdaptation adaptation, BoundType? type) => adaptation.Kind switch
+    {
+        ExpectedAdaptationKind.ReferentRead => HirAdaptation.ReferentRead,
+        ExpectedAdaptationKind.SharedBorrow => HirAdaptation.SharedBorrow,
+        ExpectedAdaptationKind.ExclusiveBorrow => HirAdaptation.ExclusiveBorrow,
+        ExpectedAdaptationKind.Reborrow when adaptation.Type.Semantics == type?.Semantics => HirAdaptation.None,
+        _ => HirAdaptation.ReferenceRead,
+    };
+}
+
+/// <summary>What happens to a consumed child's own value or Place (SPEC 3.5, 15.1.5).</summary>
+internal enum HirAcquire : byte
+{
+    Unset,
+    None, // Used in place: a target, a projected, followed or borrowed Place, the Place its adaptation reads, or a group's operand.
+    Copy,
+    Move,
+    Reborrow, // The exclusive reference a Place stores, Reborrowed in its own mode.
+    ByCase, // As each Semantics case's Type acquires: a pair layer's Copy or Reborrow (SPEC 8.9), or a Copy unproven for an abstract Type.
+    Temporary, // A value, not a Place, taken as it is.
+}
+
+/// <summary>The implicit adaptation of a consumed child (SPEC 10.2); the child keeps its own Type.</summary>
+internal enum HirAdaptation : byte
+{
+    None,
+    ReferentRead, // The Scalar the reference layers end in is read (SPEC 3.5.3).
+    ReferenceRead, // One reference, in the destination's mode, to the referent the layers reach (SPEC 3.4.1, 10.2).
+    SharedBorrow,
+    ExclusiveBorrow,
+    BaseBorrow, // A borrow of the base a projected receiver's path selects (SPEC 7.3).
+    PayloadProjection, // A shared borrow of an object handle's payload (SPEC 13.5.5.1).
+    StorageProjection, // The receiver's base that declares the selected stored Field.
+    Erasure, // A closure or function item erased to its Function Type (SPEC 10.2).
 }

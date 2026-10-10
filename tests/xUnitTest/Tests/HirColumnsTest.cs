@@ -105,11 +105,93 @@ public sealed class HirColumnsTest
         Assert.Equal(HirCompletion.Completes, First<RequireKoto>("count"));
     }
 
+    // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
+    // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
+    [Fact]
+    public void AdjustStatesTheRecordedOperations()
+    {
+        const string Source = "func read(p: ref/i32) -> i32 => p@follow\nfunc bump(target: uniq/i32) => target@follow += 1\nfunc count(text: string) -> i32 => 1\n" +
+            "func twice(slot: uniq/i32)\n    bump(slot)\nfunc pick(value: Option<i32>) -> i32\n    match value\n        .Some(let inner) => return inner\n        .None => return 0\n" +
+            "var number: i32 = 1\nlet owned = \"owned\"\ntwice(number@uniq)\nlet copied = number\n" +
+            "require read(number) == 2 and count(owned@move) == 1 and copied == 2 and pick(.Some(5)) == 5 else => $abort(\"adjust\")\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var adjusted = Reachable(c.Kotonoha).Where(static x => HirTables.AdjustOf(x).Acquire != HirAcquire.Unset)
+            .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {HirTables.AdjustOf(x).Acquire}/{HirTables.AdjustOf(x).Adaptation}");
+        // The require's condition operands are Temporaries, and the callee of $abort a group's operand, which the group acquires.
+        string[] expected =
+        [
+            "p@follow Copy/None", "p None/None", "target@follow None/None", "target None/None", "1 Temporary/None", "1 Temporary/None",
+            "slot Reborrow/None", "value None/SharedBorrow", "let inner None/SharedBorrow", "inner None/ReferentRead", "0 Temporary/None",
+            "1 Temporary/None", "\"owned\" Temporary/None", "number@uniq Temporary/None", "number None/None", "number Copy/None",
+            "read(number) == 2 and count(owned@move) == 1 and copied == 2 and pick(.Some(5)) == 5 Temporary/None",
+            "read(number) == 2 and count(owned@move) == 1 and copied == 2 Temporary/None", "read(number) == 2 and count(owned@move) == 1 Temporary/None",
+            "read(number) == 2 Temporary/None", "read(number) Temporary/None", "number None/SharedBorrow", "2 Temporary/None",
+            "count(owned@move) == 1 Temporary/None", "count(owned@move) Temporary/None", "owned@move Temporary/None", "owned Move/None",
+            "1 Temporary/None", "copied == 2 Temporary/None", "copied Copy/None", "2 Temporary/None", "pick(.Some(5)) == 5 Temporary/None",
+            "pick(.Some(5)) Temporary/None", ".Some(5) Temporary/None", "5 Temporary/None", "5 Temporary/None", "abort(\"adjust\") None/None",
+            "\"adjust\" Temporary/None",
+        ];
+        Assert.Equal(expected, adjusted);
+    }
+
     // Publishing before the ownership analysis leaves every Binding, control-flow and ownership fact and diagnostic unchanged.
     [Theory]
     [MemberData(nameof(Corpus))]
     public void PublishIsInvisible(string name)
         => Assert.Equal(SemanticSnapshotTest.Take(name, false).Text, SemanticSnapshotTest.Take(name, true).Text);
+
+    // Not a gate (R2b U3): with KIMI_ADJUST_SHADOW naming a file, writes each consumed node of the corpus with its Adjust beside the Copy,
+    // Move, read, borrow and Pattern operations the ownership analysis records at it, and a count per pair, for the R4 difference ledger.
+    [Fact]
+    public void AdjustShadowReport()
+    {
+        var path = Environment.GetEnvironmentVariable("KIMI_ADJUST_SHADOW");
+        if (string.IsNullOrEmpty(path))
+        {
+            return;
+        }
+
+        var rows = new List<string> { "case\tlocation\tkind\top\tadjust\townership" };
+        var pairs = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var name in Corpus.Select(static x => x.Data))
+        {
+            var (c, module) = SemanticSnapshotTest.Bind(name);
+            HirTables.Publish(c);
+            c.Ownership.Analyze();
+            var operations = new Dictionary<Koto, SortedSet<string>>(ReferenceEqualityComparer.Instance);
+            foreach (var operation in c.Ownership.Bodies.SelectMany(static x => x.Operations))
+            {
+                var kind = operation.Kind switch
+                {
+                    OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern => operation.Kind + ":" + operation.Acquisition,
+                    OwnershipOperationKind.Borrow => operation.LoanMode == LoanRequirement.Uniq ? "ExclusiveBorrow" : "SharedBorrow",
+                    OwnershipOperationKind.Read => "Read",
+                    _ => null,
+                };
+
+                if (kind is not null && operation.Source is { } source)
+                {
+                    (operations.TryGetValue(source, out var set) ? set : operations[source] = new(StringComparer.Ordinal)).Add(kind);
+                }
+            }
+
+            foreach (var node in Reachable(module))
+            {
+                if (HirTables.AdjustOf(node) is { Acquire: not HirAcquire.Unset } adjust)
+                {
+                    var key = $"{adjust.Acquire}/{adjust.Adaptation}\t{(operations.TryGetValue(node, out var set) ? string.Join('+', set) : "-")}";
+                    rows.Add($"{name}\t{node.CodeContext.SourceDocument?.Path}:{node.Span.Start}\t{node.Akind}\t{HirTables.Op(node)}\t{key}");
+                    pairs[key] = pairs.GetValueOrDefault(key) + 1;
+                }
+            }
+        }
+
+        File.WriteAllLines(path, rows);
+        File.WriteAllLines(path + ".summary.txt", pairs.OrderByDescending(static x => x.Value).ThenBy(static x => x.Key, StringComparer.Ordinal).Select(static x => $"{x.Value}\t{x.Key}"));
+    }
 
     [Trait("Purpose", "Allocation")]
     [Theory]
@@ -127,15 +209,28 @@ public sealed class HirColumnsTest
     }
 
     // Every parsed node in the tree has an Op, a call Op its call, a selected symbol its Res (the prepared slot exactly where the
-    // parameter is read in a later default of its function), and a jump the target it transfers to.
+    // parameter is read in a later default of its function), a jump the target it transfers to, and an evaluated node its completion;
+    // every child an Op consumes has its Adjust: a call's argument and receiver the adaptation of the operation of a call that takes them,
+    // unless Binding recorded one at the node itself, and a Pattern binding its acquisition.
     private static List<string> Problems(Kotonoha module)
     {
         var table = module.Syntax;
+        var binding = module.Compilation.Binding;
         var problems = new List<string>();
+        var operations = new Dictionary<Koto, HashSet<HirAdaptation>>(ReferenceEqualityComparer.Instance);
+        void Expect(Koto source, HirAdaptation adaptation)
+        {
+            if (!binding.TryGetAdaptation(source, out _))
+            {
+                (operations.TryGetValue(source, out var set) ? set : operations[source] = []).Add(adaptation);
+            }
+        }
+
+        bool Parsed(Koto? node) => node is not null && ReferenceEquals(node.SyntaxOwner, table) && node.SyntaxId <= table.ParsedCount;
         foreach (var node in Reachable(module))
         {
             // A synthesized node in the tree belongs to the expansion that made it.
-            if (!ReferenceEquals(node.SyntaxOwner, table) || node.SyntaxId > table.ParsedCount)
+            if (!Parsed(node))
             {
                 continue;
             }
@@ -165,9 +260,99 @@ public sealed class HirColumnsTest
             {
                 problems.Add($"{where} completion {completion}");
             }
+
+            if (op is HirOp.Unset or HirOp.Error || (op == HirOp.Syntax && node is not FunctionKoto))
+            {
+                continue;
+            }
+
+            foreach (var child in Consumed(node, op))
+            {
+                if (Parsed(child) && HirTables.AdjustOf(child!).Acquire == HirAcquire.Unset)
+                {
+                    problems.Add($"{where} consumes {child!.Akind}@{child.Span.Start} without its Adjust");
+                }
+            }
+
+            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+            {
+                if (call.Kind != CalleeKind.Value && call.Receiver is { } receiver)
+                {
+                    Expect(receiver, HirAdjust.Of(call.ReceiverOperation));
+                }
+
+                foreach (var argument in call.ArgumentOperations)
+                {
+                    if (argument.Source is { } source)
+                    {
+                        Expect(source, HirAdjust.Of(argument));
+                    }
+                }
+            }
+
+            if (node is MatchKoto match && binding.TryGetMatch(match, out var plan))
+            {
+                foreach (var position in plan!.Positions)
+                {
+                    if (position.Kind == BoundPatternKind.Binding && Parsed(position.Source) && HirTables.AdjustOf(position.Source) != HirAdjust.Of(position.Acquisition, position.AccessMode))
+                    {
+                        problems.Add($"{where} binds {position.Source.Span.Start} {position.Acquisition} as {HirTables.AdjustOf(position.Source)}");
+                    }
+                }
+            }
+        }
+
+        foreach (var (source, adaptations) in operations)
+        {
+            if (Parsed(source) && !adaptations.Contains(HirTables.AdjustOf(source).Adaptation))
+            {
+                problems.Add($"{source.CodeContext.SourceDocument?.Path}:{source.Span.Start} {source.Akind} takes {HirTables.AdjustOf(source)} for {string.Join(',', adaptations)}");
+            }
         }
 
         return problems;
+    }
+
+    // The children an Op consumes (SPEC 3.5, 10.2, 15.1.6): its own operands, conditions, Subject, initializer, result or jump operand,
+    // then each call's receiver, value callee and arguments, and an enum Case's payloads.
+    private static IEnumerable<Koto?> Consumed(Koto node, HirOp op)
+    {
+        IEnumerable<Koto?> own = (node, op) switch
+        {
+            (FunctionKoto function, _) => function.Parameters.Select(static x => x.DefaultValue).Append(op is HirOp.Body or HirOp.Closure ? Result(function.ExpressionBody) : null),
+            (PropertyAccessorKoto accessor, HirOp.Body) => [Result(accessor.Body)],
+            (PropertyKoto property, HirOp.Body) => [property.InitializerKoto],
+            (VariableKoto variable, HirOp.Let) => [variable.InitializerKoto],
+            (CodeBlockKoto block, HirOp.Block) => [Result(block.TrailingExpression)],
+            (DoKoto scoped, HirOp.Do) => [Result(scoped.Body)],
+            (LabeledKoto label, HirOp.Group) => [label.Target],
+            (MemberAccessKoto member, HirOp.Field or HirOp.PrimitiveOp) => [member.Left],
+            (BinaryKoto binary, HirOp.Group or HirOp.Borrow or HirOp.Deref or HirOp.Convert or HirOp.RuntimeTypeTest) => [binary.Left],
+            (BinaryKoto binary, HirOp.Index or HirOp.Assign or HirOp.CompoundAssign or HirOp.PrimitiveOp or HirOp.Logical) => [binary.Left, binary.Right],
+            (UnaryKoto unary, HirOp.Group or HirOp.Deref or HirOp.PrimitiveOp or HirOp.Range or HirOp.CompoundAssign) => [unary.Operand],
+            (RangeKoto range, HirOp.Range) => [range.Start, range.End],
+            (TupleLiteralKoto tuple, _) => tuple.Elements,
+            (ArrayLiteralKoto array, _) => array.Elements,
+            (DictionaryLiteralKoto dictionary, _) => dictionary.Entries.SelectMany(static x => new[] { x.Key, x.Value }),
+            (JumpKoto jump, HirOp.Jump) => [jump.Expression],
+            (IfKoto conditional, _) => conditional.Branches.SelectMany(static x => new[] { x.Condition, Result(x.Body) }).Append(Result(conditional.ElseBody)),
+            (WhileKoto loop, _) => [loop.Condition],
+            (RequireKoto require, _) => [require.Condition],
+            (TestVerificationKoto verification, _) => [verification.Condition, verification.Message],
+            (DiscardKoto discard, _) => [discard.Operand],
+            (MatchKoto match, _) => match.Arms.SelectMany(static x => new[] { x.Guard, Result(x.Body) }).Prepend(match.Expression),
+            (ForKoto loop, HirOp.For) => [loop.Iterable],
+            _ => [],
+        };
+
+        var calls = Enumerable.Range(0, 8).Select(x => CallPlan.Of(node, x)).TakeWhile(static x => x is not null)
+            .SelectMany(static x => x!.ArgumentOperations.ToArray().Select(static y => y.Source).Prepend(x.Kind == CalleeKind.Value ? x.CalleeValue : x.Receiver));
+        var payloads = op == HirOp.Aggregate && node.CodeContext.Compilation.Binding.TryGetEnumConstruction(node, out var construction)
+            ? construction!.PayloadOperations.ToArray().Select(static x => x.Source) : [];
+        return own.Concat(calls).Concat(payloads);
+
+        // A body or operand that supplies its construct's value.
+        static Koto? Result(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
     }
 
     private static bool IsWithin(Koto node, Koto ancestor)
