@@ -93,39 +93,9 @@ public abstract class ApplicationKoto : ExpressionKoto
         builder.Append(close);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Target);
-        if (this.ArgumentStorage is { } arguments)
-        {
-            for (var argumentIndex = 0; argumentIndex < arguments.Count; argumentIndex++)
-            {
-                var argument = arguments[argumentIndex];
-                visitor.Visit(argument);
-            }
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Target;
-        if (this.ArgumentStorage is { } arguments)
-        {
-            foreach (var argument in arguments)
-            {
-                yield return argument;
-            }
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Target == oldKoto)
-        {
-            this.Target = newKoto;
-            return true;
-        }
-
-        return ReplaceInList(this.ArgumentStorage, oldKoto, newKoto);
+        this.Target = slots.Slot(this.Target);
+        slots.List(this.ArgumentStorage);
     }
 }

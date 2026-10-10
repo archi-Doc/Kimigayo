@@ -40,29 +40,9 @@ public sealed class WhileKoto : ExpressionKoto
         this.Body.WriteBranchTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Condition);
-        visitor.Visit(this.Body);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => [this.Condition, this.Body];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Condition == oldKoto)
-        {
-            this.Condition = newKoto;
-            return true;
-        }
-
-        if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
-        {
-            this.Body = block;
-            return true;
-        }
-
-        return false;
+        this.Condition = slots.Slot(this.Condition);
+        this.Body = slots.Slot(this.Body);
     }
 }

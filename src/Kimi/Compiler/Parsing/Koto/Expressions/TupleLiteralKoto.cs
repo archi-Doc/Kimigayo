@@ -47,14 +47,8 @@ public sealed class TupleLiteralKoto : ExpressionKoto
         builder.Append(')');
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.VisitMany(this.Elements);
+        slots.List(this.Elements);
     }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => this.Elements;
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-        => ReplaceInList(this.Elements, oldKoto, newKoto);
 }

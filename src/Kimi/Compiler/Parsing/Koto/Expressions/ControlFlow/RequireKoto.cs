@@ -43,33 +43,9 @@ public sealed class RequireKoto : Koto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Condition);
-        visitor.Visit(this.ElseBody);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Condition;
-        yield return this.ElseBody;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Condition == oldKoto)
-        {
-            this.Condition = newKoto;
-        }
-        else if (this.ElseBody == oldKoto)
-        {
-            this.ElseBody = newKoto;
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
+        this.Condition = slots.Slot(this.Condition);
+        this.ElseBody = slots.Slot(this.ElseBody);
     }
 }

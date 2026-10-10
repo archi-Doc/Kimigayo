@@ -82,23 +82,9 @@ public class UnaryKoto : ExpressionKoto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Operand);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => [this.Operand];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (oldKoto != this.Operand)
-        {
-            return false;
-        }
-
-        this.Operand = newKoto;
-        return true;
+        this.Operand = slots.Slot(this.Operand);
     }
 }
 

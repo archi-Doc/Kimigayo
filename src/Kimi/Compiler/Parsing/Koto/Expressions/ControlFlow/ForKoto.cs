@@ -130,53 +130,17 @@ public sealed class ForKoto : ExpressionKoto
         this.Body.WriteBranchTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        for (var bindingIndex = 0; bindingIndex < this.bindings.Count; bindingIndex++)
+        slots.List(this.bindings);
+        this.Iterable = slots.Slot(this.Iterable);
+        this.Body = slots.Slot(this.Body);
+        if (slots.Replaced)
         {
-            var binding = this.bindings[bindingIndex];
-            visitor.Visit(binding);
+            // Synthetic calls and arms retain source children; a syntax edit must not reuse the old entry or body.
+            this.Iteration?.Decomposition.Reset(null);
+            this.EntryCall = null;
+            this.Iteration = null;
         }
-
-        visitor.Visit(this.Iterable);
-        visitor.Visit(this.Body);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        foreach (var binding in this.bindings)
-        {
-            yield return binding;
-        }
-
-        yield return this.Iterable;
-        yield return this.Body;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (oldKoto is IdentifierNameKoto && ReplaceInList(this.bindings, oldKoto, newKoto))
-        {
-            // The replacement slot is adopted by ReplaceChild after the cached protocol is retired below.
-        }
-        else if (this.Iterable == oldKoto)
-        {
-            this.Iterable = newKoto;
-        }
-        else if (this.Body == oldKoto && newKoto is CodeBlockKoto block)
-        {
-            this.Body = block;
-        }
-        else
-        {
-            return false;
-        }
-
-        // Synthetic calls and arms retain source children; a syntax edit must not reuse the old entry or body.
-        this.Iteration?.Decomposition.Reset(null);
-        this.EntryCall = null;
-        this.Iteration = null;
-
-        return true;
     }
 }

@@ -40,21 +40,12 @@ public sealed class LabeledKoto : ExpressionKoto
         this.Target.WriteTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Target);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes() => [this.Target];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Target != oldKoto || newKoto is not (DoKoto or IfKoto or MatchKoto or ForKoto or WhileKoto or LoopKoto or ErrorKoto))
+        // Only a block or a loop takes a label.
+        if (slots.Replacement is null or DoKoto or IfKoto or MatchKoto or ForKoto or WhileKoto or LoopKoto or ErrorKoto)
         {
-            return false;
+            this.Target = slots.Slot(this.Target);
         }
-
-        this.Target = newKoto;
-        return true;
     }
 }

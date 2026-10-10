@@ -37,33 +37,9 @@ public sealed class FixedArrayTypeKoto : TypeKoto
         builder.Append(']');
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Length);
-        visitor.Visit(this.ElementType);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Length;
-        yield return this.ElementType;
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.Length == oldKoto)
-        {
-            this.Length = newKoto;
-        }
-        else if (this.ElementType == oldKoto)
-        {
-            this.ElementType = newKoto;
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
+        this.Length = slots.Slot(this.Length);
+        this.ElementType = slots.Slot(this.ElementType);
     }
 }

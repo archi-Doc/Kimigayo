@@ -319,77 +319,26 @@ public sealed class TypeSemanticsKoto : TypeKoto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        if (this.Type is not null)
+        this.Type = slots.Slot(this.Type);
+        if (this.origin is not { } origin)
         {
-            visitor.Visit(this.Type);
+            return;
         }
 
-        if (this.OriginExpression is not null)
+        var expression = slots.Slot(origin.Expression);
+        if (!ReferenceEquals(expression, origin.Expression))
         {
-            visitor.Visit(this.OriginExpression);
+            origin.Expression = expression;
+            origin.Name = (expression as IdentifierNameKoto)?.IdentifierName;
         }
 
-        if (this.OriginArguments is not null)
+        var arguments = origin.Arguments ?? [];
+        for (var i = 0; i < arguments.Length; i++)
         {
-            for (var argumentIndex = 0; argumentIndex < this.OriginArguments.Length; argumentIndex++)
-            {
-                var argument = this.OriginArguments[argumentIndex];
-                visitor.Visit(argument.Value);
-            }
+            arguments[i].Value = slots.Slot(arguments[i].Value);
         }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        if (this.Type is not null)
-        {
-            yield return this.Type;
-        }
-
-        if (this.OriginExpression is not null)
-        {
-            yield return this.OriginExpression;
-        }
-
-        if (this.OriginArguments is { } yielded)
-        {
-            for (var i = 0; i < yielded.Length; i++)
-            {
-                yield return yielded[i].Value;
-            }
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (this.origin is { } origin && origin.Expression == oldKoto)
-        {
-            origin.Expression = newKoto;
-            origin.Name = (newKoto as IdentifierNameKoto)?.IdentifierName;
-            return true;
-        }
-
-        if (this.OriginArguments is { } arguments)
-        {
-            for (var i = 0; i < arguments.Length; i++)
-            {
-                if (arguments[i].Value == oldKoto)
-                {
-                    arguments[i].Value = newKoto;
-                    return true;
-                }
-            }
-        }
-
-        if (this.Type != oldKoto)
-        {
-            return false;
-        }
-
-        this.Type = newKoto;
-        return true;
     }
 
     /// <summary>Stores the Origin annotation of a type layer.</summary>

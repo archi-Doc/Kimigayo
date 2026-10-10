@@ -117,31 +117,10 @@ public class BinaryKoto : ExpressionKoto
         this.Right.WriteTo(ref builder);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        visitor.Visit(this.Left);
-        visitor.Visit(this.Right);
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-        => [this.Left, this.Right];
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (oldKoto == this.Left)
-        {
-            this.Left = newKoto;
-        }
-        else if (oldKoto == this.Right)
-        {
-            this.Right = newKoto;
-        }
-        else
-        {
-            return false;
-        }
-
-        return true;
+        this.Left = slots.Slot(this.Left);
+        this.Right = slots.Slot(this.Right);
     }
 }
 
@@ -316,55 +295,10 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
         this.Adopt(effect);
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
-        base.VisitChildrenCore(visitor);
-        if (this.FormationType is { } formation)
-        {
-            visitor.Visit(formation);
-        }
-
-        for (var i = 0; i < this.EffectBounds.Count; i++)
-        {
-            visitor.Visit(this.EffectBounds[i]);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
-    {
-        yield return this.Left;
-        yield return this.Right;
-        if (this.FormationType is { } formation)
-        {
-            yield return formation;
-        }
-
-        foreach (var effect in this.EffectBounds)
-        {
-            yield return effect;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        if (newKoto is EffectBoundKoto replacement && this.effectBounds is { } bounds)
-        {
-            for (var i = 0; i < bounds.Count; i++)
-            {
-                if (ReferenceEquals(bounds[i], oldKoto))
-                {
-                    bounds[i] = replacement;
-                    return true;
-                }
-            }
-        }
-
-        if (ReferenceEquals(oldKoto, this.FormationType))
-        {
-            this.FormationType = newKoto;
-            return true;
-        }
-
-        return base.ReplaceChildCore(oldKoto, newKoto);
+        base.ForEachChildSlot(ref slots);
+        this.FormationType = slots.Slot(this.FormationType);
+        slots.List(this.effectBounds);
     }
 }

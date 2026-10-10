@@ -88,58 +88,14 @@ public sealed class IfKoto : ExpressionKoto
         }
     }
 
-    protected override void VisitChildrenCore(KotoVisitor visitor)
-    {
-        for (var branchIndex = 0; branchIndex < this.branches.Count; branchIndex++)
-        {
-            var branch = this.branches[branchIndex];
-            visitor.Visit(branch.Condition);
-            visitor.Visit(branch.Body);
-        }
-
-        if (this.ElseBody is not null)
-        {
-            visitor.Visit(this.ElseBody);
-        }
-    }
-
-    protected override IEnumerable<Koto> GetChildNodes()
+    protected override void ForEachChildSlot(ref ChildSlots slots)
     {
         foreach (var branch in this.branches)
         {
-            yield return branch.Condition;
-            yield return branch.Body;
+            branch.Condition = slots.Slot(branch.Condition);
+            branch.Body = slots.Slot(branch.Body);
         }
 
-        if (this.ElseBody is not null)
-        {
-            yield return this.ElseBody;
-        }
-    }
-
-    protected override bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
-    {
-        foreach (var branch in this.branches)
-        {
-            if (branch.Condition == oldKoto)
-            {
-                branch.Condition = newKoto;
-                return true;
-            }
-
-            if (branch.Body == oldKoto && newKoto is CodeBlockKoto block)
-            {
-                branch.Body = block;
-                return true;
-            }
-        }
-
-        if (this.ElseBody == oldKoto && newKoto is CodeBlockKoto elseBlock)
-        {
-            this.ElseBody = elseBlock;
-            return true;
-        }
-
-        return false;
+        this.ElseBody = slots.Slot(this.ElseBody);
     }
 }

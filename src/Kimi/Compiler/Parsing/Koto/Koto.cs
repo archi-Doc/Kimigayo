@@ -407,20 +407,10 @@ public abstract class Koto
     {
         get
         {
-            if (this.AttributeChain is not null)
-            {
-                yield return this.AttributeChain;
-            }
-
-            foreach (var clause in OriginClauses.Get(this))
-            {
-                yield return clause;
-            }
-
-            foreach (var child in this.GetChildNodes())
-            {
-                yield return child;
-            }
+            var children = new List<Koto>();
+            var slots = new ChildSlots(children);
+            this.ForEachSlot(ref slots);
+            return children;
         }
     }
 
@@ -527,18 +517,8 @@ public abstract class Koto
     /// <param name="visitor">The reusable visitor.</param>
     public void VisitChildren(KotoVisitor visitor)
     {
-        if (this.AttributeChain is { } attribute)
-        {
-            visitor.Visit(attribute);
-        }
-
-        var originClauses = OriginClauses.Get(this);
-        for (var i = 0; i < originClauses.Count; i++)
-        {
-            visitor.Visit(originClauses[i]);
-        }
-
-        this.VisitChildrenCore(visitor);
+        var slots = new ChildSlots(visitor);
+        this.ForEachSlot(ref slots);
     }
 
     /// <summary>Reports a syntax problem at this node's span.</summary>
@@ -705,9 +685,16 @@ public abstract class Koto
 
             this.AttributeChain = attribute;
         }
-        else if (!ReplaceInList(OriginClauses.Get(this), oldKoto, newKoto) && !this.ReplaceChildCore(oldKoto, newKoto))
+        else
         {
-            return false;
+            // The attribute chain is replaced above as a chain; every other slot is replaced by the walk.
+            var slots = new ChildSlots(oldKoto, newKoto);
+            slots.List(OriginClauses.Get(this));
+            this.ForEachChildSlot(ref slots);
+            if (!slots.Replaced)
+            {
+                return false;
+            }
         }
 
         oldKoto.Parent = default;
@@ -857,6 +844,25 @@ public abstract class Koto
         }
     }
 
+    /// <summary>Walks the child slots the concrete node owns in source order; the attribute chain and Origin clauses are walked before them.</summary>
+    /// <param name="slots">The walk.</param>
+    protected virtual void ForEachChildSlot(ref ChildSlots slots)
+    {
+        // Transitional (R2a U2a): a declaration walks its children through the earlier overrides until it lists its slots.
+        if (slots.Visitor is { } visitor)
+        {
+            this.VisitChildrenCore(visitor);
+        }
+        else if (slots.Collected is { } collected)
+        {
+            collected.AddRange(this.GetChildNodes());
+        }
+        else if (slots.Replacement is { } replacement && this.ReplaceChildCore(slots.Original!, replacement))
+        {
+            slots.MarkReplaced();
+        }
+    }
+
     /// <summary>Enumerates children owned by the concrete node.</summary>
     /// <returns>The direct child nodes, excluding the attribute chain handled by <see cref="ChildNodes"/>.</returns>
     protected virtual IEnumerable<Koto> GetChildNodes()
@@ -874,4 +880,12 @@ public abstract class Koto
     /// <returns><see langword="true"/> when a child reference was replaced.</returns>
     protected virtual bool ReplaceChildCore(Koto oldKoto, Koto newKoto)
         => false;
+
+    // The attribute chain, the Origin clauses, then the node's own slots. A replacement walks only the last two (ReplaceChild).
+    private void ForEachSlot(ref ChildSlots slots)
+    {
+        slots.Slot(this.AttributeChain);
+        slots.List(OriginClauses.Get(this));
+        this.ForEachChildSlot(ref slots);
+    }
 }
