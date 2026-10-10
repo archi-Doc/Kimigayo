@@ -6,14 +6,12 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // Bounds collected while call candidates are tried; only the selected candidate's are kept (CandidateBounds).
-    private readonly List<(OriginDeclaration Declaration, BoundOrigin Variable, BoundOrigin Bound, Koto Use, ulong Condition)> candidateBounds = new();
-
     // Every change to inference, obligation or Origin declaration state; a pure proof request leaves it unchanged.
     private int originStateVersion;
 
-    // The calls whose candidates are being tried, outermost first; bounds wait until the outermost selection completes.
-    private int candidateBoundDepth;
+    // The candidate evaluations in progress (EvaluateCallCandidates): the Origin part of a fit there is the pure answer, since only the
+    // selected candidate's bounds are recorded, after selection (FitsOriginOutlives).
+    private int candidateTrials;
 
     // Set while a selected call's fits are collected (CollectFitBounds): the Origin part of a fit is then the pure answer, and the
     // bounds of Origins omitted in open initializers are recorded for that call (FitsOriginOutlives).
@@ -144,15 +142,14 @@ public sealed partial class Binding
     // A local's omitted Origins remain open while its initializer acquires values, whether written in its annotation or
     // in a construction qualifier. Published contracts and subsequent uses of the local never open inference again.
     private OriginDeclaration? OpenInitializerInference(BoundOrigin atom, Koto use)
-    {
-        if (this.OpenInitializer(atom, use) is not { } variable)
-        {
-            return null;
-        }
+        => this.OpenInitializer(atom, use) is { } local ? this.InitializerDeclaration(local) : null;
 
-        if (!this.initializerOrigins.TryGetValue(variable, out var declaration))
+    // The declaration of the Origins a local's initializer infers, created on its first bound.
+    private OriginDeclaration InitializerDeclaration(VariableKoto local)
+    {
+        if (!this.initializerOrigins.TryGetValue(local, out var declaration))
         {
-            this.initializerOrigins.Add(variable, declaration = new(variable));
+            this.initializerOrigins.Add(local, declaration = new(local));
             this.originStateVersion++;
         }
 
@@ -256,76 +253,21 @@ public sealed partial class Binding
         return this.ProvesOriginOutlives(longer, shorter, use, condition);
     }
 
-    // The Origin part of a fit (FitsTypeCore): the pure answer while a selected call's fits are collected, otherwise FitOriginOutlives.
+    // SPEC 10.1: the Origin part of a fit (FitsTypeCore). During candidate evaluation and while a selected call's fits are collected
+    // it is the pure answer; any other fit records its bounds at once (FitOriginOutlives).
     private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
-        => this.collectingFits ? this.FitsOriginOutlives(longer, shorter, use, condition)
-            : FitShadow ? this.ShadowFitOriginOutlives(longer, shorter, use, condition)
-            : this.FitOriginOutlives(longer, shorter, use, condition);
+        => this.collectingFits || this.candidateTrials != 0 ? this.FitsOriginOutlives(longer, shorter, use, condition) : this.FitOriginOutlives(longer, shorter, use, condition);
 
-    // Records `bound` for a local's omitted Origin: at once, or, while call candidates are tried, for the selected candidate only.
-    // A bound required only in some Semantics cases still bounds the Origin in every case.
+    // The collector's record (CollectFitBounds): `bound` bounds the Origin `variable` that `local` omits.
+    private void CollectInitializerBound(VariableKoto local, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
+        => this.BoundInitializerOrigin(this.InitializerDeclaration(local), variable, bound, use, condition);
+
+    // Records `bound` for a local's omitted Origin. A bound required only in some Semantics cases still bounds the Origin in every case.
     private void BoundInitializerOrigin(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
-    {
-        if (FitShadow)
-        {
-            this.ShadowRecord(new(pending.Owner, variable, bound, use, condition), null);
-        }
-
-        if (this.candidateBoundDepth != 0)
-        {
-            this.candidateBounds.Add((pending, variable, bound, use, condition));
-            return;
-        }
-
-        this.ApplyInitializerBound(pending, variable, bound, use, condition);
-    }
-
-    private void ApplyInitializerBound(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
     {
         pending.Replacements[variable] = pending.Replacements.TryGetValue(variable, out var previous) ? this.Meet(previous, bound) : bound;
         this.originStateVersion++;
         this.AddObligation(new(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, bound, variable, Condition: condition));
-    }
-
-    // A call's candidate selection collects the bounds of its fits from the returned mark.
-    private int BeginCandidateBounds()
-    {
-        this.candidateBoundDepth++;
-        return this.candidateBounds.Count;
-    }
-
-    // SPEC 10.1, 15.4.4: only the selected candidate's fits are values fitted to an omitted Origin; the bounds other candidates
-    // collected between `mark` and `trialsEnd` are dropped, the selected one's [`start`, `end`) kept.
-    private void KeepCandidateBounds(int mark, int start, int end, int trialsEnd)
-    {
-        this.candidateBounds.RemoveRange(end, trialsEnd - end);
-        this.candidateBounds.RemoveRange(mark, start - mark);
-    }
-
-    // Ends a call's selection: without a selected candidate its bounds are dropped (a later attempt collects its own), and the
-    // outermost selection applies the bounds that remain.
-    private void EndCandidateBounds(int mark, bool selected)
-    {
-        if (!selected)
-        {
-            this.candidateBounds.RemoveRange(mark, this.candidateBounds.Count - mark);
-        }
-
-        if (--this.candidateBoundDepth == 0)
-        {
-            if (FitShadow)
-            {
-                this.CompareShadowBounds();
-            }
-
-            for (var i = 0; i < this.candidateBounds.Count; i++)
-            {
-                var (declaration, variable, bound, use, condition) = this.candidateBounds[i];
-                this.ApplyInitializerBound(declaration, variable, bound, use, condition);
-            }
-
-            this.candidateBounds.Clear();
-        }
     }
 
     private ConstraintProof CheckTypeOriginRelations(BoundType type, BindingScope scope)

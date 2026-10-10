@@ -45,6 +45,24 @@ public sealed partial class Binding
         return shape;
     }
 
+    // SPEC 10.1, 15.4.4: evaluates every candidate. A fit there is pure (FitOrigin): a candidate that is not selected bounds no
+    // omitted Origin, and the selected one's bounds are recorded after selection (JudgeSelectedCall).
+    private void EvaluateCallCandidates(ref CallEvaluation evaluation, in CallCandidates candidates)
+    {
+        this.candidateTrials++;
+        try
+        {
+            foreach (var candidate in candidates)
+            {
+                this.EvaluateCallCandidate(ref evaluation, candidate);
+            }
+        }
+        finally
+        {
+            this.candidateTrials--;
+        }
+    }
+
     private void EvaluateCallCandidate(ref CallEvaluation evaluation, BindingSymbol candidate)
     {
         if (candidate.Declaration is not FunctionKoto function)
@@ -57,7 +75,6 @@ public sealed partial class Binding
         var scope = evaluation.Scope;
         var index = evaluation.Count++;
         var operations = evaluation.Operations.AsSpan(index * evaluation.OperationStride, evaluation.OperationStride);
-        evaluation.BoundStarts[index] = this.candidateBounds.Count;
         operations.Clear();
         var declaringType = evaluation.Self is null ? this.CallDeclaringType(callee, candidate) : null;
         var state = CandidateApplicability.Inapplicable;
@@ -207,7 +224,6 @@ public sealed partial class Binding
         internal EvaluatedCandidate[] Evaluated;
         internal BoundArgumentOperation[] Operations;
         internal int OperationStride;
-        internal int[] BoundStarts;
         internal int SavedCandidates;
         internal BoundType?[] AllTypes;
         internal BoundLength?[] AllLengths;

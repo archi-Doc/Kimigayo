@@ -50,8 +50,8 @@ public sealed partial class Binding
 
     // SPEC 6.2.3.6: the omitted base clause's ordinary selection over the direct base's constructors with no arguments, made from the
     // derived constructor's scope with the evaluation and classification of a call (Binding.CallSelection), without publishing. The
-    // obligations, candidate bounds and per-call state that evaluation touches are restored. The constructor's base initializer is
-    // the retained zero-argument call of its omitted base clause.
+    // obligations and per-call state that evaluation touches are restored; its fits bound no omitted Origin (EvaluateCallCandidates).
+    // The constructor's base initializer is the retained zero-argument call of its omitted base clause.
     internal OmittedBaseSelection SelectOmittedBaseConstructor(FunctionKoto constructor)
     {
         var call = constructor.BaseInitializer!;
@@ -75,8 +75,6 @@ public sealed partial class Binding
         var inputs = this.originScratch.Rent(shape.InputOrigins);
         var evaluated = this.candidateScratch.Rent(shape.Count);
         var operations = this.argumentOperationScratch.Rent(shape.Count);
-        var boundStarts = this.indexScratch.Rent(shape.Count + 1);
-        var boundMark = this.BeginCandidateBounds();
         try
         {
             var evaluation = new CallEvaluation
@@ -94,7 +92,6 @@ public sealed partial class Binding
                 Evaluated = evaluated,
                 Operations = operations,
                 OperationStride = 1,
-                BoundStarts = boundStarts,
                 AllTypes = [],
                 AllLengths = [],
                 AllMaps = [],
@@ -108,12 +105,7 @@ public sealed partial class Binding
             };
             this.acquisitionFailure = null;
             this.failedConformance = null;
-            foreach (var candidate in candidates)
-            {
-                this.EvaluateCallCandidate(ref evaluation, candidate);
-            }
-
-            boundStarts[evaluation.Count] = this.candidateBounds.Count;
+            this.EvaluateCallCandidates(ref evaluation, candidates);
             var (selection, winner) = this.ClassifySelection(ref evaluation);
 
             // A winner whose own slots stay unsolved is selected as by a written base call, whose binding then reports them.
@@ -130,7 +122,6 @@ public sealed partial class Binding
         }
         finally
         {
-            this.EndCandidateBounds(boundMark, false);
             for (var i = obligationCount; i < this.obligations.Count; i++)
             {
                 this.obligationSet.Remove(this.obligations[i]);
@@ -141,7 +132,6 @@ public sealed partial class Binding
             this.failedConformance = failedConformance;
             this.activeRequirementContract = requirementContract;
             (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
-            this.indexScratch.Return(boundStarts);
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.candidateScratch.Return(evaluated, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);

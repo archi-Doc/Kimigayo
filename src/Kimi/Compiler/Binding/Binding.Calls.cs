@@ -445,9 +445,6 @@ public sealed partial class Binding
         var operationStride = argumentCount + 1;
         var operations = this.argumentOperationScratch.Rent(candidateCount * operationStride);
         BoundDefaultArgument[]? defaults = null;
-        var boundStarts = this.indexScratch.Rent(candidateCount + 1);
-        var boundMark = this.BeginCandidateBounds();
-        var boundsSelected = false;
         try
         {
             if (generic is not null)
@@ -513,7 +510,6 @@ public sealed partial class Binding
                 Evaluated = evaluated,
                 Operations = operations,
                 OperationStride = operationStride,
-                BoundStarts = boundStarts,
                 SavedCandidates = savedCandidates,
                 AllTypes = allTypes,
                 AllLengths = allLengths,
@@ -528,14 +524,9 @@ public sealed partial class Binding
             };
             this.acquisitionFailure = null;
             this.failedConformance = null;
-            foreach (var candidate in candidates)
-            {
-                this.EvaluateCallCandidate(ref evaluation, candidate);
-            }
-
+            this.EvaluateCallCandidates(ref evaluation, candidates);
             var count = evaluation.Count;
             var applicable = evaluation.Applicable;
-            boundStarts[count] = this.candidateBounds.Count;
             if (evaluation.Error)
             {
                 // A candidate in a failed declaration cannot be judged, nor one whose Constraint fails on a conformance resting on a failed
@@ -648,8 +639,6 @@ public sealed partial class Binding
                 return this.FailWaitingSelection(call, BindingFailure.Ambiguous);
             }
 
-            this.KeepCandidateBounds(boundMark, boundStarts[winnerIndex], winnerIndex + 1 < count ? boundStarts[winnerIndex + 1] : boundStarts[count], boundStarts[count]);
-            boundsSelected = true;
             var winner = evaluated[winnerIndex].Symbol!;
             var selected = (FunctionKoto)winner.Declaration;
             this.activeRequirementContract = requirementGroup?.Contracts[winnerIndex] ?? (callee as RequirementCalleeKoto)?.Contract; // Reset by the finally block.
@@ -916,8 +905,6 @@ public sealed partial class Binding
         }
         finally
         {
-            this.EndCandidateBounds(boundMark, boundsSelected);
-            this.indexScratch.Return(boundStarts);
             this.activeRequirementContract = null;
             if (defaults is not null)
             {

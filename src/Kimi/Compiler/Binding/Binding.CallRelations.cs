@@ -125,10 +125,7 @@ public sealed partial class Binding
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
         this.PublishCallRelations();
-        if (FitShadow)
-        {
-            this.CollectFitBounds(operations, argumentCount);
-        }
+        this.CollectFitBounds(operations, argumentCount);
     }
 
     // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type
