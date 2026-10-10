@@ -115,18 +115,6 @@ public sealed class FunctionKoto : DeclarationKoto
     internal bool AllowsPositionalArgument(int index)
         => index == this.BoundSymbol?.ReceiverIndex || this.NameBoundaryIndex < 0 || index < this.NameBoundaryIndex;
 
-    internal int MaxPositionalArguments(bool boundReceiver)
-    {
-        var limit = this.NameBoundaryIndex < 0 ? this.Parameters.Count : this.NameBoundaryIndex;
-        var receiver = this.BoundSymbol?.ReceiverIndex ?? -1;
-        if (receiver == limit)
-        {
-            limit++;
-        }
-
-        return limit - (boundReceiver && receiver >= 0 && receiver < limit ? 1 : 0);
-    }
-
     internal int FindParameter(string name)
     {
         var parameters = this.parameters;

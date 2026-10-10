@@ -794,27 +794,6 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
 
-        private static bool InspectedValue(Koto use)
-        {
-            if (ReferenceEquals(use.BoundType, BoundType.String) && use.Parent is BinaryKoto { Akind: KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals })
-            {
-                return true;
-            }
-
-            if (use.Parent is InvocationKoto { BoundCall: { } call })
-            {
-                foreach (var argument in call.ArgumentOperations)
-                {
-                    if (ReferenceEquals(argument.Source, use) && argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.Reborrow)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
         // SPEC 7.6.3: a capture used in a way that needs it, or the referent of a captured exclusive reference, exclusively:
         // Reborrowed exclusively (bare, at an expected uniq Type or as a uniq argument), or reached through Fields, elements or a
         // follow to a Place that is written, incremented, borrowed exclusively or used as an exclusive receiver. Such a body

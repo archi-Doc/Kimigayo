@@ -278,11 +278,6 @@ internal sealed class OriginPremiseClosure
         return entailed || this.reachedStamp[longer] == this.stamp;
     }
 
-    /// <summary>The rule or edge that first reached a node in the last closure: an edge index, or the negated rule minus one.</summary>
-    /// <param name="node">A reached node.</param>
-    /// <returns>The edge index, or <c>-1 - rule</c>.</returns>
-    internal int ReachedBy(int node) => this.reachedBy[node];
-
     /// <summary>The node whose processing first reached a node in the last closure, or -1 for a seed; following it from an
     /// entailed node back to the target gives the witness of the entailment (proposal §3.6).</summary>
     /// <param name="node">A reached node.</param>

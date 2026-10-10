@@ -519,7 +519,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         {
             TokenKind.Struct => new StructKoto(codeContext, state, range),
             TokenKind.Enum => new EnumKoto(codeContext, state, range),
-            TokenKind.Extension => new ExtensionKoto(codeContext, state, range),
             TokenKind.Contract => new ContractKoto(codeContext, state, range),
             _ => new GroupKoto(codeContext, state, range),
         };
@@ -612,11 +611,6 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
         this.ParseMemberItems(ref reader, ref state);
     }
 
-    /// <summary>Consumes an unimplemented Declaration Container body without producing members.</summary>
-    /// <param name="reader">The token reader at the body's <see cref="TokenKind.StartBlock"/>; a Container parses only a body.</param>
-    protected static void SkipUnimplementedBody(ref TokenReader reader)
-        => reader.SkipCurrentBlock();
-
     /// <summary>Consumes the opening block token when the caller left it for the Declaration Container parser.</summary>
     /// <param name="reader">The token reader.</param>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -659,7 +653,9 @@ public abstract class DeclarationContainerKoto : DeclarationKoto
 
         if (tokenKind == TokenKind.Extension)
         {
-            reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span);
+            // `extension` is reserved (SPEC 2.5): the declaration is skipped with its body.
+            Parser.OmitDeclaration(ref reader, reader.Unexpected(SyntaxForm.ExtensionDeclaration, token.Span));
+            return true;
         }
 
         reader.Advance();

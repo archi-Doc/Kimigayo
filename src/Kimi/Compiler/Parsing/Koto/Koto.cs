@@ -25,9 +25,6 @@ public enum KotoKind : byte
     /// <summary>An enumeration declaration.</summary>
     Enum,
 
-    /// <summary>An extension declaration.</summary>
-    Extension,
-
     /// <summary>A namespace-like group declaration.</summary>
     Group,
 
