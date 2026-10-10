@@ -8,6 +8,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly List<DeclarationContainerKoto> storageDeclarations = new();
+    private readonly List<PropertyKoto> storedFields = new();
+    private readonly List<BoundEnumCase?> storedCases = new();
     private readonly List<DeclarationContainerKoto> inlineLayoutStack = new();
     private readonly List<bool> inlineLayoutOwnDeclaration = new();
     private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
@@ -20,8 +22,7 @@ public sealed partial class Binding
     internal bool PrepareEnumCases(BoundType type)
     {
         var cases = type.Symbol?.Adt?.Cases;
-        var count = cases?.Count ?? 0;
-        AdtDef.Shadow(count == EnumStorage.Count(type), "EnumCount", type);
+        var count = cases?.Length ?? 0;
         if (type.StoredCases?.Length != count)
         {
             type.StoredCases = new BoundType[count];
@@ -171,7 +172,10 @@ public sealed partial class Binding
 
             var container = (DeclarationContainerKoto)this.nodes[n];
             var shape = container.BoundSymbol!.Adt ??= new();
-            shape.Clear();
+            shape.Types.Clear();
+            shape.DestructorKoto = null;
+            this.storedFields.Clear();
+            this.storedCases.Clear();
             this.storageDeclarations.Add(container);
             var scope = this.scopes[container];
             if (container is EnumKoto && (container.Bases.Count != 0 || container.NestedContainers.Count != 0 || (container.Modifier & ModifierKind.Open) != 0))
@@ -207,7 +211,7 @@ public sealed partial class Binding
                     }
 
                     shape.Types.Add(syntax);
-                    shape.Fields.Add(field);
+                    this.storedFields.Add(field);
                 }
                 else if (TryEnumPayload(member, out var payload))
                 {
@@ -218,10 +222,10 @@ public sealed partial class Binding
 
                     if (member.BoundSymbol?.EnumCase is { } enumeration)
                     {
-                        enumeration.Ordinal = shape.Cases.Count;
+                        enumeration.Ordinal = this.storedCases.Count;
                     }
 
-                    shape.Cases.Add(member.BoundSymbol?.EnumCase);
+                    this.storedCases.Add(member.BoundSymbol?.EnumCase);
 
                     // SPEC 15.3.3: the Case's sets and clauses bind every payload together, as a Field's bind its Type. As for a
                     // Field, a payload Type that failed leaves the clauses unbound, so they add no record derived from that failure.
@@ -261,10 +265,12 @@ public sealed partial class Binding
                 }
             }
 
-            if (container is EnumKoto && shape.Cases.Count == 0)
+            if (container is EnumKoto && this.storedCases.Count == 0)
             {
                 this.Fail(container, BindingFailure.InvalidTypeFormation);
             }
+
+            shape.SetParts(this.storedFields, this.storedCases);
         }
 
         this.ValidateEnumProjections();

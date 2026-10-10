@@ -679,7 +679,7 @@ public sealed partial class Binding
             }
         }
 
-        var caseCount = subject.Symbol?.Declaration is EnumKoto { BoundSymbol.Adt: { } shape } ? shape.Cases.Count : 0;
+        var caseCount = subject.Symbol?.Declaration is EnumKoto { BoundSymbol.Adt: { } shape } ? shape.Cases.Length : 0;
         for (var i = 0; i < caseCount; i++)
         {
             plan.CaseCoverage.Add(0);

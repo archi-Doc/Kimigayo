@@ -12,10 +12,10 @@ internal sealed class AdtDef
     internal List<Koto> Types { get; } = [];
 
     /// <summary>Gets the stored Fields in declaration order; a Field's logical index is its position here.</summary>
-    internal List<PropertyKoto> Fields { get; } = [];
+    internal PropertyKoto[] Fields { get; private set; } = [];
 
     /// <summary>Gets the Cases by ordinal; a Case form without a name keeps its ordinal and has no Case.</summary>
-    internal List<BoundEnumCase?> Cases { get; } = [];
+    internal BoundEnumCase?[] Cases { get; private set; } = [];
 
     internal FunctionKoto? DestructorKoto { get; set; }
 
@@ -33,7 +33,7 @@ internal sealed class AdtDef
             : (type.Kind == BoundTypeKind.Constructed || type.OriginArguments.Count != 0) && Declaration(type) is { } declaration ? declaration.CodeContext.Compilation.Binding.StoredType(Field(type, index), type)
             : Field(type, index).BoundType;
 
-    internal static int Count(BoundType type) { var r = Struct(type)?.Fields.Count ?? 0; Shadow(r == StructStorage.Count(type), "Count", type); return r; }
+    internal static int Count(BoundType type) => Struct(type)?.Fields.Length ?? 0;
 
     // Selection identities include inherited fields, base first. Construction and destruction keep their separate layers.
     internal static int StorageCount(BoundType type)
@@ -44,22 +44,19 @@ internal sealed class AdtDef
         for (var layer = type; layer is not null; layer = layer.StoredBase)
         {
             var fields = Struct(layer)?.Fields;
-            for (var i = 0; fields is not null && i < fields.Count; i++)
+            for (var i = 0; fields is not null && i < fields.Length; i++)
             {
                 if (ReferenceEquals(fields[i].BoundSymbol, symbol))
                 {
                     position = i + (layer.StoredBase is { } parent ? StorageCount(parent) : 0);
                     fieldType = FieldType(layer, i);
-                    var r = fieldType is not null;
-                    Shadow(StructStorage.FindField(type, symbol, out var ft, out var pos) == r && pos == position && ReferenceEquals(ft, fieldType), "FindField", type);
-                    return r;
+                    return fieldType is not null;
                 }
             }
         }
 
         position = -1;
         fieldType = null;
-        Shadow(!StructStorage.FindField(type, symbol, out _, out var p2) && p2 == -1, "FindField-", type);
         return false;
     }
 
@@ -81,18 +78,17 @@ internal sealed class AdtDef
         return false;
     }
 
-    internal static PropertyKoto Field(BoundType type, int index) { var r = Struct(type)!.Fields[index]; Shadow(ReferenceEquals(r, StructStorage.Field(type, index)), "Field", type); return r; }
+    internal static PropertyKoto Field(BoundType type, int index) => Struct(type)!.Fields[index];
 
     // The logical stored index of the Field `name`. Generated code addresses Kimi library record Fields by name; a missing
     // Field is a defect of the compiler build.
     internal static int IndexOf(BoundType type, string name)
     {
         var fields = Struct(type)?.Fields;
-        for (var i = 0; fields is not null && i < fields.Count; i++)
+        for (var i = 0; fields is not null && i < fields.Length; i++)
         {
             if (fields[i].NameKoto.IdentifierName == name)
             {
-                Shadow(StructStorage.IndexOf(type, name) == i, "IndexOf", type);
                 return i;
             }
         }
@@ -100,34 +96,32 @@ internal sealed class AdtDef
         throw new InvalidOperationException($"{type} stores no Field {name}.");
     }
 
-    internal static FunctionKoto? Destructor(BoundType type) { var r = Struct(type)?.DestructorKoto; Shadow(ReferenceEquals(r, StructStorage.Destructor(type)), "Destructor", type); return r; }
+    internal static FunctionKoto? Destructor(BoundType type) => Struct(type)?.DestructorKoto;
 
     internal static BoundType? ReceiverType(FunctionKoto function)
         => (function.IsConstructor || function.IsDestructor) && function.BoundSymbol?.Scope.Owner.BoundSymbol is { } owner
             ? function.CodeContext.Compilation.Binding.SelfType(owner) : null;
 
     internal static BoundEnumCase? Case(BoundType type, int ordinal)
-    {
-        var r = type.Symbol is { Declaration: EnumKoto, Adt.Cases: { } cases } && (uint)ordinal < (uint)cases.Count ? cases[ordinal] : null;
-        Shadow(ReferenceEquals(r, EnumStorage.Case(type, ordinal)), "Case", type);
-        return r;
-    }
+        => type.Symbol is { Declaration: EnumKoto, Adt.Cases: { } cases } && (uint)ordinal < (uint)cases.Length ? cases[ordinal] : null;
 
-    internal static void Shadow(bool ok, string what, BoundType type)
+    // Publishes a pass's Fields and Cases, reusing the arrays while their lengths are unchanged.
+    internal void SetParts(List<PropertyKoto> fields, List<BoundEnumCase?> cases)
     {
-        if (!ok)
-        {
-            throw new InvalidOperationException($"ADT-SHADOW {what} {type}");
-        }
-    }
-
-    internal void Clear()
-    {
-        this.Types.Clear();
-        this.Fields.Clear();
-        this.Cases.Clear();
-        this.DestructorKoto = null;
+        this.Fields = Refill(this.Fields, fields);
+        this.Cases = Refill(this.Cases, cases);
     }
 
     private static AdtDef? Struct(BoundType? type) => IsStruct(type) ? type!.Symbol!.Adt : null;
+
+    private static T[] Refill<T>(T[] array, List<T> items)
+    {
+        if (array.Length != items.Count)
+        {
+            array = new T[items.Count];
+        }
+
+        items.CopyTo(array);
+        return array;
+    }
 }
