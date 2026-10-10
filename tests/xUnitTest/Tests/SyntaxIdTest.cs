@@ -138,7 +138,7 @@ public class SyntaxIdTest
         Assert.Contains(Enumerable.Range(0, nodes.Length), i => !facts[i].Plan.Equals(default(PlanRow)) && !removed.Contains(nodes[i]));
         var plans = table.Hir.PlanCount;
 
-        table.Number(c.Kotonoha.RootKoto);
+        table.Number(c.Kotonoha.RootKoto, table.Module);
         AssertConsistent(table);
         var reachable = new HashSet<Koto>(PreOrder(c.Kotonoha.RootKoto), ReferenceEqualityComparer.Instance);
         for (var i = 0; i < nodes.Length; i++)

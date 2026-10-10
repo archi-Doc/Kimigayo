@@ -39,6 +39,9 @@ public sealed class SyntaxTable
     /// <summary>Gets the number of ids in use, the ids of nodes outside the tree included.</summary>
     public int Count { get; private set; }
 
+    /// <summary>Gets the module's ordinal in its compilation, which a <see cref="SourceRef"/> names: the source modules in order, then the Kimi library.</summary>
+    public ushort Module { get; private set; }
+
     /// <summary>Gets the node of each id from 0 (no node) to <see cref="Count"/>. A node that another module took over keeps its
     /// entry here, but its <see cref="Koto.SyntaxOwner"/> names that module's table.</summary>
     public ReadOnlySpan<Koto?> Nodes => this.nodes.AsSpan(0, this.Count + 1);
@@ -78,8 +81,10 @@ public sealed class SyntaxTable
 
     /// <summary>Numbers the tree under the module root when the syntax changed since the latest numbering.</summary>
     /// <param name="root">The module root.</param>
-    internal void Number(Koto root)
+    /// <param name="module">The module's ordinal.</param>
+    internal void Number(Koto root, ushort module)
     {
+        this.Module = module;
         if (this.numberedVersion == this.Version)
         {
             return;

@@ -74,12 +74,13 @@ public class ArchitectureRulesTest
 
     /// <summary>Outside the MIR builder (<c>Mir/Build</c>), the MIR analyses and the MIR model read MIR, declaration tables
     /// and <c>TyCtxt</c> only (dependency rules; plan section 14-2): no syntax (a Koto class, <c>KotoKind</c>, the Parsing
-    /// namespace, a symbol's <c>Declaration</c>) and no HIR (the HIR columns and vocabularies, plan rows, <c>CallPlan</c>,
-    /// <c>ExpansionPlan</c>, <c>BoundMatch</c>, <c>BoundClosure</c>, <c>DefaultDecl</c>).</summary>
+    /// namespace but for <c>SemanticsKind</c>, a Type vocabulary that lives there and is named through an alias, a symbol's
+    /// <c>Declaration</c>) and no HIR (the HIR columns and vocabularies, plan rows, <c>CallPlan</c>, <c>ExpansionPlan</c>,
+    /// <c>BoundMatch</c>, <c>BoundClosure</c>, <c>DefaultDecl</c>).</summary>
     [Fact]
     public void OnlyTheMirBuilderReadsSyntaxAndHir()
     {
-        var forbidden = new Regex(@"\b\w*Koto(?:Kind)?\b|\bKimi\.Compiler\.Parsing\b|\b(?:Hir\w+|PlanRow|CallPlan|ExpansionPlan|BoundMatch|BoundClosure|DefaultDecl)\b|\.Declaration\b");
+        var forbidden = new Regex(@"\b\w*Koto(?:Kind)?\b|\bKimi\.Compiler\.Parsing\b(?!\.SemanticsKind;)|\b(?:Hir\w+|PlanRow|CallPlan|ExpansionPlan|BoundMatch|BoundClosure|DefaultDecl)\b|\.Declaration\b");
         var build = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Mir", "Build") + Path.DirectorySeparatorChar;
         var references = MirReferences(forbidden, x => !x.StartsWith(build, StringComparison.Ordinal));
         Assert.True(references.Count == 0, $"Mir outside its builder reads syntax or HIR: {string.Join(", ", references)}.");

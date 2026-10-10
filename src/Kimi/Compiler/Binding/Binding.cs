@@ -91,13 +91,15 @@ public sealed partial class Binding
         this.running = true;
         try
         {
-            // SyntaxIds: each module is renumbered only when parsing or an edit changed its syntax since it was last numbered.
-            foreach (var module in this.compilation.SourceModules)
+            // SyntaxIds: each module is renumbered only when parsing or an edit changed its syntax since it was last numbered. Its
+            // ordinal is its position, the library's last.
+            var modules = this.compilation.SourceModules;
+            for (var i = 0; i < modules.Length; i++)
             {
-                module.Syntax.Number(module.RootKoto);
+                modules[i].Syntax.Number(modules[i].RootKoto, (ushort)i);
             }
 
-            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto);
+            this.Library.Kotonoha.Syntax.Number(this.Library.Kotonoha.RootKoto, (ushort)modules.Length);
 
             // Every later phase rests on Binding, so its facts are discarded with Binding's; a pass that does not finish
             // leaves no result behind.
