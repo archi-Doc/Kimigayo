@@ -125,6 +125,33 @@ public sealed partial class Binding
 
         this.JudgeCallClauses(call, selected, operations, argumentCount, origins, inputs, declaringType);
         this.PublishCallRelations();
+        if (FitShadow)
+        {
+            this.CollectFitBounds(operations, argumentCount);
+        }
+    }
+
+    // SPEC 15.4.4, 10.7: the bounds that a selected call's fits give the Origins omitted in open initializers at the Function Type
+    // positions that CollectCallRelations leaves to applicability. Applicability compares such a position as a whole contract and
+    // finds the Origin satisfiable (FitsOriginOutlives); the same fit of each selected input, collected at its source as the call's
+    // judgment is, records the value as the Origin's bound.
+    private void CollectFitBounds(ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount)
+    {
+        this.collectingFits = true;
+        try
+        {
+            for (var i = 0; i <= argumentCount; i++)
+            {
+                if (operations[i] is { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } && adapted.CarriesOrigin)
+                {
+                    _ = this.FitsStructurallyAt(adapted, parameter, at);
+                }
+            }
+        }
+        finally
+        {
+            this.collectingFits = false;
+        }
     }
 
     private void JudgeCallClauses(InvocationKoto call, FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType)

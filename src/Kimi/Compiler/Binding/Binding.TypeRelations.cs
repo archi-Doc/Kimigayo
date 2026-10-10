@@ -205,7 +205,7 @@ public sealed partial class Binding
         return true;
 
         bool OriginFits(BoundOrigin a, BoundOrigin b, ulong condition = 0) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
-            binding is null ? OriginOutlives(a, b) : binding.FitOriginOutlives(a, b, use!, condition);
+            binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!, condition);
     }
 
     // SPEC 8.1.2, 15.6.1: the outer Origins of a fit's two Types of one shape. Two written Origins relate. Two pair layers of one binder
@@ -334,7 +334,7 @@ public sealed partial class Binding
             return true;
         }
 
-        return binding is null ? OriginOutlives(a, b) : binding.FitOriginOutlives(a, b, use!);
+        return binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!);
     }
 
     // SPEC 10.7, 15.6.1, 23.3.6.5: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th

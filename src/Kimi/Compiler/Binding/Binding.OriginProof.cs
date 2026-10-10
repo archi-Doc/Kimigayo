@@ -15,6 +15,10 @@ public sealed partial class Binding
     // The calls whose candidates are being tried, outermost first; bounds wait until the outermost selection completes.
     private int candidateBoundDepth;
 
+    // Set while a selected call's fits are collected (CollectFitBounds): the Origin part of a fit is then the pure answer, and the
+    // bounds of Origins omitted in open initializers are recorded for that call (FitsOriginOutlives).
+    private bool collectingFits;
+
     // SPEC 15.6.1, 23.3.6.5: whether an Origin obligation is a fit, reported at the value with the source `fit`, rather than the
     // well-formedness of a Type occurrence (RetainInnerOutlives), whose use is that occurrence and whose Type is the inner one, or of a
     // callee's result at its call (RequireResultPremises), or a Type's clause substituted at its occurrence (AddTypeClauseObligations),
@@ -141,6 +145,24 @@ public sealed partial class Binding
     // in a construction qualifier. Published contracts and subsequent uses of the local never open inference again.
     private OriginDeclaration? OpenInitializerInference(BoundOrigin atom, Koto use)
     {
+        if (this.OpenInitializer(atom, use) is not { } variable)
+        {
+            return null;
+        }
+
+        if (!this.initializerOrigins.TryGetValue(variable, out var declaration))
+        {
+            this.initializerOrigins.Add(variable, declaration = new(variable));
+            this.originStateVersion++;
+        }
+
+        return declaration;
+    }
+
+    // The local whose initializer still infers `atom` at `use` (OpenInitializerInference), by lookup alone: a local whose
+    // declaration does not exist yet is open, since its declaration would start unresolved.
+    private VariableKoto? OpenInitializer(BoundOrigin atom, Koto use)
+    {
         // A body's stable storage slot is already owned by its declaration. In particular, an enclosing closure initializer
         // must not solve that slot as one of its own omitted Origins.
         if (IsLocalRegion(atom))
@@ -153,13 +175,7 @@ public sealed partial class Binding
             if (node is VariableKoto { InitializerKoto: { } initializer } variable && IsWithin(use, initializer) &&
                 (IsWithin(atom.Binder!, initializer) || (variable.TypeKoto is { } annotation && IsWithin(atom.Binder!, annotation))))
             {
-                if (!this.initializerOrigins.TryGetValue(variable, out var declaration))
-                {
-                    this.initializerOrigins.Add(variable, declaration = new(variable));
-                    this.originStateVersion++;
-                }
-
-                return declaration.State < 2 ? declaration : null;
+                return this.initializerOrigins.TryGetValue(variable, out var declaration) && declaration.State >= 2 ? null : variable;
             }
         }
 
@@ -220,10 +236,41 @@ public sealed partial class Binding
         return this.ProvesOriginOutlives(longer, shorter, use, condition);
     }
 
+    // SPEC 15.4.4, 10.1: the answer of FitOriginOutlives without its side effects, for applicability. The requirement that a value
+    // outlive an Origin omitted in an open initializer is satisfiable (the asymmetry of plan T4 is kept), and only while a selected
+    // call's fits are collected (collectingFits) is the value recorded as the Origin's bound; any other requirement is the pure proof.
+    private bool FitsOriginOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+    {
+        longer = this.OriginAtUse(longer, use);
+        shorter = this.OriginAtUse(shorter, use);
+        if (!OriginOutlives(longer, shorter) && shorter is { Kind: OriginKind.Inference, Open: false } && this.OpenInitializer(shorter, use) is { } local)
+        {
+            if (this.collectingFits)
+            {
+                this.CollectInitializerBound(local, shorter, longer, use, condition);
+            }
+
+            return true;
+        }
+
+        return this.ProvesOriginOutlives(longer, shorter, use, condition);
+    }
+
+    // The Origin part of a fit (FitsTypeCore): the pure answer while a selected call's fits are collected, otherwise FitOriginOutlives.
+    private bool FitOrigin(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
+        => this.collectingFits ? this.FitsOriginOutlives(longer, shorter, use, condition)
+            : FitShadow ? this.ShadowFitOriginOutlives(longer, shorter, use, condition)
+            : this.FitOriginOutlives(longer, shorter, use, condition);
+
     // Records `bound` for a local's omitted Origin: at once, or, while call candidates are tried, for the selected candidate only.
     // A bound required only in some Semantics cases still bounds the Origin in every case.
     private void BoundInitializerOrigin(OriginDeclaration pending, BoundOrigin variable, BoundOrigin bound, Koto use, ulong condition)
     {
+        if (FitShadow)
+        {
+            this.ShadowRecord(new(pending.Owner, variable, bound, use, condition), null);
+        }
+
         if (this.candidateBoundDepth != 0)
         {
             this.candidateBounds.Add((pending, variable, bound, use, condition));
@@ -266,6 +313,11 @@ public sealed partial class Binding
 
         if (--this.candidateBoundDepth == 0)
         {
+            if (FitShadow)
+            {
+                this.CompareShadowBounds();
+            }
+
             for (var i = 0; i < this.candidateBounds.Count; i++)
             {
                 var (declaration, variable, bound, use, condition) = this.candidateBounds[i];
