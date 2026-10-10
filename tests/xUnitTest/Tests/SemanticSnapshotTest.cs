@@ -14,15 +14,17 @@ namespace XunitTest;
 /// so a structural change shows that it leaves every semantic result unchanged.</summary>
 /// <remarks><c>KIMI_SEMANTIC_SNAPSHOT=write</c> writes one file per case into the directory <c>KIMI_SEMANTIC_BASELINE</c>;
 /// <c>check</c> compares the current snapshot with that directory and, when <c>KIMI_SEMANTIC_OUTPUT</c> names a directory, writes the
-/// current snapshot and its differences there. Without the variable nothing is requested and the test does nothing.</remarks>
+/// current snapshot and its differences there. Without the variable nothing is requested and the test does nothing.
+/// <c>KIMI_SEMANTIC_HIR=1</c> publishes the HIR columns before the ownership analysis and adds a <c>.hir.txt</c> file per case: one
+/// line per node with its id, Op, Res and a jump's target (R2b).</remarks>
 public sealed class SemanticSnapshotTest
 {
     [Fact]
     public void SnapshotsAreDeterministic()
     {
         string[] names = ["milestone/Milestone1", "pair/" + PairCases()[0].Name];
-        var first = names.Select(Take).ToArray();
-        Assert.Equal(first, names.Select(Take));
+        var first = names.Select(static x => Take(x, false).Text).ToArray();
+        Assert.Equal(first, names.Select(static x => Take(x, false).Text));
         Assert.All(first, static x => Assert.Contains(" Resolved t=", x, StringComparison.Ordinal));
     }
 
@@ -38,35 +40,37 @@ public sealed class SemanticSnapshotTest
         Assert.True(mode is "write" or "check", $"KIMI_SEMANTIC_SNAPSHOT is write or check, not '{mode}'.");
         var baseline = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_BASELINE");
         Assert.False(string.IsNullOrEmpty(baseline), "KIMI_SEMANTIC_BASELINE names the baseline directory.");
+        var hir = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_HIR") == "1";
         var names = CaseNames();
-        var texts = new string[names.Length];
-        Parallel.For(0, names.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) }, i => texts[i] = Take(names[i]));
+        var snapshots = new (string Text, string Hir)[names.Length];
+        Parallel.For(0, names.Length, new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount / 2) }, i => snapshots[i] = Take(names[i], hir));
+        var files = names.Select(static (x, i) => (File: FileName(x), Index: i, Hir: false))
+            .Concat(hir ? names.Select(static (x, i) => (File: FileName(x)[..^4] + ".hir.txt", Index: i, Hir: true)) : []).ToArray();
         if (mode == "write")
         {
-            Write(baseline, names, texts);
+            Write(baseline, files, snapshots);
             return;
         }
 
         var output = Environment.GetEnvironmentVariable("KIMI_SEMANTIC_OUTPUT");
         if (!string.IsNullOrEmpty(output))
         {
-            Write(output, names, texts);
+            Write(output, files, snapshots);
         }
 
         var differences = new List<string>();
         var expected = Directory.GetFiles(baseline, "*.txt", SearchOption.AllDirectories)
-            .Select(x => Path.GetRelativePath(baseline, x).Replace('\\', '/')).ToHashSet(StringComparer.Ordinal);
-        for (var i = 0; i < names.Length; i++)
+            .Select(x => Path.GetRelativePath(baseline, x).Replace('\\', '/')).Where(x => hir || !x.EndsWith(".hir.txt", StringComparison.Ordinal)).ToHashSet(StringComparer.Ordinal);
+        foreach (var (file, index, isHir) in files)
         {
-            var file = FileName(names[i]);
             if (!expected.Remove(file))
             {
-                differences.Add($"{names[i]}: added");
+                differences.Add($"{file}: added");
                 continue;
             }
 
             var before = File.ReadAllText(Path.Combine(baseline, file)).Split('\n');
-            var after = texts[i].Split('\n');
+            var after = (isHir ? snapshots[index].Hir : snapshots[index].Text).Split('\n');
             var line = 0;
             while (line < before.Length && line < after.Length && before[line] == after[line])
             {
@@ -75,7 +79,7 @@ public sealed class SemanticSnapshotTest
 
             if (line < before.Length || line < after.Length)
             {
-                differences.Add($"{names[i]}:{line + 1}: {(line < before.Length ? before[line] : "<end>")} -> {(line < after.Length ? after[line] : "<end>")}");
+                differences.Add($"{file}:{line + 1}: {(line < before.Length ? before[line] : "<end>")} -> {(line < after.Length ? after[line] : "<end>")}");
             }
         }
 
@@ -102,6 +106,58 @@ public sealed class SemanticSnapshotTest
         return names;
     }
 
+    /// <summary>Binds a case of the corpus, as every snapshot does: the library case binds an empty program.</summary>
+    /// <param name="name">The case name.</param>
+    /// <returns>The bound compilation and the module the case prints: the library for the library case, else the program.</returns>
+    internal static (Compilation Compilation, Kotonoha Module) Bind(string name)
+    {
+        var slash = name.IndexOf('/');
+        var kind = slash < 0 ? name : name[..slash];
+        var subject = name[(slash + 1)..];
+        var source = kind switch
+        {
+            "library" => string.Empty,
+            "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
+            "mutation" => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
+            "syntax" => DiagnosticCorpus.Syntax(subject).Source,
+            _ => PairCases().Single(x => x.Name == subject).Source,
+        };
+
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        return (c, kind == "library" ? c.Library.Kotonoha : c.Kotonoha);
+    }
+
+    /// <summary>Takes the snapshot of a case; with <paramref name="hir"/> the HIR columns are published before the ownership analysis
+    /// and printed too.</summary>
+    /// <param name="name">The case name.</param>
+    /// <param name="hir">Whether to publish and print the HIR columns.</param>
+    /// <returns>The semantic snapshot and the HIR snapshot (empty without <paramref name="hir"/>).</returns>
+    internal static (string Text, string Hir) Take(string name, bool hir)
+    {
+        var printer = new SemanticPrinter(hir);
+        try
+        {
+            var (c, module) = Bind(name);
+            if (hir)
+            {
+                HirTables.Publish(c);
+            }
+
+            c.Ownership.Analyze();
+            printer.Print(c, module);
+        }
+        catch (Exception exception)
+        {
+            printer.Fail(exception);
+        }
+
+        return (printer.ToString(), printer.Hir);
+    }
+
     private static PairCaseRow[] PairCases()
         => JsonSerializer.Deserialize<PairCaseRow[]>(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "diagnostics", "pair-cases.json")))!;
 
@@ -116,48 +172,14 @@ public sealed class SemanticSnapshotTest
         return builder.Append(".txt").ToString();
     }
 
-    private static void Write(string directory, string[] names, string[] texts)
+    private static void Write(string directory, (string File, int Index, bool Hir)[] files, (string Text, string Hir)[] snapshots)
     {
-        for (var i = 0; i < names.Length; i++)
+        foreach (var (file, index, hir) in files)
         {
-            var path = Path.Combine(directory, FileName(names[i]));
+            var path = Path.Combine(directory, file);
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            File.WriteAllText(path, texts[i], new UTF8Encoding(false));
+            File.WriteAllText(path, hir ? snapshots[index].Hir : snapshots[index].Text, new UTF8Encoding(false));
         }
-    }
-
-    // The library case binds an empty program and prints the library tree; every other case prints its own program only.
-    private static string Take(string name)
-    {
-        var slash = name.IndexOf('/');
-        var kind = slash < 0 ? name : name[..slash];
-        var subject = name[(slash + 1)..];
-        var source = kind switch
-        {
-            "library" => string.Empty,
-            "milestone" => File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", subject + ".kimi")),
-            "mutation" => DiagnosticCorpus.Apply(DiagnosticCorpus.Mutation(subject)),
-            "syntax" => DiagnosticCorpus.Syntax(subject).Source,
-            _ => PairCases().Single(x => x.Name == subject).Source,
-        };
-
-        var printer = new SemanticPrinter();
-        try
-        {
-            var c = Compilation.CreateForTest();
-            Assert.True(c.Prepare(WindowsProfile.Target));
-            c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
-            c.Bind();
-            c.Binding.CheckStartup(OutputKind.Application);
-            c.Ownership.Analyze();
-            printer.Print(c, kind == "library" ? c.Library.Kotonoha : c.Kotonoha);
-        }
-        catch (Exception exception)
-        {
-            printer.Fail(exception);
-        }
-
-        return printer.ToString();
     }
 
     /// <summary>One row of <c>tests/diagnostics/pair-cases.json</c>; only its name and source are read here.</summary>
@@ -167,12 +189,15 @@ public sealed class SemanticSnapshotTest
 
     /// <summary>Prints one line per node in pre-order and then the published records. Every fact the snapshot compares is read here,
     /// so a change of where the compiler stores a fact changes only this printer.</summary>
-    private sealed class SemanticPrinter : KotoVisitor
+    private sealed class SemanticPrinter(bool hir) : KotoVisitor
     {
         private readonly StringBuilder text = new();
+        private readonly StringBuilder? hir = hir ? new() : null;
         private readonly Dictionary<object, string> types = new(ReferenceEqualityComparer.Instance);
         private int depth;
         private Koto? generated;
+
+        internal string Hir => this.hir?.ToString() ?? string.Empty;
 
         public override void Visit(Koto node)
         {
@@ -335,6 +360,22 @@ public sealed class SemanticSnapshotTest
 
         private void Node(Koto node)
         {
+            if (this.hir is { } hir)
+            {
+                hir.Append(node.SyntaxId).Append(' ').Append(HirTables.Op(node));
+                if (HirTables.ResOf(node) is not HirRes.None and var res)
+                {
+                    hir.Append(' ').Append(res);
+                }
+
+                if (HirTables.Op(node) is HirOp.Jump or HirOp.Continue && HirTables.PlanOf(node).Plan is Koto target)
+                {
+                    hir.Append(" ->").Append(target.SyntaxId);
+                }
+
+                hir.Append('\n');
+            }
+
             var text = this.text;
             text.Append(this.depth).Append(' ').Append(Location(node)).Append('+').Append(node.Span.Length).Append(' ').Append(node.Akind);
             if (node.StateOf() != BindingState.Unvisited)

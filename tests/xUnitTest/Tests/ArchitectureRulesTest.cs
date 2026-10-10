@@ -18,8 +18,8 @@ public class ArchitectureRulesTest
     [
         "AdtDef", "BindingSymbol", "BindingSymbolKind", "BoundCapture", "BoundClosure", "BoundDefaultArgument", "BoundEnumCase",
         "BoundEnumConstruction", "BoundLength", "BoundMatch", "BoundMatchArm", "BoundOrigin", "BoundPattern", "BoundPatternKind",
-        "BoundType", "BoundTypeKind", "CallPlan", "CalleeKind", "FunctionResultMode", "HirTables", "KimiLibrary", "PairBinder",
-        "PairCase", "PatternLiteral", "PatternLiteralKind", "PlanRow",
+        "BoundType", "BoundTypeKind", "CallPlan", "CalleeKind", "FunctionResultMode", "HirOp", "HirRes", "HirTables", "KimiLibrary",
+        "PairBinder", "PairCase", "PatternLiteral", "PatternLiteralKind", "PlanRow",
     ];
 
     private static readonly Regex LineComment = new(@"//[^\n]*");

@@ -59,9 +59,10 @@ Components the reduction has created, under `src/Kimi/Compiler`. Extend one of t
 | --- | --- | --- |
 | `ChildSlots` | `Parsing/Koto/Common/ChildSlots.cs` | The one child walk: a node lists its slots once in `ForEachChildSlot`, which visiting, collecting and replacing share |
 | `SyntaxTable` | `Parsing/Koto/Common/SyntaxTable.cs` | Per-module dense pre-order `SyntaxId`; a synthetic node takes a later id at its first semantic write |
-| `HirTables` | `Binding/HirTables.cs` | Semantic columns and `PlanRow`s keyed by `SyntaxId`, behind the Koto forwarding properties until R6 |
+| `HirTables` | `Binding/HirTables.cs` | Semantic columns and `PlanRow`s keyed by `SyntaxId`, behind the Koto forwarding properties until R6; the published `Op` and `Res` columns (`HirOp`, `HirRes` in `Binding/HirVocabulary.cs`), empty until `HirTables.Publish` |
+| HIR publisher | `Binding/Binding.Hir.cs` | `HirTables.Publish`: at most once per pass, one child walk fills `Op`, `Res` (`PreparedParam` for a parameter read in a later default) and each jump's target in its plan row from facts Binding kept; replaced by inline writes in R7 |
 | `SemanticQuery` | `Binding/SemanticQuery.cs` | `Compilation.Semantics`: the facts Binding publishes to Hover, the LSP and tests |
-| `CallPlan` | `Binding/CallPlan.cs` | One plan per call, its callee a `CalleeKind` (Function, Requirement, Virtual or Value) |
+| `CallPlan` | `Binding/CallPlan.cs` | One plan per call, its callee a `CalleeKind` (Function, Requirement, Virtual or Value); `CallPlan.Of(node, ordinal)` is the one way to reach a node's calls |
 | `AdtDef` | `Binding/AdtDef.cs` | The stored shape of a struct or enum on its symbol: Fields, Cases, destructor, inline storage and the Field, base and Case Types of each instance |
 
 ## Stage ledger

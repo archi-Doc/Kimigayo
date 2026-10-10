@@ -117,6 +117,46 @@ public sealed class CallPlan
 
     internal bool VirtualIsDirect => this.Receiver is BaseReferenceKoto;
 
+    /// <summary>Gets a call of a node, the one way to reach one: an invocation's call, an operator's, an object creation, a
+    /// Property's getter and setter, an index expression's key resolution, indexer and view range, the construction of a range or
+    /// <c>^</c> value, a for loop's iterator entry and step, and a dictionary literal's key lookup.</summary>
+    /// <param name="node">The node.</param>
+    /// <param name="ordinal">The position of the call among the node's calls, in evaluation order.</param>
+    /// <returns>The call, or null when the node has no call at that position.</returns>
+    internal static CallPlan? Of(Koto node, int ordinal = 0)
+    {
+        var binding = node.CodeContext.Compilation.Binding;
+        return node switch
+        {
+            InvocationKoto call => Nth(ordinal, Plan(call)),
+            ConversionKoto conversion => Nth(ordinal, Plan(conversion.CreationCall)),
+            IndexKoto index => Nth(ordinal, Plan(binding.ResolvedKeyCall(index)), Plan(binding.IndexerCall(index, false)), Plan(binding.IndexerCall(index, true)), Plan(binding.ViewRangeCall(index))),
+            RangeKoto or FromEndIndexKoto => Nth(ordinal, Plan(binding.RangeValueCall(node))),
+            MemberAccessKoto or IdentifierNameKoto => Nth(ordinal, Plan(binding.PropertyCall(node, PropertyAccessorKind.Get)), Plan(binding.PropertyCall(node, PropertyAccessorKind.Set))),
+            BinaryKoto binary => Nth(ordinal, Plan(binary.ArithmeticCall ?? binary.ComparisonCall)),
+            UnaryKoto unary => Nth(ordinal, Plan(unary.ArithmeticCall)),
+            ForKoto { BindingState: BindingState.Resolved } loop => Nth(ordinal, Plan(loop.EntryCall), Plan(loop.Iteration?.Next)),
+            DictionaryLiteralKoto { BindingState: BindingState.Resolved, BoundType: { Kind: BoundTypeKind.Dictionary, Components: [var key, var value] } } when ordinal == 0 =>
+                binding.DictionaryStorageCall(true, key, value),
+            _ => null,
+        };
+
+        static CallPlan? Plan(InvocationKoto? call) => call is { BindingState: BindingState.Resolved } ? call.CallStorage : null;
+
+        static CallPlan? Nth(int ordinal, params ReadOnlySpan<CallPlan?> calls)
+        {
+            foreach (var call in calls)
+            {
+                if (call is not null && ordinal-- == 0)
+                {
+                    return call;
+                }
+            }
+
+            return null;
+        }
+    }
+
     internal void SetReceiverProjection(BoundArgumentOperation operation, BoundMemberPath path)
     {
         this.BasePath = path;
