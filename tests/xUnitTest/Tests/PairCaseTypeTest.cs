@@ -130,7 +130,7 @@ public class PairCaseTypeTest
         c.Bind();
         var peek = Function(c, "peek");
         var binders = new List<PairBinder>();
-        c.Binding.PairBinders(peek, binders);
+        PairBinder.Collect(peek, binders);
         Assert.Equal(3, binders.Count);
         Assert.Equal("H", binders[0].Target.Name);
         Assert.Equal(SemanticsMask.Owner | SemanticsMask.ValueBorrow, binders[0].Admitted);
@@ -141,9 +141,10 @@ public class PairCaseTypeTest
         Assert.Equal("V", binders[2].Target.Name);
         Assert.Equal(SemanticsMask.Owner | SemanticsMask.Rc, binders[2].Admitted);
         Assert.True(binders[2].Resolved);
+        Assert.Equal(12, PairBinder.CaseProduct(binders));
 
         var closure = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsAnonymous);
-        c.Binding.PairBinders(closure, binders);
+        PairBinder.Collect(closure, binders);
         Assert.Equal(3, binders.Count);
         Assert.Equal("H", binders[0].Target.Name);
         Assert.Equal("T", binders[1].Target.Name);

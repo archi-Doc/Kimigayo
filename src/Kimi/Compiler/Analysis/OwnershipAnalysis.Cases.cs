@@ -103,7 +103,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         this.caseCount = resolved;
-        this.caseProduct = Binding.SemanticsCaseProduct(this.caseBinders);
+        this.caseProduct = PairBinder.CaseProduct(this.caseBinders);
         return true;
     }
 
@@ -352,6 +352,6 @@ public sealed partial class OwnershipAnalysis
     private long CaseProduct(FunctionKoto function)
     {
         this.compilation.Binding.PairBinders(function, this.caseBinders);
-        return Binding.SemanticsCaseProduct(this.caseBinders);
+        return PairBinder.CaseProduct(this.caseBinders);
     }
 }

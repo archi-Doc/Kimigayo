@@ -9,8 +9,8 @@ namespace XunitTest;
 /// <summary>The published HIR columns (docs/dev/COMPILER_ARCHITECTURE.md, R2b) over the Kimi library and every milestone program:
 /// every node of the tree has an Op, every call Op its call, every selected symbol a Res, a parameter read from a later default the
 /// prepared slot, every jump its target, every evaluated node its completion and its Place, every consumed child its Adjust, every
-/// match its Pattern plan, every closure its definition and every expansion its plan; publishing changes no other result and allocates
-/// nothing again.</summary>
+/// match its Pattern plan, every closure its definition, every expansion its plan, every omitted default its declaration and every body
+/// its pair binders; publishing changes no other result and allocates nothing again.</summary>
 public sealed class HirColumnsTest
 {
     // Virtual bodies over a generic base whose applicability has premises, and over a closed base.
@@ -63,6 +63,25 @@ public sealed class HirColumnsTest
 
         // k in the default of m; v, the capture k; v, the capture m; then action, m, other and k in the body.
         Assert.Equal([HirRes.PreparedParam, HirRes.Param, HirRes.Capture, HirRes.Param, HirRes.Capture, HirRes.Param, HirRes.Param, HirRes.Param, HirRes.Param], reads);
+    }
+
+    // Plan 5.6.2: a call omitting a default evaluates its selected declaration's default, whose earlier parameters are prepared slots and
+    // whose Types the call's substitution instantiates.
+    [Fact]
+    public void OmittedDefaultsAreTheirDeclarationsDefaults()
+    {
+        var c = MinimalEmissionTest.Analyze("func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
+            "require f(7) == 7 and f(true) else => $abort(\"call\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var f = Reachable(c.Kotonoha).OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var calls = Reachable(c.Kotonoha).OfType<InvocationKoto>().Select(static x => CallPlan.Of(x)).Where(x => ReferenceEquals(x?.Target.Declaration, f)).ToArray();
+        Assert.Equal([BoundType.I32, BoundType.Boolean], calls.Select(x => c.Types.Apply(DefaultDecl.Of(x!.DefaultArguments[0]).Parameter(1), c.Types.SubstOf(x)!)));
+        var declaration = DefaultDecl.Of(calls[0]!.DefaultArguments[0]);
+        Assert.Equal((f, 1, HirOp.Call), (declaration.Function, declaration.Index, HirTables.Op(declaration.Expression)));
+        Assert.Same(declaration.Parameter(0), declaration.Parameter(1));
+        Assert.Equal(HirRes.PreparedParam, HirTables.ResOf(((InvocationKoto)declaration.Expression).ArgumentNodes[0]));
     }
 
     // A virtual or override body Binding bound is built, the conditional one too; the corpus has none.
@@ -360,6 +379,11 @@ public sealed class HirColumnsTest
                 continue;
             }
 
+            if (op is HirOp.Body or HirOp.Closure && !Binders(node).SequenceEqual(Binders(node, binding)))
+            {
+                problems.Add($"{where} pair binders");
+            }
+
             if ((op is HirOp.Match or HirOp.Try && BoundMatch.Of(node) is not { IsCurrent: true }) || (op == HirOp.For && (BoundMatch.Of(node) is null) != (CallPlan.Of(node, 1) is null)) ||
                 (op == HirOp.Closure && (BoundClosure.Of((FunctionKoto)node) is not { EnvironmentType: { } environment, Signature: not null } || module.Compilation.Types.SubstOfClosure(environment) is null)))
             {
@@ -391,6 +415,16 @@ public sealed class HirColumnsTest
                 if (call.Kind == CalleeKind.Requirement && call.RequirementContract is null && call.Target.CompilerFunction == CompilerFunctionKind.None)
                 {
                     problems.Add($"{where} calls {call.Target.Name} without its Contract");
+                }
+
+                foreach (ref readonly var omitted in call.DefaultArguments)
+                {
+                    var declaration = DefaultDecl.Of(omitted);
+                    if (!ReferenceEquals(declaration.Function, call.Target.Declaration) || !ReferenceEquals(declaration.Expression, omitted.Expression) || HirTables.Op(omitted.Expression) is HirOp.Unset or HirOp.Error or HirOp.Syntax ||
+                        !ReferenceEquals(module.Compilation.Types.Apply(declaration.Parameter(declaration.Index), module.Compilation.Types.SubstOf(call)!), omitted.ParameterType))
+                    {
+                        problems.Add($"{where} omits {omitted.Parameter.Name} without its default declaration");
+                    }
                 }
 
                 if (call.Kind != CalleeKind.Value && call.Receiver is { } receiver)
@@ -471,6 +505,22 @@ public sealed class HirColumnsTest
 
         // A body or operand that supplies its construct's value.
         static Koto? Result(Koto? source) => source is not null && KotoHelper.IsValueContext(source) ? source : null;
+    }
+
+    // The pair binders in scope of a body, as published or as Binding collects them for its own analyses.
+    private static List<PairBinder> Binders(Koto body, Binding? binding = null)
+    {
+        var binders = new List<PairBinder>();
+        if (binding is null)
+        {
+            PairBinder.Collect(body, binders);
+        }
+        else
+        {
+            binding.PairBinders(body, binders);
+        }
+
+        return binders;
     }
 
     // SPEC 3.4.1, 13.5.5.1: a reference, object handle or pair layer, which selection follows implicitly.

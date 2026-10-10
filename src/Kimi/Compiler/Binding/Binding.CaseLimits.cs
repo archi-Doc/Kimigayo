@@ -15,7 +15,7 @@ public sealed partial class Binding
     {
         var binders = this.adaptationBinders ??= new();
         this.PairBinders(operation, binders);
-        return SemanticsCaseProduct(binders);
+        return PairBinder.CaseProduct(binders);
     }
 
     // Binding must not publish a complete operation plan after checking only a prefix of the body's required cases.

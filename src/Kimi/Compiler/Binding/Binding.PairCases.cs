@@ -21,24 +21,6 @@ public sealed partial class Binding
     private readonly List<PairBinder> pairConditionBinders = new();
     private bool pairConditionActive;
 
-    /// <summary>Counts the resolved cases of one body without overflowing the resource counter.</summary>
-    /// <param name="binders">The body's pair binders and their admitted sets.</param>
-    /// <returns>The product, saturated at the largest representable count.</returns>
-    internal static long SemanticsCaseProduct(IReadOnlyList<PairBinder> binders)
-    {
-        var product = 1L;
-        for (var i = 0; i < binders.Count; i++)
-        {
-            if (binders[i].Resolved)
-            {
-                var count = BitOperations.PopCount((uint)binders[i].Admitted);
-                product = product > long.MaxValue / count ? long.MaxValue : product * count;
-            }
-        }
-
-        return product;
-    }
-
     /// <summary>Appends the Semantics of a mask in bit order, separated.</summary>
     /// <param name="text">The text to append to.</param>
     /// <param name="mask">The Semantics.</param>
@@ -300,11 +282,7 @@ public sealed partial class Binding
         return admitted & ~(reborrow | copy);
     }
 
-    /// <summary>Collects the pair binders in scope of a body (SPEC 8.10): those of its own declaration, of its containers and, for
-    /// a Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its
-    /// admitted set.</summary>
-    /// <param name="entry">The body's declaration.</param>
-    /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
+    // PairBinder.Collect.
     internal void PairBinders(Koto entry, List<PairBinder> binders)
     {
         binders.Clear();

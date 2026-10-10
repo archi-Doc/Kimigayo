@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Numerics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -111,6 +112,31 @@ internal readonly record struct PairBinder(BindingSymbol Target, SemanticsMask A
 
     /// <summary>Gets a value indicating whether the binder is analyzed once per admitted Semantics.</summary>
     internal bool Resolved => this.Admitted != SemanticsMask.None && (this.Admitted & ~Resolvable) == 0;
+
+    /// <summary>Collects the pair binders in scope of a body (SPEC 8.10): those of its own declaration, of its containers and, for a
+    /// Closure, an accessor or a static initializer, of the enclosing declarations, outer to inner in slot order, each with its admitted
+    /// set; the MIR body's binders, whose resolved ones give its Semantics cases.</summary>
+    /// <param name="body">The body's declaration.</param>
+    /// <param name="binders">The caller-owned list to fill; it is cleared first.</param>
+    internal static void Collect(Koto body, List<PairBinder> binders) => body.CodeContext.Compilation.Binding.PairBinders(body, binders);
+
+    /// <summary>Counts the Semantics cases of a body without overflowing the resource counter (SPEC 8.10).</summary>
+    /// <param name="binders">The body's pair binders and their admitted sets.</param>
+    /// <returns>The product of the resolved binders' admitted sets, saturated at the largest representable count.</returns>
+    internal static long CaseProduct(IReadOnlyList<PairBinder> binders)
+    {
+        var product = 1L;
+        for (var i = 0; i < binders.Count; i++)
+        {
+            if (binders[i].Resolved)
+            {
+                var count = BitOperations.PopCount((uint)binders[i].Admitted);
+                product = product > long.MaxValue / count ? long.MaxValue : product * count;
+            }
+        }
+
+        return product;
+    }
 }
 
 /// <summary>One Semantics case of a pair binder (SPEC 8.10): the Semantics its whole Type takes.</summary>

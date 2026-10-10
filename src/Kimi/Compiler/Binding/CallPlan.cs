@@ -20,6 +20,24 @@ public enum CalleeKind : byte
 /// This plan is not a certificate of default ownership or cleanup verification.</summary>
 public readonly record struct BoundDefaultArgument(Koto Expression, BindingSymbol Parameter, BoundType ParameterType);
 
+/// <summary>The default of parameter <paramref name="Index"/> of a function (DefaultDecl, plan 5.6.2): one template per declaration and
+/// default, owned by the declaration a call selects statically, never an override or a specialization. It reads each earlier parameter
+/// i as the slot its call prepared (Res PreparedParam) of the declared Type <see cref="Parameter"/>(i) and produces
+/// <see cref="Parameter"/>(<paramref name="Index"/>); at a call each is <c>TyCtxt.Apply(Parameter(i), SubstOf(call))</c>.</summary>
+/// <param name="Function">The declaration.</param>
+/// <param name="Index">The parameter's slot.</param>
+internal readonly record struct DefaultDecl(FunctionKoto Function, int Index)
+{
+    internal Koto Expression => this.Function.Parameters[this.Index].DefaultValue!;
+
+    internal static DefaultDecl Of(BindingSymbol parameter) => new((FunctionKoto)parameter.Scope.Owner, parameter.Slot);
+
+    internal static DefaultDecl Of(in BoundDefaultArgument argument) => Of(argument.Parameter);
+
+    // P_i, the declared Type of parameter i.
+    internal BoundType Parameter(int i) => this.Function.Parameters[i].Type.BoundType!;
+}
+
 /// <summary>The committed callee and argument mapping of one call; storage is reused when the same call is rebound.</summary>
 public sealed class CallPlan
 {
