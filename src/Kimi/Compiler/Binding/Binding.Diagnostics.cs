@@ -244,208 +244,6 @@ public sealed partial class Binding
             expected.Symbol?.LibraryDeclaration is KimiDeclarationId.Range or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange && actual.Symbol != expected.Symbol;
     }
 
-    // SPEC 7.2.3, 8.10: a default is checked as a generic body is, for every binding that satisfies the Constraints, and binds no
-    // slot. The rule decides a mismatch of the whole default and of any part of it, such as an arm, a Tuple element or an operand;
-    // the body of a function inside the default is that function's own. When the whole default's parameter Type is a Type
-    // parameter with one Callable signature that the default fits (SPEC 10.7), that common Function Type accepts the default by
-    // erasure (SPEC 7.6.4).
-    private string? GenericDefaultNote(Koto node, object actual, object expected)
-    {
-        var value = node;
-        while (value.Parent is ParenthesizedKoto parentheses)
-        {
-            value = parentheses;
-        }
-
-        var root = value;
-        while (root.Parent is { } parent and not FunctionKoto)
-        {
-            root = parent;
-        }
-
-        if (expected is not BoundType { ContainsParameter: true } required || root.Parent is not FunctionKoto function)
-        {
-            return null;
-        }
-
-        var index = function.Parameters.Count - 1;
-        while (index >= 0 && !ReferenceEquals(function.Parameters[index].DefaultValue, root))
-        {
-            index--;
-        }
-
-        if (index < 0 || !this.SomeBindingFits(function, KotoHelper.UnwrapParentheses(value), actual, required))
-        {
-            return null;
-        }
-
-        var name = DiagnosticTypeName(required);
-        return required.Kind == BoundTypeKind.Parameter
-            ? $"A default is checked for every binding of {name} that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)"
-            : $"A default is checked for every binding of the Type parameters in {name} that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)";
-    }
-
-    // SPEC 7.2.3, 8.10: the every-binding rule decides a default's mismatch only when some binding that satisfies the Constraints
-    // makes the mismatched default or part fit. The Type parameters are those of the declaration and of every enclosing generic
-    // declaration, such as the struct of a method. Each takes the part's own Type (an integer or floating-point literal its default
-    // Type), never one that contains that parameter itself (T = x@ref of x: T); every other part of the expected Type must be
-    // that Type's own part, and no Constraint of those declarations may be refuted for the binding. An anonymous function is
-    // checked against its expectation, so it fits a Type parameter whose one Callable signature has its arity, or one with no
-    // Callable signature. A Type parameter that none of these declarations declares is presumed to fit.
-    private bool SomeBindingFits(FunctionKoto function, Koto value, object actual, BoundType required)
-    {
-        var scope = this.ConstraintScope(value);
-        BoundType? candidate = actual switch
-        {
-            BoundType type => type,
-            "integer literal" => BoundType.I32,
-            "floating-point literal" => BoundType.F64,
-            _ => null,
-        };
-
-        if (candidate is null)
-        {
-            if (required.Kind != BoundTypeKind.Parameter || value is not FunctionKoto { IsAnonymous: true } closure)
-            {
-                return false;
-            }
-
-            if (!this.TryCallable(required, scope, out var signature, out _, out var several))
-            {
-                return !several;
-            }
-
-            return signature.Kind == BoundTypeKind.Function &&
-                (ReferenceEquals(signature.Components[0], BoundType.Unit) ? 0 : signature.Components[0].Components.Count) == closure.Parameters.Count;
-        }
-
-        // The declarations whose Type parameters a binding chooses, innermost first, each with its Constraints.
-        var binders = new List<(Koto Binder, IReadOnlyList<Koto> Clauses, BoundType[] Parameters, BoundType?[] Arguments)>();
-        for (Koto? declaration = function; declaration is not null; declaration = declaration.Parent)
-        {
-            var added = declaration switch
-            {
-                FunctionKoto generic => AddBinder(generic, generic.TypeConstraints, generic.GenericArguments),
-                DeclarationContainerKoto container => AddBinder(container, container.ConstraintNodes, container.GenericArguments),
-                _ => true,
-            };
-
-            if (!added)
-            {
-                return true;
-            }
-        }
-
-        if (!Bind(candidate, required))
-        {
-            return false;
-        }
-
-        // A Callable signature is decided by its fit (SPEC 10.7); the other Constraints by their proof for the binding.
-        if (required.Kind == BoundTypeKind.Parameter && this.ValueSignature(candidate) is { } own &&
-            this.TryCallable(required, scope, out var callable, out _, out var distinct) && !distinct && callable.Kind == BoundTypeKind.Function &&
-            !CallableSignatureFits(own, callable, SignatureOwner(candidate)))
-        {
-            return false;
-        }
-
-        foreach (var (binder, clauses, _, arguments) in binders)
-        {
-            if (clauses.Count != 0 && this.CheckConstraints(clauses, binder, arguments, scope) == ConstraintProof.Refuted)
-            {
-                return false;
-            }
-        }
-
-        return true;
-
-        bool AddBinder(Koto binder, IReadOnlyList<Koto> clauses, IReadOnlyList<TypeKoto> declared)
-        {
-            if (declared.Count == 0)
-            {
-                return true;
-            }
-
-            var parameters = new BoundType[declared.Count];
-            for (var i = 0; i < declared.Count; i++)
-            {
-                if (declared[i] is not GenericParameterKoto { BoundType: { } parameter })
-                {
-                    return false;
-                }
-
-                parameters[i] = parameter;
-            }
-
-            binders.Add((binder, clauses, parameters, (BoundType?[])parameters.Clone()));
-            return true;
-        }
-
-        bool Bind(BoundType type, BoundType part)
-        {
-            if (part.Kind == BoundTypeKind.Parameter)
-            {
-                foreach (var (_, _, parameters, arguments) in binders)
-                {
-                    for (var i = 0; i < parameters.Length; i++)
-                    {
-                        if (ReferenceEquals(parameters[i], part))
-                        {
-                            if (ReferenceEquals(arguments[i], part))
-                            {
-                                // A binding of T to a Type that contains T is no binding at all.
-                                arguments[i] = type;
-                                return !Mentions(type, part);
-                            }
-
-                            return ReferenceEquals(arguments[i], type);
-                        }
-                    }
-                }
-
-                return true;
-            }
-
-            if (!part.ContainsParameter)
-            {
-                return ReferenceEquals(type, part);
-            }
-
-            if (type.Kind != part.Kind || !ReferenceEquals(type.Symbol, part.Symbol) || type.Semantics != part.Semantics || type.Components.Count != part.Components.Count)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < part.Components.Count; i++)
-            {
-                if (!Bind(type.Components[i], part.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        static bool Mentions(BoundType type, BoundType parameter)
-        {
-            if (ReferenceEquals(type, parameter))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (Mentions(type.Components[i], parameter))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-    }
-
     // The call signature of a Function Item, closure or Function value.
     private BoundType? ValueSignature(BoundType value) => value.Kind switch
     {
@@ -1473,7 +1271,7 @@ public sealed partial class Binding
         }
 
         var judgment = TakeJudgment(place);
-        node.Report(requirement, code, note: this.BorrowOriginHint(node), at: place, evidence: [text], repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
+        node.Report(requirement, code, at: place, evidence: [text], repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
     }
 
     // SPEC 7.6.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
@@ -1696,7 +1494,7 @@ public sealed partial class Binding
     private bool IsDerived(Koto node)
         => IsRecovery(node, out _) || this.RestsOnRecovery(node) ||
             (node.BindingFailure is BindingFailure.MissingName or BindingFailure.MissingType or BindingFailure.Unsupported &&
-            this.HasUnresolvedPrerequisite(node) && this.BorrowOriginHint(node) is null) ||
+            this.HasUnresolvedPrerequisite(node)) ||
             (node.BindingFailure == BindingFailure.InvalidOrigin && this.originDeclarations.TryGetValue(node, out var declaration) &&
             declaration.Failure is { } clause && this.partPrerequisites.TryGetValue(node, out var cause) && ReferenceEquals(cause, clause)) ||
             (node.BindingFailure is BindingFailure.InvalidConstraint or BindingFailure.Unsupported && this.partPrerequisites.TryGetValue(node, out var part) && part.BindingState == BindingState.Invalid) ||

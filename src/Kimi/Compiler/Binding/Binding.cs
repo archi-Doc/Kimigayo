@@ -919,7 +919,7 @@ public sealed partial class Binding
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd && this.originRelations?.TryGetValue(issue.Node, out var relation) == true)
         {
-            ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.BorrowOriginHint(issue.Node));
+            ReportOriginRelation(issue.Node, relation, requirement, issue.Code, this.OmittedResultNote(issue.Node));
             this.ReportMoreCallRelations(issue.Node, requirement);
         }
         else if (issue.Code == DiagnosticCode.UnprovenOriginContract_Kd && this.originContracts?.TryGetValue(issue.Node, out var contract) == true)
@@ -960,10 +960,8 @@ public sealed partial class Binding
             // The subject stays the failed node; the location is the syntax that shows the two Types. A numeric conversion
             // rejected for a wrapping integer Type explains the same-argument rule (SPEC 13.5.4.1).
             var wrappingConversion = issue.Node is ConversionKoto && (mismatch.Actual is BoundType { IsWrappingInteger: true } || mismatch.Expected is BoundType { IsWrappingInteger: true });
-            // A default at a generic parameter Type is checked for every binding (SPEC 7.2.3).
             var conversion = wrappingConversion ? null : this.ClosureConversionNote(issue.Node, mismatch.Actual, mismatch.Expected);
-            var defaultNote = wrappingConversion || conversion is not null ? null : this.GenericDefaultNote(issue.Node, mismatch.Actual, mismatch.Expected);
-            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? defaultNote ?? this.BorrowOriginHint(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
+            issue.Node.Report(requirement, issue.Code, note: wrappingConversion ? WrappingConversionNote : conversion ?? this.OmittedResultNote(issue.Node), at: mismatch.At, evidence: [DiagnosticTypeName(mismatch.Actual), DiagnosticTypeName(mismatch.Expected)]);
         }
         else if (issue.Code is DiagnosticCode.UnsatisfiedConstraint_Kd or DiagnosticCode.UnprovenConstraint_Kd && this.referenceConstraints?.TryGetValue(issue.Node, out var reference) == true)
         {
@@ -1006,7 +1004,7 @@ public sealed partial class Binding
         }
         else
         {
-            issue.Node.Report(requirement, issue.Code, note: this.BorrowOriginHint(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
+            issue.Node.Report(requirement, issue.Code, note: this.OmittedResultNote(issue.Node), evidence: issue.Code is DiagnosticCode.SharedPathAccess_Kd or DiagnosticCode.TransferRequired_Kd ? [issue.Node.ToString()] : null);
         }
     }
 

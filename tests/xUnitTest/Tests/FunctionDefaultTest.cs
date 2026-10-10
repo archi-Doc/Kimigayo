@@ -163,33 +163,32 @@ public class FunctionDefaultTest
         Assert.Equal("func () => text == \"a\"", Source.Substring(error.Span!.Value.Start, error.Span.Value.Length));
     }
 
-    // SPEC 7.2.3: a default is checked for every binding, as a generic body is, and binds no slot. Its Type mismatch states that
-    // rule only when some binding that satisfies the Constraints makes the default fit. In a default, a capture of a preceding
-    // argument can neither move it nor keep a borrow of it, and the erased environment must be Owned (SPEC 7.6.4), so no candidate
+    // SPEC 7.2.3: a default is checked for every binding, as a generic body is, and binds no slot. In a default, a capture of a
+    // preceding argument can neither move it nor keep a borrow of it, and the erased environment must be Owned (SPEC 7.6.4), so no candidate
     // proposes @move, @ref, @uniq, a Reborrow of self, or keeping the concrete closure. Outside a default the records are kept.
     // The anchor is unique in the source; every row is one record without repair candidates, a Proof record for an unproven
     // Constraint and a Language record otherwise.
     [Theory]
-    [InlineData(Steps + "func run<F>(value: i32, action: F = inc) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\npublic func main() => ()\n", "F = inc", "inc", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of F that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
-    [InlineData("func run<F>(value: i32, action: F = func (x: i32) -> i32 => x + 1) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\npublic func main() => ()\n", "F = func", "func (x: i32) -> i32 => x + 1", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of F that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
+    [InlineData(Steps + "func run<F>(value: i32, action: F = inc) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\npublic func main() => ()\n", "F = inc", "inc", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
+    [InlineData("func run<F>(value: i32, action: F = func (x: i32) -> i32 => x + 1) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\npublic func main() => ()\n", "F = func", "func (x: i32) -> i32 => x + 1", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData(Steps + "func run<F>(value: i32, action: F = inc) -> i32\n    F is Callable<(i64) -> i64>\n    return 0\npublic func main() => ()\n", "F = inc", "inc", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData(Steps + "func run<F>(value: i32, action: F = inc) -> i32\n    F is Callable<(i32) -> i32>\n    F is Callable<(i64) -> i64>\n    return 0\npublic func main() => ()\n", "F = inc", "inc", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func run<F>(value: i32, action: F = func (a, b) => a) -> i32\n    F is Callable<(i32) -> i32>\n    return 0\npublic func main() => ()\n", "F = func", "func (a, b) => a", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
-    [InlineData("func g<T>(x: T, y: T = 0) -> () => ()\npublic func main() => ()\n", "T = 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of T that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
+    [InlineData("func g<T>(x: T, y: T = 0) -> () => ()\npublic func main() => ()\n", "T = 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func g<T>(x: T, y: T = \"s\") -> ()\n    T is PrimitiveInteger\n    return ()\npublic func main() => ()\n", "T = \"s\"", "\"s\"", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func h<T>(x: T, y: (T, i32) = 5) -> () => ()\npublic func main() => ()\n", "= 5", "5", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
-    [InlineData("func q<T>(x: (i32, i32), y: (T, i32) = x) -> () => ()\npublic func main() => ()\n", "= x)", "x", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of the Type parameters in (T, i32) that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
+    [InlineData("func q<T>(x: (i32, i32), y: (T, i32) = x) -> () => ()\npublic func main() => ()\n", "= x)", "x", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func q<T>(x: (bool, i32), y: (T, i32) = x) -> ()\n    T is PrimitiveInteger\n    return ()\npublic func main() => ()\n", "= x)", "x", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
 
     // The rule decides an arm or a Tuple element as it decides the whole default, for the Type parameters of the declaration and
-    // of its container under their Constraints; a binding to a Type that contains the parameter itself is none.
+    // of its container under their Constraints.
     [InlineData("struct Box<T>\n    T is PrimitiveInteger\n    public let v: T\n    public init(v: T) => self.v = v\n    public func set(self, w: T = \"s\") -> () => ()\npublic func main() => ()\n", "T = \"s\"", "\"s\"", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
-    [InlineData("struct Box<T>\n    public let v: T\n    public init(v: T) => self.v = v\n    public func put(self, w: T = 0) -> () => ()\npublic func main() => ()\n", "T = 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of T that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
+    [InlineData("struct Box<T>\n    public let v: T\n    public init(v: T) => self.v = v\n    public func put(self, w: T = 0) -> () => ()\npublic func main() => ()\n", "T = 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func n<T>(x: T, y: T = x@ref) -> () => ()\npublic func main() => ()\n", "= x@ref", "x@ref", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
-    [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\npublic func main() => ()\n", "else => 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of T that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
+    [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\npublic func main() => ()\n", "else => 0", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => \"s\") -> ()\n    T is PrimitiveInteger\n    return ()\npublic func main() => ()\n", "= if b", "if b => x else => \"s\"", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
-    [InlineData("func c<T>(x: T, y: (T, i32) = (0, 1)) -> () => ()\npublic func main() => ()\n", "(0, 1)", "0", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of T that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
-    [InlineData("func m<T, U>(x: T, y: (T, U) = (1, true)) -> () => ()\npublic func main() => ()\n", "(1, true)", "1", nameof(DiagnosticCode.TypeMismatch_Kd), "A default is checked for every binding of T that satisfies the Constraints, as a generic body is, and binds no slot (SPEC 7.2.3)")]
+    [InlineData("func c<T>(x: T, y: (T, i32) = (0, 1)) -> () => ()\npublic func main() => ()\n", "(0, 1)", "0", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
+    [InlineData("func m<T, U>(x: T, y: (T, U) = (1, true)) -> () => ()\npublic func main() => ()\n", "(1, true)", "1", nameof(DiagnosticCode.TypeMismatch_Kd), null)]
     [InlineData("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\npublic func main() -> ()\n    let a = runT(\"a\")\n", "= func () => text", "func () => text == \"a\"", nameof(DiagnosticCode.TransferRequired_Kd), "The omitted capture list captures text only by Copy; it never infers a Move, a borrow or a Reborrow, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
     [InlineData(Steps + "func run(a: (i32) -> i32 = inc, b: (i32) -> i32 = func [a] (x) => a(x)) -> i32 => b(a(1))\npublic func main() => ()\n", "func [a]", "a", nameof(DiagnosticCode.TransferRequired_Kd), "The bare capture entry a initializes its environment binding as let a = a would; (i32) -> i32 is not proven Copy, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
     [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\npublic func main() => ()\n", "= func [text@ref]", "func [text@ref] () => text@follow == \"a\"", nameof(DiagnosticCode.UnsatisfiedConstraint_Kd), "Common Function conversion requires an Owned environment (SPEC 7.6.4, 15.2.3); the capture text depends on the borrow text@ref, which is not static; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)")]
@@ -224,7 +223,6 @@ public class FunctionDefaultTest
 
     // The default Note reaches the console and both language-server placements unchanged (SPEC 7.2.3).
     [Theory]
-    [InlineData(Steps + "func run<F>(value: i32, action: F = inc) -> i32\n    F is Callable<(i32) -> i32>\n    return action(value)\nConsole.writeLine(\"x\")", true)]
     [InlineData("func runT(text: string, action: () -> bool = func () => text == \"a\") -> bool => action()\nlet a = runT(\"a\")", false)]
     [InlineData("func runT(text: string, action: () -> bool = func [text@ref] () => text@follow == \"a\") -> bool => action()\nConsole.writeLine(\"x\")", true)]
     [InlineData("struct Counter\n    public var value: i32\n    public init(value: i32) => self.value = value\n    public func bump(self: uniq/Self, f: () -> i32 = func () => self.value) -> i32 => f()\nConsole.writeLine(\"x\")", true)]

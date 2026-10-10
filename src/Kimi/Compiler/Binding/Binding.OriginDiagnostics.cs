@@ -11,16 +11,6 @@ public sealed partial class Binding
     // Recorded only on failure and reused across passes; dependent checks use the failed Origin contract's cause.
     private Dictionary<Koto, BoundType>? absentSlotProjections;
 
-    private static bool HasUngroupedBorrowSuffix(Koto syntax)
-    {
-        while (syntax is OptionalTypeKoto optional)
-        {
-            syntax = optional.Type;
-        }
-
-        return syntax is TypeSemanticsKoto { Type: not null, HasOrigin: true, IsTransparentWrapper: false };
-    }
-
     // SPEC 15.3.2: the struct or enum whose storage (an instance Field Type, an enum payload or a base) writes this Origin name;
     // null for any other position, such as an accessor signature or an attached relation.
     private static DeclarationContainerKoto? StorageOriginType(Koto use)
@@ -148,64 +138,43 @@ public sealed partial class Binding
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }
 
-    // Run only while publishing failures. These checks neither bind new names nor
-    // change a syntax decision, and require no state on successful uses.
-    private string? BorrowOriginHint(Koto node)
+    // SPEC 15.4.3, 15.6.1: a result fitting or Origin failure whose omitted result Origin defaulted to static because the only
+    // matching borrow sits inside an Option input explains that boundary in the Note. Run only while publishing failures.
+    private string? OmittedResultNote(Koto node)
     {
-        if (node is TypeSemanticsKoto { IsLegacyBorrowCandidate: true } legacy &&
-            (legacy.BoundSymbol?.Kind == BindingSymbolKind.SemanticsParameter ||
-            (legacy.BoundSymbol is null && legacy.BindingFailure == BindingFailure.MissingType && CompilerHelper.TryParse(legacy.Identifier, out _))))
+        if (node.BindingFailure is not (BindingFailure.TypeMismatch or BindingFailure.OriginRelation))
         {
-            return "This may be a removed brace borrow annotation. Use 's/T during a' in a Type; an adaptation's outer Origin must be inferred with 'x@s/T'.";
+            return null;
         }
 
-        if (node.BindingFailure == BindingFailure.InvalidOrigin && node is IdentifierNameKoto
-            { BoundSymbol: { Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture, Type: { } valueType } } &&
-            !IsBorrow(valueType.Semantics))
+        var returned = node as ReturnKoto ?? node.Parent as ReturnKoto;
+        var function = returned is not null ? KotoHelper.ResolveTransferTarget(returned) as FunctionKoto : node.Parent as FunctionKoto;
+        var syntax = function?.ReturnType;
+        while (syntax is ParenthesizedTypeKoto group)
         {
-            return "This value's name does not denote an outer borrow Origin. Use a declared schema slot such as 'x.slot', or borrow local storage with 'let r = x@ref' and infer its Origin. Borrowing does not extend its lifetime.";
+            syntax = group.Type;
         }
 
-        if (node.Parent is AndKoto conjunction && ReferenceEquals(conjunction.Right, node) &&
-            HasUngroupedBorrowSuffix(conjunction.Left) && this.IsExistingOriginForHint(node))
+        if (syntax is not TypeSemanticsKoto { HasOrigin: false } || function?.BoundSymbol?.Type is not
+            { Origin.Kind: OriginKind.Static, Components.Count: 1 } expected)
         {
-            return "An Origin intersection requires parentheses: 'during (a and b)'. Here 'and' separates constraint requirements.";
+            return null;
         }
 
-        if (node.BindingFailure is BindingFailure.TypeMismatch or BindingFailure.OriginRelation)
+        var excluded = this.IsExcludedInputOrigin(returned?.Expression?.BoundType ?? node.BoundType, expected, function);
+        if (!excluded && this.resultContexts.TryGetValue(node, out var context))
         {
-            var returned = node as ReturnKoto ?? node.Parent as ReturnKoto;
-            var function = returned is not null ? KotoHelper.ResolveTransferTarget(returned) as FunctionKoto : node.Parent as FunctionKoto;
-            var syntax = function?.ReturnType;
-            while (syntax is ParenthesizedTypeKoto group)
+            foreach (var source in context.Sources)
             {
-                syntax = group.Type;
-            }
-
-            if (syntax is TypeSemanticsKoto { HasOrigin: false } && function?.BoundSymbol?.Type is
-                { Origin.Kind: OriginKind.Static, Components.Count: 1 } expected)
-            {
-                var excluded = this.IsExcludedInputOrigin(returned?.Expression?.BoundType ?? node.BoundType, expected, function);
-                if (!excluded && this.resultContexts.TryGetValue(node, out var context))
+                if (this.IsExcludedInputOrigin(source, expected, function))
                 {
-                    foreach (var source in context.Sources)
-                    {
-                        if (this.IsExcludedInputOrigin(source, expected, function))
-                        {
-                            excluded = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (excluded)
-                {
-                    return "The omitted result Origin is static; Origins inside Option inputs are not elision candidates. Write an explicit result 'during' annotation using the required named input Origins, then recheck lifetime and Type fitting.";
+                    excluded = true;
+                    break;
                 }
             }
         }
 
-        return null;
+        return excluded ? "The omitted result Origin is static: an Origin inside an Option input is not an elision candidate (SPEC 15.4.3)" : null;
     }
 
     private bool IsExcludedInputOrigin(BoundType? actual, BoundType expected, FunctionKoto function)
@@ -291,71 +260,5 @@ public sealed partial class Binding
             : null;
         node.Report(requirement, code, note: note, at: slot, evidence: [$"{symbol.Name} has no Origin slot {slot.IdentifierName}"], relatedSpans: related);
         return true;
-    }
-
-    private bool IsExistingOriginForHint(Koto node)
-    {
-        var name = node is IdentifierNameKoto identifier ? identifier.IdentifierName :
-            node is MemberAccessKoto { Left: IdentifierNameKoto left, Right: IdentifierNameKoto } ? left.IdentifierName : null;
-        if (name is null)
-        {
-            return false;
-        }
-
-        for (var scope = this.ConstraintScope(node); scope is not null; scope = scope.Parent)
-        {
-            BoundType? carrier = null;
-            var found = false;
-            if (scope.Origins?.ContainsKey(name) == true)
-            {
-                return node is IdentifierNameKoto;
-            }
-
-            if (scope.Values.TryGetValue(name, out var value))
-            {
-                carrier = value.Type;
-                found = true;
-            }
-            else if (this.originDeclarations.GetValueOrDefault(scope.Owner)?.Sets.TryGetValue(name, out var set) == true)
-            {
-                carrier = set.BoundType;
-                found = true;
-            }
-            else if (scope.OriginSets?.TryGetValue(name, out var localSet) == true)
-            {
-                carrier = localSet.BoundType;
-                found = true;
-            }
-
-            if (!found)
-            {
-                continue;
-            }
-
-            if (node is IdentifierNameKoto)
-            {
-                return carrier?.Origin is not null && IsBorrow(carrier.Semantics);
-            }
-
-            while (carrier is { Kind: BoundTypeKind.Semantics } && IsBorrow(carrier.Semantics))
-            {
-                carrier = carrier.Components[0];
-            }
-
-            if (carrier?.Symbol?.Schema is { } schema && node is MemberAccessKoto { Right: IdentifierNameKoto slot })
-            {
-                for (var i = 0; i < schema.Origins.Count; i++)
-                {
-                    if (schema.Origins[i].Name == slot.IdentifierName)
-                    {
-                        return carrier.Kind == BoundTypeKind.Slice ? carrier.Origin is not null : i < carrier.OriginArguments.Count;
-                    }
-                }
-            }
-
-            return false;
-        }
-
-        return false;
     }
 }

@@ -164,7 +164,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < more!.Count; i++)
         {
-            ReportOriginRelation(node, more[i], requirement, OriginRelationCode(more[i]), this.BorrowOriginHint(node), (ushort)(i + 1));
+            ReportOriginRelation(node, more[i], requirement, OriginRelationCode(more[i]), this.OmittedResultNote(node), (ushort)(i + 1));
         }
     }
 
