@@ -336,7 +336,7 @@ public sealed partial class Binding
 
         if (inherited is not { GenericSlots.Count: > 0 } and not { Origins.Count: > 0 })
         {
-            return this.InternType(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
+            return this.types.Intern(own.IsEmpty ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, own);
         }
 
         if (environment is null)
@@ -374,7 +374,7 @@ public sealed partial class Binding
                 origins[declaration.OriginNames.Count + i] = environment.OriginArguments[i];
             }
 
-            return this.InternType(count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, count), originArguments: origins.AsSpan(0, originCount));
+            return this.types.Intern(count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, count), originArguments: origins.AsSpan(0, originCount));
         }
         finally
         {

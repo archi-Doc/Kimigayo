@@ -254,7 +254,7 @@ public sealed partial class Binding
             }
 
             return changed
-                ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode)
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode)
                 : type;
         }
         finally
@@ -351,7 +351,7 @@ public sealed partial class Binding
 
     // SPEC 8.1.1 table: the complete Type of one case over the direct target; only a safe borrow keeps the outer-Origin slot.
     private BoundType Form(SemanticsKind semantics, BoundType target, BoundOrigin? origin)
-        => semantics == SemanticsKind.Owner ? target : this.InternType(BoundTypeKind.Semantics, null, semantics, [target], origin: IsBorrow(semantics) ? origin : null);
+        => semantics == SemanticsKind.Owner ? target : this.types.Intern(BoundTypeKind.Semantics, null, semantics, [target], origin: IsBorrow(semantics) ? origin : null);
 
     /// <summary>Binds the outer Origin <c>o</c> of one of <paramref name="binder"/>'s pairs through its Type argument (SPEC 8.1.1,
     /// 8.1.2): the outer Origin of a borrow binding, nothing for a value binding (static, the identity of a meet, which no exclusive

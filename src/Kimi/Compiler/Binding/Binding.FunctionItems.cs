@@ -47,8 +47,8 @@ public sealed partial class Binding
                 return null;
             }
 
-            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, parameters.AsSpan(0, function.Parameters.Count));
-            return this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, boundResult], resultMode: ResultModeOf(function.ReturnType));
+            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(parameters.AsSpan(0, function.Parameters.Count));
+            return this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, boundResult], resultMode: ResultModeOf(function.ReturnType));
         }
         finally
         {
@@ -326,7 +326,7 @@ public sealed partial class Binding
         var next = 0;
         for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next))
         {
-            var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
+            var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
             rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), null, UnfixedReference: true);
         }
 
@@ -487,7 +487,7 @@ public sealed partial class Binding
     {
         if (typeArguments.IsEmpty && declaringType is null && lengthArguments.IsEmpty)
         {
-            return this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
+            return this.types.Intern(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
         }
 
         var components = this.RentTypes(typeArguments.Length + (declaringType is null ? 0 : 1));
@@ -510,7 +510,7 @@ public sealed partial class Binding
                 components[count++] = declaringType;
             }
 
-            return this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, components.AsSpan(0, count), lengthArguments: hasLength ? lengthArguments : default);
+            return this.types.Intern(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, components.AsSpan(0, count), lengthArguments: hasLength ? lengthArguments : default);
         }
         finally
         {

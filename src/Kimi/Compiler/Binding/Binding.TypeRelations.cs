@@ -78,7 +78,7 @@ public sealed partial class Binding
                 origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
             }
 
-            var result = this.InternType(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, !InactiveOuterOrigin(left, this, null) && left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments, left.ResultMode);
+            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, !InactiveOuterOrigin(left, this, null) && left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments, left.ResultMode);
             return FitsType(left, result) && FitsType(right, result) ? result : null;
         }
         finally
@@ -501,7 +501,7 @@ public sealed partial class Binding
 
         if (whole.Kind == BoundTypeKind.Parameter)
         {
-            return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.InternType(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
+            return whole.Symbol!.Kind == BindingSymbolKind.SemanticsTarget ? whole.Symbol.Type! : this.types.Intern(BoundTypeKind.TargetProjection, whole.Symbol, SemanticsKind.Owner, []);
         }
 
         return whole;
@@ -645,7 +645,7 @@ public sealed partial class Binding
 
             changed |= origins is not null;
             return changed
-                ? this.InternType(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, origins is null ? (BoundOrigin[])type.OriginArguments : origins.AsSpan(0, type.OriginArguments.Count), expression, type.ClosureContext, itemLengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode)
+                ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, scratch.AsSpan(0, type.Components.Count), length, origin, origins is null ? (BoundOrigin[])type.OriginArguments : origins.AsSpan(0, type.OriginArguments.Count), expression, type.ClosureContext, itemLengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode)
                 : type;
         }
         finally

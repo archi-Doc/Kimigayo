@@ -73,7 +73,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             // Lookup produces the same borrowed Place used by explicit @ref; a bare read snapshots its Copy referent.
-            var reference = this.BorrowStruct(source, this.compilation.Binding.SharedReference(source.BoundType!, source.Left.BoundType!.Origin));
+            var reference = this.BorrowStruct(source, this.compilation.Types.Reference(SemanticsKind.Ref, source.BoundType!, source.Left.BoundType!.Origin));
             return reference < 0 ? -1 : this.LoadPointer(source, this.Value(reference));
         }
 
@@ -204,7 +204,7 @@ public sealed partial class OwnershipAnalysis
         {
             // SPEC 4.6.1: collection fields and elements are inspected through their shared Place, without attempting to
             // Copy or Move the Non-Copy handle. An element borrowed through it keeps the Origin of that borrow.
-            return this.BorrowStruct(stored, this.compilation.Binding.SharedReference(source.BoundType, elementOrigin));
+            return this.BorrowStruct(stored, this.compilation.Types.Reference(SemanticsKind.Ref, source.BoundType, elementOrigin));
         }
 
         if (source.BoundType?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary)

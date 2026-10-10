@@ -194,7 +194,7 @@ public sealed partial class Binding
         }
 
         plan.BufferOwner = plan.Node(FormattingOperation.Storage, bufferType);
-        var bufferBorrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [bufferType], origin: this.OriginAtom(plan.Heap, OriginKind.Projection, 0));
+        var bufferBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [bufferType], origin: this.OriginAtom(plan.Heap, OriginKind.Projection, 0));
         plan.Buffer = plan.Node(FormattingOperation.Storage, bufferBorrow);
         plan.Adapter = this.FormattingCall(syntax, KimiDeclarationId.TextWriter, [plan.Buffer], scope);
         if (plan.Adapter.BoundType is not { } writerType)
@@ -202,7 +202,7 @@ public sealed partial class Binding
             return Complete(syntax, null);
         }
 
-        var writerBorrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [writerType], origin: this.OriginAtom(plan.Adapter, OriginKind.Projection, 0));
+        var writerBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [writerType], origin: this.OriginAtom(plan.Adapter, OriginKind.Projection, 0));
         plan.Writer = plan.Node(FormattingOperation.Storage, writerBorrow);
         plan.WriterOwner = plan.Node(FormattingOperation.Storage, writerType);
         plan.Check = plan.Node(FormattingOperation.Check, BoundType.Unit);

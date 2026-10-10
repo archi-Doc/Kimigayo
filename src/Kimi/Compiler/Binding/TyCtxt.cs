@@ -1,0 +1,264 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Runtime.CompilerServices;
+using Kimi.Compiler.Parsing;
+
+namespace Kimi.Compiler;
+
+/// <summary>The Type context of a compilation (<c>Compilation.Types</c>): it interns every constructed Type and every
+/// substitution, so identity is equality for both, forms the Types the MIR builder needs and applies a substitution. It lives as
+/// long as its Binding and is never cleared, since it holds only immutable hash-consed values.</summary>
+internal sealed class TyCtxt(Binding binding, KimiLibrary library)
+{
+    private readonly Dictionary<int, List<BoundType>> types = new();
+    private readonly Dictionary<int, List<Subst>> substs = new();
+
+    // SPEC 3.4.1, 13.5.5.1: the layer selection follows implicitly at a Type, a Deref of a reference or object handle or a PairLayer of a
+    // pair layer, with the Type below it; Value, below which is the Type itself, for any other Type.
+    internal static HirPlaceKind Layer(BoundType? type, out BoundType? below)
+    {
+        if (type is { Kind: BoundTypeKind.Semantics, Components: [var referent], Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
+        {
+            below = referent;
+            return HirPlaceKind.Deref;
+        }
+
+        if (Binding.TryPairLayer(type, out _, out var target))
+        {
+            below = target;
+            return HirPlaceKind.PairLayer;
+        }
+
+        below = type;
+        return HirPlaceKind.Value;
+    }
+
+    internal BoundType Intern(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
+    {
+        if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
+        {
+            var same = true;
+            for (var i = 1; i < components.Length; i++)
+            {
+                same &= ReferenceEquals(components[0], components[i]);
+            }
+
+            if (same)
+            {
+                return components[0];
+            }
+        }
+
+        // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
+        // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&
+            semantics == SemanticsKind.Owner && origin is null && originArguments.Length == 0)
+        {
+            return BoundType.WrappingOf(components[0]);
+        }
+
+        // SPEC 4.5: Array<T> is the compiler-managed owning dynamic sequence behind the library declaration.
+        if (kind == BoundTypeKind.Array || (symbol is not null && ReferenceEquals(symbol.Declaration, library.DynamicArray.Declaration)))
+        {
+            kind = BoundTypeKind.Array;
+            symbol = library.DynamicArray.Declaration.BoundSymbol ?? library.DynamicArray;
+        }
+
+        if (symbol?.LibraryDeclaration == KimiDeclarationId.Dictionary)
+        {
+            kind = BoundTypeKind.Dictionary;
+        }
+
+        if (kind == BoundTypeKind.Slice || (symbol is not null && ReferenceEquals(symbol.Declaration, library.Slice.Declaration)))
+        {
+            kind = BoundTypeKind.Slice;
+            symbol = library.Slice.Declaration.BoundSymbol ?? library.Slice;
+            if (originArguments.Length == 1)
+            {
+                origin ??= originArguments[0];
+                originArguments = default;
+            }
+        }
+
+        var hash = default(HashCode);
+        hash.Add(kind);
+        hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
+        hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
+        hash.Add(semantics);
+        hash.Add(resultMode);
+        hash.Add(length);
+        hash.Add(lengthExpression is null ? 0 : RuntimeHelpers.GetHashCode(lengthExpression));
+        foreach (var argument in lengthArguments)
+        {
+            hash.Add(argument is null ? 0 : RuntimeHelpers.GetHashCode(argument));
+        }
+
+        hash.Add(origin is null ? 0 : RuntimeHelpers.GetHashCode(origin));
+        for (var i = 0; i < originArguments.Length; i++)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(originArguments[i]));
+        }
+
+        for (var i = 0; i < components.Length; i++)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(components[i]));
+        }
+
+        var key = hash.ToHashCode();
+        if (this.types.TryGetValue(key, out var bucket))
+        {
+            for (var i = 0; i < bucket.Count; i++)
+            {
+                var type = bucket[i];
+                if (type.Kind != kind || type.ResultMode != resultMode || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
+                {
+                    continue;
+                }
+
+                var equal = true;
+                for (var j = 0; j < components.Length; j++)
+                {
+                    equal &= ReferenceEquals(type.Components[j], components[j]);
+                }
+
+                for (var j = 0; j < originArguments.Length; j++)
+                {
+                    equal &= ReferenceEquals(type.OriginArguments[j], originArguments[j]);
+                }
+
+                if (equal)
+                {
+                    return type;
+                }
+            }
+        }
+        else
+        {
+            this.types.Add(key, bucket = new(1));
+        }
+
+        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), resultMode) { ClosureContext = closureContext };
+        bucket.Add(created);
+        return created;
+    }
+
+    // SPEC 3.4: the reference of a Semantics kind (ref, uniq, objref, objuniq) to a referent; a null Origin is the ownership analysis's to infer.
+    internal BoundType Reference(SemanticsKind semantics, BoundType referent, BoundOrigin? origin = null) => this.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
+
+    // SPEC 5.2: the raw pointer to a pointee; a raw pointer carries no Origin.
+    internal BoundType Pointer(BoundType referent) => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent]);
+
+    internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
+
+    // SPEC 8.6, 10.5: a selected call's substitution, as its selection committed it; a value call has none.
+    internal Subst? SubstOf(CallPlan call)
+        => call.Kind == CalleeKind.Value ? null : this.Intern(call.Target, call.ConformingType, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
+
+    // SPEC 8.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
+    // the declaration enclosing it.
+    internal Subst? SubstOfClosure(BoundType closure)
+    {
+        if (closure.Symbol?.Declaration is not FunctionKoto { BoundClosure: not null } binder)
+        {
+            return null;
+        }
+
+        while (binder is { IsAnonymous: true } && binder.BoundSymbol?.Scope.Function is { } enclosing)
+        {
+            binder = enclosing;
+        }
+
+        return closure.ClosureContext is { } context ? this.SubstOf(context) : this.Identity(binder);
+    }
+
+    // SPEC 7.3: a function item's substitution, the context its Item Type binds; an Item keeps its per-call Origins in place.
+    internal Subst? SubstOfItem(BoundType item) => binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
+
+    // The substitution that binds none of a binder's slots: its own body's.
+    internal Subst Identity(Koto binder) => this.Intern(binder.BoundSymbol!, null, null, [], [], [], []);
+
+    // SPEC 8.3, 8.6: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
+    // here; the identity keeps the Type.
+    internal BoundType? Apply(BoundType type, Subst subst)
+        => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst.Target, subst.Declaring, subst.Types, subst.Lengths, subst.Origins, subst.Inputs);
+
+    private Subst Intern(BindingSymbol target, BoundType? self, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    {
+        var hash = default(HashCode);
+        hash.Add(RuntimeHelpers.GetHashCode(target));
+        hash.Add(self is null ? 0 : RuntimeHelpers.GetHashCode(self));
+        hash.Add(declaring is null ? 0 : RuntimeHelpers.GetHashCode(declaring));
+        foreach (var type in types)
+        {
+            hash.Add(type is null ? 0 : RuntimeHelpers.GetHashCode(type));
+        }
+
+        foreach (var length in lengths)
+        {
+            hash.Add(length is null ? 0 : RuntimeHelpers.GetHashCode(length));
+        }
+
+        foreach (var origin in origins)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(origin));
+        }
+
+        foreach (var input in inputs)
+        {
+            hash.Add(RuntimeHelpers.GetHashCode(input));
+        }
+
+        var key = hash.ToHashCode();
+        if (this.substs.TryGetValue(key, out var bucket))
+        {
+            for (var i = 0; i < bucket.Count; i++)
+            {
+                var subst = bucket[i];
+                if (ReferenceEquals(subst.Target, target) && ReferenceEquals(subst.Self, self) && ReferenceEquals(subst.Declaring, declaring) && subst.Types.SequenceEqual(types) &&
+                    subst.Lengths.SequenceEqual(lengths) && subst.Origins.SequenceEqual(origins) && subst.Inputs.SequenceEqual(inputs))
+                {
+                    return subst;
+                }
+            }
+        }
+        else
+        {
+            this.substs.Add(key, bucket = new(1));
+        }
+
+        var created = new Subst(target, self, declaring, types.ToArray(), lengths.ToArray(), origins.ToArray(), inputs.ToArray());
+        bucket.Add(created);
+        return created;
+    }
+}
+
+/// <summary>The substitution of a binder's generic slots that a selected call, an instantiated closure or a function item makes: its Type
+/// and length arguments (a pair slot holds the whole Type), the conforming Type of a requirement, the Type declaring a member of a generic
+/// container and the principal Origin substitution the selection committed. <see cref="TyCtxt"/> interns it, so identity is equality.</summary>
+internal sealed class Subst(BindingSymbol target, BoundType? self, BoundType? declaring, BoundType?[] types, BoundLength?[] lengths, BoundOrigin[] origins, BoundOrigin[] inputs)
+{
+    // The symbol whose slots it binds: a call's callee as its selection names it (an instantiated witness of a declaration too), or the
+    // function enclosing a closure.
+    internal BindingSymbol Target => target;
+
+    internal Koto Binder => target.Declaration;
+
+    internal BoundType? Self => self;
+
+    internal BoundType? Declaring => declaring;
+
+    // In declaration-slot order; length slots are null.
+    internal ReadOnlySpan<BoundType?> Types => types;
+
+    // In declaration-slot order; Type slots are null.
+    internal ReadOnlySpan<BoundLength?> Lengths => lengths;
+
+    // The substitution of the binder's declared Origins.
+    internal ReadOnlySpan<BoundOrigin> Origins => origins;
+
+    // The input Origins in parameter-slot order.
+    internal ReadOnlySpan<BoundOrigin> Inputs => inputs;
+
+    // Binds nothing: the binder's own body.
+    internal bool IsIdentity => self is null && declaring is null && types.Length == 0 && lengths.Length == 0 && origins.Length == 0 && inputs.Length == 0;
+}

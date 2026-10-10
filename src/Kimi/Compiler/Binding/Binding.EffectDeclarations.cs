@@ -605,7 +605,7 @@ public sealed partial class Binding
                 return null;
             }
 
-            reference = this.InternType(BoundTypeKind.Constructed, named, SemanticsKind.Owner, (BoundType[])arguments.Components);
+            reference = this.types.Intern(BoundTypeKind.Constructed, named, SemanticsKind.Owner, (BoundType[])arguments.Components);
         }
 
         BindingSymbol? ancestor = null;

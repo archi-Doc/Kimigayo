@@ -136,13 +136,13 @@ public sealed partial class Binding
             var end = this.IndependentRangeBoundary(range.End, this.EndType);
             start ??= this.OtherBoundaryType(range.Start!, end);
             end ??= this.OtherBoundaryType(range.End!, start);
-            return this.InternType(BoundTypeKind.Constructed, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range, SemanticsKind.Owner, [start, end]);
+            return this.types.Intern(BoundTypeKind.Constructed, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range, SemanticsKind.Owner, [start, end]);
         }
 
         if (source is ArrayLiteralKoto { FillCount: { } length } fill &&
             this.IndependentAggregateType(fill.Elements[0], fitLiterals) is { } elementType)
         {
-            return this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [elementType], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
+            return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [elementType], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
         }
 
         if (source is TupleLiteralKoto tuple)
@@ -160,7 +160,7 @@ public sealed partial class Binding
                     elements[i] = element;
                 }
 
-                return this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements.AsSpan(0, tuple.Elements.Count));
+                return this.types.Tuple(elements.AsSpan(0, tuple.Elements.Count));
             }
             finally
             {

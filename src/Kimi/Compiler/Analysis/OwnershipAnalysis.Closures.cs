@@ -117,7 +117,7 @@ public sealed partial class OwnershipAnalysis
         var receiver = explicitReceiver
             ? this.PrepareCallArgument(call, plan.CalleeValue, new(plan.CalleeValue, plan.CalleeType, plan.CalleeType, ArgumentOperationKind.Reborrow, ArgumentAdaptation.SameSemanticsReborrow))
             : payload ? this.PrepareCallArgument(call, plan.ReceiverOperation.Source!, plan.ReceiverOperation, immediate: plan.ReceiverKind != SemanticsKind.Uniq)
-            : part ? this.PrepareCallArgument(call, plan.CalleeValue, new(plan.CalleeValue, plan.CalleeType, this.compilation.Binding.Reference(SemanticsKind.Ref, plan.CalleeType), ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow), immediate: true)
+            : part ? this.PrepareCallArgument(call, plan.CalleeValue, new(plan.CalleeValue, plan.CalleeType, this.compilation.Types.Reference(SemanticsKind.Ref, plan.CalleeType), ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow), immediate: true)
             : plan.ReceiverKind == SemanticsKind.Uniq && KotoHelper.UnwrapParentheses(plan.CalleeValue) is IdentifierNameKoto { BoundSymbol: { } binding } && this.body.SymbolPlaces.TryGetValue(binding, out var local)
             ? local // SPEC 15.6.7: the reserved read below acquires an exclusive receiver binding, as a method receiver's entry does.
             : this.Expression(plan.CalleeValue, plan.ReceiverKind == SemanticsKind.Owner ? PlaceUseKind.Consume : PlaceUseKind.Read);
@@ -255,7 +255,7 @@ public sealed partial class OwnershipAnalysis
         var effects = this.body.RequirementEffects ??= new();
         var bounds = true;
         var preserves = this.compilation.Binding.AvailableCallableEffects(type, signature, plan.ReceiverKind, call).Preserves;
-        var acquired = plan.ReceiverKind == SemanticsKind.Owner ? type : this.compilation.Binding.Reference(plan.ReceiverKind, type);
+        var acquired = plan.ReceiverKind == SemanticsKind.Owner ? type : this.compilation.Types.Reference(plan.ReceiverKind, type);
         this.RequirementEffect(call, acquired, type, invoke, receiver, receiver, null, ref bounds, ref preserves);
         var mark = effects.Count;
         for (var i = 0; i < plan.ArgumentOperations.Length; i++)

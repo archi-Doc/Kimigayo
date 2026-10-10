@@ -330,13 +330,13 @@ public sealed partial class Binding
             // SPEC 15.1.6, 15.6.2: a stored exclusive reference reached through a shared layer is shared-Reborrowed.
             var origin = type.Origin is { } stored ? this.Meet(this.PlaceOrigin(expression), stored) : this.PlaceOrigin(expression);
             var semantics = type.Semantics == SemanticsKind.Uniq ? SemanticsKind.Ref : SemanticsKind.ObjRef;
-            borrow = this.InternType(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
+            borrow = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [type.Components[0]], origin: origin);
             return borrow;
         }
 
         if (type.Semantics is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
         {
-            borrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
+            borrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: this.PlaceOrigin(expression));
             return borrow;
         }
 
@@ -417,7 +417,7 @@ public sealed partial class Binding
                 // with shared or exclusive access binds ref/T or uniq/T, also for a Copy T. A whole-Subject binding
                 // of a reference-valued Subject copies that reference and never selects the internal slot.
                 symbol.Type = access == PatternAccessMode.Owned ? matched
-                    : this.InternType(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
+                    : this.types.Intern(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
                 symbol.BindsReference = access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
@@ -427,8 +427,8 @@ public sealed partial class Binding
                     // SPEC 14.8.3: a guard candidate is a shared reference to its Place whatever the mode and Copy capability.
                     var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
                     candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-                        ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
-                        : this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
+                        ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
+                        : this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }
 

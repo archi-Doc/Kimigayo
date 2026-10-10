@@ -108,7 +108,7 @@ public sealed partial class Binding
             var slot = source.IsTupleBinding && tuple?.Kind == BoundTypeKind.Tuple && i < tuple.Components.Count ? tuple.Components[i] : element;
             if (sharedTuple && slot is not null)
             {
-                slot = this.InternType(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [slot], origin: tupleOrigin);
+                slot = this.types.Intern(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [slot], origin: tupleOrigin);
             }
 
             name.BoundSymbol!.Type = slot;

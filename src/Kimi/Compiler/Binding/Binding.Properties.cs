@@ -136,7 +136,7 @@ public sealed partial class Binding
         else if (property.Symbol.Scope.Owner is StructKoto or ContractKoto)
         {
             var self = this.DeclarationSelf(property.Symbol.Scope.Owner.BoundSymbol!);
-            accessor.Receiver = this.InternType(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [self], origin: this.OriginAtom(syntax, OriginKind.Input, 0));
+            accessor.Receiver = this.types.Intern(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [self], origin: this.OriginAtom(syntax, OriginKind.Input, 0));
         }
 
         if (accessor.SelfSymbol is { } symbol)
@@ -432,7 +432,7 @@ public sealed partial class Binding
         }
 
         var owner = accessor.Property.Symbol.Scope.Owner.BoundSymbol!;
-        var shaped = this.InternType(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [this.DeclarationSelf(owner)], origin: this.OriginAtom(declaration, OriginKind.Input, 0));
+        var shaped = this.types.Intern(BoundTypeKind.Semantics, null, accessor.Kind == PropertyAccessorKind.Get ? SemanticsKind.Ref : SemanticsKind.Uniq, [this.DeclarationSelf(owner)], origin: this.OriginAtom(declaration, OriginKind.Input, 0));
         var required = declaringType is null ? shaped : this.MemberType(shaped, declaringType);
         if (required is null || !this.AdaptInput(receiver, required, actual, scope, path, declaringType, out _, out _, out _, explicitBorrow: explicitBorrow, receiver: true))
         {

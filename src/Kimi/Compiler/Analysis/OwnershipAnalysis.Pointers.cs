@@ -63,7 +63,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var projected = this.Place(element, this.compilation.Binding.PointerType(type!), OwnershipPlaceKind.Temporary, true);
+        var projected = this.Place(element, this.compilation.Types.Pointer(type!), OwnershipPlaceKind.Temporary, true);
         this.Emit(OwnershipOperationKind.Produce, element, projected);
         this.RegisterTemporary(projected);
         this.SetValue(this.Value(projected), OwnershipValueKind.PointerProject, selector >= 0 ? [pointer] : [pointer, index], constant: selector);

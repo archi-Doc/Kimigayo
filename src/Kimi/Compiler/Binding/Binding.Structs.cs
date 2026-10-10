@@ -17,16 +17,20 @@ public sealed partial class Binding
     internal bool PrepareTypeStorage(BoundType type) => this.PrepareInstantiatedStorage(type, 0);
 
     internal BoundType? InstantiateStorageType(BoundType type, CallPlan call)
+        => this.InstantiateStorageType(type, call.Target, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
+
+    // A declared Type in the instance a substitution of the target's slots makes, which TyCtxt.Apply delegates to until R7 moves it there:
+    // its slots, then its stored Origins substituted, normalized in the target's Constraint scope, its closures closed, its storage prepared.
+    internal BoundType? InstantiateStorageType(BoundType type, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
     {
-        var result = this.MemberType(type, call.DeclaringType) is { } member &&
-            this.SubstituteType(member, call.Target.Declaration, call.TypeArguments, call.LengthArguments) is { } substituted
-            ? this.SubstituteStoredOrigins(substituted, call.Target.Declaration is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : call.Target.Declaration, call.Origins, call.InputOrigins) : null;
+        var result = this.MemberType(type, declaring) is { } member && this.SubstituteType(member, target.Declaration, types, lengths) is { } substituted
+            ? this.SubstituteStoredOrigins(substituted, target.Declaration is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : target.Declaration, origins, inputs) : null;
         if (result is not null)
         {
-            result = this.ContractType(result, this.ConstraintScope(call.Target.Declaration));
+            result = this.ContractType(result, this.ConstraintScope(target.Declaration));
         }
 
-        result = result is null ? null : this.CloseClosureTypes(result, call);
+        result = result is null ? null : this.CloseClosureTypes(result, target, declaring, types, lengths, origins, inputs);
         return result is not null && this.PrepareInstantiatedStorage(result, 0) ? result : null;
     }
 

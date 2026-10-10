@@ -77,7 +77,7 @@ public sealed partial class Binding
                 return symbol.Type!;
             }
 
-            return this.InternType(schema.GenericSlots.Count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, schema.GenericSlots.Count), originArguments: origins.AsSpan(0, schema.Origins.Count));
+            return this.types.Intern(schema.GenericSlots.Count == 0 ? BoundTypeKind.Nominal : BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, types.AsSpan(0, schema.GenericSlots.Count), originArguments: origins.AsSpan(0, schema.Origins.Count));
         }
         finally
         {
@@ -106,7 +106,7 @@ public sealed partial class Binding
 
     private BoundType WithOrigins(BoundType type, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> arguments)
         => type.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(type, FamilyTransform.Origin, origin)
-            : this.InternType(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
+            : this.types.Intern(type.Kind, type.Symbol, type.Semantics, (BoundType[])type.Components, type.Length, origin, arguments, type.LengthExpression, type.ClosureContext, type.LengthArguments, type.ResultMode);
 
     private BoundType? CompleteOrigins(BoundType type, TypeSemanticsKoto? annotation, Koto use, BindingScope scope, TypeBindingContext context)
     {
@@ -251,7 +251,7 @@ public sealed partial class Binding
                     }
 
                     target = this.WithOrigins(target, target.Origin, arguments.AsSpan(0, count));
-                    type = objectLayer ? this.InternType(type.Kind, type.Symbol, type.Semantics, [target], type.Length, type.Origin) : target;
+                    type = objectLayer ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, [target], type.Length, type.Origin) : target;
                 }
                 finally
                 {

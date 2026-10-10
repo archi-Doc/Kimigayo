@@ -236,7 +236,7 @@ public sealed partial class Binding
                 if (implementingType is not null && i == definition.BoundSymbol.ReceiverIndex)
                 {
                     // Only the receiver's core Self changes. Its public Origin is inherited unchanged.
-                    pattern = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [implementingType], origin: pattern.Origin);
+                    pattern = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [implementingType], origin: pattern.Origin);
                 }
 
                 var syntax = function.Parameters[i].Type;

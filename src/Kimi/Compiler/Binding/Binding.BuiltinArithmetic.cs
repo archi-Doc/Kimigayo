@@ -23,7 +23,7 @@ public sealed partial class Binding
     {
         var declaration = this.Library.GetSymbol(id)!;
         return id == KimiDeclarationId.Negatable ? declaration
-            : this.BoundContractReference(this.InternType(BoundTypeKind.Constructed, declaration, SemanticsKind.Owner, [counterpart]));
+            : this.BoundContractReference(this.types.Intern(BoundTypeKind.Constructed, declaration, SemanticsKind.Owner, [counterpart]));
     }
 
     private BoundType? BuiltinArithmeticOutput(BoundType projection, BindingScope scope)

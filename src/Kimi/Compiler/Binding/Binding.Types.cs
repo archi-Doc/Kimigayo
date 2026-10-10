@@ -1,15 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Runtime.CompilerServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 5.2: the canonical raw pointer Type of a projected pointee subplace; raw pointers carry no Origin.
-    internal BoundType PointerType(BoundType referent) => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent]);
-
     /// <summary>Tests whether a Type name is written directly as the target of an object form such as <c>objref/T</c>.</summary>
     private static bool IsDirectObjectTarget(Koto syntax)
         => syntax.Parent is TypeSemanticsKoto { SemanticsKind: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } application &&
@@ -552,7 +548,7 @@ public sealed partial class Binding
                 scope.Owner is FunctionKoto { IsAnonymous: false, IsConstructor: false, BoundSymbol: { ReceiverIndex: >= 0 } functionSymbol } function &&
                 ReferenceEquals(function.Parameters[functionSymbol.ReceiverIndex].Type, syntax):
                 // Bare self has a fixed shared receiver Type; the body supplies no inference.
-                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
+                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [this.DeclarationSelf(functionSymbol.Scope.Owner.BoundSymbol!)]);
             case SyntaxFormKoto { Akind: KotoKind.RootName } root when root.Operands.Length == 1 && UnwrapTypeSyntax(root.Operands[0]) is GenericsKoto rootedGeneric:
                 var rootDefinition = this.RootTypeName(rootedGeneric, true);
                 var rootType = this.BindConstructedType(rootedGeneric, rootDefinition, scope, context);
@@ -566,7 +562,7 @@ public sealed partial class Binding
                 return BoundType.ISize;
             case OptionalTypeKoto optional:
                 var payload = this.BindType(optional.Type, scope, context.Nested);
-                return payload is null ? null : this.InternType(BoundTypeKind.Constructed, this.Library.Option, SemanticsKind.Owner, [payload]);
+                return payload is null ? null : this.types.Intern(BoundTypeKind.Constructed, this.Library.Option, SemanticsKind.Owner, [payload]);
             case ParenthesizedTypeKoto parentheses:
                 return this.BindType(parentheses.Type, scope, context);
             case PlaceResultKoto place:
@@ -631,7 +627,7 @@ public sealed partial class Binding
                         }
 
                         this.AddObligation(new(BindingObligationKind.TypeFormation, syntax, BindingDeadline.Definition, inner));
-                        return this.InternType(BoundTypeKind.SemanticsApplication, parameter.Pair, SemanticsKind.Parameter, [inner]);
+                        return this.types.Intern(BoundTypeKind.SemanticsApplication, parameter.Pair, SemanticsKind.Parameter, [inner]);
                     }
 
                     inner = this.BindType(semantics.Type, scope, innerContext);
@@ -664,7 +660,7 @@ public sealed partial class Binding
                         }
                     }
 
-                    return this.InternType(BoundTypeKind.Semantics, null, kind, [inner]);
+                    return this.types.Intern(BoundTypeKind.Semantics, null, kind, [inner]);
                 }
 
                 if (BoundType.Primitives.TryGetValue(semantics.Identifier, out var primitive))
@@ -691,7 +687,7 @@ public sealed partial class Binding
                         ? this.CompleteDependent(array, array.Length) : this.Fail(array, BindingFailure.InvalidTypeFormation);
                 }
 
-                return element is null ? null : this.InternType(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
+                return element is null ? null : this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [element], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
             case OriginApplicationKoto application:
                 return this.BindAssociatedApplication(application, scope);
             case GenericsKoto generic:
@@ -748,7 +744,7 @@ public sealed partial class Binding
 
             syntax.BoundSymbol = symbol;
 
-            var projected = this.InternType(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self, this.ProjectionContract(symbol, reference)]);
+            var projected = this.types.Intern(BoundTypeKind.AssociatedProjection, symbol, SemanticsKind.Owner, [self, this.ProjectionContract(symbol, reference)]);
             return this.NormalizedProjection(projected, scope, applyingOrigins);
         }
 
@@ -827,120 +823,11 @@ public sealed partial class Binding
                 buffer[i] = type!;
             }
 
-            return complete ? this.InternType(kind, symbol, SemanticsKind.Owner, buffer.AsSpan(0, elements.Count)) : null;
+            return complete ? this.types.Intern(kind, symbol, SemanticsKind.Owner, buffer.AsSpan(0, elements.Count)) : null;
         }
         finally
         {
             this.typeScratch.Return(buffer, clearArray: true);
         }
-    }
-
-    private BoundType InternType(BoundTypeKind kind, BindingSymbol? symbol, SemanticsKind semantics, ReadOnlySpan<BoundType> components, long length = 0, BoundOrigin? origin = null, ReadOnlySpan<BoundOrigin> originArguments = default, BoundLength? lengthExpression = null, CallPlan? closureContext = null, ReadOnlySpan<BoundLength?> lengthArguments = default, FunctionResultMode resultMode = FunctionResultMode.Value)
-    {
-        if (kind == BoundTypeKind.SemanticsAdaptation && components.Length > 0)
-        {
-            var same = true;
-            for (var i = 1; i < components.Length; i++)
-            {
-                same &= ReferenceEquals(components[0], components[i]);
-            }
-
-            if (same)
-            {
-                return components[0];
-            }
-        }
-
-        // SPEC 3.1.1.1: Wrapping<T> over an integer Type is the interned wrapping Scalar of that Type, identified by Core
-        // and never represented as the declared struct; over a Type parameter it stays constructed until substitution.
-        if (symbol?.LibraryDeclaration == KimiDeclarationId.Wrapping && components.Length == 1 && components[0].IsInteger &&
-            semantics == SemanticsKind.Owner && origin is null && originArguments.Length == 0)
-        {
-            return BoundType.WrappingOf(components[0]);
-        }
-
-        // SPEC 4.5: Array<T> is the compiler-managed owning dynamic sequence behind the library declaration.
-        if (kind == BoundTypeKind.Array || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.DynamicArray.Declaration)))
-        {
-            kind = BoundTypeKind.Array;
-            symbol = this.Library.DynamicArray.Declaration.BoundSymbol ?? this.Library.DynamicArray;
-        }
-
-        if (symbol?.LibraryDeclaration == KimiDeclarationId.Dictionary)
-        {
-            kind = BoundTypeKind.Dictionary;
-        }
-
-        if (kind == BoundTypeKind.Slice || (symbol is not null && ReferenceEquals(symbol.Declaration, this.Library.Slice.Declaration)))
-        {
-            kind = BoundTypeKind.Slice;
-            symbol = this.Library.Slice.Declaration.BoundSymbol ?? this.Library.Slice;
-            if (originArguments.Length == 1)
-            {
-                origin ??= originArguments[0];
-                originArguments = default;
-            }
-        }
-
-        var hash = default(HashCode);
-        hash.Add(kind);
-        hash.Add(closureContext is null ? 0 : RuntimeHelpers.GetHashCode(closureContext));
-        hash.Add(symbol is null ? 0 : RuntimeHelpers.GetHashCode(symbol));
-        hash.Add(semantics);
-        hash.Add(resultMode);
-        hash.Add(length);
-        hash.Add(lengthExpression is null ? 0 : RuntimeHelpers.GetHashCode(lengthExpression));
-        foreach (var argument in lengthArguments)
-        {
-            hash.Add(argument is null ? 0 : RuntimeHelpers.GetHashCode(argument));
-        }
-
-        hash.Add(origin is null ? 0 : RuntimeHelpers.GetHashCode(origin));
-        for (var i = 0; i < originArguments.Length; i++)
-        {
-            hash.Add(RuntimeHelpers.GetHashCode(originArguments[i]));
-        }
-
-        for (var i = 0; i < components.Length; i++)
-        {
-            hash.Add(RuntimeHelpers.GetHashCode(components[i]));
-        }
-
-        var key = hash.ToHashCode();
-        if (this.types.TryGetValue(key, out var bucket))
-        {
-            for (var i = 0; i < bucket.Count; i++)
-            {
-                var type = bucket[i];
-                if (type.Kind != kind || type.ResultMode != resultMode || type.Symbol != symbol || !ReferenceEquals(type.ClosureContext, closureContext) || type.Semantics != semantics || type.Length != length || !ReferenceEquals(type.LengthExpression, lengthExpression) || !lengthArguments.SequenceEqual(type.LengthArguments) || type.Components.Count != components.Length || !ReferenceEquals(type.Origin, origin) || type.OriginArguments.Count != originArguments.Length)
-                {
-                    continue;
-                }
-
-                var equal = true;
-                for (var j = 0; j < components.Length; j++)
-                {
-                    equal &= ReferenceEquals(type.Components[j], components[j]);
-                }
-
-                for (var j = 0; j < originArguments.Length; j++)
-                {
-                    equal &= ReferenceEquals(type.OriginArguments[j], originArguments[j]);
-                }
-
-                if (equal)
-                {
-                    return type;
-                }
-            }
-        }
-        else
-        {
-            this.types.Add(key, bucket = new(1));
-        }
-
-        var created = new BoundType(symbol?.Name ?? kind.ToString(), kind, symbol, semantics, components.ToArray(), length, origin, originArguments.ToArray(), lengthExpression, lengthArguments.ToArray(), resultMode) { ClosureContext = closureContext };
-        bucket.Add(created);
-        return created;
     }
 }

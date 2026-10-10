@@ -240,7 +240,7 @@ internal static class ElementAccess
         // grants exclusive access, with the same Origin.
         return exclusive && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow &&
             (IndexerCall(node, true) is not null || (IsSynthesizedAccess(node) && Binding.PathAuthority(node) == SemanticsKind.Uniq))
-            ? binding.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : adaptation.Type;
+            ? binding.Types.Reference(SemanticsKind.Uniq, adaptation.Type.Components[0], adaptation.Type.Origin) : adaptation.Type;
     }
 
     // SPEC 3.4.1: a shared borrow that Binding synthesized to read a Place in place, of the Place's own complete stored Type, is a

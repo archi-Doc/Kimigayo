@@ -351,9 +351,9 @@ public sealed partial class Binding
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
         {
-            adapted = this.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(handle));
+            adapted = this.types.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(handle));
         }
-        else if (!unsupported && !this.TryPayloadProjection(handle, this.Reference(receiver, payload), handleType, scope, out adapted))
+        else if (!unsupported && !this.TryPayloadProjection(handle, this.types.Reference(receiver, payload), handleType, scope, out adapted))
         {
             unsupported = true;
         }
@@ -547,9 +547,9 @@ public sealed partial class Binding
                 this.RequireResultPremises(conditioned, result, call); // SPEC 15.3.7: the callee's result premises.
             }
 
-            var inputs = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, instantiated.AsSpan(0, count));
+            var inputs = count == 0 ? BoundType.Unit : this.types.Tuple(instantiated.AsSpan(0, count));
             var declaredSignature = signature;
-            signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result], resultMode: signature.ResultMode);
+            signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, result], resultMode: signature.ResultMode);
             (call.CallStorage ??= new()).SetValue(call.Method, signature, operations.AsSpan(0, count), declaredSignature, receiverOperation, receiver);
             return Complete(call, signature.ResultMode == FunctionResultMode.Value ? result : result.Components[0]);
         }

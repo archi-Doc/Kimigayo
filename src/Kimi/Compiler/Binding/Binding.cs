@@ -18,7 +18,7 @@ public sealed partial class Binding
     private readonly Dictionary<string, (string Signature, string? Kind)> importSymbols = new(StringComparer.Ordinal);
     private readonly List<string?> importSignatures = new();
     private readonly IndexVisitor indexer;
-    private readonly Dictionary<int, List<BoundType>> types = new();
+    private readonly TyCtxt types;
     private readonly Dictionary<GenericParameterKoto, BindingSymbol> pairSymbols = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<(Koto Binder, OriginKind Kind, int Slot), BoundOrigin> originAtoms = new();
     private readonly Dictionary<int, List<BoundOrigin>> originExpressions = new();
@@ -35,6 +35,7 @@ public sealed partial class Binding
         this.compilation = compilation;
         this.indexer = new(this);
         this.Library = new(compilation);
+        this.types = new(this, this.Library);
         foreach (var symbol in this.Library.RegisteredSymbols)
         {
             this.symbols.Add(symbol.Declaration, symbol);
@@ -58,6 +59,9 @@ public sealed partial class Binding
 
     /// <summary>Gets the facts this Binding publishes to readers outside Binding.</summary>
     internal SemanticQuery Semantics => field ??= new(this.compilation, this, this.nodes, this.symbols, this.conformancesByType);
+
+    /// <summary>Gets the Type context: interned Types and substitutions.</summary>
+    internal TyCtxt Types => this.types;
 
     /// <summary>Checks the latest final Binding without resolving names or rebuilding the tree.</summary>
     /// <returns>The final semantic completeness summary.</returns>
@@ -1740,7 +1744,7 @@ public sealed partial class Binding
                         var symbol = binding.Declare(node, container.Name, kind, node, this.Scope);
                         if (kind == BindingSymbolKind.Type)
                         {
-                            symbol.Type ??= binding.InternType(BoundTypeKind.Nominal, symbol, SemanticsKind.Owner, []);
+                            symbol.Type ??= binding.types.Intern(BoundTypeKind.Nominal, symbol, SemanticsKind.Owner, []);
                         }
 
                         // The declared symbol carries the Kimi catalog identity (SPEC 22.1).

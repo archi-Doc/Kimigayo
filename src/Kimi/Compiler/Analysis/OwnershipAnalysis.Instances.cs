@@ -179,8 +179,8 @@ public sealed partial class OwnershipAnalysis
             // SPEC 15.6.7: the exclusive slot borrow and the loaded reference of a reserved argument are reserved with it,
             // so a later argument may still inspect the same stored reference until the call activates all three.
             var reserved = ownedSlot && reservation >= 0 && mode == SemanticsKind.Uniq;
-            var slotType = ownedSlot ? this.compilation.Binding.Reference(mode, left.BoundType!)
-                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Binding.Reference(mode, left.BoundType!));
+            var slotType = ownedSlot ? this.compilation.Types.Reference(mode, left.BoundType!)
+                : this.compilation.Binding.PreparedBorrowType(left, this.compilation.Types.Reference(mode, left.BoundType!));
             var slot = this.BorrowIntermediate(left, slotType, reserved ? reservation : -1);
             if (slot < 0)
             {
@@ -190,7 +190,7 @@ public sealed partial class OwnershipAnalysis
             // The slot is inspected only for its address value. A shared path yields the stored reference's shared
             // capability, with the referent's own Origin; an exclusive path can lend its exclusive capability.
             var acquired = mode == SemanticsKind.Ref && stored.Semantics == SemanticsKind.Uniq
-                ? this.compilation.Binding.SharedReference(stored.Components[0], stored.Origin) : stored;
+                ? this.compilation.Types.Reference(SemanticsKind.Ref, stored.Components[0], stored.Origin) : stored;
             var pointer = this.Place(left, acquired, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
             this.Emit(OwnershipOperationKind.Produce, left, pointer);
             this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(slot)]);
@@ -232,7 +232,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             var acquired = mode == SemanticsKind.Ref && inner.Semantics == SemanticsKind.Uniq
-                ? this.compilation.Binding.SharedReference(inner.Components[0], inner.Origin) : inner;
+                ? this.compilation.Types.Reference(SemanticsKind.Ref, inner.Components[0], inner.Origin) : inner;
             var pointer = this.Place(left, acquired, OwnershipPlaceKind.Temporary, false, AcquisitionKind.Copy);
             this.Emit(OwnershipOperationKind.Produce, left, pointer);
             this.SetValue(this.Value(pointer), OwnershipValueKind.PointerLoad, [this.Value(outer)]);
@@ -274,7 +274,7 @@ public sealed partial class OwnershipAnalysis
             return -2;
         }
 
-        return this.ReadReference(node, mode == SemanticsKind.Uniq ? this.compilation.Binding.Reference(SemanticsKind.Uniq, shared.Components[0], shared.Origin) : shared);
+        return this.ReadReference(node, mode == SemanticsKind.Uniq ? this.compilation.Types.Reference(SemanticsKind.Uniq, shared.Components[0], shared.Origin) : shared);
     }
 
     // The Place a node designates once owner pair layers are removed (SPEC 13.5.5.1).

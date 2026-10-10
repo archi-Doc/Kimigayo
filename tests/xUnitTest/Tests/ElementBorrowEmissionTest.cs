@@ -344,7 +344,7 @@ public class ElementBorrowEmissionTest
         {
             case "receiver":
                 var receiver = body.Places[body.Operations[part].Place];
-                body.PlaceStorage[body.Operations[part].Place] = receiver with { Type = c.Binding.Reference(Kimi.Compiler.Parsing.SemanticsKind.Uniq, BoundType.I32, receiver.Type.Origin) };
+                body.PlaceStorage[body.Operations[part].Place] = receiver with { Type = c.Types.Reference(Kimi.Compiler.Parsing.SemanticsKind.Uniq, BoundType.I32, receiver.Type.Origin) };
                 break;
             case "base": body.OperationStorage[element] = body.Operations[element] with { Source = body.Operations[part].Source }; break;
             case "mode": body.OperationStorage[fixedElement] = body.Operations[fixedElement] with { LoanMode = LoanRequirement.Ref }; break;

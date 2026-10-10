@@ -413,14 +413,13 @@ public sealed class HirColumnsTest
     }
 
     // SPEC 3.4.1, 13.5.5.1: a reference, object handle or pair layer, which selection follows implicitly.
-    private static bool IsLayer(BoundType? type)
-        => type is { Kind: BoundTypeKind.Semantics, Components.Count: 1, Semantics: not (SemanticsKind.Owner or SemanticsKind.Raw or SemanticsKind.Parameter) } || Binding.TryPairLayer(type, out _, out _);
+    private static bool IsLayer(BoundType? type) => TyCtxt.Layer(type, out _) != HirPlaceKind.Value;
 
     private static bool Peel(BoundType? type, int layers, out BoundType? result)
     {
-        for (; layers > 0 && IsLayer(type); layers--)
+        for (; layers > 0 && TyCtxt.Layer(type, out var below) != HirPlaceKind.Value; layers--)
         {
-            type = Binding.TryPairLayer(type, out _, out var target) ? target : type!.Components[0];
+            type = below;
         }
 
         result = type;

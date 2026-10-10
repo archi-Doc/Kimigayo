@@ -73,7 +73,7 @@ public sealed partial class Binding
         }
 
         var target = ReferenceEquals(payload, semantics.Pair.Type) && origin is null
-            ? whole : this.InternType(BoundTypeKind.SemanticsApplication, semantics.Pair, SemanticsKind.Parameter, [payload], origin: origin);
+            ? whole : this.types.Intern(BoundTypeKind.SemanticsApplication, semantics.Pair, SemanticsKind.Parameter, [payload], origin: origin);
         return this.BindCaseAdaptation(conversion, scope, source, target, true);
     }
 
@@ -115,7 +115,7 @@ public sealed partial class Binding
         plan.Operations = operations;
         plan.IsShorthand = shorthand;
         plan.AddressBorrow = (operations & (1U << (int)ConversionBinding.Address)) == 0 ? null
-            : this.SharedReference(source, this.SlotOrigin(conversion.Left));
+            : this.types.Reference(SemanticsKind.Ref, source, this.SlotOrigin(conversion.Left));
         if (plan.Creates)
         {
             Complete(conversion.CreationStorage!, target);

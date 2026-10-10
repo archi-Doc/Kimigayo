@@ -351,8 +351,8 @@ public sealed partial class Binding
                 return this.Fail(function, BindingFailure.TypeMismatch);
             }
 
-            var parameters = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, types.AsSpan(0, count));
-            return this.FailMismatch(function, function, this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType)), expected);
+            var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(types.AsSpan(0, count));
+            return this.FailMismatch(function, function, this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType)), expected);
         }
         finally
         {
@@ -530,7 +530,7 @@ public sealed partial class Binding
         }
 
         var binder = source.Declaration ?? function;
-        environment.Type = this.InternType(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.OriginAtom(binder, OriginKind.Projection, SymbolOriginSlot(source)));
+        environment.Type = this.types.Intern(BoundTypeKind.Semantics, null, exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, [type], origin: this.OriginAtom(binder, OriginKind.Projection, SymbolOriginSlot(source)));
         environment.CaptureAcquisition = exclusive ? CaptureAcquisition.ExclusiveSlotBorrow : CaptureAcquisition.SharedSlotBorrow;
         return null;
     }
@@ -545,7 +545,7 @@ public sealed partial class Binding
         plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
         // The declaration identity distinguishes environments with identical storage.
-        plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
+        plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
         symbol.HeaderBound = true;
         var originDeclaration = this.BeginOriginDeclaration(function, scope);
         for (var i = 0; i < function.Parameters.Count; i++)
@@ -653,14 +653,14 @@ public sealed partial class Binding
                 buffer[i] = input;
             }
 
-            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
-            plan.Signature = this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type], resultMode: ResultModeOf(function.ReturnType));
+            var inputs = function.Parameters.Count == 0 ? BoundType.Unit : this.types.Tuple(((BoundType[])(object)buffer).AsSpan(0, function.Parameters.Count));
+            plan.Signature = this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [inputs, symbol.Type], resultMode: ResultModeOf(function.ReturnType));
             for (var i = 0; i < plan.Storage.Count; i++)
             {
                 buffer[i] = plan.Storage[i].Environment.Type!;
             }
 
-            plan.EnvironmentType = this.InternType(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
+            plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, ((BoundType[])(object)buffer).AsSpan(0, plan.Storage.Count));
         }
         finally
         {

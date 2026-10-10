@@ -32,7 +32,7 @@ public sealed partial class Binding
             return false;
         }
 
-        result = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
+        result = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
         return true;
     }
 }

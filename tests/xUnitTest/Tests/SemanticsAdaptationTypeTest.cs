@@ -88,7 +88,7 @@ public class SemanticsAdaptationTypeTest
     public void ResultSemanticsKeepsTheOwnerSourceMode()
     {
         var (c, _, pair) = Parse("func f<s/T>(value: s/T)\n    s is owner or objref\n    ()");
-        var source = c.Binding.SharedReference(BoundType.I32, BoundOrigin.Static);
+        var source = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Static);
         var type = c.Binding.SemanticsAdaptation(pair, source, BoundOrigin.Static);
         Assert.Equal(SemanticsMask.Ref | SemanticsMask.ObjRef, c.Binding.ResultSemantics(type, pair.Scope));
     }
@@ -98,8 +98,8 @@ public class SemanticsAdaptationTypeTest
     {
         var (c, function, pair) = Parse("func f<s/T>(value: s/T)\n    s is owner\n    ()");
         var local = new BoundOrigin(OriginKind.Input, function, name: "payload");
-        var reference = c.Binding.SharedReference(BoundType.I32, local);
-        var longer = c.Binding.SharedReference(BoundType.I32, BoundOrigin.Static);
+        var reference = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, local);
+        var longer = c.Types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Static);
         var actual = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: local);
         var same = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [reference], origin: BoundOrigin.Static);
         var expected = new BoundType("s/ref/i32", BoundTypeKind.SemanticsApplication, pair, SemanticsKind.Parameter, [longer], origin: local);

@@ -104,7 +104,7 @@ public sealed partial class Binding
                 this.enumPayloadTypes.Add(payload);
             }
 
-            types[i] = this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, CollectionsMarshal.AsSpan(this.enumPayloadTypes));
+            types[i] = this.types.Tuple(CollectionsMarshal.AsSpan(this.enumPayloadTypes));
         }
 
         this.enumPayloadTypes.Clear();
@@ -419,7 +419,7 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(origins[i], type.OriginArguments[i]);
             }
 
-            return changed ? this.InternType(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.ClosureContext, lengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode) : type;
+            return changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, origins.AsSpan(0, type.OriginArguments.Count), length, type.ClosureContext, lengths.AsSpan(0, type.LengthArguments.Length), type.ResultMode) : type;
         }
         finally
         {

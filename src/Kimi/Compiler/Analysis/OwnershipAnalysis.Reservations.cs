@@ -108,7 +108,7 @@ public sealed partial class OwnershipAnalysis
 
         type = argument.AdaptedType ?? this.compilation.Binding.PreparedBorrowType(source, argument.ParameterType);
         var core = type.IsObjectBorrow ? ReferenceTypes.ViewTarget(receiverType)! : ReferenceTypes.IsReference(receiverType) || receiverType.HandleMode is not null || receiverType.IsObjectBorrow ? receiverType.Components[0] : receiverType;
-        whole = this.compilation.Binding.Reference(type.Semantics, core, type.Origin);
+        whole = this.compilation.Types.Reference(type.Semantics, core, type.Origin);
         return true;
     }
 

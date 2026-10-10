@@ -1447,7 +1447,7 @@ public sealed partial class Binding
                             return CandidateApplicability.Inapplicable;
                         }
 
-                        var literalBorrow = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [borrowed.Components[0]], origin: this.PlaceOrigin(argument));
+                        var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [borrowed.Components[0]], origin: this.PlaceOrigin(argument));
                         operations[i] = new(call.ArgumentNodes[i], borrowed.Components[0], type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, ParameterIndex: mapping[i], AdaptedType: literalBorrow);
                         continue;
                     }
@@ -1958,7 +1958,7 @@ public sealed partial class Binding
             }
             else if (whole.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq)
             {
-                pattern = this.InternType(BoundTypeKind.Semantics, null, whole.Semantics, [target], origin: pattern.Origin);
+                pattern = this.types.Intern(BoundTypeKind.Semantics, null, whole.Semantics, [target], origin: pattern.Origin);
                 break;
             }
             else

@@ -108,7 +108,7 @@ public sealed partial class Binding
             return false; // Exclusive receiver preservation remains OCC-X.
         }
 
-        var projected = this.Reference(SemanticsKind.Ref, declaring, receiver.Origin);
+        var projected = this.types.Reference(SemanticsKind.Ref, declaring, receiver.Origin);
         call.SetReceiverProjection(operation with { ParameterType = projected, AdaptedType = projected, Kind = ArgumentOperationKind.BaseBorrow, BasePath = path, ObjectCompatibility = ConstraintProof.Proven }, path);
         return true;
     }

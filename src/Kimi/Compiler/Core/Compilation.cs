@@ -121,6 +121,9 @@ public partial class Compilation
     /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>
     internal SemanticQuery Semantics => this.Binding.Semantics;
 
+    /// <summary>Gets the Type context: interned Types and substitutions, which the MIR builder reads without Binding.</summary>
+    internal TyCtxt Types => this.Binding.Types;
+
     #endregion
 
     /// <summary>

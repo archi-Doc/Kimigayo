@@ -181,7 +181,7 @@ public sealed partial class Binding
     }
 
     private BoundType TypeFamily(BindingSymbol pair, SemanticsMask admitted, ReadOnlySpan<BoundType> children)
-        => this.InternType(BoundTypeKind.SemanticsAdaptation, pair, SemanticsKind.Parameter, children, length: (long)admitted);
+        => this.types.Intern(BoundTypeKind.SemanticsAdaptation, pair, SemanticsKind.Parameter, children, length: (long)admitted);
 
     private BoundType TransformFamily(BoundType family, FamilyTransform operation, BoundOrigin? origin = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType? target = null)
     {
@@ -218,7 +218,7 @@ public sealed partial class Binding
     private BoundType ApplySemantics(BoundType whole, BoundType target, BoundOrigin? origin)
         => whole.Kind == BoundTypeKind.SemanticsAdaptation ? this.TransformFamily(whole, FamilyTransform.Apply, origin, target: target)
             : whole.Kind == BoundTypeKind.Parameter || whole.Semantics == SemanticsKind.Parameter
-                ? this.InternType(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, [target], origin: origin)
+                ? this.types.Intern(BoundTypeKind.SemanticsApplication, whole.Symbol, SemanticsKind.Parameter, [target], origin: origin)
                 : this.Form(whole.Semantics, target, origin);
 
     private BoundType? SubstituteFamilyArgument(BoundType family, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, int slot, BoundType whole)

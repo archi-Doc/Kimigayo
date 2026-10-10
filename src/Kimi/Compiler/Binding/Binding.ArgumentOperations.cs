@@ -245,16 +245,16 @@ public sealed partial class Binding
     }
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
-        => this.InternType(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PreparedOrigin(source));
+        => this.types.Intern(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PreparedOrigin(source));
 
     // SPEC 4.6.9, 4.5: an exclusive borrow of a dynamic Array element lends the whole owned Array exclusively first.
     internal BoundType ExclusiveArrayHandle(Koto array)
-        => this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [array.BoundType!], origin: this.PlaceOrigin(array));
+        => this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [array.BoundType!], origin: this.PlaceOrigin(array));
 
     // SPEC 3.4.1 (PLAN G59): the borrow, in a use's mode, of an Array element whose stored part the use borrows in place, with the
     // element Place's own Origin.
     internal BoundType ElementPlaceReference(SemanticsKind semantics, Koto element)
-        => this.InternType(BoundTypeKind.Semantics, null, semantics, [element.BoundType!], origin: this.PlaceOrigin(element));
+        => this.types.Intern(BoundTypeKind.Semantics, null, semantics, [element.BoundType!], origin: this.PlaceOrigin(element));
 
     /// <summary>
     /// SPEC 10.2: safe reference layers ending in <paramref name="referent"/> yield one shared reference to it. A <c>ref</c>
@@ -275,7 +275,7 @@ public sealed partial class Binding
             origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin : type.Origin is null ? origin : this.Meet(origin, type.Origin);
             if (ReferenceEquals(type.Components[0], referent))
             {
-                return this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: origin);
+                return this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [referent], origin: origin);
             }
         }
 
@@ -456,7 +456,7 @@ public sealed partial class Binding
             return null;
         }
 
-        var reference = exclusive ? this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin) : shared;
+        var reference = exclusive ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Uniq, [terminal], origin: shared.Origin) : shared;
         this.adaptations[left] = new(ExpectedAdaptationKind.ReferenceRead, reference);
         return reference;
     }
@@ -473,7 +473,7 @@ public sealed partial class Binding
 
         if (ElementAccess.IsUserIndex(left) && element is not null)
         {
-            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.SharedReference(element, this.PlaceOrigin(left)));
+            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Reference(SemanticsKind.Ref, element, this.PlaceOrigin(left)));
             return;
         }
 
@@ -498,7 +498,7 @@ public sealed partial class Binding
         {
             // SPEC 4.6.9, 7.1.1, 13.4: a Non-Copy published Place, of a Place call or of receiver[key] on a user Type, is
             // compared in place through the reference the call returns.
-            this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: this.PlaceOrigin(operand)));
+            this.adaptations[operand] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, placeSemantics, [published], origin: this.PlaceOrigin(operand)));
             return;
         }
 
@@ -522,7 +522,7 @@ public sealed partial class Binding
     {
         if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(element))
         {
-            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element.Left)));
+            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element.Left)));
         }
     }
 
@@ -533,7 +533,7 @@ public sealed partial class Binding
         {
             var origin = this.PlaceOrigin(receiver);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
-            this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin));
+            this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin));
         }
     }
 
@@ -555,7 +555,7 @@ public sealed partial class Binding
             // would lose one layer and conflate the Place Origin with the stored value's independent Origins.
             return new(
                 expected.Semantics == SemanticsKind.Uniq ? ExpectedAdaptationKind.ExclusiveBorrow : ExpectedAdaptationKind.SharedBorrow,
-                this.InternType(BoundTypeKind.Semantics, null, expected.Semantics, [actual], origin: this.PlaceOrigin(node)));
+                this.types.Intern(BoundTypeKind.Semantics, null, expected.Semantics, [actual], origin: this.PlaceOrigin(node)));
         }
 
         if (!this.AdaptInput(node, expected, actual, this.ConstraintScope(node), null, null, out var adapted, out _, out var operation, fixedExpectation: true, recordPair: recordPair) ||
@@ -935,7 +935,7 @@ public sealed partial class Binding
             if (projected)
             {
                 // Selection fixes the View Target; Owned erasure is an obligation after selection, never a ranking rule.
-                adapted = this.Reference(pattern.Semantics, path!.Type, adapted.Origin);
+                adapted = this.types.Reference(pattern.Semantics, path!.Type, adapted.Origin);
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = ArgumentOperationKind.BaseBorrow;
             }
@@ -994,7 +994,7 @@ public sealed partial class Binding
             (projected || ReferenceEquals(actual.Components[0], declaringType)) &&
             (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.BorrowableHandle(source, scope, false, true)))
         {
-            adapted = this.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
+            adapted = this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = projected ? ArgumentOperationKind.BaseBorrow : ArgumentOperationKind.PayloadProjection;
             return true;
@@ -1022,7 +1022,7 @@ public sealed partial class Binding
             referent = actual;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             kind = ArgumentOperationKind.Borrow;
-            adapted = this.InternType(BoundTypeKind.Semantics, null, target, [referent], origin: this.SlotOrigin(source));
+            adapted = this.types.Intern(BoundTypeKind.Semantics, null, target, [referent], origin: this.SlotOrigin(source));
             return true;
         }
 
@@ -1038,7 +1038,7 @@ public sealed partial class Binding
             {
                 // SPEC 10.2: several reference layers yield one shared reference to the parameter's referent.
                 adapted = actual.Semantics == SemanticsKind.Uniq && shared.Origin is { } origin
-                    ? this.SharedReference(pattern.Components[0], this.PathReborrowOrigin(source, origin)) : shared;
+                    ? this.types.Reference(SemanticsKind.Ref, pattern.Components[0], this.PathReborrowOrigin(source, origin)) : shared;
                 quality = ArgumentAdaptation.CrossSemanticsBorrow;
                 kind = layers > 1 ? ArgumentOperationKind.ReferenceRead : ArgumentOperationKind.Reborrow;
                 return true;
@@ -1114,7 +1114,7 @@ public sealed partial class Binding
         }
 
         var dependency = !projected && kind == ArgumentOperationKind.Reborrow ? this.PathReborrowOrigin(source, actual.Origin) : this.PlaceOrigin(source);
-        adapted = this.Reference(target, referent, dependency);
+        adapted = this.types.Reference(target, referent, dependency);
         return true;
     }
 
@@ -1132,7 +1132,7 @@ public sealed partial class Binding
             }
 
             // Inspect the protected handle slot, retaining its Loan; acquiring the owner is unnecessary.
-            adapted = this.Reference(pattern.Semantics, actual.Components[0].Components[0], this.PlaceOrigin(source));
+            adapted = this.types.Reference(pattern.Semantics, actual.Components[0].Components[0], this.PlaceOrigin(source));
             kind = ArgumentOperationKind.Borrow;
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
             return true;
@@ -1173,7 +1173,7 @@ public sealed partial class Binding
             return false;
         }
 
-        adapted = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
+        adapted = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual.Components[0]], origin: this.PlaceOrigin(source));
         return true;
     }
 }

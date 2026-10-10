@@ -497,17 +497,11 @@ public sealed partial class Binding
         {
             var projected = (this.parentOp is HirOp.Field or HirOp.Index || (this.parentOp == HirOp.PrimitiveOp && this.parent is MemberAccessKoto)) && ReferenceEquals(Operand(this.parent), node);
             var terminal = projected || !TryPairLayer(node.BoundType, out _, out _) || binding.ImplicitPairAdmitted(node) == SemanticsMask.None ? null : binding.PairTerminalOf(node);
+            var type = node.BoundType;
             byte layers = 0;
-            for (var type = node.BoundType; (projected || terminal is not null) && layers < 16 && !ReferenceEquals(type, terminal); layers++)
+            while ((projected || terminal is not null) && layers < 16 && !ReferenceEquals(type, terminal) && TyCtxt.Layer(type, out type) != HirPlaceKind.Value)
             {
-                if (type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && (IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics)))
-                {
-                    type = type.Components[0];
-                }
-                else if (!TryPairLayer(type, out _, out type))
-                {
-                    break;
-                }
+                layers++;
             }
 
             return layers;

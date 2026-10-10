@@ -151,8 +151,8 @@ internal enum HirAcquire : byte
 
 /// <summary>The Place a node designates: the PlaceShape column of <see cref="HirTables"/> (SPEC 3.4.1, 3.5, 13.5.5.1), set on every node
 /// the builder evaluates and on a Pattern binding its plan borrows. The builder forms a MIR Place from the Kind, the node's Res and its
-/// direct children, then follows <paramref name="Layers"/> layers of the node's own Type (a reference, pointer or object handle layer as a
-/// Deref, a pair layer as a PairLayer) that its consumer follows implicitly before it projects or borrows the node.</summary>
+/// direct children, then follows <paramref name="Layers"/> layers of the node's own Type (<see cref="TyCtxt.Layer"/>: a reference or object
+/// handle layer as a Deref, a pair layer as a PairLayer) that its consumer follows implicitly before it projects or borrows the node.</summary>
 /// <param name="Kind">The form of the node's Place.</param>
 /// <param name="Layers">The layers its consumer follows: of a stored Field's, a Tuple element's, a sequence metadata's or a built-in
 /// element's receiver down to the projected value, and the pair layers Binding follows at a receiver or Subject (SPEC 7.3, 15.1.6).</param>

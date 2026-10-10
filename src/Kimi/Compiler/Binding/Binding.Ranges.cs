@@ -19,11 +19,11 @@ public sealed partial class Binding
     private readonly Dictionary<IndexKoto, InvocationKoto> resolvedKeys = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<IndexKoto> resolvedSlices = new(ReferenceEqualityComparer.Instance);
 
-    private BoundType ResolvedRangeType => this.InternType(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
+    private BoundType ResolvedRangeType => this.types.Intern(BoundTypeKind.Nominal, this.Library.ResolvedRange, SemanticsKind.Owner, []);
 
-    private BoundType StartType => this.InternType(BoundTypeKind.Nominal, this.Library.Start, SemanticsKind.Owner, []);
+    private BoundType StartType => this.types.Intern(BoundTypeKind.Nominal, this.Library.Start, SemanticsKind.Owner, []);
 
-    private BoundType EndType => this.InternType(BoundTypeKind.Nominal, this.Library.End, SemanticsKind.Owner, []);
+    private BoundType EndType => this.types.Intern(BoundTypeKind.Nominal, this.Library.End, SemanticsKind.Owner, []);
 
     /// <summary>Gets the synthesized construction of a prefix <c>^</c> or range value, or null for a directly applied key.</summary>
     /// <param name="node">The <c>^</c> or range expression.</param>
@@ -64,7 +64,7 @@ public sealed partial class Binding
         return IsIntegerLiteralOnly(node) || IsLiteralOnlyFromEnd(node);
     }
 
-    private BoundType FromEndType(BoundType offset) => this.InternType(BoundTypeKind.Constructed, this.Library.FromEnd, SemanticsKind.Owner, [offset]);
+    private BoundType FromEndType(BoundType offset) => this.types.Intern(BoundTypeKind.Constructed, this.Library.FromEnd, SemanticsKind.Owner, [offset]);
 
     // The T of FromEnd<T>, or null for any other Type.
     private BoundType? FromEndOffsetType(BoundType? type)
@@ -78,7 +78,7 @@ public sealed partial class Binding
     private BoundType? LiteralPositionDefault(Koto node) => node switch
     {
         FromEndIndexKoto => this.FromEndType(BoundType.I32),
-        RangeKoto range => this.InternType(
+        RangeKoto range => this.types.Intern(
             BoundTypeKind.Constructed,
             range.IsInclusive ? this.Library.ClosedRange : this.Library.Range,
             SemanticsKind.Owner,
@@ -173,7 +173,7 @@ public sealed partial class Binding
             if (direct)
             {
                 this.SharedElementView(source.Left);
-                result = Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
+                result = Complete(source, this.types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
                 return true;
             }
 
@@ -243,7 +243,7 @@ public sealed partial class Binding
 
         this.resolvedSlices.Add(source);
         this.SharedElementView(source.Left);
-        result = Complete(source, this.InternType(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
+        result = Complete(source, this.types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
         return true;
     }
 
@@ -414,7 +414,7 @@ public sealed partial class Binding
             return Complete(range, BoundType.Never);
         }
 
-        var type = this.InternType(BoundTypeKind.Constructed, shape, SemanticsKind.Owner, [start, end]);
+        var type = this.types.Intern(BoundTypeKind.Constructed, shape, SemanticsKind.Owner, [start, end]);
         var call = range.IsInclusive
             ? range.Start is null ? this.PositionSyntaxCall(range, "upTo", end, null, range.End, null) : this.PositionSyntaxCall(range, "through", start, end, range.Start, range.End)
             : range.Start is not null && range.End is not null ? this.PositionSyntaxCall(range, "between", start, end, range.Start, range.End)

@@ -364,7 +364,7 @@ public sealed partial class Binding
     {
         var origin = ResultFunction(conversion)?.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components: [var declared], Origin: { } result } declaredResult &&
             declaredResult.Semantics == semantics && ReferenceEquals(declared, referent) ? result : this.OriginAtom(conversion, OriginKind.Anchor, 0, "anchor");
-        var borrowed = this.InternType(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
+        var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Borrow;
         return Complete(conversion, borrowed);
@@ -442,17 +442,17 @@ public sealed partial class Binding
             if (ElementAccess.IsRawPlace(conversion.Left))
             {
                 // SPEC 5.4, 5.2.2: the address of a raw Place or a part of one borrows that Place as a fresh anchor.
-                borrowed = this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);
+                borrowed = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored], origin: BoundOrigin.Static);
             }
             else if (!BorrowsWrittenSlot(stored) ||
-                !this.AdaptInput(conversion.Left, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
+                !this.AdaptInput(conversion.Left, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
             {
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
             Complete(conversion.Right, borrowed);
             conversion.ConversionBinding = ConversionBinding.Address;
-            return Complete(conversion, this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [stored]));
+            return Complete(conversion, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [stored]));
         }
 
         if (syntax is TypeSemanticsKoto { Type: not null, SemanticsParameter: null, SemanticsKind: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq })
@@ -474,7 +474,7 @@ public sealed partial class Binding
             {
                 var origin = pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq
                     ? this.SlotOrigin(conversion.Left) : this.PlaceOrigin(conversion.Left);
-                var borrowed = this.Reference(pattern.Semantics, pattern.Components[0], pattern.Origin ?? origin);
+                var borrowed = this.types.Reference(pattern.Semantics, pattern.Components[0], pattern.Origin ?? origin);
                 return this.BindCaseAdaptation(conversion, scope, actual, borrowed);
             }
 
@@ -504,7 +504,7 @@ public sealed partial class Binding
             if (pattern.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && pattern.Origin is null && ReferenceEquals(actual, pattern.Components[0]) &&
                 this.BorrowablePlace(conversion.Left, scope, pattern.Semantics == SemanticsKind.Uniq))
             {
-                var storage = this.InternType(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
+                var storage = this.types.Intern(BoundTypeKind.Semantics, null, pattern.Semantics, [actual], origin: this.SlotOrigin(conversion.Left));
                 Complete(conversion.Right, storage);
                 conversion.ConversionBinding = ConversionBinding.Borrow;
                 return Complete(conversion, storage);
@@ -586,7 +586,7 @@ public sealed partial class Binding
                 }
 
                 var payload = IsObjectSemantics(operandType.Semantics) ? operandType.Components[0] : operandType;
-                var objectTarget = this.InternType(BoundTypeKind.Semantics, null, semantics, [payload]);
+                var objectTarget = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [payload]);
                 return this.BindObjectAdaptation(conversion, scope, operandType, objectTarget);
             }
 
@@ -597,7 +597,7 @@ public sealed partial class Binding
                     return this.FailObjectAuthority(conversion, conversion.Left);
                 }
 
-                var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
+                var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
                 {
                     return this.Fail(conversion, semantics == SemanticsKind.ObjUniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
@@ -617,7 +617,7 @@ public sealed partial class Binding
             {
                 // SPEC 13.5.5.2: @ref/@uniq borrow the immediately written slot whatever it stores; a stored
                 // reference is Reborrowed only through @follow or at a fixed expected Type (SPEC 10.2).
-                var pattern = this.InternType(BoundTypeKind.Semantics, null, semantics, [operandType]);
+                var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
                     return this.Fail(conversion, semantics == SemanticsKind.Uniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);

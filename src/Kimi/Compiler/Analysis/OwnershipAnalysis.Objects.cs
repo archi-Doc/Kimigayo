@@ -36,14 +36,14 @@ public sealed partial class OwnershipAnalysis
     private int BorrowStoredObject(Koto source, BoundType stored, BoundType type, int reservation)
     {
         var exclusive = type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
-        var slotType = this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, stored, type.Origin);
+        var slotType = this.compilation.Types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, stored, type.Origin);
         var slot = this.BorrowIntermediate(source, slotType, reservation);
         if (slot < 0)
         {
             return -1;
         }
 
-        var viewType = type.IsObjectBorrow ? type : this.compilation.Binding.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, type.Components[0], type.Origin);
+        var viewType = type.IsObjectBorrow ? type : this.compilation.Types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, type.Components[0], type.Origin);
         var view = ReferenceEquals(viewType, type) ? this.BorrowThrough(source, slot, viewType, reservation) : this.BorrowIntermediate(source, viewType, reservation, slot);
         return ReferenceEquals(viewType, type) ? view : this.BorrowThrough(source, view, type, reservation);
     }

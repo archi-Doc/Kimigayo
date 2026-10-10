@@ -252,7 +252,7 @@ public sealed partial class OwnershipAnalysis
             }
 
             var receiver = index.Left.BoundType?.Kind == BoundTypeKind.FixedArray
-                ? this.BorrowStruct(index.Left, this.compilation.Binding.Reference(type.Semantics, index.Left.BoundType, type.Origin))
+                ? this.BorrowStruct(index.Left, this.compilation.Types.Reference(type.Semantics, index.Left.BoundType, type.Origin))
                 : this.Receiver(index.Left);
             var receiverValue = this.Value(receiver);
             var subscript = this.SelectionKey(index, receiver);
@@ -420,7 +420,7 @@ public sealed partial class OwnershipAnalysis
         // by its own path and disjoint parts stay separate.
         if (!exclusive && ElementAccess.IsFollowedRoot(root) && this.Resolve(root.BoundType, this.Active) is { Components.Count: 1 } reference)
         {
-            return this.BorrowStruct(root, this.compilation.Binding.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, reference.Components[0], reference.Origin));
+            return this.BorrowStruct(root, this.compilation.Types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, reference.Components[0], reference.Origin));
         }
 
         return this.Expression(root, PlaceUseKind.Read);
@@ -477,7 +477,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var referenceType = this.compilation.Binding.Reference(SemanticsKind.Uniq, stored, receiverType!.Origin);
+        var referenceType = this.compilation.Types.Reference(SemanticsKind.Uniq, stored, receiverType!.Origin);
         var address = this.BorrowStruct(field, referenceType);
         if (address < 0)
         {

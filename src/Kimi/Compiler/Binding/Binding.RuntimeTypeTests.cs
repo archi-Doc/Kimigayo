@@ -102,7 +102,7 @@ public sealed partial class Binding
         test.BoundRuntimeTest = plan with
         {
             SharedType = ReferenceEquals(operand, BoundType.Never) ? null :
-                this.InternType(BoundTypeKind.Semantics, null, SemanticsKind.ObjRef, [operand.Components[0]], origin: operand.Origin is { } dependency ? this.Meet(this.PlaceOrigin(test.Left), dependency) : this.PlaceOrigin(test.Left)),
+                this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.ObjRef, [operand.Components[0]], origin: operand.Origin is { } dependency ? this.Meet(this.PlaceOrigin(test.Left), dependency) : this.PlaceOrigin(test.Left)),
         };
         return Complete(test, BoundType.Boolean);
     }

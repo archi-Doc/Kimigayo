@@ -1652,7 +1652,7 @@ public sealed partial class Binding
                 complete &= type is not null;
             }
 
-            return Complete(tuple, complete ? this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, buffer.AsSpan(0, tuple.Elements.Count)) : null);
+            return Complete(tuple, complete ? this.types.Tuple(buffer.AsSpan(0, tuple.Elements.Count)) : null);
         }
         finally
         {

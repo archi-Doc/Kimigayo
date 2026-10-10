@@ -483,7 +483,7 @@ public sealed partial class Binding
                     (this.referenceSlotFacts ??= new(ReferenceEqualityComparer.Instance))[use] = new(generic, slotFailure.Slot, slotFailure.Failure, KotoHelper.UnwrapParentheses(use) is GenericsKoto);
                 }
 
-                var candidateItem = this.InternType(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
+                var candidateItem = this.types.Intern(BoundTypeKind.FunctionItem, symbol, SemanticsKind.Owner, []);
                 if (count == 1 && this.FunctionItemSignature(candidateItem) is { } actual)
                 {
                     // SPEC 10.7, 15.6.1: when the one candidate's signature matches and only its Origin contract fails, the record names
@@ -501,7 +501,7 @@ public sealed partial class Binding
                     if (applicable == 0 || evaluated[i].State == CandidateApplicability.Applicable)
                     {
                         var candidate = evaluated[i].Symbol!;
-                        var item = this.InternType(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
+                        var item = this.types.Intern(BoundTypeKind.FunctionItem, candidate, SemanticsKind.Owner, []);
                         rejected[next++] = new((FunctionKoto)candidate.Declaration, this.FunctionItemSignature(item), required, CallableSignature: true, ReferenceSignature: true, ConstraintFailure: evaluated[i].ConstraintFailure);
                     }
                 }
@@ -1087,14 +1087,14 @@ public sealed partial class Binding
                 scratch[i] = input;
             }
 
-            var parameters = count == 0 ? BoundType.Unit : this.InternType(BoundTypeKind.Tuple, null, SemanticsKind.Owner, scratch.AsSpan(0, count));
+            var parameters = count == 0 ? BoundType.Unit : this.types.Tuple(scratch.AsSpan(0, count));
             if (tuple is not null)
             {
                 Complete(tuple, parameters);
             }
 
             var result = this.BindType(function.ReturnType, scope, new(TypePosition.Result, function));
-            return result is null ? null : this.InternType(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType));
+            return result is null ? null : this.types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [parameters, result], resultMode: ResultModeOf(function.ReturnType));
         }
         finally
         {

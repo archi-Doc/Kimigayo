@@ -21,11 +21,11 @@ public sealed partial class Binding
     }
 
     internal BoundType PayloadReadReference(ConversionKoto source, BoundType payload)
-        => this.SharedReference(payload, this.PlaceOrigin(source));
+        => this.types.Reference(SemanticsKind.Ref, payload, this.PlaceOrigin(source));
 
     // SPEC 3.4.1: a field access lends the handle's payload in the access mode already checked by Binding.
     internal BoundType ObjectView(Koto source, BoundType handle, bool exclusive = false)
-        => this.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
+        => this.types.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, handle.Components[0], this.PlaceOrigin(source));
 
     private bool RequireObjectErasure(Koto use, Koto operand, BoundType source, BoundType target)
     {
@@ -228,7 +228,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
             }
 
-            result = this.InternType(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);
+            result = this.types.Intern(BoundTypeKind.Semantics, null, target.Semantics, [target.Components[0]], origin: borrowed.Origin);
             if (target.Origin is not null)
             {
                 if (!this.CheckTypeUse(result, target, conversion))

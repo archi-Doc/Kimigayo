@@ -103,15 +103,15 @@ public sealed partial class OwnershipAnalysis
             // A static inline path has no receiver or key evaluation. Its exclusive access starts only at replacement.
             if (inline)
             {
-                address = this.BorrowStruct(target, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin));
+                address = this.BorrowStruct(target, this.compilation.Types.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin));
             }
             else if (projection >= 0)
             {
-                address = this.BorrowElementAddress((BinaryKoto)target, projection, this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin));
+                address = this.BorrowElementAddress((BinaryKoto)target, projection, this.compilation.Types.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin));
             }
             else if (receiver >= 0)
             {
-                var exclusive = this.compilation.Binding.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin);
+                var exclusive = this.compilation.Types.Reference(SemanticsKind.Uniq, target.BoundType!, leftType.Origin);
                 address = target is MemberAccessKoto field ? this.BorrowFieldAddress(field, receiver, exclusive)
                     : this.SequenceValue(target, exclusive, SequenceOperation.Borrow, receiver, index: index, address: this.Value(left));
             }

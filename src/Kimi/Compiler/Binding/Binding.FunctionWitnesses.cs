@@ -74,7 +74,7 @@ public sealed partial class Binding
 
     private BoundType? ProjectRequirementReceiver(BoundType required, BoundType self, BoundType? declaringType)
         => declaringType is not null && required is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } && SameType(required.Components[0], self)
-            ? this.InternType(BoundTypeKind.Semantics, null, required.Semantics, [declaringType], origin: required.Origin) : null;
+            ? this.types.Intern(BoundTypeKind.Semantics, null, required.Semantics, [declaringType], origin: required.Origin) : null;
 
     private BoundFunctionWitness FunctionWitness(BoundConformancePath path, BoundRequirement requirement)
     {
