@@ -180,7 +180,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         if (unwrapped is BinaryKoto objectPart && !Binding.IsGetterResult(objectPart) && !this.SpecialField(objectPart) &&
-            this.Resolve(objectPart.BoundType, this.Active) is { } storedObject && ObjectTypes.HandleMode(storedObject) is not null && ReferenceEquals(storedObject.Components[0], type.Components[0]) &&
+            this.Resolve(objectPart.BoundType, this.Active) is { } storedObject && storedObject.HandleMode is not null && ReferenceEquals(storedObject.Components[0], type.Components[0]) &&
             (ElementAccess.OwnedPathRoot(objectPart) is not null || (objectPart is MemberAccessKoto objectField && ElementAccess.BorrowedPathRoot(objectField) is not null) ||
                 (objectPart is IndexKoto objectIndex && (objectIndex.Left.BoundType?.Kind == BoundTypeKind.FixedArray || ReferenceTypes.IsArray(objectIndex.Left.BoundType)))))
         {
@@ -405,7 +405,7 @@ public sealed partial class OwnershipAnalysis
     // SPEC 3.4.1: a receiver with a recorded adaptation is evaluated to its one reference; any other receiver is read.
     private int Receiver(Koto root, bool exclusive = false, int reservation = -1)
     {
-        if (this.Resolve(root.BoundType, this.Active) is { } handle && ObjectTypes.HandleMode(handle) is not null)
+        if (this.Resolve(root.BoundType, this.Active) is { } handle && handle.HandleMode is not null)
         {
             return this.BorrowIntermediate(root, this.compilation.Binding.ObjectView(root, handle, exclusive), reservation);
         }
@@ -464,7 +464,7 @@ public sealed partial class OwnershipAnalysis
         var root = ElementAccess.BorrowedPathRoot(field)!;
         var receiverType = this.Resolve(ElementAccess.AccessType(root, true), this.Active);
         var operation = source.Akind == KotoKind.Equals ? KotoKind.Equals : ElementAccess.UpdateOperator(source.Akind);
-        if (!(receiverType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || ObjectTypes.HandleMode(receiverType) is { PayloadAuthority: LoanRequirement.Uniq }) ||
+        if (!(receiverType?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq || receiverType?.HandleMode is { PayloadAuthority: LoanRequirement.Uniq }) ||
             this.Resolve(field.BoundType, this.Active) is not { } stored || (operation != KotoKind.Equals && !this.SupportsUpdate(field, stored, operation)))
         {
             this.Internal(source);

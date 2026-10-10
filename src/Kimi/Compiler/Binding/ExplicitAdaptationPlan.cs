@@ -26,9 +26,9 @@ internal sealed class ExplicitAdaptationPlan
             return ReferenceEquals(source, target.Components[0]) ? ConversionBinding.Address : ConversionBinding.None;
         }
 
-        if (ObjectTypes.HandleMode(target) is not null)
+        if (target.HandleMode is not null)
         {
-            if (ObjectTypes.HandleMode(source) is not null)
+            if (source.HandleMode is not null)
             {
                 return source.Semantics != target.Semantics ? ConversionBinding.None
                     : ReferenceEquals(source, target) ? ConversionBinding.Identity : ConversionBinding.ObjectUpcast;
@@ -43,9 +43,9 @@ internal sealed class ExplicitAdaptationPlan
             return ReferenceEquals(source, target.Components[0]) ? ConversionBinding.Borrow : ConversionBinding.None;
         }
 
-        if (ObjectTypes.IsBorrow(target))
+        if (target.IsObjectBorrow)
         {
-            if ((ObjectTypes.HandleMode(source) is not null || ObjectTypes.IsBorrow(source)) &&
+            if ((source.HandleMode is not null || source.IsObjectBorrow) &&
                 (target.Semantics != SemanticsKind.ObjUniq || source.Semantics is SemanticsKind.Obj or SemanticsKind.ObjUniq))
             {
                 return ReferenceEquals(source.Components[0], target.Components[0]) ? ConversionBinding.Borrow : ConversionBinding.ObjectUpcast;

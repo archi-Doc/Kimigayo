@@ -224,7 +224,7 @@ public sealed partial class Binding
             ? InputType(binder, origin.InputIndex) is ParenthesizedTypeKoto { Type: { } inner } ? inner : InputType(binder, origin.InputIndex) : null;
 
     private static bool SharedObjectAuthorityMismatch(BoundType actual, BoundType expected)
-        => ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref } &&
+        => actual.HandleMode is { PayloadAuthority: LoanRequirement.Ref } &&
             expected is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
             ReferenceEquals(actual.Components[0], expected.Components[0]);
 
@@ -1335,7 +1335,7 @@ public sealed partial class Binding
         if (code != DiagnosticCode.InvalidAssignment_Kd)
         {
             var handle = KotoHelper.UnwrapParentheses(target) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } followed ? followed.Left.BoundType : target.BoundType;
-            var authority = ObjectTypes.HandleMode(handle) is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : null;
+            var authority = handle?.HandleMode is { PayloadAuthority: LoanRequirement.Ref } ? SharedObjectAuthorityNote : null;
             var note = code != DiagnosticCode.SharedPathAccess_Kd ? null : objectCallee ? authority is null ? callNote : $"{callNote}. {authority}" : authority ?? this.SharedIndexNote(target);
             node.Report(requirement, code, note: note, at: target, evidence: code == DiagnosticCode.SharedPathAccess_Kd ? [target.ToString()] : null);
             return;

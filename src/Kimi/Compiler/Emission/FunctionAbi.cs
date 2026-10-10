@@ -26,7 +26,7 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
     // The pool caches physical shapes; current call plans separately validate complete Types and Origins.
     internal static bool Supports(BoundType? type, AggregateLayoutPool? layouts = null) => type is not null && GetValue(type, layouts) is not null;
 
-    internal static ValueLowering? GetValue(BoundType type, AggregateLayoutPool? layouts) => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice || AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || ObjectTypes.HandleMode(type) is not null
+    internal static ValueLowering? GetValue(BoundType type, AggregateLayoutPool? layouts) => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice || AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.HandleMode is not null
         ? layouts?.Get(type)?.Value : ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceTypes.IsString(type)
             ? WindowsLowering.GetValue(type) : null;
 

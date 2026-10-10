@@ -227,7 +227,7 @@ public sealed partial class Binding
         }
 
         if (operation is ConversionBinding.Borrow or ConversionBinding.Address ||
-            (operation == ConversionBinding.ObjectUpcast && ObjectTypes.IsBorrow(target)))
+            (operation == ConversionBinding.ObjectUpcast && target.IsObjectBorrow))
         {
             var exclusive = target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
             if (exclusive && !this.BorrowablePlace(conversion.Left, scope, true) && !BorrowableTemporary(conversion.Left, true, true, false))

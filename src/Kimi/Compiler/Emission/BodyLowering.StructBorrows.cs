@@ -131,7 +131,7 @@ internal sealed partial class BodyLowering
                 CallReceiverOperation(projectedPlan) is { Kind: ArgumentOperationKind.BaseBorrow } projectedCall)
             {
                 var sourceType = body.Resolve(projectedCall.SourceType, body.ContextAt(id));
-                var sourceCore = ObjectTypes.IsBorrow(output) ? ObjectTypes.ViewTarget(sourceType) : ReferenceTypes.IsReference(sourceType) || ObjectTypes.HandleMode(sourceType) is not null || ObjectTypes.IsBorrow(sourceType) ? sourceType!.Components[0] : sourceType;
+                var sourceCore = output.IsObjectBorrow ? ReferenceTypes.ViewTarget(sourceType) : ReferenceTypes.IsReference(sourceType) || sourceType?.HandleMode is not null || sourceType is { IsObjectBorrow: true } ? sourceType!.Components[0] : sourceType;
                 if (projectedCall.BasePath is null || value.Count != 1 ||
                     !ReferenceTypes.StorageMatches(type.Components[0], sourceCore) ||
                     !ReferenceTypes.StorageMatches(output.Components[0], body.Resolve(projectedCall.BasePath.Type, body.ContextAt(id))) ||
@@ -158,11 +158,11 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if (ObjectTypes.IsBorrow(output))
+            if (output.IsObjectBorrow)
             {
-                if (ReferenceTypes.IsStorage(type) && type.Components[0] is { } storedHandle && (ObjectTypes.HandleMode(storedHandle) is not null || ObjectTypes.IsBorrow(storedHandle)) &&
+                if (ReferenceTypes.IsStorage(type) && type.Components[0] is { } storedHandle && (storedHandle.HandleMode is not null || storedHandle.IsObjectBorrow) &&
                     (output.Semantics == SemanticsKind.ObjRef || (type.Semantics == SemanticsKind.Uniq &&
-                        (storedHandle.Semantics == SemanticsKind.ObjUniq || ObjectTypes.HandleMode(storedHandle) is { PayloadAuthority: LoanRequirement.Uniq }))) &&
+                        (storedHandle.Semantics == SemanticsKind.ObjUniq || storedHandle.HandleMode is { PayloadAuthority: LoanRequirement.Uniq }))) &&
                     value.Count == 1 && ReferenceEquals(storedHandle.Components[0], output.Components[0]) &&
                     ReferenceEquals(ValueType(body, Input(body, id, 0)), type) && (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
                 {
@@ -171,24 +171,24 @@ internal sealed partial class BodyLowering
                     return true;
                 }
 
-                var upcast = (ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) &&
+                var upcast = (type.HandleMode is not null || type.IsObjectBorrow) &&
                     operation.Source.Parent is ConversionKoto conversion && ElementAccess.ConversionKind(conversion, body, id) == ConversionBinding.ObjectUpcast &&
                     ReferenceEquals(conversion.Left, operation.Source) && ReferenceEquals(body.Resolve(conversion.BoundType, body.ContextAt(id)), output) &&
-                    ObjectTypes.Supports(type.Components[0], output.Components[0]);
-                if (!(ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) || (!ReferenceEquals(type.Components[0], output.Components[0]) && !upcast) ||
+                    AdtDef.IsOrInherits(type.Components[0], output.Components[0]);
+                if (!(type.HandleMode is not null || type.IsObjectBorrow) || (!ReferenceEquals(type.Components[0], output.Components[0]) && !upcast) ||
                     (output.Semantics == SemanticsKind.ObjUniq && type.Semantics != SemanticsKind.ObjUniq &&
-                        ObjectTypes.HandleMode(type) is not { PayloadAuthority: LoanRequirement.Uniq }))
+                        type.HandleMode is not { PayloadAuthority: LoanRequirement.Uniq }))
                 {
                     return Fail("Object borrow requires matching view and exclusive authority.", out failure);
                 }
 
-                if (ObjectTypes.HandleMode(type) is not null && value.Count == 0)
+                if (type.HandleMode is not null && value.Count == 0)
                 {
                     function.AddScalar(EmissionOpcode.ObjectBorrow, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
                     return true;
                 }
 
-                if (ObjectTypes.IsBorrow(type) && value.Count == 1 && ReferenceEquals(ValueType(body, Input(body, id, 0)), type) &&
+                if (type.IsObjectBorrow && value.Count == 1 && ReferenceEquals(ValueType(body, Input(body, id, 0)), type) &&
                     (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
                 {
                     function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0))]);
@@ -219,7 +219,7 @@ internal sealed partial class BodyLowering
                 return true;
             }
 
-            if ((ObjectTypes.HandleMode(type) is not null || ObjectTypes.IsBorrow(type)) && !ReferenceTypes.StorageMatches(type, output.Components[0]))
+            if ((type.HandleMode is not null || type.IsObjectBorrow) && !ReferenceTypes.StorageMatches(type, output.Components[0]))
             {
                 var explicitProjection = operation.Source.Parent is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } selected &&
                     ReferenceEquals(selected.Left, operation.Source) && ReferenceEquals(body.Resolve(selected.BoundType, body.ContextAt(id)), output.Components[0]) &&
@@ -237,18 +237,18 @@ internal sealed partial class BodyLowering
                     ReferenceTypes.StorageMatches(body.Resolve(callReceiver.ParameterType, body.ContextAt(id)), output);
                 if (!ReferenceEquals(type.Components[0], output.Components[0]) || !(explicitProjection || memberProjection || callProjection) ||
                     (output.Semantics == SemanticsKind.Uniq && type.Semantics != SemanticsKind.ObjUniq &&
-                        ObjectTypes.HandleMode(type) is not { PayloadAuthority: LoanRequirement.Uniq }))
+                        type.HandleMode is not { PayloadAuthority: LoanRequirement.Uniq }))
                 {
                     return Fail("Object payload address requires a proved complete-payload projection.", out failure);
                 }
 
-                if (ObjectTypes.HandleMode(type) is not null && value.Count == 0)
+                if (type.HandleMode is not null && value.Count == 0)
                 {
                     function.AddScalar(EmissionOpcode.ObjectPayload, id, [new(EmissionOperandKind.SlotAddress, operation.Place)]);
                     return true;
                 }
 
-                if (ObjectTypes.IsBorrow(type) && value.Count == 1 && ReferenceEquals(ValueType(body, Input(body, id, 0)), type) &&
+                if (type.IsObjectBorrow && value.Count == 1 && ReferenceEquals(ValueType(body, Input(body, id, 0)), type) &&
                     (!body.IsReachable(id) || this.Dominates(Input(body, id, 0), id)))
                 {
                     function.AddScalar(EmissionOpcode.BorrowAddress, id, [this.PhysicalOperand(body, Input(body, id, 0)), new(EmissionOperandKind.Integer, 16)]);
@@ -457,7 +457,7 @@ internal sealed partial class BodyLowering
     {
         // Object views point at the allocation header; ordinary borrows point at payload storage.
         var rootType = body.Resolve(ElementAccess.AccessType(root), body.ContextAt(operation));
-        offset = ObjectTypes.IsBorrow(rootType) || ObjectTypes.HandleMode(rootType) is not null ? 16 : 0;
+        offset = rootType is { IsObjectBorrow: true } || rootType?.HandleMode is not null ? 16 : 0;
         for (var level = field; ;)
         {
             var position = ElementAccess.PathSelector(level, out var owner, out var element);

@@ -30,9 +30,9 @@ internal sealed partial class BodyLowering
             return address == ReferenceTypes.IsPointer(target) ? default : new(address ? "ptrtoint" : "inttoptr", null, null, 0, 0);
         }
 
-        if (FloatingTypes.Supports(source))
+        if (source.IsFloatingPoint)
         {
-            if (FloatingTypes.Supports(target))
+            if (target.IsFloatingPoint)
             {
                 // Halfway between the largest f32 and 2^128 rounds to infinity.
                 const double Overflow = 3.40282356779733661637539395458142568448e38;
@@ -58,7 +58,7 @@ internal sealed partial class BodyLowering
             return new(signed ? "fptosi" : "fptoui", exactPredecessor ? "ule" : "ult", "uge", FloatingBits(source, lower), FloatingBits(source, upper));
         }
 
-        if (FloatingTypes.Supports(target))
+        if (target.IsFloatingPoint)
         {
             return new(ScalarTypes.Signed(source) ? "sitofp" : "uitofp", null, null, 0, 0);
         }

@@ -354,6 +354,7 @@ public sealed record BoundType
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
     private readonly bool containsPairLayer;
+    private readonly bool hasAbstractPart;
 
     internal BoundType(string name, BoundTypeKind kind, BindingSymbol? symbol = null, SemanticsKind semantics = SemanticsKind.Owner, BoundType[]? components = null, long length = 0, BoundOrigin? origin = null, BoundOrigin[]? originArguments = null, BoundLength? lengthExpression = null, BoundLength?[]? lengthArguments = null, FunctionResultMode resultMode = FunctionResultMode.Value)
     {
@@ -378,6 +379,7 @@ public sealed record BoundType
         var original = kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget;
         var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
         var stores = found || original;
+        var abstractPart = this.IsAbstract;
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
@@ -385,6 +387,7 @@ public sealed record BoundType
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
             pair |= components[i].containsPairLayer;
+            abstractPart |= components[i].hasAbstractPart;
         }
 
         this.carriesOrigin = found;
@@ -397,6 +400,7 @@ public sealed record BoundType
 
         this.containsParameter = parameter;
         this.containsPairLayer = pair;
+        this.hasAbstractPart = abstractPart;
     }
 
     // SPEC 3.1.1.1: the wrapping integer Scalar Wrapping<T> over one integer Type, which keeps T's representation and
@@ -523,6 +527,19 @@ public sealed record BoundType
     internal BoundType Underlying => this.underlying;
 
     internal bool IsFloatingPoint => this.numeric == NumericCategory.Float;
+
+    /// <summary>Gets a value indicating whether this Type stands for any complete Type of an instance: a Type parameter, a
+    /// projection or a dependent Semantics term.</summary>
+    internal bool IsAbstract => this.Kind is BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
+
+    /// <summary>Gets a value indicating whether this Type is abstract or has an abstract part, whose Loans its Origins do not show.</summary>
+    internal bool HasAbstractPart => this.hasAbstractPart;
+
+    /// <summary>Gets the static mode of an obj, rc or arc handle; null for any other Type.</summary>
+    internal ObjectHandleMode? HandleMode => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc, Components.Count: 1 } ? new(this.Semantics) : null;
+
+    /// <summary>Gets a value indicating whether this is an objref or objuniq borrow of an object.</summary>
+    internal bool IsObjectBorrow => this is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 };
 
     /// <inheritdoc/>
     public bool Equals(BoundType? other) => ReferenceEquals(this, other);
@@ -664,6 +681,22 @@ internal readonly record struct OriginContractFact(Koto At, string Member, Bound
 // capture entry and closure it belongs to, the Borrow that supplies a captured binding's Origin, and whether the failure is Refuted (a
 // body-local Origin) rather than Unknown.
 internal readonly record struct OwnedConversionFact(Koto At, BoundType Subject, string Member, BoundType MemberType, BoundOrigin? Origin, CaptureKoto? Entry, FunctionKoto? Closure, Koto? Borrow, bool Refuted);
+
+internal enum ObjectCountingStep : byte
+{
+    None,
+    NonAtomic,
+    Atomic,
+}
+
+// SPEC 3.2, IMPL 21.2.3: payload authority and reference counting are independent properties of the static mode of an
+// obj, rc or arc handle (BoundType.HandleMode).
+internal readonly record struct ObjectHandleMode(SemanticsKind Semantics)
+{
+    internal LoanRequirement PayloadAuthority => this.Semantics == SemanticsKind.Obj ? LoanRequirement.Uniq : LoanRequirement.Ref;
+
+    internal ObjectCountingStep Counting => this.Semantics == SemanticsKind.Obj ? ObjectCountingStep.None : this.Semantics == SemanticsKind.Rc ? ObjectCountingStep.NonAtomic : ObjectCountingStep.Atomic;
+}
 
 // SPEC 15.6.1: one failed chain of an Origin relation at the value that supplies its longer end. `Clause` is the relation clause of a
 // declared relation (source `declared`, related with the role `relation`); null for a fit. When that value's Origin is a meet, `Longer`

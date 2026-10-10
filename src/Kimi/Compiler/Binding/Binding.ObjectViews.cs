@@ -84,7 +84,7 @@ public sealed partial class Binding
     {
         entry = null;
         operand = KotoHelper.UnwrapParentheses(operand);
-        for (var depth = 0; ObjectTypes.IsBorrow(operand.BoundType) && depth <= this.nodes.Count; depth++)
+        for (var depth = 0; operand.BoundType is { IsObjectBorrow: true } && depth <= this.nodes.Count; depth++)
         {
             if (this.TryGetObjectErasure(operand, out var inherited) && ReferenceEquals(source, inherited.Target))
             {
@@ -93,7 +93,7 @@ public sealed partial class Binding
             }
 
             if (operand is IdentifierNameKoto { BoundSymbol: { } value } && this.ImmutableObjectAlias(value) is { InitializerKoto: { } initializer } alias &&
-                ObjectTypes.IsBorrow(initializer.BoundType))
+                initializer.BoundType is { IsObjectBorrow: true })
             {
                 if (this.TryGetObjectErasure(alias, out var cached) && ReferenceEquals(source, cached.Target))
                 {
@@ -105,7 +105,7 @@ public sealed partial class Binding
                 operand = KotoHelper.UnwrapParentheses(initializer);
             }
             else if (operand is ConversionKoto { ConversionBinding: ConversionBinding.Identity or ConversionBinding.Transfer or ConversionBinding.Borrow or ConversionBinding.ObjectUpcast } conversion &&
-                ObjectTypes.IsBorrow(conversion.Left.BoundType))
+                conversion.Left.BoundType is { IsObjectBorrow: true })
             {
                 operand = KotoHelper.UnwrapParentheses(conversion.Left);
             }
@@ -202,9 +202,9 @@ public sealed partial class Binding
         }
 
         BoundType result;
-        if (ObjectTypes.HandleMode(target) is { } targetMode)
+        if (target.HandleMode is { } targetMode)
         {
-            if (ObjectTypes.HandleMode(actual) is not { } actualMode || actualMode != targetMode)
+            if (actual.HandleMode is not { } actualMode || actualMode != targetMode)
             {
                 return this.FailMismatch(conversion, conversion, actual, target);
             }

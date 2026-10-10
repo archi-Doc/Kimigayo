@@ -43,7 +43,7 @@ public sealed partial class OwnershipAnalysis
             return -1;
         }
 
-        var viewType = ObjectTypes.IsBorrow(type) ? type : this.compilation.Binding.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, type.Components[0], type.Origin);
+        var viewType = type.IsObjectBorrow ? type : this.compilation.Binding.Reference(exclusive ? SemanticsKind.ObjUniq : SemanticsKind.ObjRef, type.Components[0], type.Origin);
         var view = ReferenceEquals(viewType, type) ? this.BorrowThrough(source, slot, viewType, reservation) : this.BorrowIntermediate(source, viewType, reservation, slot);
         return ReferenceEquals(viewType, type) ? view : this.BorrowThrough(source, view, type, reservation);
     }
@@ -55,7 +55,7 @@ public sealed partial class OwnershipAnalysis
             return this.Expression(source.Left); // Never has no result and retains its evaluation/cleanup.
         }
 
-        if (ObjectTypes.HandleMode(plan.OperandType) is null && !ObjectTypes.IsBorrow(plan.OperandType))
+        if (plan.OperandType.HandleMode is null && !plan.OperandType.IsObjectBorrow)
         {
             this.Expression(source.Left, PlaceUseKind.Read);
             this.Internal(source);

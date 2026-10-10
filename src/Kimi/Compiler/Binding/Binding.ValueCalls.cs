@@ -332,7 +332,7 @@ public sealed partial class Binding
     {
         operation = default;
         var handleType = this.ContractType(handle.BoundType!, scope);
-        var shared = ObjectTypes.HandleMode(handleType) is { PayloadAuthority: LoanRequirement.Ref } || handleType.Semantics == SemanticsKind.ObjRef || ReachedThroughShared(handle);
+        var shared = handleType.HandleMode is { PayloadAuthority: LoanRequirement.Ref } || handleType.Semantics == SemanticsKind.ObjRef || ReachedThroughShared(handle);
         var view = handleType.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
         if (receiver != SemanticsKind.Ref && shared)
         {

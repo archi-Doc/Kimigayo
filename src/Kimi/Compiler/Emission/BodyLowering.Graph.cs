@@ -24,7 +24,7 @@ internal sealed partial class BodyLowering
     private static ArithmeticCheckKind ClassifyCheck(OwnershipValue value, BoundType? type, ConversionPlan conversion) => value.Kind == OwnershipValueKind.Convert
         ? conversion.Checked && value.Constant != OwnershipValue.PositionConversion ? conversion.Operator == "fptrunc" ? ArithmeticCheckKind.FloatingConversion : ArithmeticCheckKind.Conversion : ArithmeticCheckKind.None
         : value.Kind == OwnershipValueKind.PointerProject && value.Count == 2 ? ArithmeticCheckKind.Bounds // A computed index into a raw array Place (SPEC 5.2).
-        : FloatingTypes.Supports(type) || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
+        : type is { IsFloatingPoint: true } || ReferenceTypes.IsPointer(type) ? ArithmeticCheckKind.None : value.Kind switch
     {
         OwnershipValueKind.Binary when value.Operator is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan => ArithmeticCheckKind.Shift,
         OwnershipValueKind.Binary or OwnershipValueKind.Unary when type is not null => NumericArithmetic.Check(value.Operator, type),
@@ -623,7 +623,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (FloatingTypes.Supports(operandType))
+        if (operandType.IsFloatingPoint)
         {
             return this.LowerFloating(body, function, id, type!, operandType, out failure);
         }

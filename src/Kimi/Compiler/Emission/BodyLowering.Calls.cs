@@ -198,7 +198,7 @@ internal sealed partial class BodyLowering
         }
 
         // A selected explicit specialization (SPEC 21.3.4) is called directly; its ABI is the entry's ABI.
-        var callee = clone ? ObjectTypes.HandleMode(returnType)?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
+        var callee = clone ? returnType.HandleMode?.Counting switch { ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc, ObjectCountingStep.Atomic => WindowsLowering.CloneArc, _ => null }
             : runtime ? WindowsLowering.GetCompilerFunction(plan.Target.CompilerFunction) : creation?.Physical.Abi ?? generic?.Selected ?? generic?.Abi ?? this.functions!.GetValueOrDefault(target);
         var virtualSlot = -1;
         var virtualReceiver = -1;
@@ -288,7 +288,7 @@ internal sealed partial class BodyLowering
                 (parameterType is not { } required || (!call.CodeContext.Compilation.Binding.FitsVerifiedTypeAt(type, required, call) &&
                 !(acquisition is { Kind: ArgumentOperationKind.BaseBorrow, BasePath: not null } &&
                 type is { Semantics: SemanticsKind.Ref, Components.Count: 1 } && required is { Semantics: SemanticsKind.Ref, Components.Count: 1 } &&
-                ReferenceEquals(required.Components[0], plan.DeclaringType) && ObjectTypes.Supports(type.Components[0], required.Components[0])))))
+                ReferenceEquals(required.Components[0], plan.DeclaringType) && AdtDef.IsOrInherits(type.Components[0], required.Components[0])))))
             {
                 return Fail("Call entry does not match its argument Type or call.", out failure);
             }

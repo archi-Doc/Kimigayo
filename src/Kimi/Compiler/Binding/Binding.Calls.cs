@@ -762,8 +762,8 @@ public sealed partial class Binding
             var receiverOperation = selectedOperations[argumentCount];
             if (receiverOperation.Source is not null)
             {
-                if (receiverOperation.BasePath is { } objectBase && ObjectTypes.IsBorrow(receiverOperation.ParameterType) &&
-                    !this.RequireObjectErasure(call, receiverOperation.Source, ObjectTypes.ViewTarget(receiverOperation.SourceType)!, objectBase.Type))
+                if (receiverOperation.BasePath is { } objectBase && receiverOperation.ParameterType is { IsObjectBorrow: true } &&
+                    !this.RequireObjectErasure(call, receiverOperation.Source, ReferenceTypes.ViewTarget(receiverOperation.SourceType)!, objectBase.Type))
                 {
                     return null;
                 }

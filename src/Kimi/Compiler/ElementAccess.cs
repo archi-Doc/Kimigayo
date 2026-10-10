@@ -264,7 +264,7 @@ internal static class ElementAccess
     // its referent that is shared or matches the root's exclusive capability.
     internal static bool ReceiverMatches(BoundType? receiver, BoundType? access, Koto root)
         => ReferenceEquals(receiver, access) ||
-            (receiver is { Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 } && ObjectTypes.HandleMode(access) is { } mode &&
+            (receiver is { Semantics: SemanticsKind.ObjRef or SemanticsKind.ObjUniq, Components.Count: 1 } && access?.HandleMode is { } mode &&
                 (receiver.Semantics == SemanticsKind.ObjRef || mode.PayloadAuthority == LoanRequirement.Uniq) && ReferenceEquals(receiver.Components[0], access!.Components[0])) ||
             (IsFollowedRoot(root) && receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && access is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } &&
                 ReferenceEquals(receiver.Components[0], access.Components[0]) && (receiver.Semantics == SemanticsKind.Ref || access.Semantics == SemanticsKind.Uniq));
@@ -319,7 +319,7 @@ internal static class ElementAccess
             }
 
             var receiver = AccessType(field.Left);
-            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || ObjectTypes.IsBorrow(receiver) || ObjectTypes.HandleMode(receiver) is not null)
+            if (ReferenceTypes.IsStruct(receiver) || ReferenceTypes.IsTuple(receiver) || receiver is { IsObjectBorrow: true } || receiver?.HandleMode is not null)
             {
                 return field.Left;
             }
@@ -380,7 +380,7 @@ internal static class ElementAccess
             return TryBorrowedTupleElement(field, out element, out var index) ? index : -1;
         }
 
-        if (ReferenceTypes.IsStruct(left) || ObjectTypes.IsBorrow(left) || ObjectTypes.HandleMode(left) is not null)
+        if (ReferenceTypes.IsStruct(left) || left is { IsObjectBorrow: true } || left?.HandleMode is not null)
         {
             owner = left!.Components[0];
             return AdtDef.FindField(owner, field.BoundSymbol, out element, out var position) ? position : -1;

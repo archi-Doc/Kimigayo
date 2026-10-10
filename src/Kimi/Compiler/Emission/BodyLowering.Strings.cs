@@ -159,7 +159,7 @@ internal sealed partial class BodyLowering
 
         // SPEC 4.7.6: an Array handle owns its buffer even when its elements are Copy. SPEC 16.3.3: an obj, rc or arc
         // handle owns its allocation or one strong count, so a path-dependent Move needs a live flag as well.
-        if (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || ObjectTypes.HandleMode(type) is not null)
+        if (ReferenceEquals(type, BoundType.String) || type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary || type.HandleMode is not null)
         {
             return true;
         }

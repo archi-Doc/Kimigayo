@@ -77,7 +77,7 @@ internal sealed class CompilerFunctionAdapters
         var array = KimiLibraryCatalog.IsArrayOperation(kind);
         var runtime = array ? this.lowering!.CompilerArrayEntry(kind, inputs, result, this.operands) :
             kind == CompilerFunctionKind.RawAllocate ? WindowsLowering.RawAllocate :
-            kind == CompilerFunctionKind.Clone ? ObjectTypes.HandleMode(result)?.Counting switch
+            kind == CompilerFunctionKind.Clone ? result.HandleMode?.Counting switch
             {
                 ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc,
                 ObjectCountingStep.Atomic => WindowsLowering.CloneArc,

@@ -705,7 +705,7 @@ public sealed partial class OwnershipAnalysis
             DefaultContext = this.defaultContext,
             CleanupObservesBorrows = CleanupObservesBorrows(type),
         });
-        this.body.IsConcrete &= !AbstractTypes.HasAbstractPart(type);
+        this.body.IsConcrete &= !type.HasAbstractPart;
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
         {
             this.Unsupported(source);
@@ -726,7 +726,7 @@ public sealed partial class OwnershipAnalysis
     // while the Type keeps a free generic part of the analyzed body; a closed Type with an Unknown proof is an internal failure.
     private AcquisitionKind ExactAcquisition(ConstraintProof proof, BoundType type, Koto source)
     {
-        if (proof == ConstraintProof.Unknown && !AbstractTypes.HasAbstractPart(type))
+        if (proof == ConstraintProof.Unknown && !type.HasAbstractPart)
         {
             this.body.Invariant(false, source);
         }
@@ -1180,7 +1180,7 @@ public sealed partial class OwnershipAnalysis
                         return adaptedAddress;
                     }
 
-                    if (operation == ConversionBinding.Borrow || (operation == ConversionBinding.ObjectUpcast && ObjectTypes.IsBorrow(targetType)))
+                    if (operation == ConversionBinding.Borrow || (operation == ConversionBinding.ObjectUpcast && targetType.IsObjectBorrow))
                     {
                         return this.BorrowStruct(conversion.Left, targetType);
                     }
@@ -1201,7 +1201,7 @@ public sealed partial class OwnershipAnalysis
 
                 if (conversion.ConversionBinding == ConversionBinding.ObjectUpcast)
                 {
-                    if (ObjectTypes.IsBorrow(conversion.BoundType))
+                    if (conversion.BoundType is { IsObjectBorrow: true })
                     {
                         return this.BorrowStruct(conversion.Left, conversion.BoundType!);
                     }
@@ -1263,7 +1263,7 @@ public sealed partial class OwnershipAnalysis
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" } && (FormattingTypes.IsUtf8Slice(member.Left.BoundType) || FormattingTypes.IsSliceBorrow(member.Left.BoundType))) ||
                 (member.Right is IdentifierNameKoto { IdentifierName: "length" or "isEmpty" or "indices" } && ReferenceTypes.IsSlice(member.Left.BoundType)):
                 return this.SequenceMember(member);
-            case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) || ObjectTypes.IsBorrow(member.Left.BoundType) ||
+            case MemberAccessKoto member when ReferenceTypes.IsStruct(member.Left.BoundType) || ReferenceTypes.IsTuple(member.Left.BoundType) || member.Left.BoundType is { IsObjectBorrow: true } ||
                 ElementAccess.BorrowedPathRoot(member) is not null:
                 return this.ReadBorrowedField(member);
             case IndexKoto element when ReferenceTypes.IsPointer(element.Left.BoundType):
@@ -1728,7 +1728,7 @@ public sealed partial class OwnershipAnalysis
             this.RequirementEffect(call, plan.ArgumentOperations[i].ParameterType, requirement, invoke, input, receiver, plan.ConformingType, ref bounds, ref preserves);
         }
 
-        if (result < 0 || effects.Count == mark || !AbstractTypes.HasAbstractPart(plan.ReturnType) || ReferenceTypes.IndependentResult(plan.ReturnType))
+        if (result < 0 || effects.Count == mark || !plan.ReturnType.HasAbstractPart || ReferenceTypes.IndependentResult(plan.ReturnType))
         {
             return;
         }
@@ -1758,7 +1758,7 @@ public sealed partial class OwnershipAnalysis
     {
         var borrowed = parameter is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components.Count: 1 };
         var region = borrowed ? parameter!.Components[0] : parameter;
-        if (region is null || !AbstractTypes.IsAbstract(region))
+        if (region is null || !region.IsAbstract)
         {
             return;
         }

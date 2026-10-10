@@ -873,7 +873,7 @@ public sealed partial class Binding
                     return true;
                 }
 
-                if (ObjectTypes.HandleMode(access.Left.BoundType) is { } handle)
+                if (access.Left.BoundType?.HandleMode is { } handle)
                 {
                     return !exclusive || (handle.PayloadAuthority == LoanRequirement.Uniq && this.BorrowableHandle(access.Left, scope, true, true));
                 }
@@ -925,7 +925,7 @@ public sealed partial class Binding
         }
 
         var projected = path is not null;
-        if (ObjectTypes.IsBorrow(pattern))
+        if (pattern.IsObjectBorrow)
         {
             if (!this.AdaptObjectBorrow(source, pattern, actual, scope, explicitBorrow, out adapted, out quality, out kind, receiver, fixedExpectation, deferAcquisition))
             {
@@ -1130,7 +1130,7 @@ public sealed partial class Binding
         quality = ArgumentAdaptation.Exact;
         kind = ArgumentOperationKind.Value;
         var exclusive = pattern.Semantics == SemanticsKind.ObjUniq;
-        if (receiver && ReferenceTypes.IsStorage(actual) && ObjectTypes.HandleMode(actual.Components[0]) is { } stored)
+        if (receiver && ReferenceTypes.IsStorage(actual) && actual.Components[0].HandleMode is { } stored)
         {
             if (exclusive && (actual.Semantics != SemanticsKind.Uniq || stored.PayloadAuthority != LoanRequirement.Uniq || ReachedThroughShared(source)))
             {
@@ -1144,7 +1144,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (ObjectTypes.IsBorrow(actual))
+        if (actual.IsObjectBorrow)
         {
             if (exclusive && (actual.Semantics != SemanticsKind.ObjUniq || ReachedThroughShared(source)))
             {
@@ -1159,7 +1159,7 @@ public sealed partial class Binding
             kind = ArgumentOperationKind.Reborrow;
             quality = exclusive ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
         }
-        else if (ObjectTypes.HandleMode(actual) is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
+        else if (actual.HandleMode is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
             this.BorrowableHandle(source, scope, exclusive, explicitOwner || receiver, fixedExpectation))
         {
             if (exclusive && !explicitOwner && !receiver)

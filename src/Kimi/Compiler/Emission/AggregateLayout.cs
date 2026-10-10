@@ -215,7 +215,7 @@ internal sealed class AggregateLayoutPool
             return this.resolved[type] = this.functionHandle;
         }
 
-        if (ObjectTypes.HandleMode(type) is { } mode)
+        if (type.HandleMode is { } mode)
         {
             if (this.SealedObjectHandle(type.Components[0], mode, depth) is { } sealedHandle)
             {

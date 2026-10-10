@@ -163,7 +163,7 @@ internal sealed class ObjectGenerationPlan
         }
 
         if (call.TypeArguments.Length != 1 || call.TypeArguments[0] is not { } payload ||
-            ObjectTypes.HandleMode(call.ReturnType) is null || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
+            call.ReturnType.HandleMode is null || !ReferenceEquals(call.ReturnType.Components[0], payload) ||
             call.ReturnType.Semantics != call.Target.CompilerFunction switch { CompilerFunctionKind.MakeObj => SemanticsKind.Obj, CompilerFunctionKind.MakeRc => SemanticsKind.Rc, _ => SemanticsKind.Arc } ||
             call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0] is not { Kind: ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead, Source: { } source } argument ||
             !ReferenceEquals(argument.ParameterType, payload) ||

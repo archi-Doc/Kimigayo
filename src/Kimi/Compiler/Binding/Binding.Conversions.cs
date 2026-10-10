@@ -110,7 +110,7 @@ public sealed partial class Binding
         if (target is not null && number is not null)
         {
             Int128 folded;
-            if (number.IsInteger && FloatingTypes.Supports(target))
+            if (number.IsInteger && target.IsFloatingPoint)
             {
                 // The integer literal is wrapped to the unsigned Type of the target's width, and those bits are read as the float.
                 if (!number.TryGetIntegerMagnitude(out var magnitude))
@@ -125,7 +125,7 @@ public sealed partial class Binding
             else if (!number.IsInteger && BitWidth(target, this.compilation.PointerWidth) is var width && width != 0)
             {
                 // The floating literal is rounded once to the floating-point Type of the target's width, and its bits are read as U.
-                if (!FloatingTypes.TryLiteral(number.SourceSpelling, width == 32 ? BoundType.F32 : BoundType.F64, negative, out var bits))
+                if (!ScalarTypes.TryFloatLiteral(number.SourceSpelling, width == 32 ? BoundType.F32 : BoundType.F64, negative, out var bits))
                 {
                     return this.Fail(conversion, BindingFailure.InvalidLiteral);
                 }
@@ -160,8 +160,8 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.GenericBitConversion);
         }
 
-        var sourceFloating = FloatingTypes.Supports(source);
-        var targetFloating = FloatingTypes.Supports(target);
+        var sourceFloating = source.IsFloatingPoint;
+        var targetFloating = target.IsFloatingPoint;
         if (sourceFloating == targetFloating || BitWidth(sourceFloating ? target : source, this.compilation.PointerWidth) != (ReferenceEquals(sourceFloating ? source : target, BoundType.F32) ? 32 : 64))
         {
             return this.Fail(conversion, BindingFailure.InvalidBitConversion);
@@ -197,7 +197,7 @@ public sealed partial class Binding
     private NumberLiteralKoto? floatingIntegerLiteral;
 
     internal static bool SupportsIdentityAcquisition(BoundType type)
-        => ObjectTypes.HandleMode(type) is not null ||
+        => type.HandleMode is not null ||
             type.Semantics is SemanticsKind.Owner or SemanticsKind.Raw;
 
     // SPEC 13.5.3: E@copy is bound as the Identity acquisition of a proven-Copy value.
@@ -478,12 +478,12 @@ public sealed partial class Binding
                 return this.BindCaseAdaptation(conversion, scope, actual, borrowed);
             }
 
-            if (pattern.Semantics == SemanticsKind.ObjUniq && ObjectTypes.HandleMode(actual) is { PayloadAuthority: LoanRequirement.Ref })
+            if (pattern.Semantics == SemanticsKind.ObjUniq && actual.HandleMode is { PayloadAuthority: LoanRequirement.Ref })
             {
                 return this.FailObjectAuthority(conversion, conversion.Left);
             }
 
-            if (ObjectTypes.IsBorrow(pattern) && (ObjectTypes.HandleMode(actual) is not null || ObjectTypes.IsBorrow(actual)) &&
+            if (pattern.IsObjectBorrow && (actual.HandleMode is not null || actual.IsObjectBorrow) &&
                 !ReferenceEquals(actual.Components[0], pattern.Components[0]))
             {
                 return this.BindObjectUpcast(conversion, scope, actual, pattern);
@@ -511,7 +511,7 @@ public sealed partial class Binding
             }
 
             BoundType adapted;
-            var fits = ObjectTypes.IsBorrow(pattern)
+            var fits = pattern.IsObjectBorrow
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
                 : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
@@ -592,7 +592,7 @@ public sealed partial class Binding
 
             if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && IsObjectSemantics(operandType.Semantics))
             {
-                if (semantics == SemanticsKind.ObjUniq && ObjectTypes.HandleMode(operandType) is { PayloadAuthority: LoanRequirement.Ref })
+                if (semantics == SemanticsKind.ObjUniq && operandType.HandleMode is { PayloadAuthority: LoanRequirement.Ref })
                 {
                     return this.FailObjectAuthority(conversion, conversion.Left);
                 }
@@ -711,7 +711,7 @@ public sealed partial class Binding
             return this.BindCaseAdaptation(conversion, scope, source, target);
         }
 
-        if (ObjectTypes.HandleMode(target) is not null)
+        if (target.HandleMode is not null)
         {
             return this.BindObjectAdaptation(conversion, scope, source, target);
         }

@@ -167,12 +167,12 @@ internal sealed partial class BodyLowering
                     continue;
                 }
 
-                if (FloatingTypes.Supports(type) || FloatingTypes.Supports(body.Resolve(operation.Source.BoundType, body.ContextAt(id))))
+                if (type is { IsFloatingPoint: true } || body.Resolve(operation.Source.BoundType, body.ContextAt(id)) is { IsFloatingPoint: true })
                 {
                     // SPEC 13.5.4.2: a direct literal converted at compile time carries its folded bits.
                     var folded = operation.Source is Parsing.ConversionKoto { FoldedConstant: { } constant } ? constant : (Int128?)null;
                     if (!ReferenceEquals(type, body.Resolve(operation.Source.BoundType, body.ContextAt(id))) ||
-                        (folded is null ? !FloatingTypes.TryLiteral(operation.Source, out var bits) || bits != value.Constant : folded != value.Constant))
+                        (folded is null ? !ScalarTypes.TryFloatLiteral(operation.Source, out var bits) || bits != value.Constant : folded != value.Constant))
                     {
                         return false;
                     }
@@ -302,12 +302,12 @@ internal sealed partial class BodyLowering
         => binding == ConversionBinding.Pointer ? (ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) || (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)) :
             binding == ConversionBinding.Address ? ReferenceTypes.IsReference(source) && ReferenceTypes.IsPointer(target) :
             binding is ConversionBinding.Integer or ConversionBinding.Wrap ? ScalarTypes.Width(source) != 0 && ScalarTypes.Width(target) != 0 :
-            binding == ConversionBinding.Bits ? FloatingTypes.Supports(source) != FloatingTypes.Supports(target) &&
-                (FloatingTypes.Supports(source) ? ScalarTypes.Width(target) : ScalarTypes.Width(source)) == (ReferenceEquals(FloatingTypes.Supports(source) ? source : target, BoundType.F32) ? 32 : 64) :
-            binding == ConversionBinding.Floating ? FloatingTypes.Supports(source) && FloatingTypes.Supports(target) :
+            binding == ConversionBinding.Bits ? (source is { IsFloatingPoint: true } ? ScalarTypes.Width(target) == (ReferenceEquals(source, BoundType.F32) ? 32 : 64) :
+                target is { IsFloatingPoint: true } && ScalarTypes.Width(source) == (ReferenceEquals(target, BoundType.F32) ? 32 : 64)) :
+            binding == ConversionBinding.Floating ? source is { IsFloatingPoint: true } && target is { IsFloatingPoint: true } :
             binding == ConversionBinding.Numeric &&
-            ((FloatingTypes.Supports(source) && ScalarTypes.Width(target, 64) is > 0 and <= 64) ||
-            (FloatingTypes.Supports(target) && ScalarTypes.Width(source, 64) is > 0 and <= 64));
+            ((source is { IsFloatingPoint: true } && ScalarTypes.Width(target, 64) is > 0 and <= 64) ||
+            (target is { IsFloatingPoint: true } && ScalarTypes.Width(source, 64) is > 0 and <= 64));
 
     private bool FitsStoredValue(OwnershipPlace source, OwnershipPlace target, Parsing.Koto use)
     {

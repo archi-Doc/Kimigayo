@@ -22,7 +22,7 @@ public sealed partial class Binding
 
         // SPEC 13.5.5.1: exclusive payload access needs exclusive authority along the whole path, also to an objuniq view.
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
-        if (exclusive && ((actual.Semantics != SemanticsKind.ObjUniq && ObjectTypes.HandleMode(actual) is not { PayloadAuthority: LoanRequirement.Uniq }) || ReachedThroughShared(source)))
+        if (exclusive && ((actual.Semantics != SemanticsKind.ObjUniq && actual.HandleMode is not { PayloadAuthority: LoanRequirement.Uniq }) || ReachedThroughShared(source)))
         {
             return false;
         }

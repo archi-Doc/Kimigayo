@@ -103,7 +103,7 @@ public sealed partial class Binding
         }
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
-            (AdtDef.IsStruct(field.Left.BoundType) || ObjectTypes.HandleMode(field.Left.BoundType) is not null) &&
+            (AdtDef.IsStruct(field.Left.BoundType) || field.Left.BoundType?.HandleMode is not null) &&
             !IsSpecialField(field, out _) && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
         {
             return false; // A mutable field still requires a mutable owning root.
@@ -255,7 +255,7 @@ public sealed partial class Binding
     {
         if (type.IsFloatingPoint)
         {
-            return FloatingTypes.TryLiteral(literal, type, negative, out _);
+            return ScalarTypes.TryFloatLiteral(literal, type, negative, out _);
         }
 
         return literal.TryGetIntegerMagnitude(out var magnitude) && FitsIntegerMagnitude(magnitude, type, negative, pointerWidth);

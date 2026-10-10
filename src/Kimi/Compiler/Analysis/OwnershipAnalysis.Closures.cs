@@ -240,7 +240,7 @@ public sealed partial class OwnershipAnalysis
             type = type.Components[0];
         }
 
-        if (!AbstractTypes.IsAbstract(type) || this.Resolve(plan.DeclaredSignature, this.Active) is not { } signature)
+        if (!type.IsAbstract || this.Resolve(plan.DeclaredSignature, this.Active) is not { } signature)
         {
             return;
         }
@@ -265,7 +265,7 @@ public sealed partial class OwnershipAnalysis
             this.RequirementEffect(call, this.Resolve(argument.ParameterType, this.Active), type, invoke, input, receiver, null, ref bounds, ref preserves);
         }
 
-        if (result < 0 || effects.Count == mark || this.Resolve(plan.ReturnType, this.Active) is not { } returned || !AbstractTypes.HasAbstractPart(returned) || ReferenceTypes.IndependentResult(returned))
+        if (result < 0 || effects.Count == mark || this.Resolve(plan.ReturnType, this.Active) is not { } returned || !returned.HasAbstractPart || ReferenceTypes.IndependentResult(returned))
         {
             return;
         }

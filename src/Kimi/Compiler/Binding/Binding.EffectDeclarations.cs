@@ -406,7 +406,7 @@ public sealed partial class Binding
     private static BoundType? ReceiverDependentPart(BoundType type, FunctionKoto function, int receiver, BoundOrigin? receiverOrigin, out BoundOrigin? atom)
     {
         atom = null;
-        if (type.Origin is null && (ReferenceTypes.IsBorrow(type) || ObjectTypes.IsBorrow(type)))
+        if (type.Origin is null && (ReferenceTypes.IsBorrow(type) || type.IsObjectBorrow))
         {
             return type;
         }

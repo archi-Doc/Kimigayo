@@ -10,7 +10,7 @@ public sealed partial class Binding
     private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
     {
         var requirement = (FunctionKoto)call.Target.Declaration;
-        if (call.ConformingType is { } open && AbstractTypes.HasAbstractPart(open))
+        if (call.ConformingType is { } open && open.HasAbstractPart)
         {
             // SPEC 8.10: substituted into a generic caller, such as a default's replica, a requirement call on a still abstract Type
             // stays that Type's requirement call, as in the caller's own body; only a closed Type selects its witness. The

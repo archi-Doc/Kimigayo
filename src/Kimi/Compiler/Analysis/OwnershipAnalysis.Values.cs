@@ -12,9 +12,9 @@ public sealed partial class OwnershipAnalysis
     {
         // An instance fits a literal of a generic integer Type to its concrete Type (SPEC 8.4.7.3).
         var type = this.Resolve(source.BoundType, this.Active);
-        if (FloatingTypes.Supports(type))
+        if (type is { IsFloatingPoint: true })
         {
-            var success = FloatingTypes.TryLiteral(source, out var bits);
+            var success = ScalarTypes.TryFloatLiteral(source, out var bits);
             value = bits;
             return success;
         }
@@ -220,7 +220,7 @@ public sealed partial class OwnershipAnalysis
         }
 
         var output = this.Temporary(unary);
-        if (unary.Akind == KotoKind.PrefixPlus && FloatingTypes.Supports(unary.BoundType))
+        if (unary.Akind == KotoKind.PrefixPlus && unary.BoundType is { IsFloatingPoint: true })
         {
             this.SetValue(this.Value(output), OwnershipValueKind.Alias, [input]);
             return output;

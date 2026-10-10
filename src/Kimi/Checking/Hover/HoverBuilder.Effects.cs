@@ -71,7 +71,7 @@ internal sealed partial class HoverBuilder
             info = new(
                 [new("Call contract", string.Empty, this.TypeName(valueCall.DeclaredSignature), [], [])],
                 TypeIdentity: new("value call;" + valueCall.ReceiverKind, [this.TypeIdentity(valueCall.Signature), this.TypeIdentity(valueCall.CalleeType)]));
-            if (query.CallableCore(valueCall.CalleeType) is { } type && AbstractTypes.IsAbstract(type))
+            if (query.CallableCore(valueCall.CalleeType) is { } type && type.IsAbstract)
             {
                 evidence = [];
                 text = new();

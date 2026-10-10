@@ -34,7 +34,7 @@ public sealed partial class OwnershipAnalysis
             }
         }
 
-        if (ObjectTypes.HandleMode(type) is not null || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
+        if (type.HandleMode is not null || type.Kind is BoundTypeKind.Closure or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Dictionary)
         {
             for (var i = 0; i < type.Components.Count; i++)
             {

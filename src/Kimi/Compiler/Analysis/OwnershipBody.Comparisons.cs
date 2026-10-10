@@ -26,7 +26,7 @@ public sealed partial class OwnershipBody
     internal static bool IsBorrowedCallableReceiver(OwnershipPlace place, BoundType receiver, CallPlan plan)
     {
         var payload = plan.ReceiverOperation.Kind == ArgumentOperationKind.PayloadProjection;
-        var callee = payload && (ObjectTypes.HandleMode(receiver) is not null || ObjectTypes.IsBorrow(receiver)) ? receiver.Components[0] : receiver;
+        var callee = payload && (receiver.HandleMode is not null || receiver.IsObjectBorrow) ? receiver.Components[0] : receiver;
         return place.Kind == OwnershipPlaceKind.Temporary && callee.Kind != BoundTypeKind.Semantics &&
             place.Type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } borrow && ReferenceEquals(borrow.Components[0], callee) &&
             (payload ? borrow.Semantics == plan.ReceiverKind && plan.ReceiverKind is SemanticsKind.Ref or SemanticsKind.Uniq

@@ -19,7 +19,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     public void StaticModesSeparateAuthorityFromCounting(SemanticsKind semantics, LoanRequirement authority, int counting)
     {
         var type = new BoundType("handle", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]);
-        var mode = ObjectTypes.HandleMode(type);
+        var mode = type.HandleMode;
         Assert.NotNull(mode);
         Assert.Equal(semantics, mode.Value.Semantics);
         Assert.Equal(authority, mode.Value.PayloadAuthority);
@@ -34,7 +34,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [InlineData(SemanticsKind.ObjUniq)]
     [InlineData(SemanticsKind.Raw)]
     public void OtherSemanticsHaveNoStrongHandleMode(SemanticsKind semantics)
-        => Assert.Null(ObjectTypes.HandleMode(new("other", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32])));
+        => Assert.Null(new BoundType("other", BoundTypeKind.Semantics, semantics: semantics, components: [BoundType.I32]).HandleMode);
 
     [Fact]
     public void EqualSizedHandlesKeepModeSpecificDestructionLayouts()

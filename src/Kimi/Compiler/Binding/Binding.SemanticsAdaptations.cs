@@ -62,7 +62,7 @@ public sealed partial class Binding
                     ? (admitted & ~SemanticsMask.Owner) | this.ResultSemantics(target, scope) : admitted;
             }
 
-            if (AbstractTypes.IsAbstract(type))
+            if (type.IsAbstract)
             {
                 return this.RequestCapability(type, this.Library.ObjectPayload, scope) == ConstraintProof.Proven ||
                     this.RequestCapability(type, this.Library.Sealed, scope) == ConstraintProof.Proven ||
@@ -111,7 +111,7 @@ public sealed partial class Binding
                 return source;
             }
 
-            if (IsBorrow(semantics) && ObjectTypes.IsBorrow(source))
+            if (IsBorrow(semantics) && source.IsObjectBorrow)
             {
                 origin = source.Origin ?? origin;
             }
@@ -163,7 +163,7 @@ public sealed partial class Binding
     // A placeholder's Owner tag is not mode evidence. A pair's owner case does establish its target's owner form.
     private bool CanSelectIdentity(BoundType type, BindingScope scope, ReadOnlySpan<PairCase> cases = default)
     {
-        if (!AbstractTypes.IsAbstract(type))
+        if (!type.IsAbstract)
         {
             return true;
         }
@@ -200,7 +200,7 @@ public sealed partial class Binding
                     {
                         FamilyTransform.Adapt => this.AdaptedType(semantics, child, origin),
                         FamilyTransform.Target => this.DirectTarget(child),
-                        FamilyTransform.Origin => IsBorrow(child.Semantics) || AbstractTypes.IsAbstract(child) ? this.WithOrigins(child, origin, (BoundOrigin[])child.OriginArguments) : child,
+                        FamilyTransform.Origin => IsBorrow(child.Semantics) || child.IsAbstract ? this.WithOrigins(child, origin, (BoundOrigin[])child.OriginArguments) : child,
                         _ => this.ApplySemantics(child, this.CaseType(target!, cases.AsSpan(0, 1)), origin),
                     };
                 }

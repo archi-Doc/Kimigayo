@@ -93,10 +93,10 @@ public sealed partial class OwnershipAnalysis
     // Every Case is checked because a whole value can arrive from a parameter or branch.
     private bool SupportsType(BoundType type)
     {
-        var handle = ObjectTypes.HandleMode(type);
+        var handle = type.HandleMode;
         if (handle is null && ReferenceTypes.IsReference(type))
         {
-            handle = ObjectTypes.HandleMode(type.Components[0]);
+            handle = type.Components[0].HandleMode;
         }
 
         if (handle is not null)

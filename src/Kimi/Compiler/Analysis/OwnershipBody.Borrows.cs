@@ -722,7 +722,7 @@ public sealed partial class OwnershipBody
             }
 
             bool Carries(int place)
-                => this.Places[place].Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.EffectRegion or OwnershipPlaceKind.Anchor) && AbstractTypes.HasAbstractPart(this.Places[place].Type);
+                => this.Places[place].Kind is not (OwnershipPlaceKind.Parameter or OwnershipPlaceKind.EffectRegion or OwnershipPlaceKind.Anchor) && this.Places[place].Type.HasAbstractPart;
 
             bool Inherit(int destination, int source)
             {
@@ -1616,7 +1616,7 @@ public sealed partial class OwnershipBody
     // reference ends a reference, not storage, and keeps the operation-order check.
     private int DestroyedRoot(int operation)
         => this.Operations[operation] is { Kind: OwnershipOperationKind.Cleanup, Place: >= 0 and var place } && place < this.Places.Count && this.dependencyRoots[place] &&
-            !ReferenceTypes.IsBorrow(this.Places[place].Type) && !ObjectTypes.IsBorrow(this.Places[place].Type) ? place : -1;
+            !ReferenceTypes.IsBorrow(this.Places[place].Type) && !this.Places[place].Type.IsObjectBorrow ? place : -1;
 
     // SPEC 15.6.5: a definition of `holder` whose value may keep the Loan of `root` and reaches the input of `destruction` with no
     // other definition of the holder between them: -1 when none does, -2 when the holder may change in a way this walk does not
@@ -1708,7 +1708,7 @@ public sealed partial class OwnershipBody
             return false;
         }
 
-        if (AbstractTypes.HasAbstractPart(this.Places[holder].Type))
+        if (this.Places[holder].Type.HasAbstractPart)
         {
             return true;
         }
@@ -2740,7 +2740,7 @@ public sealed partial class OwnershipBody
     {
         var candidate = this.Places[root];
         return origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
-            (ReferenceEquals(candidate.Type, BoundType.String) || AdtDef.IsStruct(candidate.Type) || AdtDef.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Closure || ScalarTypes.Supports(candidate.Type) || ObjectTypes.HandleMode(candidate.Type) is not null) &&
+            (ReferenceEquals(candidate.Type, BoundType.String) || AdtDef.IsStruct(candidate.Type) || AdtDef.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Closure || ScalarTypes.Supports(candidate.Type) || candidate.Type.HandleMode is not null) &&
             ReferenceEquals(candidate.Source, origin.Binder) && (!ScalarTypes.Supports(candidate.Type) || this.IsBorrowedPlace(root));
     }
 

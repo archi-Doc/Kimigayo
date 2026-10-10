@@ -268,7 +268,7 @@ public sealed partial class Binding
         if (proposition.Kind == ConstraintKind.Semantics)
         {
             var subject = proposition.Subject!;
-            if (AbstractTypes.IsAbstract(subject))
+            if (subject.IsAbstract)
             {
                 // SPEC 8.7: a requirement on a Semantics binding is decided by containment of its admitted set.
                 var admitted = this.ResultSemantics(subject, scope);

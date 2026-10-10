@@ -57,7 +57,7 @@ public sealed partial class Binding
         if (kind == IntrinsicKind.PrimitiveInteger)
         {
             // SPEC 8.4.7.3: exactly the twelve owner integer Cores; a symbolic Type is decided by its premises.
-            if (AbstractTypes.IsAbstract(type))
+            if (type.IsAbstract)
             {
                 return false;
             }
@@ -75,7 +75,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.4.7.2: symbolic targets, a Contract's Self among them, are decided by their premises.
-            if (AbstractTypes.IsAbstract(type))
+            if (type.IsAbstract)
             {
                 return false;
             }
@@ -94,7 +94,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (AbstractTypes.IsAbstract(type))
+            if (type.IsAbstract)
             {
                 return false;
             }
@@ -340,7 +340,7 @@ public sealed partial class Binding
             return result;
         }
 
-        if (AbstractTypes.IsAbstract(type))
+        if (type.IsAbstract)
         {
             // A Contract's Self, a Type parameter, has no structure of its own; its ObjectPayload evidence is the Contract's clause
             // (SPEC 8.4.7.2).
@@ -635,7 +635,7 @@ public sealed partial class Binding
         }
 
         private static ConstraintProof InitialResult(BindingSymbol intrinsic, BoundType type)
-            => intrinsic.Intrinsic == IntrinsicKind.Owned && !AbstractTypes.IsAbstract(type)
+            => intrinsic.Intrinsic == IntrinsicKind.Owned && !type.IsAbstract
                 ? ConstraintProof.Proven
                 : ConstraintProof.Unknown;
     }

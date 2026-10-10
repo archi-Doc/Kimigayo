@@ -52,7 +52,7 @@ public sealed partial class Binding
     }
 
     private bool NotString(BoundType type, BindingScope scope)
-        => !AbstractTypes.IsAbstract(type) ? !ReferenceEquals(type, BoundType.String)
+        => !type.IsAbstract ? !ReferenceEquals(type, BoundType.String)
             : this.BuiltinNumeric(type, scope) || this.ProveConstraint(this.NotStringConstraint(type), scope) == ConstraintProof.Proven;
 
     private BoundConstraint NotStringConstraint(BoundType type)

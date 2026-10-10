@@ -388,7 +388,7 @@ public sealed partial class Binding
                 }
 
                 var item = binding.ContractType(declared, scope);
-                if (!item.CarriesOrigin && !AbstractTypes.HasAbstractPart(item))
+                if (!item.CarriesOrigin && !item.HasAbstractPart)
                 {
                     // A result that keeps no Loan conflicts with no effect.
                     this.preserves = false;
@@ -494,7 +494,7 @@ public sealed partial class Binding
 
         private static bool MayMatch(BoundType pattern, BoundType closed)
         {
-            if (ReferenceEquals(pattern, closed) || AbstractTypes.IsAbstract(pattern))
+            if (ReferenceEquals(pattern, closed) || pattern.IsAbstract)
             {
                 return true;
             }
@@ -922,7 +922,7 @@ public sealed partial class Binding
         // reach any Loan, which conflicts with any item Loan.
         private void Reachable(BoundType? type, LoanRequirement mode, Koto use)
         {
-            if (type is null || AbstractTypes.IsAbstract(type))
+            if (type is null || type.IsAbstract)
             {
                 this.Violate(EffectViolation.UnclassifiedAccess, use);
                 return;
@@ -1311,7 +1311,7 @@ public sealed partial class Binding
                 this.Reachable(receiver, Mode(receiver), symbol.Declaration);
                 for (var i = 0; this.valid && i < call.ArgumentOperations.Length; i++)
                 {
-                    if (call.ArgumentOperations[i] is { ParameterType: { } parameter } argument && argument.ParameterIndex != symbol.ReceiverIndex && (ReferenceTypes.IsBorrow(parameter) || ObjectTypes.IsBorrow(parameter)))
+                    if (call.ArgumentOperations[i] is { ParameterType: { } parameter } argument && argument.ParameterIndex != symbol.ReceiverIndex && (ReferenceTypes.IsBorrow(parameter) || parameter.IsObjectBorrow))
                     {
                         this.Reachable(this.Type(parameter), Mode(parameter), symbol.Declaration);
                     }
@@ -1490,7 +1490,7 @@ public sealed partial class Binding
         // anywhere.
         private bool CollectItemParts(BoundType type)
         {
-            if (AbstractTypes.IsAbstract(type))
+            if (type.IsAbstract)
             {
                 if (!this.itemParts.Contains(type))
                 {
@@ -1865,7 +1865,7 @@ public sealed partial class Binding
                 return;
             }
 
-            if (ObjectTypes.HandleMode(type) is not null)
+            if (type.HandleMode is not null)
             {
                 // An open view can hide any more-derived destructor, which has no complete effect bound.
                 if (binding.ProveSealed(type.Components[0], use) == ConstraintProof.Proven)
@@ -1983,7 +1983,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (AbstractTypes.IsAbstract(type) && (exclusive || !shared))
+            if (type.IsAbstract && (exclusive || !shared))
             {
                 if (type.Origin is { } outer && this.SharesDependency(accessed, outer, use))
                 {
