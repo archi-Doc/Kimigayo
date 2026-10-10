@@ -60,7 +60,6 @@ public class SharedObjectBindingTest
     {
         var c = CompilationTestHelper.Parse($"struct Item\n    Self is not ObjectPayload\nlet value = Kimi.Intrinsics.make{factory}(Item.init())");
         Assert.False(c.Bind().IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
     }
 
     [Theory]
@@ -73,21 +72,5 @@ public class SharedObjectBindingTest
     {
         var c = CompilationTestHelper.Parse(source);
         Assert.False(c.Bind().IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, static x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-    }
-
-    [Theory]
-    [InlineData(KimiDeclarationId.MakeRc)]
-    [InlineData(KimiDeclarationId.MakeArc)]
-    [InlineData(KimiDeclarationId.Clone)]
-    public void SignatureChangesInvalidateTheLibrary(KimiDeclarationId id)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var function = Assert.IsType<FunctionKoto>(c.Library.GetSymbol(id)!.Declaration);
-        function.Parameters[0].Type = ((FunctionKoto)c.Library.Replace.Declaration).Parameters[0].Type;
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
-        Assert.False(c.Library.IsCompleteStrongOwnershipFamily);
     }
 }

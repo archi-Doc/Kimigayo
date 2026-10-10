@@ -68,7 +68,7 @@ public sealed partial class Binding
     /// <returns>Whether a valid construction was selected in the latest pass.</returns>
     public bool TryGetEnumConstruction(Koto use, out BoundEnumConstruction? construction)
     {
-        if (this.kimiValid && use.BindingState == BindingState.Resolved && this.enumConstructions.TryGetValue(use, out var plan) && plan.IsValid)
+        if (use.BindingState == BindingState.Resolved && this.enumConstructions.TryGetValue(use, out var plan) && plan.IsValid)
         {
             construction = plan;
             return true;

@@ -159,7 +159,7 @@ public class DictionaryLibraryTest
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)");
-        Assert.True(c.Library.IsValid, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
+        Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var reserve = module.DictionaryReserveStorage!.Name;
         var ir = CompilationTestHelper.WriteIr(c);

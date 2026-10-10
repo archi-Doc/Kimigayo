@@ -220,10 +220,6 @@
     Evidence="subject:Type,entry:Text,start:Type,end:Type|subject:Type,member:Text,origin:Origin|subject:Type,member:Text,constraint:Text"
     Label="{0} does not satisfy {1}: boundaries are {2} and {3}"
 
-  + Name="InvalidKimiLibrary_Kd"
-    Category="Internal"
-    Message="The compiler-owned Kimi requirement declarations are missing, duplicated, or incompatible"
-
   + Name="MissingContractImplementation_Kd"
     Category="Language"
     Message="No implementation matches the Contract requirement after Type substitution"

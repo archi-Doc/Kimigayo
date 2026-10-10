@@ -213,17 +213,12 @@ public sealed partial class Binding
 
         if (!this.capabilitiesReady)
         {
-            if (this.running && this.kimiValid && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
+            if (this.running && !derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var concrete))
             {
                 return concrete;
             }
 
             return ConstraintProof.Unknown;
-        }
-
-        if (!this.kimiValid)
-        {
-            return ConstraintProof.Error;
         }
 
         if (!derivation && TryLeafCapability(type, intrinsic.Intrinsic, out var leaf))

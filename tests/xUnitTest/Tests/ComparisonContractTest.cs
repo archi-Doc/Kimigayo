@@ -13,8 +13,6 @@ public class ComparisonContractTest
     {
         var c = MinimalEmissionTest.Analyze("()");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.Equatable));
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.Comparable));
         var equality = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;
         var ordering = c.Library.GetSymbol(KimiDeclarationId.Comparable)!;
         Assert.Equal("equals", Assert.Single(equality.Contract!.Requirements).Symbol.Name);
@@ -71,17 +69,5 @@ public class ComparisonContractTest
         var c = MinimalEmissionTest.Analyze("struct Key\n    Self is Comparable\n    public func compare(self: ref/Self, other: ref/Self) -> i32 => 0");
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code.ToString() == "MissingContractImplementation_Kd");
-    }
-
-    [Theory]
-    [InlineData(KimiDeclarationId.Equatable)]
-    [InlineData(KimiDeclarationId.Comparable)]
-    public void LibraryContractsRejectExtraRequirements(KimiDeclarationId id)
-    {
-        var c = Compilation.CreateForTest();
-        var declaration = (ContractKoto)c.Library.GetSymbol(id)!.Declaration;
-        c.Library.Kotonoha.CreateCodeContext().Parse(declaration, "func extra(self: ref/Self) -> bool");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
     }
 }

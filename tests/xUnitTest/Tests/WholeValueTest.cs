@@ -257,17 +257,6 @@ public class WholeValueTest
     }
 
     [Fact]
-    public void RequiredUpdateDeclarationShapeIsValidatedAgain()
-    {
-        var c = CompilationTestHelper.Parse("var x: i32 = 1\nKimi.Intrinsics.replace(x@uniq, with: 2)");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        var function = (FunctionKoto)c.Library.Replace.Declaration;
-        function.Parameters[1].Type = function.Parameters[0].Type;
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Replace));
-    }
-
-    [Fact]
     public void ExampleMatchesExpectedOutput()
     {
         var root = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../../.."));

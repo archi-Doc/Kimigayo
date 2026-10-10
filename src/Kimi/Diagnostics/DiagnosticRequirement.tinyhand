@@ -429,9 +429,6 @@
   + Name="Binding.UnsatisfiedConstraint"
     Description="the Types satisfy the Constraint"
 
-  + Name="Binding.InvalidKimi"
-    Description="the Kimi library declarations match the compiler"
-
   + Name="Binding.MissingImplementation"
     Description="an implementation matches the Contract requirement"
 

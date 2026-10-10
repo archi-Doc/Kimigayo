@@ -2,7 +2,7 @@
 
 namespace Kimi.Compiler;
 
-#pragma warning disable SA1402, CS1591 // Stable compiler-owned Kimi catalog vocabulary.
+#pragma warning disable CS1591 // Stable compiler-owned Kimi catalog vocabulary.
 
 public enum KimiDeclarationId : byte
 {
@@ -194,13 +194,3 @@ public enum KimiDeclarationId : byte
     ArrayRepeatingImplementation,
     ArrayCapacityImplementation,
 }
-
-public enum KimiDeclarationState : byte
-{
-    Missing,
-    Invalid,
-    Validated,
-}
-
-/// <summary>A required identity and its current declaration validation; not runtime availability.</summary>
-public readonly record struct KimiDeclaration(KimiDeclarationId Id, string Name, BindingSymbol? Symbol, KimiDeclarationState State);

@@ -194,7 +194,7 @@ public sealed partial class KimiLibrary
             };
             if (container is null)
             {
-                continue; // The missing Array struct is reported by validation (SourceExpected).
+                continue; // A missing Array struct fails library construction (SourceExpected).
             }
 
             this.ParseSource(source, container);

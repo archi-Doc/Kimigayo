@@ -124,21 +124,4 @@ public class RawStorageTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
-
-    [Theory]
-    [InlineData(KimiDeclarationId.RawAllocate)]
-    [InlineData(KimiDeclarationId.RawRelease)]
-    [InlineData(KimiDeclarationId.RawInitialize)]
-    [InlineData(KimiDeclarationId.RawSlice)]
-    public void OperationsKeepTheirOwnElementType(KimiDeclarationId id)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var symbol = c.Library.GetSymbol(id)!;
-        var function = (Kimi.Compiler.Parsing.FunctionKoto)symbol.Declaration;
-        var parameter = function.Parameters[^1];
-        parameter.Type.BoundType = id is KimiDeclarationId.RawAllocate or KimiDeclarationId.RawSlice ? BoundType.Primitives["i32"] : BoundType.ISize;
-        Assert.False(c.Library.ValidateBoundDeclarations());
-        Assert.Same(function, c.Library.InvalidDeclaration);
-    }
 }

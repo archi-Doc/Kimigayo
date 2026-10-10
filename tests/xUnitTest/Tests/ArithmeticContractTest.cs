@@ -50,7 +50,6 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
         {
-            Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(id));
             var contract = c.Library.GetSymbol(id)!.Contract!;
             Assert.Equal("Output", Assert.Single(contract.AssociatedTypes).Symbol.Name);
             var function = (FunctionKoto)Assert.Single(contract.Requirements).Symbol.Declaration;
@@ -160,19 +159,6 @@ public class ArithmeticContractTest(ITestOutputHelper output)
         var result = DiagnosticCorpus.Check(Program);
         output.WriteLine(System.Text.Json.JsonSerializer.Serialize(result));
         Assert.True(result.Accepted);
-    }
-
-    [Theory]
-    [InlineData(KimiDeclarationId.Addable)]
-    [InlineData(KimiDeclarationId.LeftMultipliable)]
-    [InlineData(KimiDeclarationId.Negatable)]
-    public void EditingTheLibraryInvalidatesItsRecognizedShape(KimiDeclarationId id)
-    {
-        var c = Compilation.CreateForTest();
-        var declaration = (ContractKoto)c.Library.GetSymbol(id)!.Declaration;
-        c.Library.Kotonoha.CreateCodeContext().Parse(declaration, "func extra(self: ref/Self) -> bool");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
     }
 
     [Trait("Purpose", "Allocation")]

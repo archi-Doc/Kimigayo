@@ -476,8 +476,8 @@ The three normal factories share the post-acquisition creation contract with `@o
 
 Ordinary creation does not require Owned; payload dependencies survive in the object handle. Strong clone is not a deep copy or an obj duplicator. The argument borrows the handle slot, as in `Intrinsics.clone(handle@ref)`. Atomic counting alone grants no payload thread-safety guarantee.
 
-These four signatures are declared together in `src/Kimi/Library/Intrinsics.kimi`; their compiler catalog validates the
-normal factory signatures and the strong clone's single complete-Type pair separately from runtime support.
+These four signatures are declared together in `src/Kimi/Library/Intrinsics.kimi`; their signatures, including the strong
+clone's single complete-Type pair, are fixed by the library shape tests, separately from runtime support.
 
 ### 5.3. Weak Handles and Cyclic Construction
 

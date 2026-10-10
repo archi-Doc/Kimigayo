@@ -28,7 +28,7 @@ Each rule replaces a family of special cases. A change that needs an exception t
 7. **Records are independent of display.** A record is finalized without knowing its output. Limits are the only settings: constants in one place, which tests exceed with long inputs rather than replace.
 8. **One fallback rule.** A phase that ends incomplete, with no Error in its partition or an earlier one, reports one fallback at its first incomplete subject (SPEC §23.3.3). The contract check for unexplained rejections is the last safety net. Tests treat any fallback as a defect.
 9. **One fault record.** A Faulted result is explained by exactly one `CheckFaulted_Kd` whose Reason carries the fault kind. `InternalInvariant_Kd` is reserved for internal failures in a Completed result.
-10. **Decisions look backwards.** A decision queries only the partitions that precede it: library validation reads the library's syntax partition, emission and acceptance read every front-end partition.
+10. **Decisions look backwards.** A decision queries only the partitions that precede it: emission and acceptance read every front-end partition.
 11. **No Advice.** Records carry no Advice: a fix is offered only as a repair candidate whose effect follows from the check's facts (SPEC §23.3.6.9); a fix that needs a choice is not offered.
 
 Constructor inference follows SPEC §10.8.1 and §23.3.6.5. Keep Type lookup, missing slot evidence, structural/Semantics conflicts, declaration-shape failures, call-correlation failures and fixed-binding selection changes as distinct facts. Save original input evidence and candidate identities before inference/fitting; formatting never reruns selection. An explicit-argument fix is offered only as a repair candidate whose snapshot, complete bindings and selection conditions the common repair model establishes; otherwise it is not offered. Do not promise that spelling the provisional binding resolves ambiguity or that an anonymous concrete Type can be written.
@@ -90,7 +90,7 @@ DiagnosticFact
 
 - Invalidation replaces a partition's fact list as a whole and never scans facts; `BeginSourceParsing` must stay cheap. Production analyzes each compilation once; repeated analysis happens in tests and benchmarks.
 - Recording an Error sets the error flag of its partition and module before aggregation or suppression; a valid partition never clears it.
-- Acceptance, emission and library validation query the owner under rule 10. A decision inside one call (token caching, `Documentation.Finish`) uses that call's local result. `errorCount`, `ErrorVersion` differences and `HasSourceErrors` are removed.
+- Acceptance and emission query the owner under rule 10. A decision inside one call (token caching, `Documentation.Finish`) uses that call's local result. `errorCount`, `ErrorVersion` differences and `HasSourceErrors` are removed.
 - A tentative retry inside an analysis stays inside it; only the adopted decision becomes a fact.
 
 ### 4.3. Recording, aggregation and prerequisites

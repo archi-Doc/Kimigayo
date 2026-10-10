@@ -58,7 +58,6 @@ public class CoreCatalogTest
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "let value = Kimi.Intrinsics.makeObj(42)");
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
         Assert.Same(makeObj, c.Library.MakeObj);
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.MakeObj));
     }
 
     [Fact]
@@ -90,53 +89,13 @@ public class CoreCatalogTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
-        Assert.False(c.Library.IsCompleteOwnershipFamily);
-        Assert.True(c.Library.IsCompleteStrongOwnershipFamily);
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.MakeObj));
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.MakeRc));
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.MakeArc));
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.Clone));
-        Assert.Equal(KimiDeclarationState.Missing, c.Library.GetDeclarationState(KimiDeclarationId.Weak));
+        foreach (var id in new[] { KimiDeclarationId.MakeObj, KimiDeclarationId.MakeRc, KimiDeclarationId.MakeArc, KimiDeclarationId.Clone })
+        {
+            Assert.NotNull(c.Library.GetSymbol(id));
+        }
+
+        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Weak));
         Assert.Null(c.Library.GetSymbol(KimiDeclarationId.ObjectOwnership));
-        Assert.DoesNotContain(c.Library.Declarations.ToArray(), x => x.Id == KimiDeclarationId.ObjectOwnership);
-    }
-
-    [Fact]
-    public void InvalidSignatureDiagnosticPointsToItsLibrarySource()
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var factory = Assert.IsType<FunctionKoto>(c.Library.MakeObj.Declaration);
-        factory.Parameters[0].Type = ((FunctionKoto)c.Library.Replace.Declaration).Parameters[0].Type;
-        Assert.False(c.Bind().IsComplete);
-        var issue = Assert.Single(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-        Assert.Same(factory, issue.Node);
-        Assert.EndsWith("/Intrinsics.kimi", issue.Node.CodeContext.SourceDocument!.Path);
-    }
-
-    [Fact]
-    public void SliceHelpersCannotChangeCompilerManagedStorage()
-    {
-        var c = Compilation.CreateForTest();
-        c.Library.Kotonoha.CreateCodeContext().Parse((StructKoto)c.Library.Slice.Declaration, "let extra: i32 = 0");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Slice));
-    }
-
-    [Fact]
-    public void DuplicateIntrinsicAndRemovedDeclarationAreRejected()
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        c.Library.Intrinsics.AddLast(c.Library.MakeObj.Declaration);
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.MakeObj));
-
-        c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        Assert.IsType<List<DeclarationContainerKoto>>(c.Library.Kotonoha.RootKoto.NestedContainers).Remove((DeclarationContainerKoto)c.Library.Option.Declaration);
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Option));
     }
 
     [Fact]
@@ -157,59 +116,6 @@ public class CoreCatalogTest
     }
 
     [Fact]
-    public void CatalogDistinguishesAvailableDeclarationsFromMissingLibraryFeatures()
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        Assert.False(c.Library.IsCompleteLibrary);
-        // Dictionary's two source Indexable entries and the private storage primitives are catalog identities too, as is
-        // the Wrapping<T> stub (SPEC 3.1.1.1) and the private i64 address primitive.
-        // Private caller-context metadata recognizes another fifteen ordinary source bodies and one failure primitive, and the
-        // located Dictionary capacity (G20) six DictionaryStorage bodies over four private primitives in place of two bridges.
-        // UniqSlice adds its record/projection, one bounds primitive and twelve located source bodies.
-        // Eleven arithmetic Contracts supply the public operator requirements, and the repeating Array constructor adds its
-        // public signature and the linked internal implementation, as the capacity constructor adds its implementation (SPEC 22.1).
-        Assert.Equal(178, c.Library.ValidatedDeclarationCount);
-        Assert.Equal(183, c.Library.Declarations.Length);
-        for (var i = 0; i < c.Library.Declarations.Length; i++)
-        {
-            var entry = c.Library.Declarations[i];
-            if ((int)entry.Id < 6 || entry.Id >= KimiDeclarationId.Utf8Format || entry.Id is (>= KimiDeclarationId.Addable and <= KimiDeclarationId.Negatable) or KimiDeclarationId.Equatable or KimiDeclarationId.Comparable or KimiDeclarationId.FromEnd or KimiDeclarationId.Wrapping or KimiDeclarationId.ClosedRange or KimiDeclarationId.ResolvedRange or KimiDeclarationId.Sealed or KimiDeclarationId.Replace or KimiDeclarationId.Exchange or KimiDeclarationId.Swap or KimiDeclarationId.MakeObj or KimiDeclarationId.MakeRc or KimiDeclarationId.MakeArc or KimiDeclarationId.Clone || entry.Id is KimiDeclarationId.Iterator or KimiDeclarationId.IntoIterable or KimiDeclarationId.Slice or KimiDeclarationId.Array or KimiDeclarationId.Dictionary or KimiDeclarationId.TestTempDirectory or (>= KimiDeclarationId.ArrayReserve and <= KimiDeclarationId.ArrayShrinkToFit))
-            {
-                Assert.Equal(KimiDeclarationState.Validated, entry.State);
-                Assert.Same(entry.Symbol, c.Library.GetSymbol(entry.Id));
-            }
-            else
-            {
-                Assert.Equal(KimiDeclarationState.Missing, entry.State);
-                Assert.Null(entry.Symbol);
-            }
-        }
-    }
-
-    [Theory]
-    [InlineData(KimiDeclarationId.Copy)]
-    [InlineData(KimiDeclarationId.Owned)]
-    [InlineData(KimiDeclarationId.Callable)]
-    [InlineData(KimiDeclarationId.Sealed)]
-    [InlineData(KimiDeclarationId.ObjectPayload)]
-    [InlineData(KimiDeclarationId.PrimitiveInteger)]
-    [InlineData(KimiDeclarationId.Iterable)]
-    [InlineData(KimiDeclarationId.UniqIterable)]
-    public void RebindRejectsChangedIntrinsicContracts(KimiDeclarationId id)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var symbol = c.Library.GetSymbol(id)!;
-        c.Library.Kotonoha.CreateCodeContext().Parse((ContractKoto)symbol.Declaration, "func extra() -> i32");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
-        Assert.Same(symbol, c.Library.GetSymbol(id));
-        Assert.False(c.Library.IsCompleteLibrary);
-    }
-
-    [Fact]
     public void MissingCatalogEntriesDoNotCreateLookupCandidates()
     {
         var c = Compilation.CreateForTest();
@@ -220,22 +126,17 @@ public class CoreCatalogTest
 
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void WarmCatalogValidationAndBindingReuseStorage()
+    public void WarmBindingReusesLibraryStorage()
     {
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "Console.writeLine(\"x\")");
         for (var i = 0; i < 8; i++)
         {
             Assert.True(c.Bind().IsComplete);
-            Assert.False(c.Library.IsCompleteLibrary);
         }
 
         var copy = c.Library.Copy;
-        Assert.Equal(0, AllocationMeasurement.Measure(() =>
-        {
-            c.Bind();
-            _ = c.Library.IsCompleteLibrary;
-        }));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         Assert.Same(copy, c.Library.Copy);
     }
 
@@ -280,17 +181,5 @@ public class CoreCatalogTest
         var c = Compilation.CreateForTest();
         c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "var x: i32 = 1\nvar y: i32 = 2\n" + expression);
         Assert.False(c.Bind().IsComplete);
-        Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-    }
-
-    [Fact]
-    public void RebindRejectsChangedIntrinsicsContainer()
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var group = Assert.IsType<GroupKoto>(c.Library.Replace.Declaration.Parent);
-        c.Library.Kotonoha.CreateCodeContext().Parse(group, "public func extra() => ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
     }
 }

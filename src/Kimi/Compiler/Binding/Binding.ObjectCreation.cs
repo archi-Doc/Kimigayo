@@ -41,7 +41,7 @@ public sealed partial class Binding
     private BoundType? BindObjectCreationCall(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, bool selectedCase = false)
     {
         var id = ObjectFactoryId(target.Semantics);
-        if (this.Library.GetDeclarationState(id) != KimiDeclarationState.Validated || this.Library.GetSymbol(id) is not { } factory)
+        if (this.Library.GetSymbol(id) is not { } factory)
         {
             return this.Fail(conversion, BindingFailure.Unsupported, true);
         }

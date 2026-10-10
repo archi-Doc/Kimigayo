@@ -15,7 +15,7 @@ public class OriginSyntaxRevisionTest
     public void EmbeddedLibraryUsesCurrentOriginSyntax()
     {
         var c = MinimalEmissionTest.Analyze("let value = 1");
-        Assert.True(c.Bind().IsComplete, string.Join("\n", TestDiagnostics.Of(c).Select(x => $"{x.Path}:{x.Span}: {x.Message}")) + "\n" + c.Binding.Library.InvalidDeclaration);
+        Assert.True(c.Bind().IsComplete, string.Join("\n", TestDiagnostics.Of(c).Select(x => $"{x.Path}:{x.Span}: {x.Message}")));
     }
 
     [Theory]

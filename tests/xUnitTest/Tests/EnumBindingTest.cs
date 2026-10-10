@@ -158,30 +158,6 @@ public class EnumBindingTest
     }
 
     [Theory]
-    [InlineData(KimiDeclarationId.Option)]
-    [InlineData(KimiDeclarationId.Result)]
-    public void CoreShapeMutationIsRejected(KimiDeclarationId id)
-    {
-        var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        var symbol = c.Library.GetSymbol(id)!;
-        c.Library.Kotonoha.CreateCodeContext().Parse((EnumKoto)symbol.Declaration, "Extra");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-    }
-
-    [Fact]
-    public void RepeatedCoreEnumHeaderInvalidatesCatalogEntry()
-    {
-        var c = CompilationTestHelper.ParseSuccess("let x: Option<i32> = .Some(1)");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public enum Option<T>");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Option));
-    }
-
-    [Theory]
     [InlineData("func f(x: Option<i32>) => ()\nf(.Some(1))", true)]
     [InlineData("func f(x: Option<i32>) => ()\nf(.None)", true)]
     [InlineData("func f(x: Option<Option<i8>>) => ()\nf(.Some(.Some(127)))", true)]

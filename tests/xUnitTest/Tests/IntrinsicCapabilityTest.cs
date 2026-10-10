@@ -264,15 +264,6 @@ public class IntrinsicCapabilityTest
     }
 
     [Fact]
-    public void IncompatibleCompilerCoreCannotPassBinding()
-    {
-        var c = CompilationTestHelper.ParseSuccess("func inspect(x: i32) => ()");
-        c.Library.Kotonoha.CreateCodeContext().Parse((ContractKoto)c.Library.Copy.Declaration, "func userCode() -> i32");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-    }
-
-    [Fact]
     public void CallableIdentityDoesNotAcceptAnUnspecifiedRequirementShape()
     {
         var c = CompilationTestHelper.ParseSuccess("func inspect<T>(x: T)\n    T is Callable\n    ()");
@@ -386,7 +377,6 @@ public class IntrinsicCapabilityTest
         var f = Function(c, "f");
         Assert.Same(c.Library.Copy, ((IsKoto)f.TypeConstraints[0]).BoundConstraint!.Contract);
         Assert.Equal(IntrinsicKind.None, c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Copy").BoundSymbol!.Intrinsic);
-        Assert.False(c.Library.IsCompleteLibrary);
     }
 
     [Fact]

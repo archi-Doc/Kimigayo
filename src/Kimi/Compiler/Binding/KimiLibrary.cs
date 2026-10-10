@@ -11,7 +11,7 @@ namespace Kimi.Compiler;
 /// <summary>Owns compilation-local Kimi identities over embedded library sources.</summary>
 public sealed partial class KimiLibrary
 {
-    private readonly KimiDeclaration[] declarations;
+    private readonly BindingSymbol?[] symbols; // By catalog index.
     private readonly BindingSymbol[] registeredSymbols;
     private readonly Dictionary<KimiLibraryContainer, BindingScope> formattingScopes = new();
 
@@ -57,17 +57,17 @@ public sealed partial class KimiLibrary
 
         // Array operation signatures are members of the Array struct; recognition finds them through this owner scope,
         // and indexing later gives their symbols the struct's ordinary member scope.
-        this.ArrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new(array) { Parent = this.Scope } : this.Scope;
-        this.DictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new(dictionary) { Parent = this.Scope } : this.Scope;
-        this.StorageScope = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) is DeclarationContainerKoto storage ? new(storage) { Parent = this.Scope } : this.Scope;
-        this.RawScope = FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) is DeclarationContainerKoto raw ? new(raw) { Parent = this.Scope } : this.Scope;
-        this.FixedArrayMembers = (this.StorageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
+        var arrayScope = FindDeclaration(this.Kotonoha.RootKoto, "Array", false) is DeclarationContainerKoto array ? new BindingScope(array) { Parent = this.Scope } : this.Scope;
+        var dictionaryScope = FindDeclaration(this.Kotonoha.RootKoto, "Dictionary", false) is DeclarationContainerKoto dictionary ? new BindingScope(dictionary) { Parent = this.Scope } : this.Scope;
+        var storageScope = FindDeclaration(this.Kotonoha.RootKoto, "Storage", false) is DeclarationContainerKoto storage ? new BindingScope(storage) { Parent = this.Scope } : this.Scope;
+        var rawScope = FindDeclaration(this.Kotonoha.RootKoto, "Raw", false) is DeclarationContainerKoto raw ? new BindingScope(raw) { Parent = this.Scope } : this.Scope;
+        this.FixedArrayMembers = (storageScope.Owner as DeclarationContainerKoto) is { } storageContainer ? FindDeclaration(storageContainer, "FixedArray", false) as DeclarationContainerKoto : null;
         this.IntegerPositionMembers = FindDeclaration(this.Kotonoha.RootKoto, "IntegerPosition", false) as DeclarationContainerKoto;
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
         var entries = KimiLibraryCatalog.Entries;
-        this.declarations = new KimiDeclaration[entries.Length];
+        this.symbols = new BindingSymbol?[entries.Length];
         var symbolCount = 4;
-        var fixedArrayScope = this.FixedArrayMembers is { } fixedArray ? new BindingScope(fixedArray) { Parent = this.StorageScope } : this.StorageScope;
+        var fixedArrayScope = this.FixedArrayMembers is { } fixedArray ? new BindingScope(fixedArray) { Parent = storageScope } : storageScope;
         var sourceScopes = new Dictionary<string, BindingScope>(StringComparer.Ordinal);
         for (var i = 0; i < entries.Length; i++)
         {
@@ -77,10 +77,10 @@ public sealed partial class KimiLibrary
                 KimiLibraryContainer.Console => this.ConsoleScope,
                 KimiLibraryContainer.Intrinsics => this.IntrinsicsScope,
                 KimiLibraryContainer.Test => this.TestScope,
-                KimiLibraryContainer.Array => this.ArrayScope,
-                KimiLibraryContainer.Dictionary => this.DictionaryScope,
-                KimiLibraryContainer.Storage => this.StorageScope,
-                KimiLibraryContainer.Raw => this.RawScope,
+                KimiLibraryContainer.Array => arrayScope,
+                KimiLibraryContainer.Dictionary => dictionaryScope,
+                KimiLibraryContainer.Storage => storageScope,
+                KimiLibraryContainer.Raw => rawScope,
                 KimiLibraryContainer.FixedArray => fixedArrayScope,
                 _ => this.formattingScopes.GetValueOrDefault(entry.Container) ?? this.Scope,
             };
@@ -96,22 +96,28 @@ public sealed partial class KimiLibrary
                 scope = sourceScope;
             }
 
-            var declaration = FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload);
-            BindingSymbol? symbol = null;
-            if (declaration is not null)
+            // SPEC 22.1: a missing or duplicate required declaration is a defect of the compiler build, whose embedded library
+            // KimiLibraryShapeTest checks; FindDeclaration finds no duplicate.
+            if (FindDeclaration((DeclarationContainerKoto)scope.Owner, entry.Name, entry.IsFunction, entry.Overload) is not { } declaration)
             {
-                symbol = new(entry.Name, entry.IsFunction ? BindingSymbolKind.Function : BindingSymbolKind.Type, declaration, scope)
+                if (entry.SourceExpected)
                 {
-                    Intrinsic = entry.Intrinsic,
-                    CompilerFunction = entry.Function,
-                    LibraryDeclaration = entry.Id,
-                };
-                declaration.BoundSymbol = symbol;
-                declaration.BindingState = BindingState.Resolved;
-                symbolCount++;
+                    throw new InvalidOperationException($"The embedded Kimi library has no unique declaration of {entry.Id}.");
+                }
+
+                continue;
             }
 
-            this.declarations[i] = new(entry.Id, entry.Name, symbol, KimiDeclarationState.Missing);
+            var symbol = new BindingSymbol(entry.Name, entry.IsFunction ? BindingSymbolKind.Function : BindingSymbolKind.Type, declaration, scope)
+            {
+                Intrinsic = entry.Intrinsic,
+                CompilerFunction = entry.Function,
+                LibraryDeclaration = entry.Id,
+            };
+            declaration.BoundSymbol = symbol;
+            declaration.BindingState = BindingState.Resolved;
+            this.symbols[i] = symbol;
+            symbolCount++;
         }
 
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
@@ -145,23 +151,15 @@ public sealed partial class KimiLibrary
         this.ResolvedRange = this.GetSymbol(KimiDeclarationId.ResolvedRange)!;
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
-        var iterator = FindDeclaration(this.Kotonoha.RootKoto, "SliceIterator", false);
-        this.SliceIterator = iterator is null ? null! : new("SliceIterator", BindingSymbolKind.Type, iterator, this.Scope);
-        symbolCount += iterator is null ? 0 : 1;
         this.registeredSymbols = new BindingSymbol[symbolCount];
         this.registeredSymbols[0] = this.ConsoleSymbol;
         this.registeredSymbols[1] = this.IntrinsicsSymbol;
         this.registeredSymbols[2] = this.TestSymbol;
         this.registeredSymbols[3] = this.TextSymbol;
         var symbolIndex = 4;
-        if (this.SliceIterator is { } sliceIterator)
+        foreach (var symbol in this.symbols)
         {
-            this.registeredSymbols[symbolIndex++] = sliceIterator;
-        }
-
-        foreach (var entry in this.declarations)
-        {
-            if (entry.Symbol is { } symbol)
+            if (symbol is not null)
             {
                 this.registeredSymbols[symbolIndex++] = symbol;
             }
@@ -174,14 +172,6 @@ public sealed partial class KimiLibrary
     public Kotonoha Kotonoha { get; }
 
     public string Version => Compilation.CurrentLanguageVersion;
-
-    /// <summary>Gets a value indicating whether all required declarations are validated, separately from body, layout and runtime support.</summary>
-    public bool IsCompleteLibrary => this.IsValid && this.ValidatedDeclarationCount == this.declarations.Length;
-
-    /// <summary>Gets retained catalog entries, not indexed by numeric ID. States are refreshed by each Bind.</summary>
-    public ReadOnlySpan<KimiDeclaration> Declarations => this.declarations;
-
-    public int ValidatedDeclarationCount { get; private set; }
 
     public BindingSymbol Module { get; }
 
@@ -258,21 +248,13 @@ public sealed partial class KimiLibrary
     /// <summary>Gets the designated closed range Type that <c>..=</c> constructs (SPEC 4.6.3.2).</summary>
     public BindingSymbol ClosedRange { get; }
 
-    /// <summary>Gets the designated validated ResolvedRange Type (SPEC 4.6.3).</summary>
+    /// <summary>Gets the designated ResolvedRange Type (SPEC 4.6.3).</summary>
     public BindingSymbol ResolvedRange { get; }
 
     /// <summary>Gets the implemented concrete object factory, independently of the incomplete ownership family.</summary>
     public BindingSymbol MakeObj { get; }
 
-    internal BindingSymbol SliceIterator { get; }
-
     internal BindingScope Scope { get; }
-
-    internal BindingScope DictionaryScope { get; }
-
-    internal BindingScope StorageScope { get; }
-
-    internal BindingScope RawScope { get; }
 
     /// <summary>Gets the internal group whose receiver functions are the members of the built-in fixed array (SPEC 22.1, PLAN G32).</summary>
     internal DeclarationContainerKoto? FixedArrayMembers { get; }
@@ -329,8 +311,6 @@ public sealed partial class KimiLibrary
 
     internal BindingScope ConsoleScope { get; }
 
-    internal BindingScope ArrayScope { get; }
-
     internal BindingSymbol ConsoleSymbol { get; }
 
     internal GroupKoto Text { get; }
@@ -342,25 +322,16 @@ public sealed partial class KimiLibrary
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
 
-    internal bool IsValid { get; private set; }
-
-    internal Koto? InvalidDeclaration { get; private set; }
-
     internal ReadOnlySpan<BindingSymbol> RegisteredSymbols => this.registeredSymbols;
 
     public BindingSymbol? GetSymbol(KimiDeclarationId id)
-        => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.declarations[index].Symbol : null;
+        => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.symbols[index] : null;
 
-    public KimiDeclarationState GetDeclarationState(KimiDeclarationId id)
-        => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.declarations[index].State : KimiDeclarationState.Missing;
-
-    /// <summary>Gets the internal source function that defines a linked constructor when both declarations are validated (SPEC 22.1).</summary>
+    /// <summary>Gets the internal source function that defines a linked constructor (SPEC 22.1).</summary>
     /// <param name="constructor">The selected public constructor.</param>
-    /// <returns>The executed implementation; null when the constructor is not linked or the link is not validated.</returns>
+    /// <returns>The executed implementation; null when the constructor is not linked.</returns>
     internal BindingSymbol? ConstructorImplementation(BindingSymbol constructor)
-        => constructor.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is { } implementation &&
-            this.GetDeclarationState(id) == KimiDeclarationState.Validated && this.GetDeclarationState(implementation) == KimiDeclarationState.Validated
-            ? this.GetSymbol(implementation) : null;
+        => constructor.LibraryDeclaration is { } id && KimiLibraryCatalog.ImplementationOf(id) is { } implementation ? this.GetSymbol(implementation) : null;
 
     /// <summary>Gets the declaration that hover, effects and diagnostics name for an executed target: the public declaration an
     /// internal implementation defines, or the target itself.</summary>
@@ -368,21 +339,6 @@ public sealed partial class KimiLibrary
     /// <returns>The presented declaration.</returns>
     internal BindingSymbol PresentedTarget(BindingSymbol target)
         => target.LibraryDeclaration is { } id && KimiLibraryCatalog.PresentationOf(id) is { } presented && this.GetSymbol(presented) is { } symbol ? symbol : target;
-
-    /// <summary>Gets a value indicating whether the strong ownership declarations are validated; not a runtime support certificate.</summary>
-    public bool IsCompleteStrongOwnershipFamily =>
-        this.GetDeclarationState(KimiDeclarationId.MakeObj) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.MakeRc) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.MakeArc) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.Clone) == KimiDeclarationState.Validated;
-
-    /// <summary>Gets a value indicating whether all ownership declarations are validated; not a runtime support certificate.</summary>
-    public bool IsCompleteOwnershipFamily => this.IsCompleteStrongOwnershipFamily &&
-        this.GetDeclarationState(KimiDeclarationId.Downgrade) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.Upgrade) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.MakeRcCyclic) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.MakeArcCyclic) == KimiDeclarationState.Validated &&
-        this.GetDeclarationState(KimiDeclarationId.Weak) == KimiDeclarationState.Validated;
 
     internal BindingScope? SignatureScope(DeclarationContainerKoto container)
         => ReferenceEquals(container, this.Console) ? this.ConsoleScope :
@@ -392,7 +348,7 @@ public sealed partial class KimiLibrary
     internal void Restore()
     {
         this.Scope.Reset();
-        // Intrinsic requirements and checked signature-only group shells are already
+        // Intrinsic requirements and signature-only group shells are already
         // registered. Their source members and all ordinary helpers use normal indexing.
         foreach (var symbol in this.registeredSymbols)
         {

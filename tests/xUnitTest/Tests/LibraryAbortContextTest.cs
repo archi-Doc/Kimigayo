@@ -9,22 +9,11 @@ namespace XunitTest;
 public class LibraryAbortContextTest
 {
     [Fact]
-    public void SourceContextDeclarationsAreValidated()
+    public void SourceContextDeclarationsAreRecognized()
     {
         var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete, string.Join("; ", c.Library.Declarations.ToArray().Where(x => x.State != KimiDeclarationState.Validated).Select(x => $"{x.Id}: {x.State}")));
+        Assert.True(c.Bind().IsComplete, string.Join("; ", c.Binding.Issues));
         Assert.True(KimiLibraryCatalog.RequiresCallerLocation(c.Library.GetSymbol(KimiDeclarationId.RangeIteratorStarting)));
-    }
-
-    [Fact]
-    public void RemovingTheOwnerInvalidatesItsSourceContextDeclarations()
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        var owner = Assert.IsAssignableFrom<DeclarationContainerKoto>(c.Library.GetSymbol(KimiDeclarationId.RangeIteratorStarting)!.Scope.Owner);
-        Assert.True(Assert.IsType<List<DeclarationContainerKoto>>(c.Library.Kotonoha.RootKoto.NestedContainers).Remove(owner));
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.RangeIteratorStarting));
     }
 
     [Theory]

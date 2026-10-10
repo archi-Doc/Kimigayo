@@ -36,7 +36,6 @@ public enum DiagnosticCode
     NotObjectPayload_Kd,
     UnprovenConstraint_Kd,
     UnsatisfiedConstraint_Kd,
-    InvalidKimiLibrary_Kd,
     MissingContractImplementation_Kd,
     InvalidEffectBound_Kd,
     UnsatisfiedEffectBound_Kd,

@@ -19,16 +19,6 @@ public class DictionaryBindingTest
         Assert.Equal(owned, c.Binding.Result.IsComplete);
     }
 
-    [Fact]
-    public void CompilerManagedStorageRejectsExtraSourceFields()
-    {
-        var c = MinimalEmissionTest.Analyze(string.Empty);
-        var declaration = (StructKoto)c.Library.GetSymbol(KimiDeclarationId.Dictionary)!.Declaration;
-        c.Library.Kotonoha.CreateCodeContext().Parse(declaration, "public let extra: i32");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.Dictionary));
-    }
-
     [Theory]
     [InlineData("struct Key\n    public init() => ()\nlet entries: Dictionary<Key, i32> = [:]")]
     [InlineData("func use<K, V>(value: Dictionary<K, V>) => ()")]
@@ -51,6 +41,5 @@ public class DictionaryBindingTest
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.Dictionary));
     }
 }

@@ -182,7 +182,6 @@ public class ArrayBindingTest
         Assert.True(c.Bind().IsComplete);
         foreach (var id in new[] { KimiDeclarationId.ArrayReserve, KimiDeclarationId.ArrayAppend, KimiDeclarationId.ArrayInsert, KimiDeclarationId.ArrayPop, KimiDeclarationId.ArrayRemove, KimiDeclarationId.ArrayClear, KimiDeclarationId.ArrayShrinkToFit })
         {
-            Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(id));
             var symbol = c.Library.GetSymbol(id)!;
             Assert.NotEqual(CompilerFunctionKind.None, symbol.CompilerFunction);
             Assert.Same(c.Library.DynamicArray.Declaration, symbol.Declaration.Parent);

@@ -38,8 +38,6 @@ public class StartupBindingTest
             Assert.Same(c.Kotonoha.GeneratedFunction, result.Function);
             Assert.Same(c.Kotonoha.GeneratedFunction!.Body!.Items[0], c.Binding.StartupItems[0]);
         }
-
-        Assert.False(c.Library.IsCompleteLibrary);
     }
 
     [Theory]
@@ -312,17 +310,6 @@ public class StartupBindingTest
         Assert.Equal(CompilerFunctionKind.None, calls[0].BoundCall!.Target.CompilerFunction);
         Assert.Same(c.Library.WriteLine, calls[1].BoundCall!.Target);
         Assert.Same(calls[0].BoundCall!.Target, calls[2].BoundCall!.Target);
-    }
-
-    [Fact]
-    public void InvalidKimiDeclarationsFailAfterPreviouslySuccessfulBinding()
-    {
-        var c = Parse("Console.writeLine(\"x\")");
-        Assert.True(c.Bind().IsComplete, Describe(c));
-        c.Library.Kotonoha.CreateCodeContext().Parse(c.Library.Kotonoha.RootKoto, "public func writeLine(text: i32) => ()");
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-        Assert.False(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
     }
 
     [Fact]

@@ -26,27 +26,13 @@ public class IntoIterableContractTest
         "require total == 6 else => $abort(\"total\")\nConsole.writeLine(\"ok\")";
 
     [Fact]
-    public void IntoIterableIsDeclaredInSourceAndValidated()
+    public void IntoIterableIsDeclaredInSource()
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.IntoIterable));
         Assert.Same(c.Library.IntoIterable, c.Library.GetSymbol(KimiDeclarationId.IntoIterable));
         var declaration = Assert.IsType<ContractKoto>(c.Library.IntoIterable.Declaration);
         Assert.EndsWith("/IntoIterable.kimi", declaration.CodeContext.SourceDocument!.Path);
-    }
-
-    [Theory]
-    [InlineData("func extra(self: ref/Self) -> i32")]
-    [InlineData("associate Extra")]
-    public void ChangedIntoIterableShapesAreRejected(string member)
-    {
-        var c = Compilation.CreateForTest();
-        Assert.True(c.Bind().IsComplete);
-        c.Library.Kotonoha.CreateCodeContext().Parse((ContractKoto)c.Library.IntoIterable.Declaration, member);
-        Assert.False(c.Bind().IsComplete);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.InvalidKimiLibrary_Kd);
-        Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(KimiDeclarationId.IntoIterable));
     }
 
     [Fact]

@@ -144,7 +144,6 @@ internal enum BindingFailure : byte
     NotObjectPayload,
     UnprovenConstraint,
     UnsatisfiedConstraint,
-    InvalidKimi,
     MissingImplementation,
     IncompatibleImplementation,
     InvalidAssociatedType,

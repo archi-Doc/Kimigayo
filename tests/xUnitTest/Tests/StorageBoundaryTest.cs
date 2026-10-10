@@ -168,6 +168,19 @@ public class StorageBoundaryTest
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
     }
 
+    // The distinct Dictionary family is internal to the Kimi Kotonoha too.
+    [Theory]
+    [InlineData("let r = Kimi.Storage.borrowStorage(map@ref)")]
+    [InlineData("unsafe => _ = Kimi.Storage.keyAt<i32, i32>(null@raw/u8)")]
+    [InlineData("unsafe => _ = Kimi.Storage.dictionaryStorage(map@uniq)")]
+    [InlineData("Kimi.Storage.missingDictionaryKey()")]
+    [InlineData("func f(r: Kimi.Storage.DictionaryRefRemainder<string, i32>) => ()")]
+    public void UserSourceCannotReachTheDictionaryBoundary(string use)
+    {
+        var c = MinimalEmissionTest.Analyze("let map: Dictionary<string, i32> = [\"a\": 1]\n" + use);
+        Assert.False(c.Binding.Result.IsComplete);
+    }
+
     // The library's own conformances pass the Iterator effect bound: splitting off a child conflicts with no earlier
     // child, while a user iterator that reborrows its stored reference does not (IteratorOriginEffectsTest).
     [Fact]
@@ -175,8 +188,6 @@ public class StorageBoundaryTest
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Library.ValidateDeclarations(), "declarations: " + c.Library.InvalidDeclaration?.ToString().Split((char)10)[0]);
-        Assert.True(c.Library.ValidateBoundDeclarations(), "bound: " + c.Library.InvalidDeclaration?.ToString().Split((char)10)[0]);
     }
 
     // SPEC 5.2.2, 22.1.2.5: a library helper lends a remainder element by borrowing its raw Place.

@@ -29,7 +29,6 @@ public sealed partial class Binding
     private Dictionary<Kotonoha, BindingSymbol>? moduleSymbols;
     private TestSyntaxVisitor? testSyntaxVisitor;
     private bool running;
-    private bool kimiValid;
 
     internal Binding(Compilation compilation)
     {
@@ -92,27 +91,10 @@ public sealed partial class Binding
             this.compilation.InvalidateOwnership();
             this.ResetPass(mode);
             this.IndexSources();
-            this.kimiValid = this.IndexLibrary();
-            if (this.kimiValid)
-            {
-                this.BindDeclarations(mode);
-                this.BindBodies();
-                this.ValidateBoundDeclarations(mode);
-                this.kimiValid = this.Library.ValidateBoundDeclarations();
-            }
-            else
-            {
-                // A malformed compiler library must not enter indexing/overload chains; only the indexed sources are pruned.
-                this.PruneCandidateScopes();
-                this.PrunePatternScopes();
-                this.PruneMatchPlans();
-            }
-
-            if (!this.kimiValid)
-            {
-                this.Fail(this.compilation.Kotonoha.RootKoto, BindingFailure.InvalidKimi);
-            }
-
+            this.IndexLibrary();
+            this.BindDeclarations(mode);
+            this.BindBodies();
+            this.ValidateBoundDeclarations(mode);
             return this.Result = this.Check(mode);
         }
         finally
@@ -399,15 +381,10 @@ public sealed partial class Binding
         this.IndexModuleReferences();
     }
 
-    // Restores and indexes the embedded Kimi library; false when its declarations are malformed.
-    private bool IndexLibrary()
+    // Restores and indexes the embedded Kimi library.
+    private void IndexLibrary()
     {
         this.Library.Restore();
-        if (!this.Library.ValidateDeclarations())
-        {
-            return false;
-        }
-
         this.scopes[this.Library.Kotonoha.RootKoto] = this.Library.Scope;
         this.scopes[this.Library.Intrinsics] = this.Library.IntrinsicsScope;
         this.scopes[this.Library.Console] = this.Library.ConsoleScope;
@@ -443,8 +420,6 @@ public sealed partial class Binding
         {
             this.indexer.Visit(libraryRoot.Members[i]);
         }
-
-        return true;
     }
 
     // Declarations, Constraints, Contracts, headers, storage and signatures, before any body is bound.
@@ -1133,7 +1108,6 @@ public sealed partial class Binding
                     BindingFailure.NotObjectPayload => DiagnosticCode.NotObjectPayload_Kd,
                     BindingFailure.UnprovenConstraint => DiagnosticCode.UnprovenConstraint_Kd,
                     BindingFailure.UnsatisfiedConstraint => DiagnosticCode.UnsatisfiedConstraint_Kd,
-                    BindingFailure.InvalidKimi => DiagnosticCode.InvalidKimiLibrary_Kd,
                     BindingFailure.MissingImplementation => DiagnosticCode.MissingContractImplementation_Kd,
                     BindingFailure.IncompatibleImplementation => DiagnosticCode.IncompatibleContractImplementation_Kd,
                     BindingFailure.InvalidAssociatedType => DiagnosticCode.InvalidAssociatedType_Kd,
@@ -1185,7 +1159,7 @@ public sealed partial class Binding
                     code = DiagnosticCode.InvalidTry_Kd;
                 }
 
-                this.issues.Add(new(code == DiagnosticCode.InvalidKimiLibrary_Kd ? this.Library.InvalidDeclaration ?? node : node, code) { Failure = node.BindingFailure });
+                this.issues.Add(new(node, code) { Failure = node.BindingFailure });
                 if (this.formationCauses?.TryGetValue(node, out var causes) == true && (causes & TypeRoleCause.Role) != 0)
                 {
                     // SPEC 23.3.6.4: a target role that is not proven beside a Language cause of the same occurrence is its own record.

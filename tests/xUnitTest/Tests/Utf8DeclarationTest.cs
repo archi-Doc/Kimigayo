@@ -10,20 +10,6 @@ namespace XunitTest;
 /// <summary>Formatting profile: library identities, API shape and fixed dependency metadata.</summary>
 public class Utf8DeclarationTest
 {
-    [Fact]
-    public void StandardDeclarationsBind()
-    {
-        var c = MinimalEmissionTest.Analyze("()");
-        Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        foreach (var declaration in c.Library.Declarations)
-        {
-            if (declaration.Id >= KimiDeclarationId.Utf8Format)
-            {
-                Assert.Equal(KimiDeclarationState.Validated, declaration.State);
-            }
-        }
-    }
-
     [Theory]
     [InlineData(KimiDeclarationId.FixedBuffer)]
     [InlineData(KimiDeclarationId.WriteWindow)]
@@ -45,7 +31,7 @@ public class Utf8DeclarationTest
     {
         var c = MinimalEmissionTest.Analyze("struct Stringify\n    public init() => ()\nlet value = Stringify.init()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        Assert.DoesNotContain(c.Library.Declarations.ToArray(), x => x.Id == KimiDeclarationId.Stringify);
+        Assert.Null(c.Library.GetSymbol(KimiDeclarationId.Stringify));
     }
 
     [Theory]
@@ -59,24 +45,7 @@ public class Utf8DeclarationTest
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
     }
 
-    [Theory]
-    [InlineData(KimiDeclarationId.FixedBuffer)]
-    [InlineData(KimiDeclarationId.WriteWindow)]
-    [InlineData(KimiDeclarationId.Utf8Writer)]
-    public void ManagedLayoutsRejectExtraFieldsAndDestruction(KimiDeclarationId id)
-    {
-        foreach (var added in new[] { "let extra: i32 = 0", "drop => ()" })
-        {
-            var c = Compilation.CreateForTest();
-            var type = (StructKoto)c.Library.GetSymbol(id)!.Declaration;
-            c.Library.Kotonoha.CreateCodeContext().Parse(type, added);
-            Assert.False(c.Bind().IsComplete);
-            Assert.Equal(KimiDeclarationState.Invalid, c.Library.GetDeclarationState(id));
-        }
-    }
-
     private static string Describe(Compilation c)
         => MinimalEmissionTest.Describe(c, null) + "\n" + string.Join("\n", TestDiagnostics.Of(c).Select(x => x.ToString())) +
-            "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString())) +
-            "\nLibrary invalid: " + c.Library.InvalidDeclaration;
+            "\n" + string.Join("\n", c.Binding.Issues.Select(x => x.Code + ": " + x.Node.ToString()));
 }

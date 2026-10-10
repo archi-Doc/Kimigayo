@@ -83,7 +83,6 @@ public class PrimitiveIntegerTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete);
-        Assert.Equal(KimiDeclarationState.Validated, c.Library.GetDeclarationState(KimiDeclarationId.PrimitiveInteger));
         Assert.Equal(IntrinsicKind.PrimitiveInteger, c.Library.PrimitiveInteger.Intrinsic);
     }
 }
