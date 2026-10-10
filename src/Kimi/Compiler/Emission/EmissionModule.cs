@@ -397,8 +397,13 @@ internal enum ArrayHelperKind : byte
     OwnFixedStorage,
 }
 
-/// <summary>A generated Array helper for one element representation: its ABI, element lowering and, for pop, the Option layout.</summary>
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null)
+/// <summary>The layout offsets of a storage remainder record's Fields {storage, position, count, capacity}, addressed by name,
+/// and the size of its storage Field (SPEC 22.1.2.5).</summary>
+internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
+
+/// <summary>A generated Array helper for one element representation: its ABI, element lowering, for pop the Option layout, and
+/// for the storage boundary its remainder record.</summary>
+internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null, RemainderFields Fields = default)
 {
     /// <summary>Gets a value indicating whether the element has no bytes (Unit or a zero-sized aggregate); its helpers take
     /// no value or result pointer, because zero-sized values have no slot.</summary>

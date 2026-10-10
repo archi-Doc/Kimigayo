@@ -6,9 +6,10 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    // Reuse the runtime ABI offsets: materializing the constant span's field handle
-    // on each adapter validation allocates a RuntimeFieldInfoStub on this runtime.
-    private static readonly int[] FormattingWriterOffsets = [0, 8, 16, 56, 24, 32, 40, 48];
+    // The runtime ABI offsets of the named Utf8Writer Fields; a static table, because materializing a constant span's field
+    // handle on each adapter validation allocates a RuntimeFieldInfoStub on this runtime.
+    private static readonly (string Name, int Offset)[] FormattingWriterOffsets =
+        [("destination", 0), ("dispatch", 8), ("kind", 16), ("failed", 56), ("hint", 24), ("pending", 32), ("pendingLength", 40), ("logicalLength", 48)];
 
     internal static int BuiltinFormatKind(BoundType type)
     {
@@ -29,15 +30,14 @@ internal sealed partial class BodyLowering
         failure = null;
         if (call.ArgumentOperations.Length != 1 || this.Resolve(call.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Components.Count: 1 } input ||
             input.Semantics != SemanticsKind.Uniq || result.Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer ||
-            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[8].Layout.Size != 0)
+            this.aggregateLayouts.Get(result) is not { Value.Layout.Size: 64, Fields.Length: 9 } layout || layout.Fields[StructStorage.IndexOf(result, "loan")].Layout.Size != 0)
         {
             return Fail("Writer erasure requires a concrete exclusive input and its verified adapter layout.", out failure);
         }
 
-        ReadOnlySpan<int> offsets = FormattingWriterOffsets;
-        for (var i = 0; i < offsets.Length; i++)
+        foreach (var (name, offset) in FormattingWriterOffsets)
         {
-            if (layout.Offset(i) != offsets[i])
+            if (layout.Offset(result, name) != offset)
             {
                 return Fail("Writer fields do not match the erased runtime layout.", out failure);
             }

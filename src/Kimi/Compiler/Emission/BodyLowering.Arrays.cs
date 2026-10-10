@@ -9,8 +9,8 @@ namespace Kimi.Compiler;
 /// <summary>SPEC 4.7.2, 4.7.4, 4.7.6: the Array mutation operations lower to runtime capacity routines and per-element helpers over the {buffer, length, capacity} handle.</summary>
 internal sealed partial class BodyLowering
 {
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelpers = new();
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option), ArrayHelper> arrayHelperCache = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelpers = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelperCache = new();
     private bool arrayRuntimeUsed;
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
@@ -23,6 +23,13 @@ internal sealed partial class BodyLowering
         internal bool NeedsDestruction => this.IsString || this.Layout?.NeedsDestruction == true;
 
         internal long Stride => this.Value.Layout.Stride;
+    }
+
+    // SPEC 22.1.2.5: the storage boundary writes a remainder record {storage, position, count[, capacity]} by Field name.
+    private static RemainderFields GetRemainderFields(AggregateLayout layout, BoundType type, bool capacity)
+    {
+        var storage = StructStorage.IndexOf(type, "storage");
+        return new(layout.Offset(storage), layout.Offset(type, "position"), layout.Offset(type, "count"), capacity ? layout.Offset(type, "capacity") : 0, layout.Fields[storage].Layout.Size);
     }
 
     // SPEC 4.3: an Array literal's scalar payloads are stored in their own slots so construction can move their bytes into the buffer.
@@ -81,12 +88,12 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private ArrayHelper GetArrayHelper(ArrayHelperKind kind, in ArrayElement element, AggregateLayout? option = null, AggregateLayout? remainder = null)
+    private ArrayHelper GetArrayHelper(ArrayHelperKind kind, in ArrayElement element, AggregateLayout? option = null, AggregateLayout? remainder = null, RemainderFields fields = default)
     {
-        // A boundary helper also depends on its result and remainder records, so their layout ids join the key and name; the
-        // key holds only ids and constant spellings, so a warm lookup allocates nothing.
+        // A boundary helper also depends on its result and remainder records, so their layout ids and named Field offsets join
+        // the key, and the ids the name; the key holds only numbers and constant spellings, so a warm lookup allocates nothing.
         var key = (kind, element.Layout?.Id ?? -1, element.IsString ? "string" : element.IsScalar ? element.Value.ComputationType : string.Empty,
-            remainder?.Id ?? -1, remainder is null ? -1 : option?.Id ?? -1);
+            remainder?.Id ?? -1, remainder is null ? -1 : option?.Id ?? -1, fields);
         if (this.arrayHelpers.TryGetValue(key, out var existing))
         {
             return existing;
@@ -139,11 +146,11 @@ internal sealed partial class BodyLowering
             ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
             ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnFixedStorage when remainder!.Fields[0].Layout.Size == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
+            ArrayHelperKind.OwnFixedStorage when fields.StorageSize == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             ArrayHelperKind.OwnFixedStorage => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
             _ => new(name, unit, [handle, location, length]),
         };
-        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder);
+        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder, fields);
         this.arrayHelperCache[key] = helper;
         this.arrayHelpers.Add(key, helper);
         return helper;
@@ -444,21 +451,8 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
         }
 
-        // The owning helpers and the remainder's drop share the record shape {storage, position, count, capacity}.
-        var remainder = result;
-        if (remainder is not { IsArray: false } || remainder.Fields.Length != 4 || (!owning && remainder.Fields[3].Layout.Size != 0) ||
-            (owning && (remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24)))
-        {
-            return Fail("Storage operation records do not have the boundary's shape.", out failure);
-        }
-
         this.arrayRuntimeUsed |= owning;
-        var helperKind = kind switch
-        {
-            CompilerFunctionKind.StorageOwn => ArrayHelperKind.OwnStorage,
-            _ => ArrayHelperKind.BorrowStorage,
-        };
-        var helper = this.GetArrayHelper(helperKind, element, remainder: remainder);
+        var helper = this.GetArrayHelper(owning ? ArrayHelperKind.OwnStorage : ArrayHelperKind.BorrowStorage, element, remainder: result, fields: GetRemainderFields(result, returnType, owning));
         this.callOperands.Clear();
         this.callOperands.Add(pointer);
         this.callOperands.Add(new(EmissionOperandKind.SlotAddress, operation.Place));

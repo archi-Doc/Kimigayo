@@ -144,11 +144,14 @@ internal static partial class LlvmModuleWriter
 
         if (fixedLength < 0)
         {
+            // Operands 2 and 3 are the offsets of the length (or a ResolvedRange's `end`) and of a ResolvedRange's `start`; a
+            // range slice reads its handle's length after the buffer, and a slice of Unit elements also loads its first word.
+            var slice = instruction.ScalarOperator is "SliceRange" or "SliceResolved";
             Name(output, "  %seqendptr", id);
             output.Write(" = getelementptr i8, ptr ");
             Address();
             output.Write(", i64 ");
-            WriteNumber(output, operands.Length == 3 ? operands[2].Value : 8);
+            WriteNumber(output, slice ? 8 : operands[2].Value);
             output.Write('\n');
             Name(output, "  %seqend", id);
             output.Write(" = load i64, ptr ");
@@ -156,9 +159,11 @@ internal static partial class LlvmModuleWriter
             output.Write(", align 8\n");
             if (range)
             {
+                var start = slice ? 0 : operands[3].Value;
+                DefineField(output, function, addressOperand, "%seqfield", id, start);
                 Name(output, "  %seqstart", id);
                 output.Write(" = load i64, ptr ");
-                Address();
+                WriteField(output, function, addressOperand, "%seqfield", id, start);
                 output.Write(", align 8\n");
             }
         }
@@ -188,14 +193,18 @@ internal static partial class LlvmModuleWriter
             }
             else if (instruction.ScalarOperator == "SliceResolved")
             {
-                // SPEC 4.6.4: a ResolvedRange key supplies both absolute boundaries from its {start, end} value.
+                // SPEC 4.6.4: a ResolvedRange key supplies both absolute boundaries from its {start, end} value, whose Field
+                // offsets are operands 3 and 4.
+                DefineField(output, function, operands[2], "%slicefield", id, operands[3].Value);
                 Name(output, "  %slicestart", id);
                 output.Write(" = load i64, ptr ");
-                WriteSlot(output, function, (int)operands[2].Value);
+                WriteField(output, function, operands[2], "%slicefield", id, operands[3].Value);
                 Name(output, ", align 8\n  %sliceendptr", id);
                 output.Write(" = getelementptr i8, ptr ");
                 WriteSlot(output, function, (int)operands[2].Value);
-                Name(output, ", i64 8\n  %slicefinish", id);
+                output.Write(", i64 ");
+                WriteNumber(output, operands[4].Value);
+                Name(output, "\n  %slicefinish", id);
                 output.Write(" = load i64, ptr ");
                 Name(output, "%sliceendptr", id);
                 output.Write(", align 8");
@@ -278,37 +287,20 @@ internal static partial class LlvmModuleWriter
             Name(output, ", ptr %seqdest", id);
             output.Write(", align 8\n");
         }
-        else if (instruction.ScalarOperator is "indices" or "Slice")
+        else if (instruction.ScalarOperator == "indices")
         {
-            if (instruction.ScalarOperator == "Slice")
-            {
-                if (fixedLength < 0)
-                {
-                    Name(output, "  %seqbase", id);
-                    output.Write(" = load ptr, ptr ");
-                    Address();
-                    output.Write(", align 8\n  store ptr ");
-                    Name(output, "%seqbase", id);
-                }
-                else
-                {
-                    output.Write("  store ptr ");
-                    Address();
-                }
-
-                output.Write(", ptr ");
-            }
-            else
-            {
-                output.Write("  store i64 0, ptr ");
-            }
-
-            WriteSlot(output, function, instruction.Place);
+            // The ResolvedRange {start 0, end length}, written at its named Field offsets, operands 3 and 4.
+            var result = new EmissionOperand(EmissionOperandKind.SlotAddress, instruction.Place);
+            DefineField(output, function, result, "%seqfield", id, operands[3].Value);
+            output.Write("  store i64 0, ptr ");
+            WriteField(output, function, result, "%seqfield", id, operands[3].Value);
             output.Write(", align 8\n");
             Name(output, "  %seqdest", id);
             output.Write(" = getelementptr i8, ptr ");
             WriteSlot(output, function, instruction.Place);
-            output.Write(", i64 8\n  store i64 ");
+            output.Write(", i64 ");
+            WriteNumber(output, operands[4].Value);
+            output.Write("\n  store i64 ");
             End();
             output.Write(", ptr ");
             Name(output, "%seqdest", id);

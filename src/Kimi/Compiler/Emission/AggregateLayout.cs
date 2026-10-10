@@ -14,6 +14,9 @@ internal sealed record AggregateLayout(int Id, ValueLowering Value, ValueLowerin
 {
     internal int Offset(int index) => this.IsArray ? checked(index * this.Fields[0].Layout.Stride) : this.Value.Layout.FieldOffsets.Span[index];
 
+    // Generated code addresses a Kimi library record Field by its declared name, at the offset of this layout of `type`.
+    internal int Offset(BoundType type, string name) => this.Offset(StructStorage.IndexOf(type, name));
+
     internal int StorageCount { get; } = Count + (Base?.StorageCount ?? 0);
 
     internal AggregateLayout StorageLayer(ref int index)

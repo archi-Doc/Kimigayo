@@ -576,6 +576,35 @@ internal static partial class LlvmModuleWriter
         }
     }
 
+    // A library record Field at its named layout offset: offset 0 is the record's own address, and a nonzero offset is
+    // reached through `{name}{id}_{offset}`, which DefineField writes before its use.
+    private static void DefineField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+    {
+        if (offset != 0)
+        {
+            output.Write("  ");
+            WriteField(output, function, record, name, id, offset);
+            output.Write(" = getelementptr i8, ptr ");
+            WriteStorageAddress(output, function, record);
+            output.Write(", i64 ");
+            WriteNumber(output, offset);
+            output.Write('\n');
+        }
+    }
+
+    private static void WriteField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+    {
+        if (offset == 0)
+        {
+            WriteStorageAddress(output, function, record);
+            return;
+        }
+
+        Name(output, name, id);
+        output.Write('_');
+        WriteNumber(output, offset);
+    }
+
     private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null, bool indirect = false)
     {
         if (callee.Result != WindowsLowering.Unit.ComputationType)

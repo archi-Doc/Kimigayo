@@ -248,15 +248,16 @@ internal sealed partial class BodyLowering
             if (resolvedKey is not null)
             {
                 if (plan.End != -1 || (uint)plan.Index >= (uint)id || !ReferenceEquals(body.Operations[plan.Index].Source, ElementAccess.ValueSource(resolvedKey, body, plan.Index)) ||
-                    !ReferenceTypes.IsResolvedRange(ValueType(body, plan.Index)) || (body.IsReachable(id) && !this.Dominates(plan.Index, id)) ||
-                    FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } resolvedElement ||
+                    ValueType(body, plan.Index) is not { } key || !ReferenceTypes.IsResolvedRange(key) || this.aggregateLayouts.Get(key) is not { } keyLayout ||
+                    (body.IsReachable(id) && !this.Dominates(plan.Index, id)) || FunctionAbi.GetValue(receiver.Components[0], this.aggregateLayouts) is not { } resolvedElement ||
                     !this.TryGetLocation(operation.Source, directory, constants, out var resolvedLocation))
                 {
                     return Fail("Slice application requires its evaluated ResolvedRange key.", out failure);
                 }
 
+                // The key's {start, end} Fields are read at their named offsets.
                 ReadOnlySpan<EmissionOperand> resolvedBounds = [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1),
-                    new(EmissionOperandKind.SlotAddress, ValuePlace(body.Operations[plan.Index])), new(EmissionOperandKind.Integer, 0), new(EmissionOperandKind.Integer, 0),
+                    new(EmissionOperandKind.SlotAddress, ValuePlace(body.Operations[plan.Index])), FieldOffset(keyLayout, key, "start"), FieldOffset(keyLayout, key, "end"),
                     new(EmissionOperandKind.Integer, body.Operations.Count + id)];
                 function.AddScalar(EmissionOpcode.Sequence, id, resolvedBounds, place: operation.Place, location: resolvedLocation, op: "SliceResolved", check: ArithmeticCheckKind.Bounds, representation: resolvedElement);
                 return true;
@@ -305,7 +306,15 @@ internal sealed partial class BodyLowering
             return Fail("Sequence operation does not match its source and result Type.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1), new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.Dictionary ? 24 : 8)], place: operation.Place, op: name, representation: ReferenceTypes.IsResolvedRange(receiver) ? WindowsLowering.Unit : null);
+        // A ResolvedRange receiver or `indices` result is addressed by its {start, end} Field names; a collection handle's length
+        // follows its buffer (a Dictionary's follows its slot metadata).
+        var range = ReferenceTypes.IsResolvedRange(receiver) ? receiver : plan.Kind == SequenceOperation.Indices ? ValueType(body, id) : null;
+        var fields = range is null ? null : this.aggregateLayouts.Get(range) ?? throw new InvalidOperationException("ResolvedRange has no layout.");
+        var first = fields is null ? new EmissionOperand(EmissionOperandKind.Integer, 0) : FieldOffset(fields, range!, "start");
+        var last = fields is null ? new EmissionOperand(EmissionOperandKind.Integer, 0) : FieldOffset(fields, range!, "end");
+        ReadOnlySpan<EmissionOperand> metadata = [address, new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.FixedArray ? receiver.Length : -1),
+            ReferenceEquals(range, receiver) ? last : new(EmissionOperandKind.Integer, receiver.Kind == BoundTypeKind.Dictionary ? 24 : 8), first, last];
+        function.AddScalar(EmissionOpcode.Sequence, id, metadata, place: operation.Place, op: name, representation: ReferenceEquals(range, receiver) ? WindowsLowering.Unit : null);
         return true;
     }
 }

@@ -6,6 +6,10 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
+    // Generated code addresses a Kimi library record Field by its declared name, at its offset in the record's layout.
+    private static EmissionOperand FieldOffset(AggregateLayout layout, BoundType record, string name)
+        => new(EmissionOperandKind.Integer, layout.Offset(record, name));
+
     private bool LowerDictionaryLayout(OwnershipBody body, EmissionFunction function, int id, InvocationKoto call, BoundCall plan, out string? failure)
     {
         failure = null;
@@ -80,11 +84,9 @@ internal sealed partial class BodyLowering
         }
 
         var entryLayout = GetDictionaryEntryLayout(key, value);
-        // The remainder record is {storage, stride, link, count}.
-        if (this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder || !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 5 || remainder.Fields[4].Layout.Size != 0 ||
-            remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16 || remainder.Offset(3) != 24 || !this.ValidateSlotCallResult(body, id, out failure))
+        if (this.aggregateLayouts.Get(returnType) is not { } remainder || !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
-            return Fail(failure ?? "Dictionary remainder does not have the boundary's shape.", out failure);
+            return Fail(failure ?? "Dictionary storage borrow result is not a stored record.", out failure);
         }
 
         if (!this.ScalarArrayArgument(body, id, 0, input, out var handle))
@@ -92,7 +94,10 @@ internal sealed partial class BodyLowering
             return Fail("Dictionary storage borrow is unavailable at the call.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [handle, new(EmissionOperandKind.Integer, entryLayout.Stride)], place: body.Operations[id].Place, op: "DictionaryBorrowStorage");
+        // The remainder record is {storage, stride, link, count}, written at its named Field offsets.
+        ReadOnlySpan<EmissionOperand> operands = [handle, new(EmissionOperandKind.Integer, entryLayout.Stride), FieldOffset(remainder, returnType, "storage"), FieldOffset(remainder, returnType, "stride"),
+            FieldOffset(remainder, returnType, "link"), FieldOffset(remainder, returnType, "count")];
+        function.AddScalar(EmissionOpcode.Sequence, id, operands, place: body.Operations[id].Place, op: "DictionaryBorrowStorage");
         return true;
     }
 
@@ -111,10 +116,10 @@ internal sealed partial class BodyLowering
         }
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
-        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false } remainder ||
-            !SlotTypes.IsResult(returnType) || remainder.Fields.Length != 4 || remainder.Fields[3].Layout.Size != 0 || remainder.Offset(0) != 0 || remainder.Offset(1) != 8 || remainder.Offset(2) != 16)
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { } remainder ||
+            !SlotTypes.IsResult(returnType))
         {
-            return Fail("Fixed-array storage borrow result is not the contiguous remainder.", out failure);
+            return Fail("Fixed-array storage borrow result is not a stored record.", out failure);
         }
 
         if (!this.PrepareCollectionArguments(body, id, call, plan, target, out var complete, out failure))
@@ -132,7 +137,9 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Fixed-array storage borrow is unavailable at the call.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [address, new(EmissionOperandKind.Integer, array.Length)], place: body.Operations[id].Place, op: "FixedStorage");
+        ReadOnlySpan<EmissionOperand> operands = [address, new(EmissionOperandKind.Integer, array.Length), FieldOffset(remainder, returnType, "storage"), FieldOffset(remainder, returnType, "position"),
+            FieldOffset(remainder, returnType, "count")];
+        function.AddScalar(EmissionOpcode.Sequence, id, operands, place: body.Operations[id].Place, op: "FixedStorage");
         return true;
     }
 
@@ -204,13 +211,14 @@ internal sealed partial class BodyLowering
             return Fail("Owned Dictionary storage argument is not an initialized acquired Dictionary.", out failure);
         }
 
-        if (this.aggregateLayouts.Get(returnType) is not { IsArray: false } owned || !SlotTypes.IsResult(returnType) || owned.Fields.Length != 5 ||
-            owned.Offset(0) != 0 || owned.Offset(1) != 8 || owned.Offset(2) != 16 || owned.Offset(3) != 24 || owned.Offset(4) != 32 || !this.ValidateSlotCallResult(body, id, out failure))
+        if (this.aggregateLayouts.Get(returnType) is not { } owned || !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
-            return Fail(failure ?? "Owned Dictionary remainder does not have the boundary's shape.", out failure);
+            return Fail(failure ?? "Owned Dictionary storage result is not a stored record.", out failure);
         }
 
-        function.AddScalar(EmissionOpcode.Sequence, id, [new(EmissionOperandKind.SlotAddress, place), new(EmissionOperandKind.Integer, entryLayout.Stride)], place: body.Operations[id].Place, op: "DictionaryOwnStorage");
+        ReadOnlySpan<EmissionOperand> operands = [new(EmissionOperandKind.SlotAddress, place), new(EmissionOperandKind.Integer, entryLayout.Stride), FieldOffset(owned, returnType, "storage"),
+            FieldOffset(owned, returnType, "stride"), FieldOffset(owned, returnType, "link"), FieldOffset(owned, returnType, "tail"), FieldOffset(owned, returnType, "count")];
+        function.AddScalar(EmissionOpcode.Sequence, id, operands, place: body.Operations[id].Place, op: "DictionaryOwnStorage");
         return true;
     }
 }

@@ -32,16 +32,16 @@ internal sealed partial class BodyLowering
         }
 
         var returnType = body.Resolve(plan.ReturnType, InterpretationContext.Root);
-        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { IsArray: false, Fields.Length: 3 } remainder ||
+        if (returnType is null || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), returnType) || this.aggregateLayouts.Get(returnType) is not { } remainder ||
             !SlotTypes.IsResult(returnType) || !this.ValidateSlotCallResult(body, id, out failure))
         {
-            return Fail(failure ?? "Fixed-array ownStorage result is not the owning remainder record.", out failure);
+            return Fail(failure ?? "Fixed-array ownStorage result is not a stored record.", out failure);
         }
 
-        // The whole array's layout keys the helper; the remainder record gives the offsets and the storage size.
-        var helper = this.GetArrayHelper(ArrayHelperKind.OwnFixedStorage, whole, remainder: remainder);
+        // The whole array's layout keys the helper; the remainder record gives the named offsets and the storage size.
+        var helper = this.GetArrayHelper(ArrayHelperKind.OwnFixedStorage, whole, remainder: remainder, fields: GetRemainderFields(remainder, returnType, false));
         this.callOperands.Clear();
-        if (remainder.Fields[0].Layout.Size != 0)
+        if (helper.Fields.StorageSize != 0)
         {
             // A zero-sized array has no slot; otherwise its acquired slot is transferred into the remainder.
             var entry = this.parameterArguments[0];

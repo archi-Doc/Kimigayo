@@ -106,6 +106,28 @@ internal static class StructStorage
         throw new ArgumentOutOfRangeException(nameof(index));
     }
 
+    // The logical stored index of the Field `name`. Generated code addresses Kimi library record Fields by name; a missing
+    // Field is a defect of the compiler build.
+    internal static int IndexOf(BoundType type, string name)
+    {
+        var members = Declaration(type)?.Members ?? [];
+        var index = 0;
+        for (var i = 0; i < members.Count; i++)
+        {
+            if (members[i] is PropertyKoto { BoundSymbol.Property.IsStored: true } field)
+            {
+                if (field.NameKoto.IdentifierName == name)
+                {
+                    return index;
+                }
+
+                index++;
+            }
+        }
+
+        throw new InvalidOperationException($"{type} stores no Field {name}.");
+    }
+
     internal static FunctionKoto? Destructor(BoundType type)
     {
         if (Declaration(type) is { } declaration)
