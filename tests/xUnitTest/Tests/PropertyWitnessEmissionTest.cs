@@ -167,6 +167,15 @@ public class PropertyWitnessEmissionTest
         Assert.Equal(code, Assert.Single(DiagnosticCorpus.Check(source).Diagnostics).Code);
     }
 
+    // SPEC 11.4: a Property requirement is instance-only, so a Type names none.
+    [Fact]
+    public void ARequirementPropertyIsNoTypeMember()
+    {
+        const string Source = "contract C\n    property item: i32 has get\nfunc read<T>() -> i32\n    T is C\n    return T.item\npublic func main() => ()\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Equal(("UnresolvedBinding_Kd", Source.IndexOf("T.item", StringComparison.Ordinal), "T.item".Length), (record.Code, record.Span!.Value.Start, record.Span.Value.Length));
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

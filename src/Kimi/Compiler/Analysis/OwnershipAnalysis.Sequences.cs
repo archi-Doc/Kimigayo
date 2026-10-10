@@ -40,6 +40,20 @@ public sealed partial class OwnershipAnalysis
         return result;
     }
 
+    // SPEC 15.1.3, 15.1.5: an element of a dynamic collection or at a runtime index forms no Move Path, so @move cannot take it;
+    // another acquisition this analysis does not snapshot is not implemented.
+    private void UnmovableElement(IndexKoto source, AcquisitionKind? acquisition)
+    {
+        if (acquisition == AcquisitionKind.Move)
+        {
+            this.body.ReportIssue(new(source, OwnershipFailure.StaticMovePathRequired));
+        }
+        else
+        {
+            this.Unsupported(source);
+        }
+    }
+
     private int ReadSlice(IndexKoto source, AcquisitionKind? acquisition)
     {
         if (ReferenceTypes.IsDictionary(source.Left.BoundType))
@@ -52,7 +66,7 @@ public sealed partial class OwnershipAnalysis
                 }
                 else
                 {
-                    this.Unsupported(source);
+                    this.UnmovableElement(source, acquisition);
                 }
 
                 return -1;
@@ -97,7 +111,7 @@ public sealed partial class OwnershipAnalysis
             }
             else
             {
-                this.Unsupported(source);
+                this.UnmovableElement(source, acquisition);
                 result = -1;
             }
         }

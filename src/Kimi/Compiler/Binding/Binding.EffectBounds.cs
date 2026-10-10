@@ -86,6 +86,15 @@ public sealed partial class Binding
         }
     }
 
+    /// <summary>Gets whether a failed bound check stopped at an effect this implementation cannot classify yet, which is reported as
+    /// the located Unsupported_Kd, never as a violation of the bound (plan rule 5).</summary>
+    /// <param name="use">The conformance, the Callable use or the virtual function of the failed check.</param>
+    /// <returns>Whether the recorded violation is an implementation limit.</returns>
+    internal bool IsEffectLimit(Koto use)
+        => (this.effectViolations?.TryGetValue(use, out var conformance) == true && conformance.Kind == EffectViolation.Limit) ||
+            (this.callableEffectViolations.TryGetValue(use, out var callable) && callable.Kind == EffectViolation.Limit) ||
+            (use is FunctionKoto function && this.virtualEffectViolations?.TryGetValue(function, out var slot) == true && slot.Kind == EffectViolation.Limit);
+
     // SPEC 8.4.10.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
     // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.4.5).
     // Binding checks the Loans the implementation accesses and the calls it makes. Which values it destroys is known only
@@ -98,7 +107,8 @@ public sealed partial class Binding
         {
             if (this.EffectBoundViolation(this.activeConformancePaths[i], false) is { } path)
             {
-                this.Fail(path.Use, BindingFailure.IncompatibleImplementation);
+                var limit = this.IsEffectLimit(path.Use);
+                this.Fail(path.Use, limit ? BindingFailure.Unsupported : BindingFailure.IncompatibleImplementation, limit);
             }
         }
 
@@ -265,7 +275,7 @@ public sealed partial class Binding
 
                 if (this.destructions && property.InitializerKoto is not null && !StaticScalar.TryGet(node.BoundSymbol.Property, out _))
                 {
-                    this.Violate(EffectViolation.UnknownDestruction, node);
+                    this.DestructionLimit(node);
                     return;
                 }
             }
@@ -529,7 +539,7 @@ public sealed partial class Binding
         {
             if (this.Type(type) is not { } selected)
             {
-                this.Violate(EffectViolation.UnclassifiedAccess, use);
+                this.Violate(EffectViolation.Limit, use);
                 return SemanticsMask.None;
             }
 
@@ -859,7 +869,7 @@ public sealed partial class Binding
 
             if (this.Type(type) is not { } layer)
             {
-                this.Violate(EffectViolation.UnclassifiedAccess, use); // An access whose Type cannot be instantiated has no classified Loan.
+                this.Violate(EffectViolation.Limit, use); // An access whose Type cannot be instantiated has no classified Loan.
                 return;
             }
 
@@ -968,7 +978,7 @@ public sealed partial class Binding
             {
                 if (binding.InstantiateForwardedCall(call, outer, this.NextCall()) is not { } instantiated)
                 {
-                    this.Violate(EffectViolation.UnclassifiedCall, use);
+                    this.Violate(EffectViolation.Limit, use);
                     return;
                 }
 
@@ -996,7 +1006,7 @@ public sealed partial class Binding
             var type = CallableCore(this.Type(call.ReceiverType));
             if (type is null)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, use);
+                this.Violate(EffectViolation.Limit, use);
                 return;
             }
 
@@ -1085,7 +1095,7 @@ public sealed partial class Binding
                 // Formatting dispatch runs its selected witness; built-in formatting only writes its inputs.
                 if (!binding.TryResolveFormattingCallback(call, out var implementation))
                 {
-                    this.Violate(EffectViolation.UnclassifiedCall, use);
+                    this.Violate(EffectViolation.Limit, use);
                 }
                 else if (implementation is not null)
                 {
@@ -1110,7 +1120,7 @@ public sealed partial class Binding
         {
             if (plan is null)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, null);
+                this.Violate(EffectViolation.Limit, null);
                 return;
             }
 
@@ -1134,7 +1144,7 @@ public sealed partial class Binding
                 var effect = ClassifyCompilerFunction(symbol.CompilerFunction);
                 if (effect != CompilerFunctionEffect.Inputs && (effect != CompilerFunctionEffect.Environment || this.confined))
                 {
-                    this.Violate(effect == CompilerFunctionEffect.Environment ? EffectViolation.ExternalOperation : EffectViolation.UnclassifiedCall, null);
+                    this.Violate(effect == CompilerFunctionEffect.Environment ? EffectViolation.ExternalOperation : EffectViolation.Limit, null);
                 }
 
                 return;
@@ -1142,7 +1152,7 @@ public sealed partial class Binding
 
             if (symbol.Declaration is not FunctionKoto function)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, null);
+                this.Violate(EffectViolation.Limit, null);
                 return;
             }
 
@@ -1158,7 +1168,7 @@ public sealed partial class Binding
                 {
                     if (direct.Implementation is not { BoundSymbol: { } implementation } body || direct.ImplementingType is null)
                     {
-                        this.Violate(EffectViolation.UnclassifiedCall, null);
+                        this.Violate(EffectViolation.Limit, null);
                         return;
                     }
 
@@ -1194,7 +1204,7 @@ public sealed partial class Binding
                 // already accessed, and the environment, which confined excludes. Any other bodyless call is unknown.
                 if (!IsLibraryImport(function))
                 {
-                    this.Violate(EffectViolation.UnclassifiedCall, null);
+                    this.Violate(EffectViolation.Limit, null);
                 }
                 else if (this.confined)
                 {
@@ -1258,21 +1268,28 @@ public sealed partial class Binding
                 preserves |= held;
             }
 
+            var untried = false;
             if (this.preserves)
             {
                 // SPEC 8.4.10.5: every requirement call producing a value of an abstract part of the result is recorded.
                 var own = this.OwnFieldPathReceiver();
-                if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
+                var producer = this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!));
+                if (producer)
                 {
                     this.producers.Add((requirement, reference, this.stepUse ?? symbol.Declaration, own));
                 }
 
-                // Virtual exclusions additionally need actual-object and bound-slot identity. Until those
-                // relations are proven, retain their producers but never borrow another call's exclusion.
-                if (preserves && !requirement.IsVirtual && this.delegable && own is not null)
+                // Virtual exclusions additionally need actual-object and bound-slot identity, which are not implemented: such a
+                // call retains its producer, and a conflict its exclusion might remove is a limit (plan rule 5).
+                if (preserves && this.delegable && own is not null)
                 {
-                    this.candidates.Add((requirement, reference, this.stepUse!, own, confined));
-                    return;
+                    if (!requirement.IsVirtual)
+                    {
+                        this.candidates.Add((requirement, reference, this.stepUse!, own, confined));
+                        return;
+                    }
+
+                    untried = producer;
                 }
 
                 if (preserves && !requirement.IsVirtual)
@@ -1283,12 +1300,13 @@ public sealed partial class Binding
 
             if (!confined)
             {
-                this.Violate(requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, requirement.IsVirtual && this.stepUse is null ? requirement : null);
+                this.Violate(untried && !this.confined ? EffectViolation.Limit : requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, requirement.IsVirtual && this.stepUse is null ? requirement : null);
                 return;
             }
 
             if (this.preserves)
             {
+                var valid = this.valid;
                 var receiver = Receiver(call) is { } input ? this.Type(input) : null;
                 this.Reachable(receiver, Mode(receiver), symbol.Declaration);
                 for (var i = 0; this.valid && i < call.ArgumentOperations.Length; i++)
@@ -1297,6 +1315,11 @@ public sealed partial class Binding
                     {
                         this.Reachable(this.Type(parameter), Mode(parameter), symbol.Declaration);
                     }
+                }
+
+                if (untried && valid && !this.valid)
+                {
+                    this.Violation = EffectViolation.Limit;
                 }
             }
         }
@@ -1566,7 +1589,7 @@ public sealed partial class Binding
 
             if (binding.compilation.Ownership.TemplateBody(function, true) is not { } body)
             {
-                this.Violate(EffectViolation.UnknownDestruction, null);
+                this.DestructionLimit(null);
                 return;
             }
 
@@ -1833,7 +1856,7 @@ public sealed partial class Binding
 
             if (type is null)
             {
-                this.Violate(EffectViolation.UnknownDestruction, use);
+                this.DestructionLimit(use);
                 return;
             }
 
@@ -2052,6 +2075,10 @@ public sealed partial class Binding
         }
 
         // Records the first effect that violates a bound, at its node and at the own-body syntax that reaches it.
+        // A destruction this implementation cannot classify yet: a limit of the check, or an unknown destruction of the collected
+        // cleanups, which their check judges.
+        private void DestructionLimit(Koto? at) => this.Violate(this.cleanupTarget is null ? EffectViolation.Limit : EffectViolation.UnknownDestruction, at);
+
         private void Violate(EffectViolation kind, Koto? at)
         {
             if (this.cleanupTarget is { } target && kind == EffectViolation.UnknownDestruction)
@@ -2096,7 +2123,7 @@ public sealed partial class Binding
 
             if (this.contexts.Count >= 1024)
             {
-                this.Violate(EffectViolation.UnclassifiedCall, null); // An unbounded effect expansion cannot prove conformance.
+                this.Violate(EffectViolation.Limit, null); // An effect expansion beyond 1024 instantiation contexts is not summarized.
                 return 0;
             }
 

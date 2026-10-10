@@ -70,6 +70,9 @@ public sealed partial class Binding
 
         /// <summary>An erased Function Type keeps no effect bound.</summary>
         ErasedCallable,
+
+        /// <summary>An effect this implementation cannot classify yet: the check fails as an implementation limit (Unsupported_Kd).</summary>
+        Limit,
     }
 
     /// <summary>SPEC 8.4.10.5: why the Loans of earlier results were not excluded for a requirement call.</summary>

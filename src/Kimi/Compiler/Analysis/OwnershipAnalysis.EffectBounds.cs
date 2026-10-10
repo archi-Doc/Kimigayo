@@ -44,23 +44,22 @@ public sealed partial class OwnershipAnalysis
     {
         this.effectViolations.Clear();
         this.compilation.Binding.ValidateDestructionEffects(this.effectViolations);
-        for (var i = 0; i < this.effectViolations.Count; i++)
-        {
-            this.issues.Add(new(this.effectViolations[i], OwnershipFailure.EffectBound));
-        }
-
-        this.effectViolations.Clear();
+        this.AddEffectIssues(OwnershipFailure.EffectBound);
         this.compilation.Binding.ValidateCallableEffects(this.effectViolations);
+        this.AddEffectIssues(OwnershipFailure.CallableEffectBound);
+        this.compilation.Binding.ValidateVirtualDestructionEffects(this.effectViolations);
+        this.AddEffectIssues(OwnershipFailure.VirtualEffectBound);
+    }
+
+    // A check that stopped at an effect Binding cannot classify yet is the located limit (plan rule 5).
+    private void AddEffectIssues(OwnershipFailure failure)
+    {
         for (var i = 0; i < this.effectViolations.Count; i++)
         {
-            this.issues.Add(new(this.effectViolations[i], OwnershipFailure.CallableEffectBound));
+            var use = this.effectViolations[i];
+            this.issues.Add(new(use, this.compilation.Binding.IsEffectLimit(use) ? OwnershipFailure.Unsupported : failure));
         }
 
         this.effectViolations.Clear();
-        this.compilation.Binding.ValidateVirtualDestructionEffects(this.effectViolations);
-        for (var i = 0; i < this.effectViolations.Count; i++)
-        {
-            this.issues.Add(new(this.effectViolations[i], OwnershipFailure.VirtualEffectBound));
-        }
     }
 }

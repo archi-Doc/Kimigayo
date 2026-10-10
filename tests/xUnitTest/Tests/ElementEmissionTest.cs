@@ -83,6 +83,18 @@ public class ElementEmissionTest
         Assert.Empty(writer.ToString());
     }
 
+    // SPEC 12.4.1: a tuple selector names an element of a Tuple only, so another receiver is a Type error at the selection.
+    [Theory]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet s = S.init()\nlet x = s.0", "s.0")]
+    [InlineData("func f<T>(t: T) -> ()\n    let x = t.0\npublic func main() => ()", "t.0")]
+    [InlineData("let n: i32 = 4\nlet x = n.0", "n.0")]
+    [InlineData("let a = (1, 2)\nlet n = a.2", "a.2")]
+    public void ATupleSelectorNeedsATuple(string source, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("TypeMismatch_Kd", source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
     [Theory]
     [InlineData("loan")]
     [InlineData("root")]

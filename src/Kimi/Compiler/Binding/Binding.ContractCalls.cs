@@ -192,7 +192,8 @@ public sealed partial class Binding
                 return group.Properties[0];
             }
 
-            this.Fail(member, BindingFailure.Unsupported, true);
+            // SPEC 11.4: a Property requirement is instance-only, so a Type names none; several identities are not implemented.
+            this.Fail(member, typeAccess ? BindingFailure.MissingName : BindingFailure.Unsupported, true);
             return null;
         }
 

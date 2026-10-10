@@ -276,7 +276,9 @@ public sealed partial class Binding
 
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
-        if (!OffersTake(conversion.Left))
+        // SPEC 6.2.3.4: construction also allows no Non-Copy Move out of its receiver.
+        if (!OffersTake(conversion.Left) ||
+            (IsSpecialField(KotoHelper.UnwrapParentheses(conversion.Left), out var special) && special.IsConstructor && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
         {
             var failure = AccessFailure(conversion.Left, take: true);
             return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
@@ -635,6 +637,13 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.BareOwningShorthand);
             }
 
+            // SPEC 13.5.5.2: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.
+            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !ReferenceEquals(operandType, BoundType.Never))
+            {
+                Complete(conversion.Right, operandType);
+                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+            }
+
             this.Fail(conversion.Right, BindingFailure.Unsupported, true);
             return this.Fail(conversion, BindingFailure.Unsupported, true);
         }
@@ -812,8 +821,9 @@ public sealed partial class Binding
             return this.FailMismatch(conversion, conversion, source, target);
         }
 
-        // Other ownership/borrow adaptations require their own verified paths.
-        var unsupported = !SupportsIdentityAcquisition(source) || !SupportsIdentityAcquisition(target);
+        // SPEC 13.5.3: an owned target never extracts its Core through a safe reference (only the value read of a read Type does,
+        // above). Other ownership/borrow adaptations require their own verified paths.
+        var unsupported = !SupportsIdentityAcquisition(target) || (!SupportsIdentityAcquisition(source) && source.Semantics is not (SemanticsKind.Ref or SemanticsKind.Uniq));
         return this.Fail(conversion, unsupported ? BindingFailure.Unsupported : BindingFailure.TypeMismatch, unsupported);
     }
 }

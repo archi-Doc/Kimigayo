@@ -74,7 +74,8 @@ public sealed partial class Binding
             (this.virtualEffectViolations ??= new(ReferenceEqualityComparer.Instance))[function] = new(original, bound, summary.Violation, summary.ViolationSite, summary.ViolationNode);
             if (rejected is null)
             {
-                this.Fail(function, BindingFailure.VirtualEffectBound);
+                var limit = summary.Violation == EffectViolation.Limit;
+                this.Fail(function, limit ? BindingFailure.Unsupported : BindingFailure.VirtualEffectBound, limit);
             }
             else
             {

@@ -55,12 +55,15 @@ public sealed partial class Binding
             return Complete(test, null);
         }
 
-        if (HasRuntimeTypeDependency(target) || test.Right.BoundSymbol?.Kind == BindingSymbolKind.AssociatedType)
+        // SPEC 13.6.1: a target that is itself a Type parameter or an associated Type is invalid; a struct Core whose Type
+        // arguments depend on them is valid but not implemented.
+        var associated = test.Right.BoundSymbol?.Kind == BindingSymbolKind.AssociatedType;
+        if (!associated && target.Kind is not (BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection) && HasRuntimeTypeDependency(target))
         {
             return this.Fail(test, BindingFailure.Unsupported, true);
         }
 
-        if (!IsRuntimeStructCore(target) || target.Origin is not null || target.OriginArguments.Count != 0)
+        if (associated || !IsRuntimeStructCore(target) || target.Origin is not null || target.OriginArguments.Count != 0)
         {
             return this.Fail(test, BindingFailure.InvalidTypeFormation);
         }

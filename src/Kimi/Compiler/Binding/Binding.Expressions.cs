@@ -587,11 +587,6 @@ public sealed partial class Binding
                     this.BindNode(constructor, scope);
                 }
 
-                if (container is not (ContractKoto or StructKoto) && container.Bases.Count != 0)
-                {
-                    return this.Fail(node, BindingFailure.Unsupported, true);
-                }
-
                 if (LengthSlot(container) is { } slot)
                 {
                     this.AddPrerequisite(node, slot); // A slot the parser reported as misplaced explains the failure.
@@ -818,8 +813,10 @@ public sealed partial class Binding
         this.BindNodeCore(name, scope, null);
         if (name.BindingState != BindingState.Resolved || name.BoundSymbol is not { Kind: BindingSymbolKind.Function } group)
         {
+            // SPEC 7.6, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
             this.BindUnknownChildren(reference, scope);
-            return this.Fail(reference, BindingFailure.Unsupported, true);
+            var resolved = name.BindingState == BindingState.Resolved;
+            return this.Fail(reference, resolved ? BindingFailure.NoApplicableCandidate : BindingFailure.Unsupported, !resolved);
         }
 
         for (var i = 0; i < reference.TypeArguments.Count; i++)
@@ -1173,7 +1170,8 @@ public sealed partial class Binding
                 if (!ReferenceEquals(symbol.Scope.Owner, specialFunction.BoundSymbol!.Scope.Owner) || !property.IsStored ||
                     (!write && (!property.Getter.IsStandard || (update && !property.Setter.IsStandard))))
                 {
-                    return this.Fail(node, BindingFailure.Unsupported);
+                    // SPEC 6.2.3.4, 11.3.1: construction forbids inherited Field and computed access and custom accessor calls on self.
+                    return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
                 return Complete(node, symbol.Type);
@@ -1627,8 +1625,19 @@ public sealed partial class Binding
             return Complete(binary, result);
         }
 
-        // Every primitive with an arithmetic operator is numeric and handled above; arithmetic on other Types remains deferred.
-        return this.Fail(binary, BindingFailure.Unsupported, true);
+        // SPEC 13.3: the bitwise operators take integers only and have no user extension. SPEC arithmetic Contracts §2, §6: an
+        // operand Type that is neither numeric nor a provider of the operator, such as an unconstrained Type parameter, a Tuple
+        // or a raw pointer product, selects no conformance.
+        if (operation is KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret)
+        {
+            return this.FailOperand(binary, left, BindingFailure.NonIntegerOperand);
+        }
+
+        var rejected = binary.ArithmeticStorage ??= new();
+        rejected.Active = false;
+        rejected.Candidates.Clear();
+        rejected.Sources.Clear();
+        return this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, left, right, ArithmeticContract(operation), "No proven conformance fits the counterpart structure"));
     }
 
     private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)

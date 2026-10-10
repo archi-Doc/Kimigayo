@@ -52,6 +52,17 @@ public class SharedObjectAdaptationTest
         Assert.True(CompilationTestHelper.Parse(Types + $"func run(owner: {mode}/Child) => inspect(owner@objref/Base)").Bind().IsComplete);
     }
 
+    // SPEC 13.5.5.2: @objref and @objuniq borrow an object payload; an operand that is no object has none, as for the typed form.
+    [Theory]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet b = a@objref", "a@objref")]
+    [InlineData("let a: i32 = 5\nlet b = a@objuniq", "a@objuniq")]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet b = a@objref/S", "a@objref/S")]
+    public void ObjectBorrowsOfANonObjectAreInvalid(string source, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
     // SPEC 3.6.1, 7.3, 10.2, 13.5.5.1, 13.5.5.2: a temporary handle is materialized like an owned temporary and lends its object or
     // payload for the operation: explicit and implicit object borrows, payload follows, shared receivers and a moved handle.
     [Theory]

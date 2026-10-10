@@ -25,7 +25,8 @@ public sealed partial class OwnershipBody
         => (this.reservedElementWrites ??= new()).Add((projection, issue));
 
     // SPEC 15.6.7: the completed plan reports a write during preparation once, as a conflict with the reservation it relates. The
-    // held record stands when no such record exists for the write, such as for an incomplete plan or a write the plan accepts.
+    // held record stands for an incomplete plan; a write the completed plan accepts, such as one to a path disjoint from the
+    // reservation (SPEC 15.6.2), is rejected only by the build-time element-write check: an implementation limit (plan rule 5).
     internal void ReportReservedElementWrites(bool completed)
     {
         if (this.reservedElementWrites is not { Count: > 0 } held)
@@ -46,7 +47,7 @@ public sealed partial class OwnershipBody
 
             if (!stated)
             {
-                this.ReportIssue(issue);
+                this.ReportIssue(completed ? new(issue.Source, OwnershipFailure.Unsupported) : issue);
             }
         }
 

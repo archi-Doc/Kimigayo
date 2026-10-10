@@ -796,11 +796,6 @@
     Message="The Semantics cases of this definition exceed the implementation bound: {0} cases, where at most {1} are analyzed"
     Arguments="cases:Number,limit:Number"
 
-  + Name="ForBindingLimit_Kd"
-    Category="Resource"
-    Message="A for header declares at most 64 bindings"
-    Label="binding beyond the 64th"
-
   + Name="ProjectPreparationFailed_Kd"
     Category="Input"
     Message="Project preparation failed"

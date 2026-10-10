@@ -54,6 +54,20 @@ public class EffectBoundImplementationTest
         }
     }
 
+    // SPEC 8.4.10.2, 8.4.10.5: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of
+    // a static initializer other than a constant (reading an immutable static is no environment effect), and a conflict that the
+    // untried exclusion of a virtual slot call producing the item might remove. A virtual call producing no item keeps its violation.
+    [Theory]
+    [InlineData("contract Read\n    func read(self: ref/Self) -> i32\n        effect confined\ngroup G\n    public let value: i32 = 2 + 3\nstruct S\n    Self is Read\n    public func read(self: ref/Self) -> i32 => G.value\n", "Self is Read", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(Source + "open struct Feed<T>\n    public init() => ()\n    public virtual func next(self: objref/Self) -> Option<T>\n        effect preserves results\n        return .None\nstruct Drain<T>\n    Self is Source\n    associate Source.Item is T\n    var inner: obj/Feed<T>\n    public init() => self.inner = Kimi.Intrinsics.makeObj(Feed<T>.init())\n    public func take(self: uniq/Self) -> Option<T> => self.inner.next()\n", "Self is Source", nameof(DiagnosticCode.Unsupported_Kd))]
+    [InlineData(Source + "contract Step\n    associate Item\n    func step(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\nopen struct Feed\n    public init() => ()\n    public virtual func next(self: objref/Self) -> Option<i32>\n        effect preserves results\n        return .None\nstruct Drain<J>\n    J is Step\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    var feed: obj/Feed\n    public func take(self: uniq/Self) -> Option<J.Item>\n        _ = self.feed.next()\n        return self.inner.step()\n", "self.feed.next()", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
+    public void AnUnclassifiedEffectIsAnImplementationLimit(string declarations, string at, string code)
+    {
+        var source = declarations + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, source.IndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
     // SPEC 8.4.10.2: every compiler function has one effect class. The Storage and Raw families act only on their inputs and the
     // allocator; Console output and the test temporary directory are environment effects; formatting dispatch is followed to its
     // witness before classification. A new kind is unclassified until it is placed here.

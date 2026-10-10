@@ -19,9 +19,10 @@ public sealed partial class Binding
         }
 
         var receiver = this.BindNode(source.Left, scope);
-        // SPEC 3.4.1, 4.6.1, 12.4.1: metadata shares access through a safe value reference to the sequence; a raw pointer or
+        // SPEC 3.4.1, 4.6.1, 12.4.1: metadata shares access through safe value references to the sequence; a raw pointer or
         // an object handle is not followed.
-        if (ReferenceTypes.IsArray(receiver) || ReferenceTypes.IsDynamicArray(receiver) || ReferenceTypes.IsDictionary(receiver) || FormattingTypes.IsSliceBorrow(receiver) || ReferenceTypes.IsSlice(receiver))
+        var layers = 0;
+        for (; ReferenceTypes.IsReference(receiver); layers++)
         {
             receiver = receiver!.Components[0];
         }
@@ -42,9 +43,10 @@ public sealed partial class Binding
             "capacity" => receiver!.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary,
             _ => false,
         };
-        if (!valid)
+        if (!valid || layers > 1)
         {
-            result = this.Fail(source, BindingFailure.MissingName);
+            // Metadata through more than one reference layer is not implemented.
+            result = this.Fail(source, valid ? BindingFailure.Unsupported : BindingFailure.MissingName, valid);
             return true;
         }
 

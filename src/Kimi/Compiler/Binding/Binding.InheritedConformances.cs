@@ -231,9 +231,16 @@ public sealed partial class Binding
                     var matches = this.MatchesRequirement(requirement, implementation, self, scope, selection);
                     if (matches != true)
                     {
-                        // Object receiver projection is a separate implementation limit, not evidence of a Self mismatch.
+                        // Object receiver projection is a separate implementation limit of the conformance, as OCC-X is
+                        // (UnsupportedProof), not evidence of a Self mismatch.
                         var receiver = requirement.BoundSymbol!.ReceiverIndex;
-                        path.RejectedSelfSignature = matches == false && (receiver < 0 || requirement.Parameters[receiver].Type.BoundType?.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq)) ? witness.Implementation : null;
+                        if (matches == false && receiver >= 0 && requirement.Parameters[receiver].Type.BoundType?.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq)
+                        {
+                            path.Unsupported = true;
+                            continue;
+                        }
+
+                        path.RejectedSelfSignature = matches == false ? witness.Implementation : null;
                         return matches is null ? ConstraintProof.Unknown : ConstraintProof.Refuted;
                     }
 

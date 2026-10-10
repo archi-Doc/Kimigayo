@@ -90,4 +90,17 @@ public class ReferenceLayerAdaptationTest
         Assert.Contains(c.Binding.Issues, x => x.Code == Kimi.DiagnosticCode.Unsupported_Kd);
         Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
+
+    // SPEC 3.4.1: sequence metadata and indexing follow every safe reference layer and pair layer, so metadata past one reference
+    // layer and indexing through a pair layer are one located Unsupported_Kd, not a missing Name or a receiver without an index.
+    [Theory]
+    [InlineData("func count(a: ref/(ref/Array<i32> during b)) -> isize => a.length", "a.length")]
+    [InlineData("func at<s/T>(xs: s/Array<i32>) -> i32\n    s is owner or ref\n    return xs[0]", "xs[0]")]
+    [InlineData("func at<s/T>(xs: s/[2 of i32]) -> i32\n    s is owner or ref\n    return xs[0]", "xs[0]")]
+    public void SequenceAccessThroughFurtherLayersIsOneUnsupportedRecord(string body, string at)
+    {
+        var source = body + "\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("Unsupported_Kd", source.IndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
 }

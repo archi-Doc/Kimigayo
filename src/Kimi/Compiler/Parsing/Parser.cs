@@ -3091,7 +3091,7 @@ CloseParameters:
         var forToken = reader.Read();
         var bindings = new List<IdentifierNameKoto>(2);
         var isTupleBinding = reader.CurrentTokenKind == TokenKind.OpenParenthesis;
-        ulong mutableSlots = 0;
+        bool[]? mutableSlots = null;
         DiagnosticKey? malformed = null;
 
         if (isTupleBinding)
@@ -3101,7 +3101,7 @@ CloseParameters:
         else if (TryParseForBinding(ref reader, out var binding, out var mutable))
         {
             bindings.Add(binding);
-            mutableSlots = mutable ? 1UL : 0UL;
+            mutableSlots = mutable ? [true] : null;
         }
         else
         {
@@ -3137,7 +3137,7 @@ CloseParameters:
 
     /// <summary>Parses the slots of <c>(slot, ...)</c> (SPEC 14.6.1, F.5); a failed slot is skipped whole and the list continues.</summary>
     /// <returns>The key of the first Error, or <see langword="null"/> for a well-formed list.</returns>
-    private static DiagnosticKey? ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings, ref ulong mutableSlots)
+    private static DiagnosticKey? ParseForTupleBindings(ref TokenReader reader, List<IdentifierNameKoto> bindings, ref bool[]? mutableSlots)
     {
         reader.Advance();
         DiagnosticKey? malformed = null;
@@ -3153,14 +3153,8 @@ CloseParameters:
             {
                 if (mutable)
                 {
-                    if (bindings.Count < 64)
-                    {
-                        mutableSlots |= 1UL << bindings.Count;
-                    }
-                    else
-                    {
-                        reader.Diagnostic.Add(binding.Span, DiagnosticCode.ForBindingLimit_Kd);
-                    }
+                    Array.Resize(ref mutableSlots, bindings.Count + 1);
+                    mutableSlots[bindings.Count] = true;
                 }
 
                 bindings.Add(binding);

@@ -296,6 +296,16 @@ public class CallReservationTest(ITestOutputHelper output)
     public void SeparateOrSharedInputsAreAccepted(string body)
         => AssertAccepted(Cell + body);
 
+    // SPEC 15.6.2, 15.6.7: a write during preparation to a path disjoint from the reservation is valid, but the element-write
+    // check rejects it before the plan is complete: an implementation limit, one Unsupported_Kd at the written path.
+    [Fact]
+    public void AWriteDisjointFromTheReservationIsAnImplementationLimit()
+    {
+        var source = Cell + "var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.1.value = 2\n    exit to scope 3\n))\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(("Unsupported_Kd", source.IndexOf("pair.1.value", StringComparison.Ordinal), "pair.1.value".Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
     // Two independent overlaps keep one record each.
     [Fact]
     public void IndependentOverlapsKeepTheirOwnRecords()

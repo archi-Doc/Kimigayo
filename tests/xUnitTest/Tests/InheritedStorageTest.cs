@@ -42,6 +42,23 @@ public class InheritedStorageTest
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InvalidAssignment_Kd);
     }
 
+    // SPEC 6.2.3.4, 11.3.1: the construction receiver also forbids inherited Field and computed access, custom accessor calls and
+    // a Non-Copy Move, each one Language record at the access.
+    [Theory]
+    [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32\n    public init()\n        self.y = self.x\n", "self.x")]
+    [InlineData("open struct Base\n    public var x: i32 = 1\n    public init() => ()\nstruct Leaf: Base\n    var y: i32 = 0\n    public init()\n        self.x = 3\n", "self.x")]
+    [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "self.b")]
+    [InlineData("struct S\n    public computed b: i32\n        get() -> i32 => 5\n        set(value: i32) -> () => ()\n    public init()\n        self.b = 1\n", "self.b")]
+    [InlineData("struct S\n    var a: i32\n    public var b: i32 = 0\n        get() -> i32 => storage\n    public init()\n        self.a = self.b\n", "self.b")]
+    [InlineData("struct S\n    public var b: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public init()\n        self.b += 1\n", "self.b")]
+    [InlineData("struct R\n    public var n: i32 = 0\n    drop => ()\nstruct S\n    var r: R\n    public init(r: R)\n        self.r = r@move\n        let moved = self.r@move\n", "self.r@move")]
+    public void TheConstructionReceiverForbidsInheritedComputedAndMovingAccess(string declarations, string at)
+    {
+        var source = declarations + "public func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void BaseConstructionPrecedesOwnInitializersAndDestructionFollowsOwnFields()

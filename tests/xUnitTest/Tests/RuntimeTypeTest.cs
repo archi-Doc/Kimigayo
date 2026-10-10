@@ -125,9 +125,10 @@ public class RuntimeTypeTest
         var c = CompilationTestHelper.ParseSuccess($"struct Animal\nstruct Dog<T>\nfunc f<T>(x: objref/Animal) -> bool => x is {target}");
         Assert.True(c.Bind().IsComplete == valid, Describe(c));
         Assert.Equal(valid, Test(c).BoundRuntimeTest.HasValue);
+        // SPEC 13.6.1: a bare Type parameter target is invalid; Type arguments that depend on one are valid but not implemented.
         if (target is "Dog<T>" or "T")
         {
-            Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == DiagnosticCode.Unsupported_Kd);
+            Assert.Contains(c.Binding.Issues, x => x.Node == Test(c) && x.Code == (target == "T" ? DiagnosticCode.InvalidTypeFormation_Kd : DiagnosticCode.Unsupported_Kd));
         }
     }
 
@@ -161,7 +162,7 @@ public class RuntimeTypeTest
         var test = Test(c);
         Assert.Null(test.BoundRuntimeTest);
         Assert.Equal(BoundTypeKind.AssociatedProjection, test.Right.BoundType!.Kind);
-        Assert.Contains(c.Binding.Issues, x => x.Node == test && x.Code == DiagnosticCode.Unsupported_Kd);
+        Assert.Contains(c.Binding.Issues, x => x.Node == test && x.Code == DiagnosticCode.InvalidTypeFormation_Kd);
     }
 
     [Fact]

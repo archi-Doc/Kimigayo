@@ -25,8 +25,8 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets a value indicating whether the bindings use tuple syntax.</summary>
     public bool IsTupleBinding { get; private set; }
 
-    // SPEC 14.6.1: bit i is set when slot i is written "var Name"; a bare Name is a let binding.
-    private readonly ulong mutableSlots;
+    // SPEC 14.6.1: element i is set when slot i is written "var Name"; a bare Name is a let binding. Null when no slot is.
+    private readonly bool[]? mutableSlots;
 
     /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>
     internal SubjectMode Mode { get; set; }
@@ -44,7 +44,7 @@ public sealed class ForKoto : ExpressionKoto
     /// <param name="iterable">The expression that supplies values.</param>
     /// <param name="body">The loop body.</param>
     /// <param name="isTupleBinding">Whether the bindings use tuple syntax.</param>
-    /// <param name="mutableSlots">The bit set of slots declared with <c>var</c>.</param>
+    /// <param name="mutableSlots">Per slot, whether it is declared with <c>var</c>; null when none is.</param>
     public ForKoto(
         ref TokenReader reader,
         SourceSpan range,
@@ -52,7 +52,7 @@ public sealed class ForKoto : ExpressionKoto
         Koto iterable,
         CodeBlockKoto body,
         bool isTupleBinding,
-        ulong mutableSlots = 0)
+        bool[]? mutableSlots = null)
         : base(ref reader, range)
     {
         this.bindings = bindings;
@@ -69,14 +69,14 @@ public sealed class ForKoto : ExpressionKoto
     /// <summary>Gets whether the slot at <paramref name="index"/> is a reassignable iteration local (SPEC 14.6.1).</summary>
     /// <param name="index">The slot index.</param>
     /// <returns>Whether the slot was written <c>var Name</c>.</returns>
-    public bool IsMutableSlot(int index) => index >= 0 && index < 64 && ((this.mutableSlots >> index) & 1) != 0;
+    public bool IsMutableSlot(int index) => this.mutableSlots is { } slots && (uint)index < (uint)slots.Length && slots[index];
 
     /// <summary>Gets whether <paramref name="binding"/> is one of this loop's reassignable iteration locals.</summary>
     /// <param name="binding">A binding declared by this loop.</param>
     /// <returns>Whether the binding was written <c>var Name</c>.</returns>
     public bool IsMutableSlot(IdentifierNameKoto binding)
     {
-        if (this.mutableSlots == 0)
+        if (this.mutableSlots is null)
         {
             return false;
         }

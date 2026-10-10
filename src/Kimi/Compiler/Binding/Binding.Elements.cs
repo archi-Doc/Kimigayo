@@ -85,15 +85,9 @@ public sealed partial class Binding
                     return this.CompleteDependent(source, source.Left); // The receiver's own failure explains the access.
                 }
 
-                // SPEC 4.6.9: a sequence reached here, such as through a reference, is an implementation limit; any other
-                // receiver, including a range key on an Indexable Type, cannot be indexed by the key.
-                var core = receiver;
-                while (core is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-                {
-                    core = core.Components[0];
-                }
-
-                var sequence = core.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
+                // SPEC 3.4.1, 4.6.9: a sequence reached here, such as through reference or pair layers, is an implementation limit;
+                // any other receiver, including a range key on an Indexable Type, cannot be indexed by the key.
+                var sequence = ComparisonReferent(this.ComparisonThroughPairs(source.Left, receiver)).Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary;
                 return this.Fail(source, sequence ? BindingFailure.Unsupported : BindingFailure.NotIndexable);
             }
 
@@ -129,7 +123,10 @@ public sealed partial class Binding
 
         if (!ElementAccess.TryType(source, out var element, out _))
         {
-            return this.Fail(source, receiver?.Kind == BoundTypeKind.Tuple ? BindingFailure.TypeMismatch : BindingFailure.Unsupported);
+            // SPEC 3.4.1, 12.4.1: only a Tuple or a fixed array has these elements; one reached through further layers is not implemented.
+            var core = receiver is null ? null : ComparisonReferent(this.ComparisonThroughPairs(source.Left, receiver));
+            var limit = core is null || (!ReferenceEquals(core, receiver) && core.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray);
+            return this.Fail(source, limit ? BindingFailure.Unsupported : BindingFailure.TypeMismatch);
         }
 
         return Complete(source, element);

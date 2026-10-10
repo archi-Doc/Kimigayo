@@ -66,6 +66,20 @@ public sealed class NonNumericOperandDiagnosticTest(ITestOutputHelper output)
         Assert.Equal(type == "string" ? Note : null, error.Note);
     }
 
+    // SPEC 13.3 and arithmetic Contracts §2, §6: a bitwise operand that is no integer names the integer requirement, and an
+    // arithmetic operand Type that neither is numeric nor provides the operator, such as an unconstrained or Position Type
+    // parameter or a Tuple, selects no conformance; both are Language errors at the operation.
+    [Theory]
+    [InlineData("struct S\n    public var v: i32 = 0\nlet a = S.init()\nlet v = a & a", "a & a", nameof(DiagnosticCode.NonIntegerOperand_Kd))]
+    [InlineData("func add<T>(a: T, b: T) -> T => a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
+    [InlineData("func add<P>(a: P, b: P) -> P\n    P is Position\n    return a + b\npublic func main() => ()", "a + b", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
+    [InlineData("var a = (1, 2)\na += (3, 4)", "a += (3, 4)", nameof(DiagnosticCode.ArithmeticSelection_Kd))]
+    public void AnOperandWithoutTheOperatorIsALanguageError(string source, string at, string code)
+    {
+        var error = Assert.Single(Errors(Analyze(source)));
+        Assert.Equal((code, at), (error.Code, error.Text));
+    }
+
     [Theory]
     [InlineData("var log = \"start\"\nlog += \"!\"", "log += \"!\"")]
     [InlineData("var a = (\"a\", true)\na.0 += \"b\"", "a.0 += \"b\"")]

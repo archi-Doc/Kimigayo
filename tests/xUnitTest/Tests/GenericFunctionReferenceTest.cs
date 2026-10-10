@@ -337,6 +337,17 @@ public class GenericFunctionReferenceTest
         Assert.Equal(code, Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error).Code);
     }
 
+    // SPEC 7.6, 10.5: a value has no Type parameters, so explicit Type arguments select nothing, as at a value call.
+    [Fact]
+    public void ExplicitArgumentsOnAValueSelectNothing()
+    {
+        var c = MinimalEmissionTest.Analyze("let v = 5\nlet d = v<i32>");
+        Assert.False(c.Binding.Result.IsComplete);
+        c.Binding.ReportDiagnostics();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal((nameof(DiagnosticCode.NoApplicableOverload_Kd), "v<i32>"), (error.Code, error.Text));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmGenericReferenceSelectionAndEmissionAllocateNothing()
