@@ -9,21 +9,23 @@ namespace XunitTest;
 public class CompilerSizeBudgetTest
 {
     // R2a exit (2026-10-11): an area may grow by at most 2% over its size at the R2a exit (Core, which grew in R2a,
-    // keeps its lower R1 cap). R2b (a parallel stage, plan section 10.4) checks the R2b ceiling as the total and lets
-    // Binding, which builds the HIR columns and plans, take the whole stage room (55,155 + 2,389 lines). The R2b exit
-    // (2026-10-11, 127,815 lines) keeps the ceiling and every area cap; the unused 1,185 lines pass to R3 (decision D11).
-    private const int TotalCap = 129_000;
+    // keeps its lower R1 cap). The parallel stages R2b-R5 (plan section 10.4) check their cumulative ceiling as the total.
+    // R3 (ceiling 135,500 from the R2b exit at 127,815) builds the new Mir area (cap 6,600) and gives Binding 350 lines
+    // over its R2b-exit size (56,356) and Core 1,820 for the pipeline switch and SourceRef; the frozen Analysis and
+    // Emission paths (D5) and every other area keep their caps.
+    private const int TotalCap = 135_500;
 
     private static readonly Dictionary<string, int> Caps = new(StringComparer.Ordinal)
     {
         ["Analysis"] = 17_942,
-        ["Binding"] = 57_544,
-        ["Core"] = 1_614,
+        ["Binding"] = 56_706,
+        ["Core"] = 1_820,
         ["Documentation"] = 4_424,
         ["Emission"] = 21_320,
         ["Helper"] = 3_505,
         ["Lexing"] = 4_047,
         ["LlvmTemplates"] = 2_381,
+        ["Mir"] = 6_600,
         ["Parsing"] = 16_570,
         ["Root"] = 1_064,
     };
@@ -54,7 +56,7 @@ public class CompilerSizeBudgetTest
     public void EveryAreaHasACapAndTheTotalStaysWithinTheStageCap()
     {
         var lines = Lines();
-        Assert.Equal(Caps.Keys.Order(StringComparer.Ordinal), lines.Keys.Order(StringComparer.Ordinal));
+        Assert.Empty(lines.Keys.Except(Caps.Keys)); // A capped area may not exist yet (Mir before its first file).
         var total = lines.Values.Sum();
         Assert.True(total <= TotalCap, $"The compiler has {total} lines; the stage cap is {TotalCap}.");
     }

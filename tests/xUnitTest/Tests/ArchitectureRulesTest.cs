@@ -26,6 +26,8 @@ public class ArchitectureRulesTest
 
     private static readonly Regex LineComment = new(@"//[^\n]*");
 
+    private static readonly Regex TopLevelDeclaration = new(@"(?m)^(?:\w+ )*(?:class|struct|enum|interface|record)(?: struct| class)? (\w+)");
+
     [Theory]
     [InlineData("Koto-keyed dictionaries in Binding", "src/Kimi/Compiler/Binding", "*.cs", @"Dictionary<\w*Koto\b", 96)]
     [InlineData("Supports* gates", "src/Kimi/Compiler", "*.cs", @"\bbool\s+Supports\w*\s*[(<]", 13)]
@@ -47,24 +49,38 @@ public class ArchitectureRulesTest
 
     /// <summary>The MIR layer reads Binding only through what Binding publishes (docs/dev/COMPILER_ARCHITECTURE.md,
     /// dependency rules): it names no other type declared at the top level of a Binding or root compiler file (the root
-    /// files are Binding's re-derivation helpers), no <c>StructuralCompletion</c>, no Koto semantic slot, no re-resolving
-    /// <c>KotoHelper</c> walk and no parent.</summary>
+    /// files are Binding's re-derivation helpers) or of the old Analysis and Emission paths (deleted in R6), unless Mir
+    /// declares that name itself, no <c>StructuralCompletion</c>, no Koto semantic slot, no re-resolving <c>KotoHelper</c>
+    /// walk and no parent.</summary>
     [Fact]
     public void MirReadsNoBindingInternals()
     {
-        var declaration = new Regex(@"(?m)^(?:\w+ )*(?:class|struct|enum|interface|record)(?: struct| class)? (\w+)");
         var compiler = Path.Combine("src", "Kimi", "Compiler");
         var internals = SourceFiles(Path.Combine(compiler, "Binding"), "*.cs")
             .Concat(Directory.EnumerateFiles(Path.Combine(Repository.Root, compiler), "*.cs"))
-            .SelectMany(x => declaration.Matches(LineComment.Replace(File.ReadAllText(x), string.Empty)).Select(y => y.Groups[1].Value))
+            .Concat(SourceFiles(Path.Combine(compiler, "Analysis"), "*.cs"))
+            .Concat(SourceFiles(Path.Combine(compiler, "Emission"), "*.cs"))
+            .SelectMany(DeclaredTypes)
             .Append("StructuralCompletion")
             .Except(PublishedBindingTypes)
+            .Except(SourceFiles(Path.Combine(compiler, "Mir"), "*.cs").SelectMany(DeclaredTypes))
             .Order(StringComparer.Ordinal);
         var forbidden = new Regex($@"\b(?:{string.Join('|', internals)})\b|\.(?:{SemanticSlots})\b|\bKotoHelper\.(?:UnwrapParentheses|ResolveTransferTarget)\b|\.Parent\b");
-        var references = SourceFiles(Path.Combine(compiler, "Mir"), "*.cs")
-            .SelectMany(x => forbidden.Matches(LineComment.Replace(File.ReadAllText(x), string.Empty)).Select(y => $"{Path.GetFileName(x)}: {y.Value}"))
-            .ToList();
+        var references = MirReferences(forbidden, x => true);
         Assert.True(references.Count == 0, $"Mir references Binding internals: {string.Join(", ", references)}.");
+    }
+
+    /// <summary>Outside the MIR builder (<c>Mir/Build</c>), the MIR analyses and the MIR model read MIR, declaration tables
+    /// and <c>TyCtxt</c> only (dependency rules; plan section 14-2): no syntax (a Koto class, <c>KotoKind</c>, the Parsing
+    /// namespace, a symbol's <c>Declaration</c>) and no HIR (the HIR columns and vocabularies, plan rows, <c>CallPlan</c>,
+    /// <c>ExpansionPlan</c>, <c>BoundMatch</c>, <c>BoundClosure</c>, <c>DefaultDecl</c>).</summary>
+    [Fact]
+    public void OnlyTheMirBuilderReadsSyntaxAndHir()
+    {
+        var forbidden = new Regex(@"\b\w*Koto(?:Kind)?\b|\bKimi\.Compiler\.Parsing\b|\b(?:Hir\w+|PlanRow|CallPlan|ExpansionPlan|BoundMatch|BoundClosure|DefaultDecl)\b|\.Declaration\b");
+        var build = Path.Combine(Repository.Root, "src", "Kimi", "Compiler", "Mir", "Build") + Path.DirectorySeparatorChar;
+        var references = MirReferences(forbidden, x => !x.StartsWith(build, StringComparison.Ordinal));
+        Assert.True(references.Count == 0, $"Mir outside its builder reads syntax or HIR: {string.Join(", ", references)}.");
     }
 
     [Theory]
@@ -81,6 +97,12 @@ public class ArchitectureRulesTest
     [InlineData("Kimi.Compiler.HirCompletion", 3)]
     [InlineData("Kimi.Compiler.ExpansionKind", 7)]
     [InlineData("Kimi.Compiler.IntrinsicId", 30)]
+    [InlineData("Kimi.Compiler.Mir.MirStatementKind", 5)]
+    [InlineData("Kimi.Compiler.Mir.MirRvalueKind", 9)]
+    [InlineData("Kimi.Compiler.Mir.MirTerminatorKind", 6)]
+    [InlineData("Kimi.Compiler.Mir.MirProjectionKind", 7)]
+    [InlineData("Kimi.Compiler.Mir.MirOperandKind", 4)]
+    [InlineData("Kimi.Compiler.Mir.MirCalleeKind", 5)]
     public void VocabularyDoesNotGrow(string type, int limit)
     {
         var members = typeof(Compilation).Assembly.GetType(type) is { } enumeration ? Enum.GetNames(enumeration).Length : 0;
@@ -93,4 +115,15 @@ public class ArchitectureRulesTest
         var path = Path.Combine(Repository.Root, directory);
         return Directory.Exists(path) ? Directory.EnumerateFiles(path, pattern, SearchOption.AllDirectories) : [];
     }
+
+    // The names of the types a C# file declares at the top level (line comments ignored).
+    private static IEnumerable<string> DeclaredTypes(string file) =>
+        TopLevelDeclaration.Matches(LineComment.Replace(File.ReadAllText(file), string.Empty)).Select(x => x.Groups[1].Value);
+
+    // The matches of a forbidden pattern in the Mir sources a filter selects (line comments ignored), as "file: match".
+    private static List<string> MirReferences(Regex forbidden, Func<string, bool> filter) =>
+        SourceFiles(Path.Combine("src", "Kimi", "Compiler", "Mir"), "*.cs")
+            .Where(filter)
+            .SelectMany(x => forbidden.Matches(LineComment.Replace(File.ReadAllText(x), string.Empty)).Select(y => $"{Path.GetFileName(x)}: {y.Value}"))
+            .ToList();
 }
