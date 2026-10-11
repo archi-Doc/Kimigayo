@@ -22,71 +22,71 @@
 
 The specification and implementation are not set in stone. The specification guides implementation, but implementation insights can also lead to revisions: when the specification is contradictory, unsound or overly complex, or when a simpler, more consistent, more efficient or faster rule exists. Every revision must uphold the Kimigayo Principles and keep the language consistent and robust; these conditions are absolute. Let’s think carefully and refine both together to build a better language.
 
-# Coding Guidelines
+# Implementation Design
 
-- Prefer solving problems by removing code rather than adding it. Before adding new code, consider whether deleting or consolidating existing code would suffice. Judge design quality by how few concepts are needed to meet requirements, not by the amount of abstraction.
-- Keep allocations in generated native code to a minimum. In the compiler, allocate when it makes compilation faster, and add no allocation that buys no speed. Optimize code for performance wherever practical.
-- Implement Kimi's core libraries, including Iterator and Dictionary, in Kimigayo rather than hand-written LLVM IR whenever possible.
-- Update `docs/SPEC.md` and `docs/STATUS.md` as needed to reflect the changes made. Write all updates in English.
-- Do not automatically update files in the `draft` folder unless explicitly instructed.
-- Do not run NativeAOT tests unless explicitly specified.
-- Follow `docs/STYLE.md` when writing Kimigayo code. Rules tagged `[Kimi]` are required in `src/Kimi/Library` and in code examples under `docs/spec/`; elsewhere they are recommended.
+- Prefer fewer concepts, less duplication and less work over a smaller local diff. Fix the common cause by changing shared representations or responsibilities where needed; avoid unrelated redesign.
+- Before coding, briefly identify the required rule or invariant, the cause of the gap, the component that should own the decision, and related implementations. Consult [CODEMAP](docs/dev/CODEMAP.md); consider deletion, consolidation and moving responsibilities before adding code.
+- Put operations with the same meaning and contract under one owner. If none fits, consider moving or merging existing code before introducing a minimal component. An abstraction must express shared semantics and remove duplication, not merely wrap similar code or anticipate hypothetical uses.
+- Make each semantic decision in its owning phase and reuse the result downstream. Each phase still checks the contracts of the IR it produces or receives. Replace source-shape special cases with common representations and rules; do not add `Supports*` gates or shape allowlists.
+- Remove branches, state, conversions and old paths made redundant by the change in the same unit. Necessary staged removal belongs in the existing migration plan with an explicit removal condition.
+- Before completion, review the diff for reuse, duplication and efficiency. Explain the common rule changed, what became unnecessary, and why any remaining growth is needed. Test another form governed by the same rule and an invalid counterpart where relevant.
+- Implement core libraries, including Iterator and Dictionary, in Kimigayo where practical. Follow [STYLE](docs/STYLE.md); `[Kimi]` rules are required in `src/Kimi/Library` and `docs/spec/` examples, recommended elsewhere.
 
-# Compiler Size and Structure
+# Performance and Compiler Structure
 
-- Follow [docs/dev/COMPILER_ARCHITECTURE.md](docs/dev/COMPILER_ARCHITECTURE.md): dependency rules, closed vocabularies, one location-only `Unsupported_Kd`, and the migration freeze on the old Analysis/Emission paths.
-- Fix the general rule, not one source shape. Before adding a branch for a form, a case or a diagnostic, name the general rule it departs from and change that rule; if no general rule covers the form, report the located Unsupported. Do not add `Supports*`-style gates, shape allowlists, Advice or downstream re-verification.
-- Before writing a helper, search the canonical components listed in CODEMAP and extend one instead of duplicating it.
-- State the net line change per compiler area in each commit message. A unit that grows the compiler by more than 300 lines also states what it replaced and removed. `CompilerSizeBudgetTest` and `ArchitectureRulesTest` must pass; raise a cap only on explicit owner instruction or to keep O2 performance and zero allocation, recording the reason.
-- Before completing a unit, review its diff separately for reuse, duplication and efficiency.
-- Test through public entry points (acceptance, diagnostics, IR, MIR dumps); assert internal state only in a component's own rule tests. Add size-scaling checks for analyses whose cost depends on input size.
-- At each milestone completion, record per-area line counts, change hotspots and duplication candidates under `artifacts/benchmarks/`; restructure a file that keeps growing through repeated fixes before fixing it again.
+- Preserve generated native-code allocation guarantees and O2 performance. Inside the compiler, additional allocations are allowed in initial or reused processing when they make equivalent work faster or reduce compiler code, with a reasonable increase in memory use. Measure time, allocations and retained memory; record the tradeoff and update compiler allocation regressions to reflect the adopted decision in the same commit.
+- Follow [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) for dependencies, closed vocabularies, size caps and the old Analysis/Emission migration freeze. Permission to revise the specification does not authorize vocabulary or budget changes. Raise a cap only on owner instruction or to preserve native O2 performance and allocation guarantees, recording why.
+- Record net lines per compiler area in compiler commits. Growth above 300 lines also explains what was replaced or removed and why the remaining additions are needed. At milestone completion, record area sizes, change hotspots and duplication candidates in `artifacts/benchmarks/`. Review repeatedly growing files for mixed responsibilities and duplication; resolve these before extending them again.
+- Keep timing-only benchmark code in `src/Benchmark`, separate from functional and allocation/reuse regressions. Measure performance changes and milestone results on equivalent workloads under fixed conditions. Preserve failed evidence; never add warm-up or relax native allocation assertions to obtain a pass.
 
-# Documentation Responsibilities
+# Documentation
 
-- Consult [docs/dev/CODEMAP.md](docs/dev/CODEMAP.md) before compiler changes. It maps features and entry points to source and representative tests. Update it in the same commit for added/moved features, changed phase responsibilities or entry points, or stale references. Keep it concise and navigation-only, without spec rules or support status.
-- `docs/SPEC.md` and its chapters define required behavior. Never weaken it merely because the implementation is missing or incomplete: report such forms as unsupported and record the gap in `docs/STATUS.md` and PLAN. Revising a rule for the reasons above is a deliberate spec change, not a weakening, and needs no user approval: state its rationale and how it upholds the Kimigayo Principles in the commit, and update affected chapters, examples, tests and milestone programs in the same commit. The formal spec must be self-contained: never reference, depend on, or treat `draft` proposals as authority. Integrate finalized proposals into the spec; never propagate spec changes back to proposals.
-- Record every spec intake in `draft/INTEGRATED.md` in the same commit as the spec changes, mapping proposal sections to target sections or commit. Integration and freezing do not require completed implementation or tests.
-- For unresolved proposals, mark 一部取り込み (partially integrated), record integrated scope and open items, and freeze only that scope. Edit unresolved content only on explicit instruction, preserving frozen scope.
-- Freeze an entire proposal once every item is recorded as incorporated, rejected with a reason, or transferred to an identified separate proposal. Record closure with the final disposition and any final spec changes in the same commit: 取り込み済み (integrated) if any item was incorporated; otherwise 完了 (closed). Neither implies implementation support.
-- Create every new draft proposal, change or design, in `draft/Proposals`, the only working folder. In the commit that closes one, move it to `draft/Changes` (取り込み済み) or `draft/Obsolete` (完了). `draft/Design` and `draft/Decisions` are frozen archives that take no new files; prototype sources go in `draft/Sketches`. Folder roles: `draft/INTEGRATED.md`.
-- Preserve frozen text, including typos. Append corrections/notes to `draft/INTEGRATED.md`, make later spec changes in the formal spec, and place new proposals in separate draft files. The register stays editable for status updates and appended notes; freezing proposals never reopens previously frozen files.
-- `docs/SETTLED.md`: changes the design has deliberately decided not to make, each with its problem, a short example, the proposed fix and the reason not applied. Consult it before reviewing the spec or proposing changes; do not re-raise an entry unless its reason no longer holds. When a spec change invalidates a reason, update or remove the entry in the same commit. Non-normative; never overrides the spec.
-- `docs/STYLE.md`: non-normative conventions for naming, layout, API design, ownership, failure and doc comments. Update for adopted/changed Kimi library conventions; stay consistent with the spec, including §4.7.1 naming pairs, and never override it.
-- `docs/LIBRARY.md`: public Kimi declarations (Types, Contracts, groups, functions, Properties), each with a brief guarantee. Update in the same commit as declaration additions, removals or changes. The spec is authoritative; `src/Kimi/Library/README.md` covers embedding and implementation policy.
-- `docs/dev/PLAN.md`: current scope, working rules, position, milestone order/completion conditions, next actions and open issues. Keep under 200 lines; exclude deferred items (Appendix D).
-- `docs/STATUS.md`: product-wide implemented capabilities, verified support boundaries and remaining limits. Update only when a support boundary changes; never report planned/unverified work as supported.
-- `docs/dev/DIAGNOSTICS.md`: internal diagnostic model and common rules. `docs/dev/DIAGNOSTIC_WORKFLOW.md` contains the detailed workflow, applied only on explicit user instruction. SPEC §23 governs observable behavior.
-- `docs/dev/PLAN_HISTORY.md`: a few lines per session; detailed evidence belongs in commits and `artifacts/verify/`. Pre-2026-09-22-compaction records: `git show 32324537:PLAN_HISTORY.md`.
-- Pre-alpha spec changes need no language-version bump, breaking-change or migration docs. Update affected chapters, examples and milestone programs in place.
+Write updates in English. Each document owns the following information; keep changes consistent with its owner.
 
-# Generated Files
+| Document | Responsibility and update rule |
+| --- | --- |
+| [SPEC](docs/SPEC.md) and chapters | Language rules. Keep self-contained; drafts are not authority. |
+| [IMPL](docs/IMPL.md) | Implementation contracts; never overrides language rules. |
+| [COMPILER_ARCHITECTURE](docs/dev/COMPILER_ARCHITECTURE.md) | Phase responsibilities, dependencies, vocabularies, budgets and migration rules. |
+| [VERIFICATION](docs/dev/VERIFICATION.md) | Verification commands, selection, measurements and evidence procedures. AGENTS defines work policy. |
+| [CODEMAP](docs/dev/CODEMAP.md) | Navigation to owners, entry points and representative tests. Update changed or stale mappings in the same commit; no specification or support rules. |
+| [PLAN](docs/dev/PLAN.md) | Current scope, order, completion conditions, next actions and open issues. Under 200 lines; deferred items belong in SPEC Appendix D. |
+| [STATUS](docs/STATUS.md) | Verified support boundaries and remaining limits. Update when a boundary changes; never claim unverified support. |
+| [PLAN_HISTORY](docs/dev/PLAN_HISTORY.md) | A few lines per session; detailed evidence belongs in commits and artifacts. |
+| [SETTLED](docs/SETTLED.md) | Rejected design changes: problem, example, proposed fix and reason. Consult before design reviews; reopen only when the reason no longer holds, updating the entry with any affected spec change. |
+| [STYLE](docs/STYLE.md) / [LIBRARY](docs/LIBRARY.md) | Conventions / public declarations and guarantees. Update with changed conventions or APIs; follow SPEC, including §4.7.1 naming pairs. [Library README](src/Kimi/Library/README.md) owns implementation policy. |
 
-- Put disposable work in `temp/`; delete only when no build/test is running.
-- Store verification evidence (including failures) in `artifacts/verify/`, measurements in `artifacts/benchmarks/`, and packages in `artifacts/packages/`.
-- `temp/` and `artifacts/` are Git-ignored; retain/back up artifacts separately. Preserve project-local `bin/` and `obj/` paths.
+- Never narrow the specification to fit missing implementation; report Unsupported and record the boundary in STATUS and PLAN. Deliberate spec improvements need no separate approval: explain the rationale and preservation of the Principles, and update affected chapters, examples, tests and milestone programs together. Pre-alpha changes need no version bump or migration guide.
+- Proposal creation or text changes require explicit instruction. An instructed intake or closure includes register updates and required moves. Create proposals only in `draft/Proposals`, prototypes in `draft/Sketches`; `draft/Design` and `draft/Decisions` remain frozen archives.
+- Record each intake in `draft/INTEGRATED.md` with proposal-to-spec mappings in the same commit. For open proposals, mark 一部取り込み (partially integrated), list integrated and open scope, and freeze the integrated text. Close when every item is incorporated, rejected with a reason, or transferred to an identified proposal: move to `draft/Changes` as 取り込み済み (integrated) if anything was incorporated, otherwise `draft/Obsolete` as 完了 (closed).
+- Never change frozen text, including typos. Record corrections in INTEGRATED; make later normative changes in the formal spec. Integration and closure do not require implementation or test completion and never imply support.
 
-# Implementation Workflow
+# Diagnostics
 
-- Select verification by change type. For documentation-only changes, check the relevant diffs and references; do not run builds, tests or native-code verification. Compiler, Kimi library and compiler-test changes require related Unit verification and one Session verification at session end. Benchmark/Playground code changes require Session verification before completion plus relevant execution or measurements. Verification-script, CI and tooling changes require checks of the affected workflow; extension changes follow `src/kimi-ext/AGENTS.md`. Mixed changes combine the applicable requirements. See [verification scope](docs/dev/VERIFICATION.md#verification-scope).
-- Work in units of reproducer, implementation and focused tests; formally verify each before committing with a descriptive message.
-- Add test cases to the class that already owns the feature, reuse the shared test helpers, assert each rule at the lowest layer that observes it, emit native fixtures only for behavior that depends on generated code, and limit comments to the rule being checked. See [writing tests](docs/dev/VERIFICATION.md#writing-tests).
-- Commit each completed unit and push the current branch to `origin` without waiting to be asked. Push only commits whose required verification passed, and never force-push. Stage only the files the unit changed, since other sessions may share this working tree.
-- For intermediate feedback, incrementally build `tests/xUnitTest/xUnitTest.csproj` and directly run selected test methods. Do not run formal Verify after every edit. Feedback is not completion evidence: only Verify's build counts, since direct `dotnet build` can hide analyzer warnings from later incremental builds.
-- Unit: `./scripts/verify.ps1 -Class <test classes> [-Fixtures '<pattern>'] [-Milestone <n>]` — non-incremental Release build of Kimi/tests with warnings as errors, related tests, native O0/O2 fixtures and milestone harnesses. Benchmark/Playground changes also require the whole-solution Session build before completion.
-- Session, once at session end: `./scripts/verify.ps1 -Mode Session [...]` — non-incremental whole-solution Release build and all functional and allocation/reuse regressions.
-- A successful final Session may also satisfy the last Unit's formal verification when it covers the same source/configuration and every required Unit check, including explicitly selected native fixtures, milestones and any additional checks. Prepare the unit's source/documentation changes before running it, then commit, associate the evidence and push. Do not run a duplicate Unit or Session solely for the mode name; missing coverage must still pass, and changed verification inputs require reverification.
-- Both modes default to Release; use `-Configuration Debug` explicitly for Debug. The selected compiler configuration governs builds, tests, fixture selection and milestone harnesses; native O0/O2 coverage stays unchanged. Native parallelism: `-NativeParallel` (default up to 4; 1 for serial). Never edit sources during builds or verification.
-- Toolchain identity: setup/update or `kimi toolchain verify`; Verify's `-VerifyToolchain` checks once before tests, otherwise records it as not performed. Milestones build original sources once per O0/O2 and execute each binary directly once; feature/rejection and CLI tests remain separate. Use `run --no-build` for built CLI artifacts.
-- Separate functional regressions, allocation/reuse regressions (zero allocation, retained capacity, storage bounds), and opt-in performance measurements (timing, throughput, scaling). Tag allocation/reuse tests `Purpose=Allocation`; unmarked tests are functional. Unit includes both by default; narrow focused checks with `-TestPurpose Functional` or `Allocation`. Include related allocation/reuse regressions for hot-path changes. Session always runs both in full.
-- Keep timing-only repetition and measurement reports in `src/Benchmark`, outside normal Verify. Run relevant measurements explicitly for performance changes and at milestone completion. Share regression workload inputs where applicable; keep warm-up/measurement conditions fixed; never relax a native allocation assertion or warm until a failing measurement passes. A compiler allocation assertion changes only with a change measured to make compilation faster, recorded in the commit. Commands/isolation: [docs/dev/VERIFICATION.md](docs/dev/VERIFICATION.md).
+- Classify specification violations as language diagnostics, valid but unimplemented forms as the single location-only `Unsupported_Kd`, and internal contract violations as internal errors.
+- Follow SPEC §23 and [DIAGNOSTICS](docs/dev/DIAGNOSTICS.md). Ordinary changes use the existing schema and required code, severity/category, location and factual cause; do not invent evidence, Advice or repair guarantees. Apply [DIAGNOSTIC_WORKFLOW](docs/dev/DIAGNOSTIC_WORKFLOW.md) only on explicit request for that workflow or a detailed diagnostic review. This limits work scope, not required diagnostic behavior.
 
-# Diagnostic Development
+# Verification and Delivery
 
-- During ordinary implementation, create or update only simple diagnostic information: an appropriate code and severity/category, the relevant source location, and a concise factual explanation of the cause. Reuse the existing diagnostic model and follow SPEC §23; do not invent evidence or repair guarantees.
-- Apply the full [Diagnostic Development Workflow](docs/dev/DIAGNOSTIC_WORKFLOW.md) only when the user explicitly requests that workflow or a detailed diagnostic review. A diagnostic change or bug report alone does not activate it. Otherwise, do not expand the unit into diagnostic enrichment, a comprehensive interaction audit or CLI/LSP presentation review.
-- The ordinary implementation and verification requirements still apply. This distinction changes development scope, not required language behavior or diagnostic contracts.
+- Serialize editing, builds, verification and commits within each worktree; use separate worktrees for parallel work or other unfinished changes. Never edit sources during builds or verification. Stage only the unit's changes.
+- Work in reproducer, implementation and focused-test units. Select completion checks by changed behavior and files; combine requirements for mixed changes.
 
-# VS Code Extension (`src/kimi-ext/`)
+| Change | Required verification |
+| --- | --- |
+| Documentation only | Diff and reference review; no builds, tests or native verification. |
+| Compiler, Kimi library or compiler tests | Related Unit checks and a successful final Session. Compiler Units include `CompilerSizeBudgetTest` and `ArchitectureRulesTest` as common mandatory checks; library changes include `KimiLibraryShapeTest`. Select these explicitly alongside related checks. |
+| Benchmark / Playground | Final Session, including the whole-solution build, plus relevant execution or measurements. |
+| Verification scripts, CI or tooling | Affected workflow checks under [verification scope](docs/dev/VERIFICATION.md#verification-scope). |
+| VS Code extension, including build/distribution scripts | [Extension AGENTS](src/kimi-ext/AGENTS.md). |
 
-For extension changes, including development/build/distribution configuration or scripts, follow [src/kimi-ext/AGENTS.md](src/kimi-ext/AGENTS.md).
+- For feedback, incrementally build `tests/xUnitTest/xUnitTest.csproj` and run selected methods. Completion uses `scripts/verify.ps1`: non-incremental builds with warnings as errors, Release by default. Unit builds Kimi/tests; Session builds the solution and runs all functional and allocation/reuse regressions. Native fixtures and milestones require explicit selection even in Session. Do not run NativeAOT tests without explicit instruction.
+- Reuse the owning test class and shared helpers; test through public acceptance, diagnostics, IR or MIR entry points at the lowest layer that observes the rule. Internal state assertions belong in the component's own rule tests. Avoid duplicate cases; emit native fixtures only for generated-code behavior. Add input-size scaling checks for affected analyses. Tag allocation/reuse tests `Purpose=Allocation`; include related ones for hot-path changes.
+- Commit each unit after its required checks pass. A final Session can also satisfy the last Unit when it covers all required checks on the same inputs and configuration. Verify the final inputs successfully; do not repeat checks solely for mode names or unchanged inputs. Changed verification inputs require reverification under VERIFICATION's manifest policy.
+- Before pushing, associate each Unit/Session-verified commit with its evidence using `scripts/verify-commit.ps1`. After the required final Session succeeds, automatically push the completed commits on the current branch to `origin`; never force-push. Changes that need no Session may be pushed after their own required checks. A failed required check leaves the work incomplete.
+- Check native-toolchain identity at setup/update or explicitly with `-VerifyToolchain`; ordinary Verify does not imply this check. Use `run --no-build` for built CLI artifacts. See VERIFICATION for selection, native O0/O2 coverage, parallelism and measurement isolation.
+
+# Artifacts
+
+- Disposable files: `temp/`; delete only when no build/test is running. Preserve project-local `bin/` and `obj/`.
+- Verification evidence, including failures: `artifacts/verify/`; measurement results: `artifacts/benchmarks/`; packages: `artifacts/packages/`.
+- `temp/` and `artifacts/` are Git-ignored. Retain or back up required evidence separately.

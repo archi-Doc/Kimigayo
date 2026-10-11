@@ -41,10 +41,11 @@ Unsupported code is a design change that needs a SPEC basis and owner approval.
 - From R0 until R6 completes, the old Analysis and Emission paths receive no new accepted forms or generation features
   (decision D5). Allowed: deletion, miscompile fixes mirrored on the new path, and the mechanical follow-up that a stage
   of the plan names.
-- A form that no general rule handles reports the located Unsupported. Do not add `Supports*`-style gates, shape
-  allowlists, Advice or downstream re-verification.
+- Semantic decisions belong to one phase; downstream consumers reuse their results while validating their own IR contracts.
+  Specification-valid forms without implementation report the located Unsupported; language violations and internal contract
+  failures retain their own diagnostics. Do not add `Supports*`-style gates, shape allowlists, Advice or duplicate semantic checks.
 - `CompilerSizeBudgetTest` and `ArchitectureRulesTest` hold the size caps and the no-growth ratchets below; caps fall
-  when a reduction stage exits. A cap rises only on owner instruction, or to keep O2 performance and zero allocation
+  when a reduction stage exits. A cap rises only on owner instruction, or to preserve native O2 performance and allocation guarantees
   (plan §18 P5), with the reason recorded. In the parallel stages R2b–R5 the total cap is the stage's cumulative ceiling
   (plan §10.4, §12.2): R3's is 135,500, with a Mir cap of 6,600, Binding 350 lines over its R2b-exit size and Core
   1,820. `ArchitectureRulesTest.MirReadsNoBindingInternals` enforces the MIR builder row above over a frozen list of
@@ -52,9 +53,10 @@ Unsupported code is a design change that needs a SPEC basis and owner approval.
   deferred declaration views join, and keeps Mir off the old Analysis/Emission types; `OnlyTheMirBuilderReadsSyntaxAndHir`
   enforces the MIR analyses row for everything under `Mir/` outside `Mir/Build` (`SemanticsKind`, a Type vocabulary that lives in
   the Parsing namespace, is named there through an alias).
-- O2 run time and zero allocation (compiler warm paths and native allocation counts) may not regress; O0 run time and
-  compiler processing time may, and are recorded. A regression is a change beyond the variation of repeated runs under
-  identical conditions.
+- Generated native-code O2 performance and allocation guarantees may not regress. Compiler allocations, both initial and
+  reused, follow AGENTS' performance policy: faster equivalent work or less code may justify a reasonable increase in memory.
+  Record time, allocation and retained-memory tradeoffs and update compiler allocation regressions accordingly. O0 run time
+  and compiler processing time may regress if recorded; timing regressions exceed variation in repeated matched runs.
 
 ## Canonical components
 

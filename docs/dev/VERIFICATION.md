@@ -20,7 +20,7 @@ an executable change does not make that change documentation-only.
 | Change | Completion checks |
 | --- | --- |
 | Documentation only | Review diffs and affected references. Do not run builds, tests, native fixtures or milestone harnesses. |
-| Compiler, Kimi library or compiler tests | Related Unit verification and one final Session; select relevant native fixtures and milestones explicitly. A change under `src/Kimi/Library` includes `KimiLibraryShapeTest`. |
+| Compiler, Kimi library or compiler tests | Unit verification and a successful final Session. Compiler Units combine common checks (`CompilerSizeBudgetTest`, `ArchitectureRulesTest`) with related checks; select them explicitly. Select relevant native fixtures and milestones explicitly too. Library changes include `KimiLibraryShapeTest`. |
 | Benchmark or Playground code | Session verification, including the whole-solution build, before completion; execute the affected scenario or relevant fixed-condition measurements. |
 | Verification scripts, CI or other tooling | Related script regressions and affected build/execution paths. Native-runner changes require `NativeFixtureRunnerTest.ps1`. Changes affecting the managed build or test pipeline also require Session. A local check does not certify a hosted CI run. |
 | VS Code extension, including its build/distribution scripts | Follow [the extension instructions](../../src/kimi-ext/AGENTS.md). |
@@ -43,10 +43,16 @@ Choose an existing method from the test source or runner discovery (`-list metho
 At Unit completion, `scripts/verify.ps1` builds the test project and its Kimi dependency non-incrementally with warnings as errors. At Session completion it builds the entire solution, including Benchmark and Playground, then runs all managed regressions. The existing analyzer check is retained in both modes. Changes to Benchmark or Playground need the Session build before completion. Neither mode runs NativeAOT.
 
 ```powershell
-./scripts/verify.ps1 -Class XunitTest.DeferredEmissionTest -Fixtures 'Deferred*.ll'
+./scripts/verify.ps1 -Class CompilerSizeBudgetTest,ArchitectureRulesTest,DeferredEmissionTest -Fixtures 'Deferred*.ll'
 ./scripts/verify.ps1 -Class XunitTest.DeferredEmissionTest -TestPurpose Allocation
 ./scripts/verify.ps1 -Mode Session
 ```
+
+Compiler Unit completion requires both common checks and related checks; Verify does not add the common classes automatically.
+Purpose-filtered runs such as the allocation example supplement, rather than replace, the remaining required checks.
+Commit each completed unit after its checks pass, associate the evidence, and defer automatic push until the required final
+Session succeeds. Changes that need no Session may be pushed after their own checks pass. Serialize editing, builds,
+verification and commits in each worktree; separate parallel work and other unfinished changes into other worktrees.
 
 For the last unit, a successful Session can replace a separate Unit run if it verifies the same source/configuration
 and covers every required Unit check. Session runs all managed regressions, but native fixtures and milestones still
@@ -117,7 +123,7 @@ Test code is reviewed and maintained like compiler code. Each case should add co
 | Allocation/reuse regression | xUnit tests with `Purpose=Allocation` | Related hot-path Unit checks and every Session |
 | Performance measurement | `src/Benchmark` | Explicit performance work and milestone completion |
 
-Allocation/reuse regressions retain their assertions, input sizes and fixed warm-up/repetition counts. They test zero allocation, storage reuse or storage bounds; they do not collect timing reports. Timing-only loops belong in Benchmark. A test that also needs to emit a native fixture remains selectable with its class and is not omitted from Session.
+Allocation/reuse regressions retain input sizes and fixed warm-up/repetition counts. Native allocation guarantees remain unchanged; compiler allocation assertions may change for a documented speed or code-size tradeoff with reasonable memory growth under AGENTS' performance policy. Measure time, allocations and retained memory for equivalent work before adopting that change; never adjust assertions merely to pass. These regressions test allocation, storage reuse or storage bounds, not timing. Timing-only loops belong in Benchmark. A test that also emits a native fixture remains selectable with its class and included in Session.
 
 Use `AllocationMeasurement.Measure` for repeated warm compiler-allocation checks. It prepares a dedicated thread without the runner's ExecutionContext and retires its allocation context before the counter interval. `iterations` and `warmupIterations` preserve each workload's original fixed counts (the default warm-up count equals `iterations`); never add a second caller-side warm-up when migrating. Keep result validity checks outside the interval, retaining failures from every operation. The helper's regressions check measured allocations, count preservation, context isolation and exclusion of warm-up allocations. A passing isolated run does not identify the cause of an earlier raw-thread failure; retain the failed evidence and report that uncertainty.
 
