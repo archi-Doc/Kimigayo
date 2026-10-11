@@ -58,14 +58,24 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
         return count;
     }
 
-    internal void Record(CodeRule rule, SyntaxNode node, int value, int limit, string? anchor)
+    internal static ExpressionSyntax Unwrap(ExpressionSyntax expression)
+    {
+        while (expression is ParenthesizedExpressionSyntax parentheses)
+        {
+            expression = parentheses.Expression;
+        }
+
+        return expression;
+    }
+
+    internal void Record(CodeRule rule, SyntaxNode node, int value, int limit, string? anchor, CodeRuleAnnotation? annotation = null)
     {
         if (anchor is null)
         {
             return;
         }
 
-        this.AddObservation(rule, anchor == "file" ? path : this.Scope(node), anchor, node.GetLocation(), value, limit);
+        this.AddObservation(new(new(rule, anchor == "file" ? path : this.Scope(node), anchor), path, node.GetLocation(), value, limit, annotation));
     }
 
     internal void RecordLine(CodeRule rule, TextLine line, int limit)
@@ -82,7 +92,7 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
             node = node.Parent;
         }
 
-        this.AddObservation(rule, this.Scope(node), this.LineAnchor(line.LineNumber), Location.Create(tree, line.Span), line.Span.Length, limit);
+        this.AddObservation(new(new(rule, this.Scope(node), this.LineAnchor(line.LineNumber)), path, Location.Create(tree, line.Span), line.Span.Length, limit));
     }
 
     internal string Scope(SyntaxNode node)
@@ -116,11 +126,11 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
         return anchors[local];
     }
 
-    internal void RecordMember(CodeRule rule, SyntaxNode declaration, ISymbol symbol, int value, int limit)
+    internal void RecordMember(CodeRule rule, SyntaxNode declaration, ISymbol symbol, int value, int limit, CodeRuleAnnotation? annotation = null)
     {
         this.identities ??= new();
         this.identities[declaration] = symbol.GetDocumentationCommentId();
-        this.Record(rule, declaration, value, limit, this.MemberAnchor(declaration));
+        this.Record(rule, declaration, value, limit, this.MemberAnchor(declaration), annotation);
     }
 
     internal string NodeAnchor(IEnumerable<SyntaxToken> tokens)
@@ -176,10 +186,10 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
 
     private static void HashByte(ref ulong hash, byte value) => hash = unchecked((hash ^ value) * 1099511628211UL);
 
-    private void AddObservation(CodeRule rule, string scope, string anchor, Location location, int value, int limit)
+    private void AddObservation(CodeRuleObservation observation)
     {
         this.Observations ??= [];
-        this.Observations.Add(new CodeRuleObservation(new CodeRuleKey(rule, scope, anchor), path, location, value, limit));
+        this.Observations.Add(observation);
     }
 
     private string? Identity(SyntaxNode declaration)

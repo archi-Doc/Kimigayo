@@ -142,7 +142,7 @@ internal sealed partial class MirBuilder
     {
         if (HirTables.Op(symbol.Declaration!) != HirOp.Body)
         {
-            return this.Unsupported(node, true);
+            return this.Unsupported(node, derived: true);
         }
 
         var place = this.StaticRoot(symbol);
@@ -204,13 +204,13 @@ internal sealed partial class MirBuilder
             return body.Project(sequence, MirProjectionKind.Index, resolved.Root);
         }
 
-        var position = this.Operand(index.Right);
+        var position = this.Operand(index.Right, expected: null);
         if (this.body.TypeOf(sequence) is { Semantics: SemanticsKind.Raw } pointer)
         {
             var offset = this.Temp(pointer, index);
             var start = this.body.AddOperand(MirOperand.Copy(sequence));
             this.body.AddOperand(position);
-            this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, true), index);
+            this.Set(offset, MirRvalue.Binary(MirBinaryOp.Add, start, proven: true), index);
             return this.body.Project(offset, MirProjectionKind.Deref, 0);
         }
 

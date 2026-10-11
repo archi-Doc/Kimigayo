@@ -23,8 +23,8 @@ internal static class MirTypes
     {
         BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function => true,
         BoundTypeKind.Semantics => type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc,
-        BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => Any(type.Components, depth, false),
-        _ => ReferenceEquals(type, BoundType.String) || AdtDef.Destructor(type) is not null || Stored(type, depth, false),
+        BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => Any(type.Components, depth, raw: false),
+        _ => ReferenceEquals(type, BoundType.String) || AdtDef.Destructor(type) is not null || Stored(type, depth, raw: false),
     });
 
     /// <summary>Gets whether a value of a Type is a reference whose Loans an EndBorrow ends: a ref, uniq, objref or objuniq, or a pair layer.</summary>
@@ -53,17 +53,32 @@ internal static class MirTypes
             return true;
         }
 
-        var agree = (left.CarriesOrigin || right.CarriesOrigin) && left.Kind == right.Kind && left.Semantics == right.Semantics &&
-            ReferenceEquals(left.Symbol, right.Symbol) &&
-            left.Length == right.Length && ReferenceEquals(left.LengthExpression, right.LengthExpression) && left.ResultMode == right.ResultMode &&
-            ReferenceEquals(left.ClosureContext, right.ClosureContext) && left.Components.Count == right.Components.Count &&
-                left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments);
-        for (var i = 0; agree && i < left.Components.Count; i++)
+        if ((!left.CarriesOrigin && !right.CarriesOrigin) || left.Kind != right.Kind || left.Semantics != right.Semantics ||
+            !ReferenceEquals(left.Symbol, right.Symbol))
         {
-            agree = Agree(left.Components[i], right.Components[i]);
+            return false;
         }
 
-        return agree;
+        if (left.Length != right.Length || !ReferenceEquals(left.LengthExpression, right.LengthExpression) || left.ResultMode != right.ResultMode)
+        {
+            return false;
+        }
+
+        if (!ReferenceEquals(left.ClosureContext, right.ClosureContext) || left.Components.Count != right.Components.Count ||
+            !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments))
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Components.Count; i++)
+        {
+            if (!Agree(left.Components[i], right.Components[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
@@ -72,8 +87,8 @@ internal static class MirTypes
     /// <param name="depth">The walk's depth; past 32 the answer is yes.</param>
     /// <returns>Whether the value holds raw authority.</returns>
     internal static bool HoldsRaw(BoundType? type, int depth = 0)
-        => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth, true) ||
-            Stored(type, depth, true));
+        => type is not null && (depth > 32 || type.Semantics is SemanticsKind.Raw or SemanticsKind.Rc || Any(type.Components, depth, raw: true) ||
+            Stored(type, depth, raw: true));
 
     private static bool Any(IReadOnlyList<BoundType> types, int depth, bool raw)
     {

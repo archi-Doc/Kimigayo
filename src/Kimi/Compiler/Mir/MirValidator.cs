@@ -106,16 +106,29 @@ internal sealed class MirValidator
             changed = false;
             foreach (ref readonly var statement in body.Statements)
             {
-                if (statement is { Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 and var root }, Rvalue: var rvalue } &&
-                    root < locals.Length && locals[root].Kind == MirLocalKind.Temp &&
-                    !this.unknown[root] && (rvalue.Kind == MirRvalueKind.Opaque ||
-                        (rvalue is { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } or { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq } &&
-                        (uint)rvalue.Start < (uint)operands.Length &&
-                        operands[rvalue.Start] is { Kind: not MirOperandKind.Const, Place.Root: >= 0 and var read } &&
-                        read < locals.Length && this.unknown[read])))
+                if (statement is not { Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 and var root }, Rvalue: var rvalue } ||
+                    root >= locals.Length || locals[root].Kind != MirLocalKind.Temp || this.unknown[root])
                 {
-                    this.unknown[root] = changed = true;
+                    continue;
                 }
+
+                if (rvalue.Kind != MirRvalueKind.Opaque)
+                {
+                    if (rvalue is not { Kind: MirRvalueKind.Use or MirRvalueKind.UnaryOp } and not
+                        { Kind: MirRvalueKind.BinaryOp, Op: < (byte)MirBinaryOp.Eq } ||
+                        (uint)rvalue.Start >= (uint)operands.Length)
+                    {
+                        continue;
+                    }
+
+                    if (operands[rvalue.Start] is not { Kind: not MirOperandKind.Const, Place.Root: >= 0 and var read } ||
+                        read >= locals.Length || !this.unknown[read])
+                    {
+                        continue;
+                    }
+                }
+
+                this.unknown[root] = changed = true;
             }
         }
 

@@ -14,6 +14,9 @@ function Read-KimiCodeRulesSarif([string] $Path, [string] $Root, [switch] $Requi
         if ((Test-KimiProtectedDiagnostic $result.ruleId) -and @($result.suppressions).Where({ $null -ne $_ }).Count -gt 0) {
             throw "Suppressed protected diagnostic: $($result.ruleId)."
         }
+        if ($RequireComplete -and $result.ruleId -cin @('KR9003', 'KR9004', 'KR9005')) {
+            throw "Invalid code-rule report: $($result.ruleId)."
+        }
     }
     if ($RequireComplete) {
         $markers = @($results | Where-Object ruleId -CEQ 'KR9000')
@@ -38,15 +41,20 @@ function Get-KimiCodeRulesObservations($Results) {
         if ($result.ruleId -cne 'KR9001') { continue }
         $p = $result.properties.customProperties
         $value = 0
+        $limit = 0
+        $annotation = $p.kind -ceq 'exception'
         if ($p.rule -cnotmatch '^KR[123][0-9]{3}$' -or -not $p.scope -or -not $p.anchor -or
-            -not [int]::TryParse($p.value, [ref]$value) -or $value -le 0 -or
+            -not [int]::TryParse($p.value, [ref]$value) -or $value -lt 0 -or ($value -eq 0 -and -not $annotation) -or
+            ($p.kind -and -not $annotation) -or
+            ($annotation -and ($p.rule -cnotin @('KR2006', 'KR2007') -or [string]::IsNullOrWhiteSpace($p.reason) -or
+                -not [int]::TryParse($p.limit, [ref]$limit) -or $limit -le 0 -or $p.baselineAllowed -cne 'false')) -or
             $p.path -cnotmatch '^src/Kimi/' -or $p.baselineAllowed -cnotin @('true', 'false')) {
             throw 'Malformed code-rule observation.'
         }
         $key = "$($p.scope)`t$($p.rule)`t$($p.anchor)"
         if ($rows.ContainsKey($key)) {
             $row = $rows[$key]
-            if ($row.value -ne $value) { throw 'Inconsistent values for one report key.' }
+            if ($row.value -ne $value -or $row.kind -cne $p.kind -or $row.reason -cne $p.reason -or $row.limit -ne $limit) { throw 'Inconsistent values for one report key.' }
             $row.allowed = $row.allowed -and $p.baselineAllowed -ceq 'true'
             if ([StringComparer]::Ordinal.Compare($p.path, $row.path) -lt 0) { $row.path = $p.path }
             $null = $row.paths.Add($p.path)
@@ -54,7 +62,7 @@ function Get-KimiCodeRulesObservations($Results) {
         else {
             $paths = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
             $null = $paths.Add($p.path)
-            $rows.Add($key, [pscustomobject][ordered]@{ rule = $p.rule; scope = $p.scope; anchor = $p.anchor; value = $value; path = $p.path; paths = $paths; allowed = $p.baselineAllowed -ceq 'true' })
+            $rows.Add($key, [pscustomobject][ordered]@{ rule = $p.rule; scope = $p.scope; anchor = $p.anchor; value = $value; path = $p.path; paths = $paths; allowed = $p.baselineAllowed -ceq 'true'; kind = $p.kind; reason = $p.reason; limit = $limit })
         }
     }
     return ,$rows
@@ -85,6 +93,7 @@ function Update-KimiCodeRulesBaseline($Baseline, $Observed, [string] $Mode, [str
         $matched = 0
         foreach ($pair in $Observed.GetEnumerator()) {
             $row = $pair.Value
+            if ($row.kind) { continue }
             if ($Rule.Count -gt 0 -and $row.rule -cnotin $Rule) { continue }
             if ($Mode -ceq 'Accept' -and -not @($row.paths).Where({ $_ -ceq $Path -or ($Path.EndsWith('/') -and $_.StartsWith($Path, [StringComparison]::Ordinal)) }).Count) { continue }
             if (-not $row.allowed) {

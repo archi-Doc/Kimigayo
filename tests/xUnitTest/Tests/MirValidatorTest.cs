@@ -77,7 +77,7 @@ public sealed class MirValidatorTest
         Assign(result, MirRvalue.Opaque(BoundType.I32, body.AddOpaque(default, [array.Root])));
         body.Terminate(entry, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.MakeObj), Operands(MirOperand.Copy(result)), 1, result, abort, At));
         var text = Operands(MirOperand.Const(body.Const(new(MirConstKind.String, BoundType.String, Value: "abort"))));
-        body.Terminate(abort, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At, drop));
+        body.Terminate(abort, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At) with { CheckTarget = drop });
         body.Terminate(drop, MirTerminator.Drop(array, exit, At));
         body.Terminate(exit, MirTerminator.Return(At));
         Assert.Empty(Validate(body));
@@ -269,7 +269,7 @@ public sealed class MirValidatorTest
         body.Terminate(blocks[0], MirTerminator.SwitchInt(MirOperand.Copy(broken == "switch" ? real : flag), 0, 1, blocks[1], Where("switch")));
         var (first, second) = broken == "argument" ? (flag, flag) : (a, flag);
         body.Terminate(blocks[1], MirTerminator.Call(new(MirCalleeKind.Fn, Function("h")), Operands(MirOperand.Copy(first), MirOperand.Copy(second)), 2, broken == "result" ? a : flag, blocks[2], Where(broken == "argument" ? "argument" : "result")));
-        body.Terminate(blocks[2], MirTerminator.Call(new(MirCalleeKind.Value), Operands(MirOperand.Copy(broken == "value" ? flag : a)), 1, flag, blocks[3], Where("value"), value: MirOperand.Copy(callable)));
+        body.Terminate(blocks[2], MirTerminator.Call(new(MirCalleeKind.Value), Operands(MirOperand.Copy(broken == "value" ? flag : a)), 1, flag, blocks[3], Where("value")) with { Operand = MirOperand.Copy(callable) });
         body.Terminate(blocks[3], MirTerminator.Call(new(MirCalleeKind.Fn, Function("d"), Arg: 2), Operands(broken == "template" ? MirOperand.Copy(a) : MirOperand.Copy(view)), 1, flag, blocks[4], Where("template")));
         var (receiver, by) = (MirOperand.Copy(gauge), MirOperand.Copy(a));
         body.Terminate(blocks[4], MirTerminator.Call(new(MirCalleeKind.Fn, Function("scaled")), broken == "receiver" ? Operands(by, receiver) : Operands(receiver, by), 2, a, blocks[5], Where("receiver")));
@@ -385,9 +385,9 @@ public sealed class MirValidatorTest
         body.AddCase(0, abort);
         body.Terminate(entry, MirTerminator.SwitchInt(MirOperand.Copy(flag), 0, 1, call, At));
         var text = Operands(Const(MirConstKind.String, BoundType.String, value: "abort"));
-        var abortCall = broken == MirViolation.Callee ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, call, Broken) : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At, call);
+        var abortCall = broken == MirViolation.Callee ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, call, Broken) : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At) with { CheckTarget = call };
         body.Terminate(abort, abortCall);
-        body.Terminate(call, MirTerminator.Call(new(MirCalleeKind.Value), Operands(MirOperand.Copy(x)), 1, result, drop, At, value: MirOperand.Copy(function)));
+        body.Terminate(call, MirTerminator.Call(new(MirCalleeKind.Value), Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) });
         body.Terminate(drop, broken == MirViolation.CheckTarget ? new(MirTerminatorKind.Drop, Broken, exit, check, Place: point) : MirTerminator.Drop(point, exit, At));
         body.Push(exit, MirStatement.Of(MirStatementKind.StorageDead, point, At));
         body.Terminate(exit, MirTerminator.Goto(done, At, check));

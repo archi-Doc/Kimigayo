@@ -50,6 +50,9 @@ exactly one completion marker with nonzero tree count, matching raw-byte configu
 unchanged source/configuration/NuGet manifests. Keys and final observed values come only from the analyzer. Baselines
 are written atomically in ordinal scope/rule/anchor order. A complete report with no over-limit occurrence deletes
 that row, including a measurement now at or below the ordinary limit (DECISIONS CR-A2).
+Exception observations include their reason and bound, even at zero; they never enter the baseline. The Report
+command retains MSBuild warnaserror but exempts KR9002 from logger promotion so Prune can read stale-entry warnings.
+Verify's KR9002 is an analyzer error and remains fatal (DECISIONS CR-A6b).
 
 Run CodeRulesReportTest.ps1 for the shared reader/update operations, and CodeRulesCompilerTest.ps1 after a Release
 analyzer build when suppression or analyzer build integration changes. The latter retains actual-csc logs for pragma,

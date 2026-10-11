@@ -91,6 +91,32 @@ try {
     $copy = $p.Clone()
     $copy.value = '63'
     Reject { Get-KimiCodeRulesObservations @($observation, @{ ruleId = 'KR9001'; properties = @{ customProperties = $copy } }) } 'Inconsistent'
+    $annotationProperties = $p.Clone()
+    $annotationProperties.value = '0'
+    $annotationProperties.kind = 'exception'
+    $annotationProperties.reason = 'Closed dispatch'
+    $annotationProperties.limit = '75'
+    $annotation = @{ ruleId = 'KR9001'; properties = @{ customProperties = $annotationProperties } }
+    $audit = Get-KimiCodeRulesObservations @($annotation)
+    $inventory = $audit.Values | Select-Object rule,scope,anchor,value,path,allowed,kind,reason,limit | ConvertTo-Json | ConvertFrom-Json
+    Equal $inventory.value 0
+    Equal $inventory.kind 'exception'
+    Equal $inventory.reason 'Closed dispatch'
+    Equal $inventory.limit 75
+    Equal $inventory.allowed $false
+    Equal (Update-KimiCodeRulesBaseline (Get-KimiCodeRulesBaseline $baseline) $audit Initialize @('KR2006') '').Count 1
+    Equal (Update-KimiCodeRulesBaseline (Get-KimiCodeRulesBaseline $baseline) $audit Prune @() '').Count 0
+    Reject { Update-KimiCodeRulesBaseline (Get-KimiCodeRulesBaseline $baseline) $audit Accept @('KR2006') 'src/Kimi/C.cs' } 'No observations'
+    $annotationProperties.Remove('kind')
+    Reject { Get-KimiCodeRulesObservations @($annotation) } 'Malformed'
+    $annotationProperties.kind = 'exception'
+    $annotationProperties.baselineAllowed = 'true'
+    Reject { Get-KimiCodeRulesObservations @($annotation) } 'Malformed'
+    $annotationProperties.baselineAllowed = 'false'
+    $annotationProperties.reason = ' '
+    Reject { Get-KimiCodeRulesObservations @($annotation) } 'Malformed'
+    Save @($marker, @{ ruleId = 'KR9005' })
+    Reject { Read-KimiCodeRulesSarif $log $root -RequireComplete } 'Invalid code-rule report'
     Write-Output "Passed $cases code-rules report checks."
 }
 finally {

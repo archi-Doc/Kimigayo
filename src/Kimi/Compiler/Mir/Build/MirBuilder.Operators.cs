@@ -41,8 +41,8 @@ internal sealed partial class MirBuilder
                 break;
             case BinaryKoto binary when BinaryOp(binary.Akind) is { } op:
                 var start = this.arguments.Count;
-                this.arguments.Add(this.Operand(binary.Left));
-                this.arguments.Add(this.Operand(binary.Right));
+                this.arguments.Add(this.Operand(binary.Left, expected: null));
+                this.arguments.Add(this.Operand(binary.Right, expected: null));
                 var proven = this.Proven(op, type, this.arguments[^1]);
                 this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
                 break;
@@ -55,7 +55,7 @@ internal sealed partial class MirBuilder
                     destination,
                     MirRvalue.Unary(
                     negate ? MirUnaryOp.Neg : MirUnaryOp.Not,
-                    this.body.AddOperand(this.Operand(unary.Operand)),
+                    this.body.AddOperand(this.Operand(unary.Operand, expected: null)),
                     !negate || type.IsFloatingPoint || type.IsWrappingInteger),
                     node);
                 break;
@@ -98,7 +98,7 @@ internal sealed partial class MirBuilder
         {
             var start = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))));
             this.body.AddOperand(MirOperand.Move(length));
-            var value = form == BuiltinForm.IsEmpty ? MirRvalue.Binary(MirBinaryOp.Eq, start, true)
+            var value = form == BuiltinForm.IsEmpty ? MirRvalue.Binary(MirBinaryOp.Eq, start, proven: true)
                 : MirRvalue.Aggregate(MirAggregateKind.Adt, start, 2, TypeOf(member));
             this.Set(destination, value, member);
         }

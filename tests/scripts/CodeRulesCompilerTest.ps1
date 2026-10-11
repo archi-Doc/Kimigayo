@@ -76,5 +76,30 @@ foreach ($case in $cases) {
     elseif ($exitCode -eq 0) { throw "Suppression bypassed a required error: $log" }
     $results.Add(@{ case = $case.name; exitCode = $exitCode; diagnostic = $id; records = $matching.Count; suppressed = $case.suppressed })
 }
+# A Report must survive stale-entry warnings so Prune can remove them. Verify still rejects the same source.
+foreach ($case in @(
+    @{ name = 'stale-report'; mode = 'Report'; source = 'class C { }'; success = $true; level = 'warning' },
+    @{ name = 'other-warning'; mode = 'Report'; source = "#warning unrelated`nclass C { }"; success = $false; level = 'warning' },
+    @{ name = 'stale-verify'; mode = 'Verify'; source = 'class C { }'; success = $false; level = 'error' }
+)) {
+    [IO.File]::WriteAllText($source, $case.source)
+    [IO.File]::WriteAllText($configPath, $config)
+    [IO.File]::WriteAllText((Join-Path $root '.editorconfig'), '')
+    [IO.File]::WriteAllText($baseline, "KR2001`tT:C`tmember:M:C.M`t7`tsrc/Kimi/Fixture.cs`n")
+    $sarif = Join-Path $Evidence ($case.name + '.sarif')
+    $log = Join-Path $Evidence ($case.name + '.log')
+    & dotnet build $project --no-restore --no-incremental -c Release --disable-build-servers -m:1 -warnaserror -warnnotaserror:KR9002 "-p:KimiCodeRulesMode=$($case.mode)" "-p:KimiCodeRulesLog=$sarif" *> $log
+    $exitCode = $LASTEXITCODE
+    if (($exitCode -eq 0) -ne $case.success) { throw "Unexpected stale-entry build outcome: $log" }
+    $records = Read-KimiCodeRulesSarif $sarif $root -RequireComplete:($case.mode -ceq 'Report')
+    $stale = @($records | Where-Object ruleId -CEQ 'KR9002')
+    if ($stale.Count -ne 1 -or $stale[0].level -cne $case.level) { throw "Stale-entry severity changed: $sarif" }
+    if ($case.success) {
+        $pruned = Update-KimiCodeRulesBaseline (Get-KimiCodeRulesBaseline $baseline) (Get-KimiCodeRulesObservations $records) Prune @() ''
+        Write-KimiCodeRulesBaseline $baseline $pruned
+        if ((Get-KimiCodeRulesBaseline $baseline).Count -ne 0) { throw 'Complete Report did not remove the stale baseline.' }
+    }
+    $results.Add(@{ case = $case.name; exitCode = $exitCode; diagnostic = 'KR9002'; records = 1; level = $case.level })
+}
 $results | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $Evidence 'results.json')
-Write-Output "Passed $($cases.Count) csc suppression checks; evidence $Evidence"
+Write-Output "Passed $($results.Count) csc suppression and stale-report checks; evidence $Evidence"

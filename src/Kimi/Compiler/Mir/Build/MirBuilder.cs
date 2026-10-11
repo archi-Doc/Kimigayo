@@ -156,10 +156,10 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.scopes.Clear();
         this.registrations.Clear();
         this.trees.Clear();
-        var parameters = this.OpenScope(true);
+        var parameters = this.OpenScope(block: true);
         PairBinder.Collect(declaration, body.Binders);
         var self = !template && declaration is FunctionKoto { IsConstructor: true } constructor ? AdtDef.ReceiverType(constructor) : null;
-        body.AddLocal(new(self ?? result, MirLocalKind.Return, this.Info(declaration, true)));
+        body.AddLocal(new(self ?? result, MirLocalKind.Return, this.Info(declaration, local: true)));
         if (self is not null)
         {
             this.receiver = 0;
@@ -206,9 +206,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         this.current = body.AddBlock();
-        var temporaries = this.OpenScope(false);
+        var temporaries = this.OpenScope(block: false);
         var done = self is null ? new MirPlace(0) : this.Temp(BoundType.Unit, value);
-        this.targets.Add(new(declaration, done, -1, -1, 0, 0, false)); // A return's target.
+        this.targets.Add(new(declaration, done, -1, -1, 0, 0, Reached: false)); // A return's target.
         if (self is not null)
         {
             if (((FunctionKoto)declaration).BaseInitializer is { } baseCall)
@@ -243,7 +243,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     // An argument local, dropped when the body is left where its Type may need drop (SPEC 16.2.1).
     private int Argument(BoundType type, string? name, int parameters, MirLocalRole role = MirLocalRole.None)
     {
-        var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(this.declaration, true), Name: name, Role: role));
+        var local = this.body.AddLocal(new(type, MirLocalKind.Arg, this.Info(this.declaration, local: true), Name: name, Role: role));
         if (MirTypes.MayNeedDrop(type))
         {
             this.Register(Cleanup.Drop, local, null, parameters);
@@ -257,7 +257,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Initialize(MirPlace place, Koto node, bool rejected = false)
     {
         this.statementStart = true;
-        var temporaries = this.OpenScope(false);
+        var temporaries = this.OpenScope(block: false);
         if (rejected)
         {
             this.Opaque(node, place);
@@ -279,7 +279,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private void Statement(Koto item)
     {
         this.statementStart = true;
-        var temporaries = this.OpenScope(false);
+        var temporaries = this.OpenScope(block: false);
         switch (HirTables.Op(item))
         {
             case HirOp.Syntax or HirOp.Body:
@@ -287,8 +287,17 @@ internal sealed partial class MirBuilder(Compilation compilation)
             case HirOp.Let:
                 this.Let((VariableKoto)item);
                 break;
-            case HirOp.Require or HirOp.Defer or HirOp.Discard or HirOp.Jump or HirOp.Continue:
-                this.Effect(item);
+            case HirOp.Require:
+                this.Require((RequireKoto)item);
+                break;
+            case HirOp.Defer:
+                this.Register(Cleanup.Defer, -1, item, this.lexical);
+                break;
+            case HirOp.Discard:
+                this.Discard((DiscardKoto)item);
+                break;
+            case HirOp.Jump or HirOp.Continue:
+                this.Transfer((JumpKoto)item);
                 break;
             default:
                 this.Into(this.Temp(item), item);
@@ -299,27 +308,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.statementStart = false;
     }
 
-    // A form that leaves no value, built for its effect without a destination: a require (SPEC 14.11); a defer (SPEC 16.1), registered here
-    // and built where its scope is left; a discard (SPEC 14.2.4), its operand acquired by bare acquisition into a temp destroyed with the
-    // statement's; a transfer (SPEC 14.5).
-    private void Effect(Koto node)
-    {
-        switch (node)
-        {
-            case RequireKoto require:
-                this.Require(require);
-                break;
-            case DiscardKoto discard:
-                this.Assign(this.Temp(discard.Operand), discard.Operand);
-                break;
-            case JumpKoto jump:
-                this.Transfer(jump);
-                break;
-            default:
-                this.Register(Cleanup.Defer, -1, node, this.lexical);
-                break;
-        }
-    }
+    // SPEC 14.2.4: bare acquisition of a discarded operand into a temp destroyed with the statement's temporaries.
+    private void Discard(DiscardKoto discard) => this.Assign(this.Temp(discard.Operand), discard.Operand);
 
     // The value a body or a block's last item leaves in the destination: the item as its consumer takes it, a block's own result, or the
     // container's Unit after the item as a statement where the container completes (SPEC 7.1, 14.2).
@@ -350,7 +340,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     {
         var outer = this.scope;
         this.scope = (ushort)this.body.AddScope(outer, kind, SourceRef.Of(block));
-        var lexical = this.OpenScope(true);
+        var lexical = this.OpenScope(block: true);
         var items = block.Items;
         for (var i = 0; i < items.Count - 1; i++)
         {
@@ -379,7 +369,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
                 new(
                 symbol.Type ?? BoundType.Unit,
                 MirLocalKind.Var,
-                this.Info(variable, true),
+                this.Info(variable, local: true),
                 variable.VariableKind == VariableKind.Var,
                 symbol.Name)),
             this.lexical);

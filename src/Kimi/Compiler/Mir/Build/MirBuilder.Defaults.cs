@@ -295,7 +295,7 @@ internal sealed partial class MirBuilder
         MirOperand FoldOperand(in MirOperand operand) => operand.Kind switch
         {
             MirOperandKind.Const => MirOperand.Const(this.body.Const(template.Consts[operand.Arg] with { Type = FoldType(template.Consts[operand.Arg].Type) })),
-            MirOperandKind.PairAcquire => this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), FoldPlace(operand.Place), null, false, node),
+            MirOperandKind.PairAcquire => this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), FoldPlace(operand.Place), null, input: false, node),
             _ => operand with { Place = FoldPlace(operand.Place) },
         };
 

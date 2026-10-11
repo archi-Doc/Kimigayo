@@ -139,7 +139,7 @@ internal sealed partial class CodeRulesArchitecture
         return closure;
     }
 
-    private void CheckStructure(CodeRulesSource source, SyntaxNode node, Layer? layer, CancellationToken cancellation)
+    private ISymbol? CheckStructure(CodeRulesSource source, SyntaxNode node, Layer? layer, CancellationToken cancellation)
     {
         if (node is ImplicitObjectCreationExpressionSyntax or CollectionExpressionSyntax && (layer is null || layer != this.syntaxLayer))
         {
@@ -152,29 +152,31 @@ internal sealed partial class CodeRulesArchitecture
         }
         else
         {
-            this.CheckDeclaration(source, node, layer, cancellation);
+            return this.CheckDeclaration(source, node, layer, cancellation);
         }
+
+        return null;
     }
 
-    private void CheckDeclaration(CodeRulesSource source, SyntaxNode node, Layer? layer, CancellationToken cancellation)
+    private ISymbol? CheckDeclaration(CodeRulesSource source, SyntaxNode node, Layer? layer, CancellationToken cancellation)
     {
         var anchor = DeclarationAnchor(node);
         if (anchor is null || (anchor is PredefinedTypeSyntax predefined && !predefined.Keyword.IsKind(SyntaxKind.BoolKeyword)))
         {
-            return;
+            return null;
         }
 
         var collection = layer is null || layer != this.syntaxLayer;
         if ((!collection || anchor is PredefinedTypeSyntax) &&
             node is not (BaseMethodDeclarationSyntax or LocalFunctionStatementSyntax or BasePropertyDeclarationSyntax))
         {
-            return;
+            return null;
         }
 
         var declaration = node is VariableDeclarationSyntax variables ? variables.Variables.FirstOrDefault() : node;
         if (declaration is null)
         {
-            return;
+            return null;
         }
 
         var symbol = source.Semantics.GetDeclaredSymbol(declaration, cancellation);
@@ -199,6 +201,8 @@ internal sealed partial class CodeRulesArchitecture
         {
             this.CheckCollection(source, anchor, type);
         }
+
+        return symbol;
     }
 
     private void CheckCollection(CodeRulesSource source, SyntaxNode node, ITypeSymbol? type)

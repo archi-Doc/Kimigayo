@@ -108,19 +108,26 @@ public class CodeRulesDensityTest
     {
         const string expression = "a ? 1 : b ? 2 : 3";
         const string source = "partial class C { int M(bool a, bool b) => " + expression + "; }";
-        var report = await CodeRulesTestHelper.Analyze(source, CodeRulesTestHelper.Options("Report"));
+        var report = await CodeRulesTestHelper.Analyze(source, Options("Report"));
         var observed = Assert.Single(report, x => x.Id == "KR9001");
         var baseline = string.Join('\t', "KR3002", observed.Properties["scope"], observed.Properties["anchor"], "1", observed.Properties["path"]);
-        Assert.Empty(await CodeRulesTestHelper.Analyze(source, CodeRulesTestHelper.Options("Verify", baseline)));
+        Assert.Empty(await CodeRulesTestHelper.Analyze(source, Options("Verify", baseline)));
         var compilation = CodeRulesTestHelper.Compilation(source, source.Replace("M(", "N(", StringComparison.Ordinal));
-        Assert.Equal(2, (await CodeRulesTestHelper.Analyze(compilation, CodeRulesTestHelper.Options(baseline: baseline))).Length);
+        Assert.Equal(2, (await CodeRulesTestHelper.Analyze(compilation, Options(baseline: baseline))).Length);
     }
 
     private static async Task<ImmutableArray<Diagnostic>> Analyze(string source, bool wideLines = false)
     {
-        var options = CodeRulesTestHelper.Options(configure: config => config["kimi_code_rules.max_line_length"] = wideLines ? "1000" : "160");
+        var options = Options(wideLines: wideLines);
         var diagnostics = await CodeRulesTestHelper.Analyze(source, options);
         Assert.DoesNotContain(diagnostics, x => x.Id == "AD0001");
         return diagnostics.Where(x => x.Id.StartsWith("KR3", StringComparison.Ordinal)).ToImmutableArray();
     }
+
+    private static Microsoft.CodeAnalysis.Diagnostics.AnalyzerOptions Options(string mode = "Enforce", string baseline = "", bool wideLines = false)
+        => CodeRulesTestHelper.Options(mode, baseline, config =>
+        {
+            config["kimi_code_rules.scope.accretion.exclude"] = "src/Kimi/";
+            config["kimi_code_rules.max_line_length"] = wideLines ? "1000" : "160";
+        });
 }

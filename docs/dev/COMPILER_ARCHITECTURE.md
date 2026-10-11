@@ -117,6 +117,10 @@ the body. Configuration lists use commas: Roslyn treats semicolons as inline com
 `CodeRulesDensity` owns KR3001–3003 in the same syntax walk (CR-A5). A physical line is excluded only when wholly
 inside a multiline literal/text token; interpolation holes remain checked. The outermost conditional before a
 callable boundary owns the observation. Parentheses are transparent when classifying new-local tuple values.
+`CodeRulesAccretion` owns KR2001–2010 (CR-A6). The one file walker carries declaration measurements as stack values:
+local functions are separate; lambdas belong to their member and restart control depth; accessors share their member's
+statement count. Parameter/call semantics are resolved only after syntax leaves a possible violation.
+`CodeRuleAnnotation` carries source-authored exception bounds through the same observation merge; no second inventory.
 
 | Rules | Contract |
 | --- | --- |
@@ -135,14 +139,16 @@ callable boundary owns the observation. Parentheses are transparent when classif
 One baseline row identifies a rule, its innermost named Type (file for file-wide records), and a member, local-function,
 node or line anchor. Member/file measurements cannot rise above the greater of the ordinary limit and their recorded
 value; node/line counts cannot rise. Partial-file moves preserve Type-scoped keys. Obsolete entries must be pruned.
-Only over-limit measurements need observations. A complete Report with no such occurrence makes its baseline row
-redundant and Prune deletes it (CR-A2); absence is not reported as a measured zero.
+Ordinary Report measurements are over-limit only. A complete Report with no such occurrence makes its baseline row
+redundant and Prune deletes it (CR-A2). Annotations are reported even at zero; partial declarations share the maximum
+measurement and their single annotation. Unannotated partial measurements at or below the limit stay out of Report.
 KR1001–1003 and KR1007 never have baselines; extend their scope only after the newly covered violations reach zero.
 KR1002's UnwrapParentheses prohibition expands outside Parsing/Binding at R7 exit.
 Syntax's prohibition on the Binding type expands to the whole Binding layer at R6 exit.
 
 Only statement and nesting limits admit CodeRuleException, with an explicit bound and nonempty reason; an exception
-and baseline cannot cover the same member/rule. All KR descriptors are NotConfigurable. Enforce reports stale rows as
+and baseline cannot cover the same member/rule. Invalid targets/rules, duplicates, needless bounds and exceeded bounds
+are KR9005. Conditional attribute uses are absent from product metadata. All KR descriptors are NotConfigurable. Enforce reports stale rows as
 warnings, Verify as errors, and Report publishes complete observations for scripts; verification checks suppression.
 Configuration changes, new/increased baseline rows, new/increased exceptions and later removal stages require owner
 approval recorded by `Code-Rules-Approved`; pruning and reduced exception bounds/removal stages do not. The adopted

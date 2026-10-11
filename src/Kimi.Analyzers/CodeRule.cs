@@ -72,6 +72,7 @@ internal sealed class CodeRule
     internal static readonly DiagnosticDescriptor Stale = Descriptor("KR9002", "Stale code rules entry", "{0}; remove or reduce the obsolete entry", DiagnosticSeverity.Warning);
     internal static readonly DiagnosticDescriptor Invalid = Descriptor("KR9003", "Invalid code rules configuration", "{0}; correct the code rules configuration", DiagnosticSeverity.Error);
     internal static readonly DiagnosticDescriptor Suppression = Descriptor("KR9004", "Forbidden code rule suppression", "{0}; remove the suppression", DiagnosticSeverity.Error);
+    internal static readonly DiagnosticDescriptor InvalidException = Descriptor("KR9005", "Invalid code rule exception", "{0}; correct the exception's target, reason or bound", DiagnosticSeverity.Error);
     internal static readonly DiagnosticDescriptor StaleError = Descriptor("KR9002", "Stale code rules entry", "{0}; remove or reduce the obsolete entry", DiagnosticSeverity.Error);
     internal static readonly ImmutableArray<DiagnosticDescriptor> Supported = BuildSupported();
 
@@ -136,13 +137,13 @@ internal sealed class CodeRule
 
     private static ImmutableArray<DiagnosticDescriptor> BuildSupported()
     {
-        var result = ImmutableArray.CreateBuilder<DiagnosticDescriptor>(All.Length + 5);
+        var result = ImmutableArray.CreateBuilder<DiagnosticDescriptor>(All.Length + 6);
         foreach (var rule in All)
         {
             result.Add(rule.Diagnostic);
         }
 
-        result.AddRange(Complete, Observation, Stale, Invalid, Suppression);
+        result.AddRange(Complete, Observation, Stale, Invalid, Suppression, InvalidException);
         return result.MoveToImmutable();
     }
 }

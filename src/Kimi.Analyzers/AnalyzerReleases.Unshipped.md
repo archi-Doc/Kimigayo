@@ -28,3 +28,4 @@ KR9001 | CodeRules | Info | Observation
 KR9002 | CodeRules | Warning | Stale baseline or configuration (Error in Verify)
 KR9003 | CodeRules | Error | Invalid configuration
 KR9004 | CodeRules | Error | Forbidden suppression
+KR9005 | CodeRules | Error | Invalid exception

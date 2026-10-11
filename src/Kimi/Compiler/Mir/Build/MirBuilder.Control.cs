@@ -138,7 +138,7 @@ internal sealed partial class MirBuilder
 
         if (target.Break < 0)
         {
-            this.body.Terminate(target.Break = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, false)));
+            this.body.Terminate(target.Break = this.body.AddBlock(), MirTerminator.Return(new(SourceRef.Of(this.declaration), 0, StatementStart: false)));
         }
 
         target.Reached |= !continues;
@@ -184,11 +184,11 @@ internal sealed partial class MirBuilder
         var site = SourceRef.Of(verification);
         var location = MirOperand.Const(this.body.Const(new(MirConstKind.Location, BoundType.I32, ((long)site.Module << 32) | (uint)site.Id)));
         var issue = this.Temp(BoundType.Primitives["i64"], verification);
-        var test = this.Test(verification.Condition, failed, after, observe: (issue, location));
+        var test = this.Observe(verification.Condition, failed, after, issue, location);
         this.Enter(failed, test);
         if (verification.Message is { } message)
         {
-            var temporaries = this.OpenScope(false);
+            var temporaries = this.OpenScope(block: false);
             var text = this.Temp(message);
             var start = this.arguments.Count;
             this.Assign(text, message);
@@ -207,7 +207,7 @@ internal sealed partial class MirBuilder
             var start = this.arguments.Count;
             this.arguments.Add(MirOperand.Copy(issue));
             this.arguments.Add(location);
-            this.Invoke(this.Unwritten(verification), MirCallee.Intrinsic(IntrinsicId.TestRequireAbort), start, verification, true);
+            this.Invoke(this.Unwritten(verification), MirCallee.Intrinsic(IntrinsicId.TestRequireAbort), start, verification, diverges: true);
             this.body.Terminate(this.current, MirTerminator.Unreachable(this.Info(verification)));
         }
         else
@@ -219,36 +219,15 @@ internal sealed partial class MirBuilder
         this.Unit(destination, verification);
     }
 
-    // SPEC 14.2.3, 3.6.2: a condition evaluated once into a bool, its temporaries cleaned up, then the branch on the bool, whose storage
-    // ends in each successor (Enter). A match guard's candidates (SPEC 14.8.3) are shared borrows of the Places its Pattern selected among
-    // its temporaries, pending so that a transfer ends them, and the Subject is read after their cleanup: it stays protected until then. A
-    // verification observes the bool before that cleanup (SPEC 17.5.2).
-    private MirPlace Test(
-        Koto condition,
-        int whenFalse,
-        int whenTrue,
-        BoundMatch? plan = null,
-        int pattern = 0,
-        int start = 0,
-        (MirPlace Issue, MirOperand Site)? observe = null)
+    // SPEC 17.5.2: observe a verification's bool before cleaning its temporaries, then branch with the bool's storage live.
+    private MirPlace Observe(Koto condition, int whenFalse, int whenTrue, MirPlace issue, MirOperand site)
     {
-        var tested = this.OpenScope(false);
+        var tested = this.OpenScope(block: false);
         var test = this.Temp(BoundType.Boolean, condition);
-        var temporaries = this.OpenScope(false);
+        var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
-        for (var i = pattern; plan is not null && i < plan.Positions[pattern].End; i++)
-        {
-            if (plan.Positions[i] is { CandidateSymbol: { Type: { } type } candidate, Source: var source })
-            {
-                var reference = this.Temp(type, source, MirLocalRole.GuardCandidate, candidate.Name);
-                this.Set(reference, this.Ref(this.selected[start + i], type, false), source);
-                this.arguments.Add(MirOperand.Move(reference));
-                this.locals[candidate] = reference.Root;
-            }
-        }
-
         this.Assign(test, condition);
-        if (observe is (var issue, var site) && Completes(condition))
+        if (Completes(condition))
         {
             this.arguments.Add(MirOperand.Copy(test));
             this.arguments.Add(site);
@@ -257,13 +236,23 @@ internal sealed partial class MirBuilder
 
         this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
-        if (plan is not null)
-        {
-            this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
-        }
-
         this.Branch(test, condition, whenFalse, whenTrue);
-        this.CloseScope(tested, false);
+        this.CloseScope(tested, clean: false);
+        return test;
+    }
+
+    // SPEC 14.2.3, 3.6.2: evaluate a condition once, clean its temporaries, then branch; Enter ends the bool's storage in each successor.
+    private MirPlace Test(Koto condition, int whenFalse, int whenTrue)
+    {
+        var tested = this.OpenScope(block: false);
+        var test = this.Temp(BoundType.Boolean, condition);
+        var temporaries = this.OpenScope(block: false);
+        var mark = this.arguments.Count;
+        this.Assign(test, condition);
+        this.arguments.RemoveRange(mark, this.arguments.Count - mark);
+        this.CloseScope(temporaries);
+        this.Branch(test, condition, whenFalse, whenTrue);
+        this.CloseScope(tested, clean: false);
         return test;
     }
 
@@ -303,7 +292,7 @@ internal sealed partial class MirBuilder
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
-        this.targets.Add(new(node, destination, after, next, this.arguments.Count, this.scopes.Count, false));
+        this.targets.Add(new(node, destination, after, next, this.arguments.Count, this.scopes.Count, Reached: false));
         return after;
     }
 

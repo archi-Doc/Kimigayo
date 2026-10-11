@@ -16,19 +16,22 @@ internal sealed partial class MirBuilder
         var call = ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!;
         if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (> MirBinaryOp.Eq and MirBinaryOp relation))
         {
-            this.Call(destination, call, node);
+            this.Call(destination, call, node, first: null);
             return;
         }
 
         var result = this.Temp(call.ReturnType, node);
-        this.Call(result, call, node);
+        this.Call(result, call, node, first: null);
         var start = this.body.AddOperand(MirOperand.Move(result));
         if (relation != MirBinaryOp.Ne)
         {
             this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, call.ReturnType))));
         }
 
-        this.Set(destination, relation == MirBinaryOp.Ne ? MirRvalue.Unary(MirUnaryOp.Not, start, true) : MirRvalue.Binary(relation, start, true), node);
+        this.Set(
+            destination,
+            relation == MirBinaryOp.Ne ? MirRvalue.Unary(MirUnaryOp.Not, start, proven: true) : MirRvalue.Binary(relation, start, proven: true),
+            node);
     }
 
     // SPEC 7.3, 7.6.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
@@ -38,7 +41,7 @@ internal sealed partial class MirBuilder
     // fixed code), a direct base call the implementation the virtual selection names, and a place result the reference the call returns. A
     // call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose
     // operand does not complete enters no callee (SPEC 15.6.7).
-    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first = null, Koto? given = null, in MirOperand value = default)
+    private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
@@ -62,7 +65,8 @@ internal sealed partial class MirBuilder
         var subst = compilation.Types.SubstOf(call);
         if (function is null)
         {
-            this.arguments.Add(this.Operand(source, call.ReceiverOperation.AdaptedType, true)); // The callee value, pending while the arguments are evaluated.
+            // The callee value, pending while the arguments are evaluated.
+            this.arguments.Add(this.Operand(source, call.ReceiverOperation.AdaptedType, input: true));
         }
 
         var start = this.arguments.Count;
@@ -79,7 +83,11 @@ internal sealed partial class MirBuilder
                 direct!.ReceiverIndex,
                 out _);
             var slot = defaults ? this.Slot(parameter, receiver) : (MirPlace?)null;
-            var operand = this.Operand(receiver, ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter, true, slot);
+            var operand = this.Operand(
+                receiver,
+                ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter,
+                input: true,
+                slot);
             this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
             completes &= Completes(receiver);
         }
@@ -94,7 +102,7 @@ internal sealed partial class MirBuilder
                     var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(
                         argument.Source!,
                         argument.AdaptedType ?? argument.ParameterType,
-                        true,
+                        input: true,
                         slot);
                     this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = slot is { } place ? this.Pending(
                         place,
@@ -151,9 +159,7 @@ internal sealed partial class MirBuilder
             this.body.Operands.Length - operands,
             destination,
             diverges ? -1 : next,
-            this.Info(node),
-            diverges ? next : -1,
-            value));
+            this.Info(node)) with { CheckTarget = diverges ? next : -1, Operand = value });
         this.current = next;
     }
 
@@ -177,7 +183,7 @@ internal sealed partial class MirBuilder
 
     // The destination of a diverging call on a path that ends with it (a failed check, $require's abort): a Never temp the call never writes
     // (MirUses), without storage, whose markers the statement's other paths would end without beginning (SPEC 3.6.2).
-    private MirPlace Unwritten(Koto node) => new(this.body.AddLocal(new(BoundType.Never, MirLocalKind.Temp, this.Info(node, true))));
+    private MirPlace Unwritten(Koto node) => new(this.body.AddLocal(new(BoundType.Never, MirLocalKind.Temp, this.Info(node, local: true))));
 
     // SPEC 13.6.1: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token; an
     // operand that does not complete tests nothing.

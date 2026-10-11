@@ -32,7 +32,7 @@ internal readonly struct CodeRuleKey(CodeRule rule, string scope, string anchor)
     }
 }
 
-internal readonly struct CodeRuleObservation(CodeRuleKey key, string path, Location location, int value, int limit)
+internal readonly struct CodeRuleObservation(CodeRuleKey key, string path, Location location, int value, int limit, CodeRuleAnnotation? annotation = null)
 {
     internal CodeRuleKey Key { get; } = key;
 
@@ -43,6 +43,8 @@ internal readonly struct CodeRuleObservation(CodeRuleKey key, string path, Locat
     internal int Value { get; } = value;
 
     internal int Limit { get; } = limit;
+
+    internal CodeRuleAnnotation? Annotation { get; } = annotation;
 }
 
 internal sealed class CodeRulesBaseline
@@ -97,9 +99,17 @@ internal sealed class CodeRulesBaseline
             var first = observations[start];
             var end = start + 1;
             var maximum = first.Value;
+            var annotation = first.Annotation;
+            var duplicate = false;
             while (end < observations.Count && first.Key.CompareTo(observations[end].Key) == 0)
             {
                 maximum = Math.Max(maximum, observations[end].Value);
+                if (observations[end].Annotation is { } next)
+                {
+                    duplicate |= annotation is not null;
+                    annotation ??= next;
+                }
+
                 end++;
             }
 
@@ -111,6 +121,35 @@ internal sealed class CodeRulesBaseline
             Row? recorded = baselineIndex < this.rows.Count && this.rows[baselineIndex].Key.CompareTo(first.Key) == 0 ? this.rows[baselineIndex++] : null;
             var baselineValue = recorded?.Value ?? 0;
             var value = first.Key.Rule.Measure == CodeRuleMeasure.Count ? end - start : maximum;
+            if (annotation is not null)
+            {
+                var problem = duplicate ? "Duplicate exception" : recorded.HasValue ? "Exception also has a baseline" :
+                    value > annotation.Limit ? "Measured value " + value.ToString(CultureInfo.InvariantCulture) + " exceeds exception limit " + annotation.Limit.ToString(CultureInfo.InvariantCulture) : null;
+                if (problem is not null)
+                {
+                    report(Diagnostic.Create(CodeRule.InvalidException, annotation.Location, problem + " for " + first.Key.Rule.Id));
+                }
+
+                if (mode == "Report")
+                {
+                    report(Report(first, value, annotation));
+                }
+
+                start = end;
+                continue;
+            }
+
+            if (first.Key.Rule.Measure == CodeRuleMeasure.Maximum && value <= first.Limit)
+            {
+                if (recorded.HasValue)
+                {
+                    Stale(recorded.Value, mode, report, "No over-limit occurrence remains for");
+                }
+
+                start = end;
+                continue;
+            }
+
             if (recorded.HasValue && baselineValue > value)
             {
                 Stale(recorded.Value, mode, report, "A smaller value (" + value.ToString(CultureInfo.InvariantCulture) + ") remains for");
@@ -122,7 +161,7 @@ internal sealed class CodeRulesBaseline
                 var allowed = Allows(observed.Key.Rule, observed.Path) ? baselineValue : 0;
                 if (mode == "Report")
                 {
-                    report(Report(observed, value));
+                    report(Report(observed, value, null));
                 }
                 else if (observed.Key.Rule.Measure == CodeRuleMeasure.Count ? value > allowed : observed.Value > Math.Max(observed.Limit, allowed))
                 {
@@ -174,12 +213,18 @@ internal sealed class CodeRulesBaseline
         return order == 0 ? left.Location.SourceSpan.Start.CompareTo(right.Location.SourceSpan.Start) : order;
     }
 
-    private static Diagnostic Report(CodeRuleObservation observed, int value)
+    private static Diagnostic Report(CodeRuleObservation observed, int value, CodeRuleAnnotation? annotation)
     {
         var properties = ImmutableDictionary<string, string?>.Empty
             .Add("rule", observed.Key.Rule.Id).Add("scope", observed.Key.Scope).Add("anchor", observed.Key.Anchor)
             .Add("value", value.ToString(CultureInfo.InvariantCulture)).Add("path", observed.Path)
-            .Add("baselineAllowed", Allows(observed.Key.Rule, observed.Path) ? "true" : "false");
+            .Add("baselineAllowed", annotation is null && Allows(observed.Key.Rule, observed.Path) ? "true" : "false");
+        if (annotation is not null)
+        {
+            properties = properties.Add("kind", "exception").Add("reason", annotation.Reason)
+                .Add("limit", annotation.Limit.ToString(CultureInfo.InvariantCulture));
+        }
+
         return Diagnostic.Create(CodeRule.Observation, observed.Location, properties, observed.Key.Rule.Id + " " + observed.Key.Scope + " " + observed.Key.Anchor);
     }
 

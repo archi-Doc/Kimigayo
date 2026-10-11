@@ -22,14 +22,15 @@ $null = New-Item -ItemType Directory -Path $evidence
 $sarif = Join-Path $evidence 'code-rules.sarif'
 $before = Get-KimiVerificationInputs $repo
 $before | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence 'inputs-before.json')
-& dotnet build (Join-Path $repo 'src/Kimi/Kimi.csproj') --no-restore --no-incremental -c Release --disable-build-servers -m:1 -warnaserror -p:EmitCompilerGeneratedFiles=false -p:KimiCodeRulesMode=Report "-p:KimiCodeRulesLog=$sarif" *> (Join-Path $evidence 'build.log')
+# Keep Report's stale-entry warning available to Prune; MSBuild otherwise promotes it after csc has emitted SARIF.
+& dotnet build (Join-Path $repo 'src/Kimi/Kimi.csproj') --no-restore --no-incremental -c Release --disable-build-servers -m:1 -warnaserror -warnnotaserror:KR9002 -p:EmitCompilerGeneratedFiles=false -p:KimiCodeRulesMode=Report "-p:KimiCodeRulesLog=$sarif" *> (Join-Path $evidence 'build.log')
 if ($LASTEXITCODE -ne 0) { throw "Report build failed; see $evidence" }
 $after = Get-KimiVerificationInputs $repo
 $after | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence 'inputs-after.json')
 Assert-KimiVerificationInputsStable $before $after
 $results = Read-KimiCodeRulesSarif $sarif $repo -RequireComplete
 $observed = Get-KimiCodeRulesObservations $results
-$observed.Values | Select-Object rule, scope, anchor, value, path, allowed | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $evidence 'observations.json')
+$observed.Values | Select-Object rule, scope, anchor, value, path, allowed, kind, reason, limit | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $evidence 'observations.json')
 $results | Where-Object ruleId -CEQ 'KR9001' | Group-Object { $_.properties.customProperties.rule + ' ' + ($_.properties.customProperties.path -replace '^src/Kimi/([^/]+/[^/]+).*', '$1') } |
     Select-Object Name, Count | Format-Table | Out-String | Set-Content -LiteralPath (Join-Path $evidence 'summary.txt')
 if ($mode -cne 'Report') {

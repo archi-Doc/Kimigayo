@@ -75,7 +75,7 @@ internal static class CodeRulesDensity
                 Designation: ParenthesizedVariableDesignationSyntax variables,
             }
 
-            || Unwrap(assignment.Right) is not TupleExpressionSyntax { Arguments.Count: >= 2 } tuple)
+            || CodeRulesSource.Unwrap(assignment.Right) is not TupleExpressionSyntax { Arguments.Count: >= 2 } tuple)
         {
             return false;
         }
@@ -101,23 +101,13 @@ internal static class CodeRulesDensity
 
     private static bool Simple(ExpressionSyntax expression)
     {
-        expression = Unwrap(expression);
+        expression = CodeRulesSource.Unwrap(expression);
         while (expression is MemberAccessExpressionSyntax member && member.IsKind(SyntaxKind.SimpleMemberAccessExpression))
         {
-            expression = Unwrap(member.Expression);
+            expression = CodeRulesSource.Unwrap(member.Expression);
         }
 
         return expression is SimpleNameSyntax or LiteralExpressionSyntax or ThisExpressionSyntax or DefaultExpressionSyntax;
-    }
-
-    private static ExpressionSyntax Unwrap(ExpressionSyntax expression)
-    {
-        while (expression is ParenthesizedExpressionSyntax parentheses)
-        {
-            expression = parentheses.Expression;
-        }
-
-        return expression;
     }
 
     private static bool LiteralLine(CodeRulesSource source, TextSpan line)

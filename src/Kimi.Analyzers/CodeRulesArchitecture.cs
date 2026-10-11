@@ -181,14 +181,14 @@ internal sealed partial class CodeRulesArchitecture
 
     internal Layer? FileLayer(SyntaxTree tree) => this.files[tree];
 
-    internal void CheckNode(CodeRulesSource source, SyntaxNode node, Layer? layer, CancellationToken cancellation)
+    internal ISymbol? CheckNode(CodeRulesSource source, SyntaxNode node, Layer? layer, CancellationToken cancellation)
     {
         if (node is SimpleNameSyntax name)
         {
             var collection = layer is null || layer != this.syntaxLayer ? CollectionCreation(name) : null;
             if (AttributeName(name) || (collection is null && (layer is null || !layer.HasReferences) && !this.globalMembers.Contains(name.Identifier.ValueText)))
             {
-                return;
+                return null;
             }
 
             var symbol = source.Semantics.GetSymbolInfo(name, cancellation).Symbol;
@@ -215,7 +215,7 @@ internal sealed partial class CodeRulesArchitecture
             }
         }
 
-        this.CheckStructure(source, node, layer, cancellation);
+        return this.CheckStructure(source, node, layer, cancellation);
     }
 
     internal void CheckReference(CodeRulesSource source, SyntaxNode node, ISymbol? symbol, Layer? layer)

@@ -146,10 +146,8 @@ internal readonly record struct MirTerminator(
         int count,
         MirPlace destination,
         int target,
-        SourceInfo source,
-        int check = -1,
-        MirOperand value = default)
-        => new(MirTerminatorKind.Call, source, target, check, value, destination, start, count, callee);
+        SourceInfo source)
+        => new(MirTerminatorKind.Call, source, target, Place: destination, Start: start, Count: count, Callee: callee);
 
     internal static MirTerminator Drop(MirPlace place, int target, SourceInfo source) => new(MirTerminatorKind.Drop, source, target, Place: place);
 

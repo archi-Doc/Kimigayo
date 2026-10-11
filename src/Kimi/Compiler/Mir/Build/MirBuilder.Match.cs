@@ -23,7 +23,7 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var scope = this.OpenScope(false);
+        var scope = this.OpenScope(block: false);
         var subject = this.Temp(plan.SubjectBorrow ?? TypeOf(match.Expression), match.Expression, MirLocalRole.Subject);
         this.Assign(subject, match.Expression);
         var after = this.Open(match, destination);
@@ -45,14 +45,14 @@ internal sealed partial class MirBuilder
                 var rejected = this.body.AddBlock();
                 var accepted = this.body.AddBlock();
                 this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Guard, SourceRef.Of(guard));
-                var test = this.Test(guard, rejected, accepted, plan, arm.Pattern, start);
+                var test = this.Guard(guard, rejected, accepted, plan, arm.Pattern, start);
                 this.Enter(rejected, test);
                 this.body.Terminate(rejected, MirTerminator.Goto(next, this.Info(guard)));
                 this.Enter(accepted, test);
             }
 
             this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
-            var bindings = this.temporaries = this.OpenScope(true);
+            var bindings = this.temporaries = this.OpenScope(block: true);
             this.Bind(plan, arm.Pattern, start);
             this.Result(destination, arm.Syntax.Body, arm.Syntax.Body);
             this.CloseScope(bindings);
@@ -65,6 +65,34 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.SetCount(this.selected, start);
         this.Close(after);
         this.CloseScope(scope);
+    }
+
+    // SPEC 14.8.3: guard candidates borrow the selected Places among the condition's temporaries. Keep the Subject protected until
+    // their cleanup, then read it and branch while the bool's storage remains live for Enter in each successor.
+    private MirPlace Guard(Koto condition, int whenFalse, int whenTrue, BoundMatch plan, int pattern, int start)
+    {
+        var tested = this.OpenScope(block: false);
+        var test = this.Temp(BoundType.Boolean, condition);
+        var temporaries = this.OpenScope(block: false);
+        var mark = this.arguments.Count;
+        for (var i = pattern; i < plan.Positions[pattern].End; i++)
+        {
+            if (plan.Positions[i] is { CandidateSymbol: { Type: { } type } candidate, Source: var source })
+            {
+                var reference = this.Temp(type, source, MirLocalRole.GuardCandidate, candidate.Name);
+                this.Set(reference, this.Ref(this.selected[start + i], type, input: false), source);
+                this.arguments.Add(MirOperand.Move(reference));
+                this.locals[candidate] = reference.Root;
+            }
+        }
+
+        this.Assign(test, condition);
+        this.arguments.RemoveRange(mark, this.arguments.Count - mark);
+        this.CloseScope(temporaries);
+        this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
+        this.Branch(test, condition, whenFalse, whenTrue);
+        this.CloseScope(tested, clean: false);
+        return test;
     }
 
     // SPEC 14.8.1: a position's tests on the Place it selects, after its implicit follows: a Literal's comparison of the value (a string's
@@ -97,7 +125,7 @@ internal sealed partial class MirBuilder
                 PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
                 _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
             })));
-            this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, true), position.Source);
+            this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), position.Source);
             this.Pass(MirOperand.Copy(value), 1, next, position.Source);
             tested = true;
         }
@@ -137,8 +165,8 @@ internal sealed partial class MirBuilder
                 var adjust = HirTables.AdjustOf(binding);
                 var place = this.selected[start + i];
                 var mutable = binding is SyntaxFormKoto { IsMutablePattern: true } || (binding is IdentifierNameKoto name && loop?.IsMutableSlot(name) == true);
-                var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, true), mutable, symbol.Name)), this.lexical);
-                this.Use(new(local), this.Acquire(adjust, place, type, false, binding, new(local)), binding);
+                var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, local: true), mutable, symbol.Name)), this.lexical);
+                this.Use(new(local), this.Acquire(adjust, place, type, input: false, binding, new(local)), binding);
                 this.locals[symbol] = local;
             }
         }

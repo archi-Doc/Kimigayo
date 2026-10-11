@@ -168,6 +168,53 @@ rules that result from them.
   declared-symbol path. Independent review accepted this bounded syntax filter over new symbol caches or weakening
   rules. Re-measure and rerun the unit on the changed inputs.
 
+- **CR-A6** (planning session, two independently written designs compared and reviewed). Analyzer.File owns one
+  CSharpSyntaxWalker with entry/exit measurement frames; CodeRulesAccretion owns KR2001–2010. Replace the existing
+  DescendantNodes loop, rejecting the root design's second reusable body walker and node-to-measurement tables.
+  Save frames as call-stack values: methods, constructors, operators and local functions measure independently;
+  properties, indexers and events combine accessor statements and reset accessor depth; field initializer lambdas
+  belong to each variable. Local functions leave the parent count unchanged; lambda statements belong to the parent
+  member but their depth restarts at zero. Else-if does not add another level. Keep one token counter.
+  Parameter limits and logical chains are syntax-first. Resolve aliases only when a possible bool/string violation
+  remains, and resolve calls only after an unnamed bool literal is found. A4's declared symbol may be passed to
+  the current node's consumer, never stored in a new cache. Source identities are still published only for observations.
+  Move transparent-parenthesis removal to Source for KR2005/KR3003; do not copy the operation into another rule.
+  CodeRuleAnnotation is sparse source-authored reason/bound data on the existing observation. The existing attribute
+  constructor resolution and Roslyn constant values feed it; there is no alias parser or inventory-only tree walk.
+  Field attributes apply to each declared variable. Unsupported targets, invalid/duplicate rules, empty reasons and
+  bounds at or below the ordinary limit fail at the annotation owner. Emit annotation observations even at zero;
+  the existing sorted-key merge applies the bound to the whole member/rule group, including partial declaration/body
+  pairs, and reports one KR9005 for baseline overlap or exceeding the bound. Report carries the reason and limit;
+  scripts permit zero only on annotations and never add them to the baseline. A7 extends this same path with removal
+  stages rather than introducing a second inventory. Attributes remain conditional and absent from product metadata.
+  MIR changes use existing responsibilities and records: MirTerminator.Call keeps six essential inputs, with existing
+  CheckTarget/Operand fields set by the caller; Call's first, Operand's expected and Row's effects become explicit.
+  Replace Test's optional guard/observe modes with ordinary Test, match Guard and verification Observe operations.
+  They retain existing scope/assignment/branch primitives; reject callbacks, strategies or a new lifetime carrier to
+  eliminate a short sequence whose cleanup obligations differ. Into's flat closed-HirOp dispatch may use the measured
+  KR2006 exception rather than a second dispatch. Move the existing formatting concern out of Expansions. Additional
+  MIR findings require the actual Report and a responsibility-based decision before edits; no new compiler vocabulary,
+  representation or side table is authorized. Expected tooling growth is roughly 350–550 analyzer and 200–350 test
+  lines; shared traversal/annotation integration may exceed the proposal's estimate. Measure cumulative csc time and
+  compiler token/line deltas, preserve evaluation order and allocation assertions, and prove snapshots/IR unchanged.
+
+- **CR-A6a** (planning session, independently reviewed against the A6 Report). Only Into exceeds the MIR statement
+  limit; Inline and Format do not require splitting. Remove Effect's second, syntax-based dispatch: Statement and
+  Into map published HirOps directly to Require, Register, Discard and Transfer. Discard owns acquisition into its
+  temporary; no new classification, gate or table is introduced. This removes three syntax tests and their baseline
+  entries. MirDescriptors uses one explicit row per enum kind in every Of overload; repeated row values are data,
+  not a new grouping concept or a logical predicate. Reject parenthesized chains and split case labels as evasion.
+  MirTypes.Agree compares the existing identity, shape and component facts in the same short-circuit order with early
+  returns. MirValidator.Unknown first rejects ineligible destinations, then checks the existing Opaque or operand
+  propagation rule with guarded bounds; retain its reusable array and fixed-point order. No limits or vocabularies
+  change. Re-measure Into's flat-dispatch exception after removing the redundant dispatch.
+
+- **CR-A6b** (planning session, independently reviewed against csc/MSBuild evidence). Report's stale KR9002 is a
+  warning in SARIF, but MSBuild's warnaserror promotes it after compilation and prevents Prune from acquiring a
+  successful Report. Keep warnaserror and exempt only KR9002 from that logger promotion in the Report command.
+  Do not change descriptors, severities, suppression checks or thresholds. Actual MSBuild regressions cover Report
+  and Prune success, failure on another warning, and Verify's KR9002 remaining an error even with the logger exemption.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

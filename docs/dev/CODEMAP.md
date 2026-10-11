@@ -22,9 +22,15 @@ CodeRulesStructureTest covers their semantic forms, exclusions and shared baseli
 [CodeRulesDensity](../../src/Kimi.Analyzers/CodeRulesDensity.cs) owns physical lines, nested conditionals and computed
 new-local deconstructions (KR3001–3003), sharing the file walk and source identities; CodeRulesDensityTest covers
 literal/interpolation boundaries, callable boundaries, evaluation shapes and baseline growth.
+[CodeRulesAnalyzer.File](../../src/Kimi.Analyzers/CodeRulesAnalyzer.File.cs) owns the single syntax walk and stack-value
+measurements. [CodeRulesAccretion](../../src/Kimi.Analyzers/CodeRulesAccretion.cs) owns KR2001–2010; its tests cover member,
+callable, alias and logical-chain boundaries. [CodeRuleAnnotation](../../src/Kimi.Analyzers/CodeRuleAnnotation.cs) decodes
+source-authored exceptions for the same observation merge; CodeRulesExceptionTest covers partial declarations,
+baseline overlap and conditional metadata. MirBuilder.Formatting owns the existing formatting expansion concern;
+its condition operations are Test (ordinary), Guard (Match) and Observe (verification), with shared scope primitives.
 Suppression checks
 live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is
-tests/scripts/CodeRulesCompilerTest.ps1. Operational commands and the shared SARIF reader are described in
+tests/scripts/CodeRulesCompilerTest.ps1, including MSBuild stale-Report/Prune and Verify regressions. Operational commands and the shared SARIF reader are described in
 [VERIFICATION](VERIFICATION.md#code-rules).
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
