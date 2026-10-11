@@ -36,7 +36,7 @@ public sealed partial class Binding
 
             generic.Identifier!.BoundSymbol = declaration;
             generic.Identifier.BindingState = BindingState.Resolved;
-            own = this.BindTypeList(generic, generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, declaration);
+            own = this.BindTypeList(generic.TypeArguments, scope, context.Nested, BoundTypeKind.Constructed, declaration);
             if (own is null)
             {
                 return null;

@@ -13,14 +13,12 @@ public class BuildCommand : ISimpleCommand<BuildCommand.Options>
         public string? Manifest { get; set; }
     }
 
-    private readonly UnitContext unitContext;
     private readonly ILogger logger;
     private readonly Kimigayo kimigayo;
     private readonly Solution solution;
 
-    public BuildCommand(UnitContext unitContext, ILogger<BuildCommand> logger, Kimigayo kimigayo, Solution solution)
+    public BuildCommand(ILogger<BuildCommand> logger, Kimigayo kimigayo, Solution solution)
     {
-        this.unitContext = unitContext;
         this.logger = logger;
         this.kimigayo = kimigayo;
         this.solution = solution;

@@ -6,6 +6,7 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <IsAotCompatible>true</IsAotCompatible>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <KimiCodeRulesMode Condition="'$(KimiCodeRulesMode)' == ''">Enforce</KimiCodeRulesMode>
     <ErrorLog Condition="'$(KimiCodeRulesLog)' != ''">$(KimiCodeRulesLog),version=2.1</ErrorLog>
 

@@ -46,11 +46,12 @@ Use commas between configuration list entries; semicolons begin comments in Rosl
 | `pwsh scripts/code-rules.ps1 -Initialize -Rule KR3001,KR3002,KR3003` | Introduce the specified rules' observed keys in their implementation unit; reject replacement of existing keys |
 
 Every operation uses a new nonincremental build and SARIF path. Before writing, it requires a successful build,
-exactly one completion marker with nonzero tree count, matching raw-byte configuration/baseline checksums and
+exactly one completion marker with nonzero tree count and `annotationKinds=exception,transitional`, matching raw-byte configuration/baseline checksums and
 unchanged source/configuration/NuGet manifests. Keys and final observed values come only from the analyzer. Baselines
 are written atomically in ordinal scope/rule/anchor order. A complete report with no over-limit occurrence deletes
 that row, including a measurement now at or below the ordinary limit (DECISIONS CR-A2).
-Exception observations include their reason and bound, even at zero; they never enter the baseline. The Report
+Annotation observations include their reason and either an exception bound or removal stage/ordinal, even at zero;
+they never enter the baseline. Missing or older annotation-inventory markers are incomplete Reports. The Report
 command retains MSBuild warnaserror but exempts KR9002 from logger promotion so Prune can read stale-entry warnings.
 Verify's KR9002 is an analyzer error and remains fatal (DECISIONS CR-A6b).
 

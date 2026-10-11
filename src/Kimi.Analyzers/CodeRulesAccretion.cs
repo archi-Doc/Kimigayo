@@ -121,9 +121,8 @@ internal static class CodeRulesAccretion
         }
     }
 
-    internal static void CheckFile(CodeRulesSource source, CodeRulesConfiguration config)
+    internal static void CheckFile(CodeRulesSource source, int value, CodeRulesConfiguration config)
     {
-        var value = CodeRulesSource.CountTokens(source.Root);
         var limit = config.Limit(FileTokens);
         if (value > limit)
         {

@@ -91,7 +91,7 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
                 context.ReportDiagnostic(Diagnostic.Create(
                     CodeRule.Complete,
                     Location.None,
-                    config.Checksums.Add("treeCount", trees.ToString(CultureInfo.InvariantCulture))));
+                    config.Checksums.Add("treeCount", trees.ToString(CultureInfo.InvariantCulture)).Add("annotationKinds", "exception,transitional")));
             }
         });
     }

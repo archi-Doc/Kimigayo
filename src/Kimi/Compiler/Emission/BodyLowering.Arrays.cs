@@ -156,7 +156,7 @@ internal sealed partial class BodyLowering
         return helper;
     }
 
-    private bool LowerArrayOperation(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerArrayOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];

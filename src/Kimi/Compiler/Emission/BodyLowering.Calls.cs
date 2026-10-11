@@ -149,7 +149,7 @@ internal sealed partial class BodyLowering
 
         if (operation.Source is InvocationKoto arrayCall && original is { } arrayPlan && KimiLibraryCatalog.IsArrayOperation(arrayPlan.Target.CompilerFunction))
         {
-            return this.LowerArrayOperation(library, body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
+            return this.LowerArrayOperation(body, function, constants, directory, id, arrayCall, arrayPlan, out failure);
         }
 
         var generic = original is { } bound ? this.GenericCalls?.GetValueOrDefault(bound) ?? this.ForwardedEntry(bound) : null;

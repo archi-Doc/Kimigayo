@@ -35,7 +35,7 @@ public sealed partial class CodeRulesAnalyzer
     }
 
     private sealed class FileWalker(CodeRulesSource source, CodeRulesArchitecture architecture, CodeRulesConfiguration config, Action<Diagnostic> report, CancellationToken cancellation)
-        : CSharpSyntaxWalker(SyntaxWalkerDepth.StructuredTrivia)
+        : CSharpSyntaxWalker(SyntaxWalkerDepth.Token)
     {
         private readonly CodeRulesArchitecture.Layer? layer = architecture.FileLayer(source.Root.SyntaxTree);
         private readonly bool checkArchitecture = config.Applies(CodeRule.Find("KR1001")!, source.Path);
@@ -43,10 +43,11 @@ public sealed partial class CodeRulesAnalyzer
         private readonly bool checkDensity = config.Applies(CodeRule.Find("KR3001")!, source.Path);
         private readonly bool checkAccretion = config.Applies(CodeRule.Find("KR2001")!, source.Path);
         private Measurement frame;
+        private int tokens;
 
         public override void Visit(SyntaxNode? node)
         {
-            if (node is null or DocumentationCommentTriviaSyntax)
+            if (node is null)
             {
                 return;
             }
@@ -97,6 +98,28 @@ public sealed partial class CodeRulesAnalyzer
             }
         }
 
+        public override void VisitToken(SyntaxToken token)
+        {
+            if (this.checkAccretion)
+            {
+                this.tokens += CodeRulesSource.TokenSize(token);
+            }
+
+            if (token.ContainsDirectives)
+            {
+                this.VisitLeadingTrivia(token);
+                this.VisitTrailingTrivia(token);
+            }
+        }
+
+        public override void VisitTrivia(SyntaxTrivia trivia)
+        {
+            if (trivia.IsKind(SyntaxKind.PragmaWarningDirectiveTrivia))
+            {
+                CheckSuppression((PragmaWarningDirectiveTriviaSyntax)trivia.GetStructure()!, report);
+            }
+        }
+
         internal void Analyze()
         {
             this.Visit(source.Root);
@@ -107,7 +130,7 @@ public sealed partial class CodeRulesAnalyzer
 
             if (this.checkAccretion)
             {
-                CodeRulesAccretion.CheckFile(source, config);
+                CodeRulesAccretion.CheckFile(source, this.tokens, config);
             }
         }
 
@@ -132,14 +155,17 @@ public sealed partial class CodeRulesAnalyzer
                     architecture.CheckReference(source, attribute, constructor, this.layer);
                 }
 
-                if (this.checkAccretion && CodeRuleAnnotation.Read(source, attribute, constructor, config, report, cancellation) is { } annotation)
+                if (CodeRuleAnnotation.Read(source, attribute, constructor, config, report, cancellation) is { } annotation)
                 {
-                    this.Annotate(annotation);
+                    if (annotation.Rule == CodeRuleAnnotation.Transitional)
+                    {
+                        annotation.RecordTransition(source, attribute, config.Stage);
+                    }
+                    else
+                    {
+                        this.Annotate(annotation);
+                    }
                 }
-            }
-            else if (node is PragmaWarningDirectiveTriviaSyntax pragma)
-            {
-                CheckSuppression(pragma, report);
             }
             else if (this.checkArchitecture)
             {
@@ -172,7 +198,7 @@ public sealed partial class CodeRulesAnalyzer
             var previous = annotation.Rule == CodeRulesAccretion.Statements ? this.frame.StatementException : this.frame.NestingException;
             if (previous is not null)
             {
-                report(Diagnostic.Create(CodeRule.InvalidException, annotation.Location, "Duplicate exception for " + annotation.Rule.Id));
+                report(Diagnostic.Create(CodeRule.InvalidAnnotation, annotation.Location, "Duplicate exception for " + annotation.Rule.Id));
             }
             else if (annotation.Rule == CodeRulesAccretion.Statements)
             {

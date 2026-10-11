@@ -13,6 +13,7 @@ namespace Kimi.Compiler;
 // the latest pass keeps; it decides nothing Binding has not decided. Tests call it in R2b and the MIR builder from R3; R7 writes the columns inline.
 public sealed partial class Binding
 {
+    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private HirPublisher? hirPublisher;
     private ulong hirVersion;
 
@@ -20,6 +21,7 @@ public sealed partial class Binding
     // call or construction, the call shape of a formatting macro, the name Type arguments apply to), or inside an Error, which the
     // builder replaces whole.
     [Flags]
+    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private enum HirPosition : byte
     {
         None = 0,
@@ -49,6 +51,7 @@ public sealed partial class Binding
     }
 
     // One walk of the tree through its child slots; each node's position follows from the slot its parent holds it in.
+    [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private sealed class HirPublisher(Binding binding) : KotoVisitor
     {
         // The parameter defaults the walk is inside: the function and the parameter's slot.

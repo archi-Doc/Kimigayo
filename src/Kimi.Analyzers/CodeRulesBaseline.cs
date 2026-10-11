@@ -123,16 +123,21 @@ internal sealed class CodeRulesBaseline
             var value = first.Key.Rule.Measure == CodeRuleMeasure.Count ? end - start : maximum;
             if (annotation is not null)
             {
-                var problem = duplicate ? "Duplicate exception" : recorded.HasValue ? "Exception also has a baseline" :
-                    value > annotation.Limit ? "Measured value " + value.ToString(CultureInfo.InvariantCulture) + " exceeds exception limit " + annotation.Limit.ToString(CultureInfo.InvariantCulture) : null;
+                var transitional = annotation.Rule == CodeRuleAnnotation.Transitional;
+                var problem = duplicate ? "Duplicate annotation" : recorded.HasValue ? "Annotation also has a baseline" :
+                    !transitional && value > annotation.Limit ? "Measured value " + value.ToString(CultureInfo.InvariantCulture) + " exceeds exception limit " + annotation.Limit.ToString(CultureInfo.InvariantCulture) : null;
                 if (problem is not null)
                 {
-                    report(Diagnostic.Create(CodeRule.InvalidException, annotation.Location, problem + " for " + first.Key.Rule.Id));
+                    report(Diagnostic.Create(CodeRule.InvalidAnnotation, annotation.Location, problem + " for " + first.Key.Rule.Id));
                 }
 
                 if (mode == "Report")
                 {
                     report(Report(first, value, annotation));
+                }
+                else if (transitional && first.Limit > annotation.Stage)
+                {
+                    report(first.Key.Rule.Violation(first, 1, 0));
                 }
 
                 start = end;
@@ -221,8 +226,10 @@ internal sealed class CodeRulesBaseline
             .Add("baselineAllowed", annotation is null && Allows(observed.Key.Rule, observed.Path) ? "true" : "false");
         if (annotation is not null)
         {
-            properties = properties.Add("kind", "exception").Add("reason", annotation.Reason)
-                .Add("limit", annotation.Limit.ToString(CultureInfo.InvariantCulture));
+            properties = properties.Add("reason", annotation.Reason);
+            properties = annotation.Rule == CodeRuleAnnotation.Transitional
+                ? properties.Add("kind", "transitional").Add("stage", CodeRulesConfiguration.Stages[annotation.Stage])
+                : properties.Add("kind", "exception").Add("limit", annotation.Limit.ToString(CultureInfo.InvariantCulture));
         }
 
         return Diagnostic.Create(CodeRule.Observation, observed.Location, properties, observed.Key.Rule.Id + " " + observed.Key.Scope + " " + observed.Key.Anchor);

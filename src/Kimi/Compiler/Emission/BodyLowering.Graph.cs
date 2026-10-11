@@ -339,7 +339,7 @@ internal sealed partial class BodyLowering
         {
             // A covered arm retains its complete checking plan, but contributes no
             // physical lifetime updates or otherwise unused flag slots.
-            this.PruneMatchStorage(body, function, marks);
+            this.PruneMatchStorage(function, marks);
             for (var id = 0; id < count; id++)
             {
                 if ((marks[id] & NormalMark) == 0)

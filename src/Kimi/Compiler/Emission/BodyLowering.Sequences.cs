@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private bool LowerSequence(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerSequence(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];

@@ -105,7 +105,7 @@ violations are fixed, except syntax-class decisions in the MIR builder, which re
 ## Code rules
 
 The owner authorized intake and implementation of the Code Rules Analyzer on 2026-10-12 (DECISIONS CR-A0).
-The following are adopted design rules; build enforcement is introduced by A2–A7, not claimed by intake alone.
+The following rules are enforced by A2–A7; A8 adds the commit approval comparison.
 Kimi.Analyzers owns C# rules for `src/Kimi`; compiler behavior, tests, Benchmark and Playground are outside that scope.
 Generated code is excluded. Old Analysis/Emission files receive KR1 and the built-in unused-code rules only.
 
@@ -120,7 +120,10 @@ callable boundary owns the observation. Parentheses are transparent when classif
 `CodeRulesAccretion` owns KR2001–2010 (CR-A6). The one file walker carries declaration measurements as stack values:
 local functions are separate; lambdas belong to their member and restart control depth; accessors share their member's
 statement count. Parameter/call semantics are resolved only after syntax leaves a possible violation.
-`CodeRuleAnnotation` carries source-authored exception bounds through the same observation merge; no second inventory.
+`CodeRuleAnnotation` carries exception bounds and transitional removal stages through the same observation merge.
+The stage order is R0, R1, R2a, R2b, R3–R9; only a current stage later than removal is overdue. Type/member identities
+survive partial-file moves. Report includes every applicable annotation, its reason and bound or stage, even at zero.
+IDE0051, IDE0052 and IDE0060 are build errors, configured only in CodeRules.globalconfig.
 
 | Rules | Contract |
 | --- | --- |
@@ -147,8 +150,9 @@ KR1002's UnwrapParentheses prohibition expands outside Parsing/Binding at R7 exi
 Syntax's prohibition on the Binding type expands to the whole Binding layer at R6 exit.
 
 Only statement and nesting limits admit CodeRuleException, with an explicit bound and nonempty reason; an exception
-and baseline cannot cover the same member/rule. Invalid targets/rules, duplicates, needless bounds and exceeded bounds
-are KR9005. Conditional attribute uses are absent from product metadata. All KR descriptors are NotConfigurable. Enforce reports stale rows as
+and baseline cannot cover the same member/rule. Invalid targets/rules, out-of-scope exceptions, duplicates, empty reasons,
+needless/exceeded bounds and unknown removal stages are KR9005. Conditional attribute uses are absent from product
+metadata. All KR descriptors are NotConfigurable. Enforce reports stale rows as
 warnings, Verify as errors, and Report publishes complete observations for scripts; verification checks suppression.
 Configuration changes, new/increased baseline rows, new/increased exceptions and later removal stages require owner
 approval recorded by `Code-Rules-Approved`; pruning and reduced exception bounds/removal stages do not. The adopted
@@ -182,6 +186,9 @@ A2–A7 configuration and initial baselines are authorized by the proposal and t
   `KIMI_PIPELINE` switch (R6); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
   intrinsics `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11
   (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10).
+  Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version contract is unmarked;
+  only its publisher walk and private state disappear at R7. LegacyRuntimeHelpers has no declaration yet; its future
+  producer must record the R8 obligation when introducing it.
 - **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
   P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the
   variation of repeated matched runs (P4). Compiler allocations follow the owner's decision of 2026-10-11 (AGENTS,

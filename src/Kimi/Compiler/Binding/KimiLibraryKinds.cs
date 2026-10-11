@@ -137,9 +137,13 @@ internal enum IntrinsicId : byte
     TestPhaseLeave,
     TestTempDirectory,
     StaticEnsure, // SPEC 22.2.3.
+    [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
     Capacity, // Temporary (owner, 2026-10-11): an Array's or a Dictionary's capacity (SPEC 4.7.4) until R8 makes it a Field read.
+    [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
     FormatBuffer, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: an owning interpolation's private buffer of
+    [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
     FormatHint, // the capacity its instance estimates, the hint before each write and the adapter's end into the string (utf8-formatting 5.1, 5.2).
+    [Transitional("R8", Reason = "R8 replaces this temporary intrinsic with Kimigayo representation and library code.")]
     FormatFinish,
 }
 

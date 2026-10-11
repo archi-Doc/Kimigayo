@@ -1069,7 +1069,7 @@ public sealed partial class Binding
             => this.SubstituteStoredOrigins(type, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, inputCount));
     }
 
-    private BoundType? BindFunctionType(FunctionTypeKoto function, BindingScope scope, TypeBindingContext context)
+    private BoundType? BindFunctionType(FunctionTypeKoto function, BindingScope scope)
     {
         var tuple = function.Parameters as TupleTypeKoto;
         var count = tuple?.ElementNodes.Count ?? 1;

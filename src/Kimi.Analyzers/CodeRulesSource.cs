@@ -49,14 +49,13 @@ internal sealed class CodeRulesSource(Compilation compilation, SyntaxTree tree, 
         var count = 0;
         foreach (var token in root.DescendantTokens())
         {
-            if (!token.IsMissing && !token.IsKind(SyntaxKind.EndOfFileToken))
-            {
-                count++;
-            }
+            count += TokenSize(token);
         }
 
         return count;
     }
+
+    internal static int TokenSize(SyntaxToken token) => !token.IsMissing && !token.IsKind(SyntaxKind.EndOfFileToken) ? 1 : 0;
 
     internal static ExpressionSyntax Unwrap(ExpressionSyntax expression)
     {

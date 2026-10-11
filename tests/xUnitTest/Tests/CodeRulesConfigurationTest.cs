@@ -41,6 +41,7 @@ public class CodeRulesConfigurationTest
         var complete = Assert.Single(diagnostics);
         Assert.Equal("KR9000", complete.Id);
         Assert.Equal("1", complete.Properties["treeCount"]);
+        Assert.Equal("exception,transitional", complete.Properties["annotationKinds"]);
         Assert.Equal("Sha256", complete.Properties["configAlgorithm"]);
         Assert.Equal(64, complete.Properties["configChecksum"]!.Length);
         Assert.Equal(64, complete.Properties["baselineChecksum"]!.Length);

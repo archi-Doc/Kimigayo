@@ -14,8 +14,10 @@ namespace Kimi.Compiler;
 // the pipeline: until R6 the old path decides under both, and under mir the MIR is built beside it and its records are analysis Errors.
 public partial class Compilation
 {
+    [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     private static CompilerPipeline? defaultPipeline;
     private readonly List<Problem> problems = [];
+    [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     private CompilerPipeline pipeline = DefaultPipeline;
     private Mir.MirBuilder? mirBuilder;
     private Mir.MirProgram? mir; // The MIR of the latest Analyze under the mir pipeline; null otherwise and after invalidation.
@@ -36,9 +38,11 @@ public partial class Compilation
     internal static string CompilerIdentity => DefaultPipeline == CompilerPipeline.Mir ? CompilerVersion + " [mir]" : CompilerVersion;
 
     /// <summary>Gets the pipeline of a new compilation, read once per process from <c>KIMI_PIPELINE</c> (R3–R5).</summary>
+    [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     internal static CompilerPipeline DefaultPipeline => defaultPipeline ??= PipelineOf(Environment.GetEnvironmentVariable("KIMI_PIPELINE"));
 
     /// <summary>Gets or sets the pipeline the entry points run. Changing it revokes prior analysis.</summary>
+    [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     internal CompilerPipeline Pipeline
     {
         get => this.pipeline;
@@ -111,6 +115,7 @@ public partial class Compilation
     /// <param name="value">The value.</param>
     /// <returns>The pipeline.</returns>
     /// <exception cref="InvalidOperationException">Any other value: a configuration error, never a silent fallback.</exception>
+    [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     internal static CompilerPipeline PipelineOf(string? value) => value switch
     {
         null or "" or "legacy" => CompilerPipeline.Legacy,
@@ -165,6 +170,7 @@ public partial class Compilation
 }
 
 /// <summary>The pipeline the entry points of a <see cref="Compilation"/> run (plan 12.1; R6 removes the switch).</summary>
+[Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
 internal enum CompilerPipeline : byte
 {
     /// <summary>The old Analysis and Emission path alone.</summary>

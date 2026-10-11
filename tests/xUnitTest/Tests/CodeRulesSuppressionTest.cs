@@ -8,6 +8,9 @@ public class CodeRulesSuppressionTest
 {
     [Theory]
     [InlineData("#pragma warning disable\nclass C { }", 1)]
+    [InlineData("class C { }\n#pragma warning disable KR2001", 1)]
+    [InlineData("#pragma warning disable KR2001", 1)]
+    [InlineData("class C {\n#pragma warning disable KR2001", 1)]
     [InlineData("#pragma warning disable KR2001\nclass C { }", 1)]
     [InlineData("#pragma warning disable IDE0052, CS0169\nclass C { }", 1)]
     [InlineData("#pragma warning disable CS0169\nclass C { }", 0)]

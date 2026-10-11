@@ -25,8 +25,11 @@ literal/interpolation boundaries, callable boundaries, evaluation shapes and bas
 [CodeRulesAnalyzer.File](../../src/Kimi.Analyzers/CodeRulesAnalyzer.File.cs) owns the single syntax walk and stack-value
 measurements. [CodeRulesAccretion](../../src/Kimi.Analyzers/CodeRulesAccretion.cs) owns KR2001–2010; its tests cover member,
 callable, alias and logical-chain boundaries. [CodeRuleAnnotation](../../src/Kimi.Analyzers/CodeRuleAnnotation.cs) decodes
-source-authored exceptions for the same observation merge; CodeRulesExceptionTest covers partial declarations,
-baseline overlap and conditional metadata. MirBuilder.Formatting owns the existing formatting expansion concern;
+source-authored exceptions and transitional stages for the same observation merge. CodeRulesExceptionTest covers
+partial measurements and baseline overlap; CodeRulesTransitionalTest covers stage ordering, aliases/constants,
+partial moves, combined annotations, excluded paths and conditional metadata. The conditional attributes live in
+`src/Kimi/Misc`; built-in unused-code diagnostics belong to CodeRules.globalconfig.
+MirBuilder.Formatting owns the existing formatting expansion concern;
 its condition operations are Test (ordinary), Guard (Match) and Observe (verification), with shared scope primitives.
 Suppression checks
 live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is

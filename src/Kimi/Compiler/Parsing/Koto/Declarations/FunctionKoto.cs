@@ -214,6 +214,7 @@ public sealed class FunctionKoto : DeclarationKoto
     public CaptureKoto[]? Captures { get; private set; }
 
     /// <summary>Gets the checked direct common-function conversion, when present.</summary>
+    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
     public BoundClosure? BoundClosure => this.BindingState == BindingState.Resolved ? this.ClosureStorage : null;
 
     /// <summary>Gets the base constructor initializer.</summary>
@@ -252,6 +253,7 @@ public sealed class FunctionKoto : DeclarationKoto
         }
     }
 
+    [Transitional("R6", Reason = "Closure plan forwarding; R6 reads the published HIR contract directly.")]
     internal BoundClosure? ClosureStorage
     {
         get => HirTables.PlanOf(this).Plan as BoundClosure;

@@ -331,5 +331,10 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   exception; 1,050 new baseline keys are outside Mir. Redundant Effect dispatch and three KR1006 keys are removed.
   Frozen-text implementation correction: Report exempts stale KR9002 warnings from MSBuild's logger promotion so
   Prune can acquire a successful complete Report; Verify still reports them as errors.
-  Open: A7–A8 implementation, remaining operational verification (§6), and the
+  A7 maps §4.1 KR1007 and §4.5 to the shared annotation/Report pipeline, Conditional Transitional attribute and built-in
+  unused-code errors (DECISIONS CR-A7). The initial inventory marks 49 declarations; unused fields/parameters and their
+  pure arguments are removed. Frozen-text name correction: FormatCapacity is the current FormatBuffer intrinsic;
+  LegacyRuntimeHelpers does not yet exist and its future producer must add the R8 annotation. Invalid transitional
+  uses share KR9005; out-of-scope exceptions are invalid rather than omitted from the approval inventory.
+  Open: A8 implementation, final A7 operational verification (§6), and the
   later-stage scope extensions (§6.4). Future policy corrections belong in the owning architecture/decision documents.

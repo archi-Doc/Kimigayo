@@ -30,7 +30,7 @@ $after | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $evidence
 Assert-KimiVerificationInputsStable $before $after
 $results = Read-KimiCodeRulesSarif $sarif $repo -RequireComplete
 $observed = Get-KimiCodeRulesObservations $results
-$observed.Values | Select-Object rule, scope, anchor, value, path, allowed, kind, reason, limit | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $evidence 'observations.json')
+$observed.Values | Select-Object rule, scope, anchor, value, path, allowed, kind, reason, limit, stage | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath (Join-Path $evidence 'observations.json')
 $results | Where-Object ruleId -CEQ 'KR9001' | Group-Object { $_.properties.customProperties.rule + ' ' + ($_.properties.customProperties.path -replace '^src/Kimi/([^/]+/[^/]+).*', '$1') } |
     Select-Object Name, Count | Format-Table | Out-String | Set-Content -LiteralPath (Join-Path $evidence 'summary.txt')
 if ($mode -cne 'Report') {

@@ -2,6 +2,9 @@ is_global = true
 
 # Lists use commas (semicolons start comments). Architecture policy is enforced by KR1001–KR1003.
 kimi_code_rules.stage = R4
+dotnet_diagnostic.IDE0051.severity = error
+dotnet_diagnostic.IDE0052.severity = error
+dotnet_diagnostic.IDE0060.severity = error
 kimi_code_rules.scope.accretion.exclude = src/Kimi/Compiler/Analysis/,src/Kimi/Compiler/Emission/
 kimi_code_rules.scope.density.exclude = src/Kimi/Compiler/Analysis/,src/Kimi/Compiler/Emission/
 kimi_code_rules.scope.syntax_dispatch.include = src/Kimi/Compiler/Mir/Build/

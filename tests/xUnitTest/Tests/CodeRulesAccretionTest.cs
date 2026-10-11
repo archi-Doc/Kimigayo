@@ -120,14 +120,28 @@ public class CodeRulesAccretionTest
     public async Task OptionalParametersExcludeParams(string parameters, int expected)
         => Assert.Equal(expected, (await Rule("class C { void M(" + parameters + "){} }", "KR2010")).Length);
 
-    [Fact]
-    public async Task FileTokensShareTheBudgetCounterAndIgnoreTrivia()
+    [Theory]
+    [InlineData("class C { void M() { } }")]
+    [InlineData("/// <summary><see cref=\"C\"/></summary>\nclass C { /* nested <xml/> */ void M() { } }")]
+    [InlineData("#if true\nclass C { void M() { } }\n#else\nclass Ignored { int x = 123; }\n#endif")]
+    public async Task FileTokensShareTheBudgetCounterAndIgnoreTrivia(string source)
     {
-        const string source = "class C { void M() { } }";
         var tokens = CodeRulesSource.CountTokens(source);
         Assert.Empty(await Rule(source, "KR2009", "max_file_tokens", tokens));
         var found = Assert.Single(await Rule("// comment\n" + source, "KR2009", "max_file_tokens", tokens - 1));
         Assert.Contains("value " + tokens, found.GetMessage(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task FileTokenMeasurementExcludesMissingTokensOnInvalidInput()
+    {
+        const string source = "class C { void M() {";
+        var compilation = CodeRulesTestHelper.Compilation(source);
+        var tokens = CodeRulesSource.CountTokens(source);
+        var diagnostics = await CodeRulesTestHelper.Analyze(compilation, Options("max_file_tokens", tokens - 1));
+        var found = Assert.Single(diagnostics, x => x.Id == "KR2009");
+        Assert.Contains("value " + tokens, found.GetMessage(), StringComparison.Ordinal);
+        Assert.DoesNotContain(diagnostics, x => x.Id == "AD0001");
     }
 
     [Theory]

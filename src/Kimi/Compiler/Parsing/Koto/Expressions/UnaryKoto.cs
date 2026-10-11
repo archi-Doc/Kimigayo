@@ -62,12 +62,14 @@ public class UnaryKoto : ExpressionKoto
     /// <summary>Gets the spelling of a prefix or postfix operator, without the operand or spaces.</summary>
     public string OperatorText => (PrefixTexts[(int)this.Akind] ?? PostfixTexts[(int)this.Akind] ?? string.Empty).Trim();
 
+    [Transitional("R6", Reason = "Arithmetic plan forwarding; R6 reads the published HIR contract directly.")]
     internal BoundArithmetic? ArithmeticStorage
     {
         get => HirTables.PlanOf(this).Plan as BoundArithmetic;
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
 
+    [Transitional("R6", Reason = "Arithmetic plan forwarding; R6 reads the published HIR contract directly.")]
     internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
 
     /// <inheritdoc/>

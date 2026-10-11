@@ -29,6 +29,7 @@ public sealed class ForKoto : ExpressionKoto
     private readonly bool[]? mutableSlots;
 
     /// <summary>Gets or sets the Subject mode selected by the outermost operation of the iterable (SPEC 15.1.6).</summary>
+    [Transitional("R6", Reason = "Iteration plan forwarding; R6 reads the published HIR contract directly.")]
     internal SubjectMode Mode
     {
         get => (SubjectMode)HirTables.PlanOf(this).Mode;
@@ -36,6 +37,7 @@ public sealed class ForKoto : ExpressionKoto
     }
 
     /// <summary>Gets or sets the owning user protocol entry, outside the source tree.</summary>
+    [Transitional("R6", Reason = "Iteration plan forwarding; R6 reads the published HIR contract directly.")]
     internal InvocationKoto? EntryCall
     {
         get => HirTables.PlanOf(this).Second as InvocationKoto;
@@ -43,6 +45,7 @@ public sealed class ForKoto : ExpressionKoto
     }
 
     /// <summary>Gets or sets the calls and item decomposition of a user protocol loop.</summary>
+    [Transitional("R6", Reason = "Iteration plan forwarding; R6 reads the published HIR contract directly.")]
     internal BoundIteration? Iteration
     {
         get => HirTables.PlanOf(this).Plan as BoundIteration;

@@ -21,7 +21,7 @@ internal sealed partial class BodyLowering
     private OwnershipBody? matchBody;
     private InterpretationContext matchContext = InterpretationContext.Root;
 
-    private void PruneMatchStorage(OwnershipBody body, EmissionFunction function, ReadOnlySpan<byte> marks)
+    private void PruneMatchStorage(EmissionFunction function, ReadOnlySpan<byte> marks)
     {
         Grow(ref this.slotUses, function.SlotAddresses.Count);
         this.slotUses.AsSpan(0, function.SlotAddresses.Count).Clear();

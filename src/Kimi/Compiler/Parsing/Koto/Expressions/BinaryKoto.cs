@@ -99,26 +99,31 @@ public class BinaryKoto : ExpressionKoto
     /// <summary>Gets the infix operator spelling, including surrounding spaces.</summary>
     public string InfixText => this is IsKoto { IsNegated: true } ? " is not " : InfixTexts[(int)this.Akind] ?? string.Empty;
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal BoundArithmetic? ArithmeticStorage
     {
         get => HirTables.PlanOf(this).Plan as BoundArithmetic;
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal InvocationKoto? ArithmeticCall => this.BindingState == BindingState.Resolved && this.ArithmeticStorage is { Active: true } plan ? plan.Call : null;
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal InvocationKoto? ComparisonStorage
     {
         get => HirTables.PlanOf(this).Second as InvocationKoto;
         set => HirTables.PlanFor(this, value is not null).Second = value;
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal bool ComparisonActive
     {
         get => HirTables.PlanOf(this).Flag;
         set => HirTables.PlanFor(this, value).Flag = value;
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal InvocationKoto? ComparisonCall => this.ComparisonActive && this.BindingState == BindingState.Resolved ? this.ComparisonStorage : null;
 
     /// <inheritdoc/>
@@ -158,6 +163,7 @@ public sealed class MemberAccessKoto : BinaryKoto
     /// <summary>Gets the accessed member expression.</summary>
     public Koto Accessor => this.Right;
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal bool IsDirectStorage
     {
         get => HirTables.PlanOf(this).Mode != 0;
@@ -223,6 +229,7 @@ public sealed class ConversionKoto : BinaryKoto
     {
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal ConversionBinding ConversionBinding
     {
         get => (ConversionBinding)HirTables.PlanOf(this).Mode;
@@ -230,24 +237,29 @@ public sealed class ConversionKoto : BinaryKoto
     }
 
     // The syntax owns its retained plan; edits can release it with the source tree.
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal InvocationKoto? CreationStorage
     {
         get => HirTables.PlanOf(this).Second as InvocationKoto;
         set => HirTables.PlanFor(this, value is not null).Second = value;
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal InvocationKoto? CreationCall => this.HasCurrentBinding && this.ConversionBinding == ConversionBinding.ObjectCreation ? this.CreationStorage : null;
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal ExplicitAdaptationPlan? AdaptationStorage
     {
         get => HirTables.PlanOf(this).Plan as ExplicitAdaptationPlan;
         set => HirTables.PlanFor(this, value is not null).Plan = value;
     }
 
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal ExplicitAdaptationPlan? Adaptation => this.HasCurrentBinding && this.ConversionBinding == ConversionBinding.CaseAdaptation ? this.AdaptationStorage : null;
 
     /// <summary>Gets or sets the result of a direct-literal conversion folded at compile time (SPEC 13.5.4.2), as the
     /// sign-extended N-bit payload of the target Type, or null when the conversion runs on a value.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     internal Int128? FoldedConstant
     {
         get => HirTables.PlanOf(this).Folded;
@@ -280,6 +292,7 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     public Koto? FormationType { get; internal set; }
 
     /// <summary>Gets the bound compile-time proposition; ordinary runtime tests leave this null.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     public BoundConstraint? BoundConstraint
     {
         get => HirTables.PlanOf(this).Plan as BoundConstraint;
@@ -293,6 +306,7 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     public bool IsNegated { get; internal set; }
 
     /// <summary>Gets this binding pass's runtime test, mutually exclusive with BoundConstraint.</summary>
+    [Transitional("R6", Reason = "Semantic forwarding into HIR plan rows; R6 removes syntax-owned semantic access.")]
     public BoundRuntimeTypeTest? BoundRuntimeTest
     {
         get => (HirTables.PlanOf(this).Second as StrongBox<BoundRuntimeTypeTest?>)?.Value;

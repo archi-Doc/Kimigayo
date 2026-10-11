@@ -26,7 +26,7 @@ internal sealed class CodeRule
     internal static readonly DiagnosticDescriptor KR1004 = RuleDescriptor("KR1004", "Syntax-keyed side table", "publish the fact through its owning representation");
     internal static readonly DiagnosticDescriptor KR1005 = RuleDescriptor("KR1005", "Supports gate", "replace the gate with the owning operation or data row");
     internal static readonly DiagnosticDescriptor KR1006 = RuleDescriptor("KR1006", "Syntax-based MIR dispatch", "have Binding publish the decision");
-    internal static readonly DiagnosticDescriptor KR1007 = RuleDescriptor("KR1007", "Overdue transitional declaration", "remove the temporary structure at its recorded stage");
+    internal static readonly DiagnosticDescriptor KR1007 = Descriptor("KR1007", "Overdue transitional declaration", "{0} removal stage {1} precedes current stage {2}; remove the temporary declaration", DiagnosticSeverity.Error);
     internal static readonly DiagnosticDescriptor KR1008 = RuleDescriptor("KR1008", "Unfiltered catch outside a boundary", "handle the specific failure at its boundary");
     internal static readonly DiagnosticDescriptor KR2001 = RuleDescriptor("KR2001", "Parameter count", "pass the owner's plan or split the responsibility");
     internal static readonly DiagnosticDescriptor KR2002 = RuleDescriptor("KR2002", "Out parameter count", "return the owning result");
@@ -72,7 +72,7 @@ internal sealed class CodeRule
     internal static readonly DiagnosticDescriptor Stale = Descriptor("KR9002", "Stale code rules entry", "{0}; remove or reduce the obsolete entry", DiagnosticSeverity.Warning);
     internal static readonly DiagnosticDescriptor Invalid = Descriptor("KR9003", "Invalid code rules configuration", "{0}; correct the code rules configuration", DiagnosticSeverity.Error);
     internal static readonly DiagnosticDescriptor Suppression = Descriptor("KR9004", "Forbidden code rule suppression", "{0}; remove the suppression", DiagnosticSeverity.Error);
-    internal static readonly DiagnosticDescriptor InvalidException = Descriptor("KR9005", "Invalid code rule exception", "{0}; correct the exception's target, reason or bound", DiagnosticSeverity.Error);
+    internal static readonly DiagnosticDescriptor InvalidAnnotation = Descriptor("KR9005", "Invalid code rule annotation", "{0}; correct the annotation's target, reason, bound or removal stage", DiagnosticSeverity.Error);
     internal static readonly DiagnosticDescriptor StaleError = Descriptor("KR9002", "Stale code rules entry", "{0}; remove or reduce the obsolete entry", DiagnosticSeverity.Error);
     internal static readonly ImmutableArray<DiagnosticDescriptor> Supported = BuildSupported();
 
@@ -123,6 +123,16 @@ internal sealed class CodeRule
 
     internal Diagnostic Violation(CodeRuleObservation observed, int count, int baseline)
     {
+        if (this.Id == "KR1007")
+        {
+            return Microsoft.CodeAnalysis.Diagnostic.Create(
+                this.Diagnostic,
+                observed.Location,
+                observed.Key.Anchor,
+                CodeRulesConfiguration.Stages[observed.Value],
+                CodeRulesConfiguration.Stages[observed.Limit]);
+        }
+
         var bound = "baseline " + baseline.ToString(CultureInfo.InvariantCulture);
         if (this.Measure == CodeRuleMeasure.Count)
         {
@@ -143,7 +153,7 @@ internal sealed class CodeRule
             result.Add(rule.Diagnostic);
         }
 
-        result.AddRange(Complete, Observation, Stale, Invalid, Suppression, InvalidException);
+        result.AddRange(Complete, Observation, Stale, Invalid, Suppression, InvalidAnnotation);
         return result.MoveToImmutable();
     }
 }

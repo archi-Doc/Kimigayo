@@ -16,9 +16,11 @@ public sealed class InvocationKoto : ApplicationKoto
     }
 
     /// <summary>Gets the selected call plan of a named callee for the current Binding, or null before selection.</summary>
+    [Transitional("R6", Reason = "Call plan forwarding; R6 reads the published HIR contract directly.")]
     public CallPlan? BoundCall => this.HasCurrentBinding && this.CallStorage is { Kind: not CalleeKind.Value } plan ? plan : null;
 
     /// <summary>Gets the checked invocation of a callable value for the current Binding.</summary>
+    [Transitional("R6", Reason = "Call plan forwarding; R6 reads the published HIR contract directly.")]
     public CallPlan? BoundValueCall => this.HasCurrentBinding && this.CallStorage is { Kind: CalleeKind.Value } plan ? plan : null;
 
     /// <inheritdoc/>
@@ -27,6 +29,7 @@ public sealed class InvocationKoto : ApplicationKoto
     /// <summary>Gets the invoked expression.</summary>
     public Koto Method => this.Target;
 
+    [Transitional("R6", Reason = "Call plan forwarding; R6 reads the published HIR contract directly.")]
     internal CallPlan? CallStorage
     {
         get => HirTables.PlanOf(this).Plan as CallPlan;

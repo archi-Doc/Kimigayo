@@ -215,6 +215,35 @@ rules that result from them.
   Do not change descriptors, severities, suppression checks or thresholds. Actual MSBuild regressions cover Report
   and Prune success, failure on another warning, and Verify's KR9002 remaining an error even with the logger exemption.
 
+- **CR-A7** (planning session, independent designs compared and reviewed). Source-authored transitional declarations
+  extend CR-A6's sparse annotation fact, constructor/constant resolution, canonical declaration key and sorted merge.
+  Configuration.Stages alone orders removal stages; current greater than removal is overdue, equality is permitted.
+  Complete Report includes every valid annotation with stage and ordinal value, including R0's zero. KR1007 never
+  enters the baseline. Generalize KR9005 to invalid code-rule annotations rather than add an operational rule.
+  Resolve annotations even in areas excluded from accretion checks; no second walk, inventory or alias resolver.
+  An exception outside its rule's configured scope is invalid: it cannot relax an inapplicable rule or silently
+  disappear from the audit used by approval checks. Transitional annotations still apply to the legacy areas.
+  KR9000 publishes annotationKinds=exception,transitional; the complete-Report reader requires this marker so
+  approval comparisons cannot mistake an older producer's missing annotations for an empty inventory.
+  Mark all direct and indirect Koto semantic forwarding properties and the pipeline switch declarations for R6;
+  HirPublisher, hirPublisher and HirPosition for R7; Capacity, FormatBuffer, FormatHint and FormatFinish for R8.
+  Published version/cache entry points remain lasting contracts. LegacyRuntimeHelpers does not yet exist; its
+  future producer must mark it at introduction. Conditional attributes leave no usage metadata in the product.
+  Enable IDE0051/52/60 and remove the measured unread fields and unused parameters with their pure arguments:
+  CLI constructors, documentation Cursor, BodyLowering and Binding's type/iteration routines. Frozen legacy changes
+  are deletions only. Reject discarded underscore parameters, suppressions, token exemptions and lasting-type tags.
+  Expected analyzer growth is about 120 lines plus tests; compiler deletions offset annotation tokens, measured at
+  completion. Attribute resolution reuses the existing pass; product state and allocation behavior are unchanged.
+
+- **CR-A7a** (planning session, independently reviewed after A7's retained 10.515% timing failure). The file walker
+  already visits every token but also traverses all trivia, while KR2009 separately enumerates the same tokens.
+  Use token depth: count each token once with Source's shared missing/EOF predicate, and inspect trivia only on tokens
+  containing directives. The suppression owner alone consumes pragma-warning trivia, including on EOF and missing
+  tokens. Delete the extra KR2009 token walk and the structured-trivia node path. No cache, table, exclusion or
+  semantic candidate rule is added. Reject merely repeating timing and defer the separate conditional-expression
+  traversal optimization. Existing token-count, directive, suppression and complete-inventory comparisons verify
+  equivalence; matched Enforce measurement decides the gain. Expected net growth is below 20 analyzer lines.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

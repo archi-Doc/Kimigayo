@@ -8,9 +8,6 @@ namespace Kimi.Unit;
 
 public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
 {
-    private ILogger<CommandUnit> logger;
-    private UnitOptions options;
-
     public class Builder : UnitBuilder<Product>
     {// Builder class for customizing dependencies.
         public Builder()
@@ -125,32 +122,24 @@ public class CommandUnit : UnitBase, IUnitPreparable, IUnitExecutable
         }
     }
 
-    public CommandUnit(UnitContext context, ILogger<CommandUnit> logger, UnitOptions options)
+    public CommandUnit(UnitContext context)
         : base(context)
     {
-        this.logger = logger;
-        this.options = options;
     }
 
     async Task IUnitPreparable.PrepareAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
-        // this.logger.GetWriter()?.Write("Unit prepared.");
-        // this.logger.GetWriter()?.Write($"Program: {this.options.ProgramDirectory}");
-        // this.logger.GetWriter()?.Write($"Data: {this.options.DataDirectory}");
     }
 
     async Task IUnitExecutable.StartAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
-        // this.logger.GetWriter()?.Write("Unit started.");
     }
 
     async Task IUnitExecutable.StopAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
-        // this.logger.GetWriter()?.Write("Unit stopped.");
     }
 
     async Task IUnitExecutable.TerminateAsync(UnitContext unitContext, CancellationToken cancellationToken)
     {
-        // this.logger.GetWriter()?.Write("Exit");
     }
 }

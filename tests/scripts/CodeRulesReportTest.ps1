@@ -28,12 +28,20 @@ try {
     [IO.File]::WriteAllText($baseline, "# baseline`n", [Text.UTF8Encoding]::new($false))
     $properties = @{
         treeCount = '1'
+        annotationKinds = 'exception,transitional'
         configAlgorithm = 'Sha256'; configChecksum = (Get-FileHash $config).Hash
         baselineAlgorithm = 'Sha256'; baselineChecksum = (Get-FileHash $baseline).Hash
     }
     $marker = @{ ruleId = 'KR9000'; properties = @{ customProperties = $properties } }
     Save @($marker)
     Equal @(Read-KimiCodeRulesSarif $log $root -RequireComplete).Count 1
+    $properties.Remove('annotationKinds')
+    Save @($marker)
+    Reject { Read-KimiCodeRulesSarif $log $root -RequireComplete } 'annotation inventory'
+    $properties.annotationKinds = 'exception'
+    Save @($marker)
+    Reject { Read-KimiCodeRulesSarif $log $root -RequireComplete } 'annotation inventory'
+    $properties.annotationKinds = 'exception,transitional'
     Save @()
     Reject { Read-KimiCodeRulesSarif $log $root -RequireComplete } 'exactly one'
     Save @($marker, $marker)
@@ -114,6 +122,24 @@ try {
     Reject { Get-KimiCodeRulesObservations @($annotation) } 'Malformed'
     $annotationProperties.baselineAllowed = 'false'
     $annotationProperties.reason = ' '
+    Reject { Get-KimiCodeRulesObservations @($annotation) } 'Malformed'
+    $annotationProperties.reason = 'Remove forwarding'
+    $annotationProperties.rule = 'KR1007'
+    $annotationProperties.kind = 'transitional'
+    $annotationProperties.stage = 'R0'
+    $annotationProperties.Remove('limit')
+    $transitions = Get-KimiCodeRulesObservations @($annotation)
+    $inventory = $transitions.Values | Select-Object rule,scope,anchor,value,path,allowed,kind,reason,stage | ConvertTo-Json | ConvertFrom-Json
+    Equal $inventory.value 0
+    Equal $inventory.stage 'R0'
+    Equal $inventory.kind 'transitional'
+    Equal $inventory.allowed $false
+    Equal (Update-KimiCodeRulesBaseline (Get-KimiCodeRulesBaseline $baseline) $transitions Initialize @('KR1007') '').Count 1
+    Reject { Update-KimiCodeRulesBaseline (Get-KimiCodeRulesBaseline $baseline) $transitions Accept @('KR1007') 'src/Kimi/C.cs' } 'No observations'
+    $changedStage = $annotationProperties.Clone()
+    $changedStage.stage = 'R1'
+    Reject { Get-KimiCodeRulesObservations @($annotation, @{ ruleId = 'KR9001'; properties = @{ customProperties = $changedStage } }) } 'Inconsistent'
+    $annotationProperties.stage = ''
     Reject { Get-KimiCodeRulesObservations @($annotation) } 'Malformed'
     Save @($marker, @{ ruleId = 'KR9005' })
     Reject { Read-KimiCodeRulesSarif $log $root -RequireComplete } 'Invalid code-rule report'

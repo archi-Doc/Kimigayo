@@ -13,7 +13,7 @@ internal sealed partial class BodyLowering
     private static int ValuePlace(OwnershipOperation operation) => operation.Kind is OwnershipOperationKind.Consume or OwnershipOperationKind.AcquirePattern or OwnershipOperationKind.Borrow or OwnershipOperationKind.WriteElement ||
         (operation.Kind == OwnershipOperationKind.Read && operation.Input >= 0) ? operation.Input : operation.Place;
 
-    private static bool ValidateValues(OwnershipBody body, BodyLowering? lowering)
+    private static bool ValidateValues(OwnershipBody body)
     {
         if (body.Values.Count != body.Operations.Count)
         {
