@@ -13,7 +13,10 @@ Code-rule enforcement belongs to [Kimi.Analyzers](../../src/Kimi.Analyzers/CodeR
 coordinator and file-local observation batches. [CodeRule](../../src/Kimi.Analyzers/CodeRule.cs) owns the catalogue and
 diagnostics; [CodeRulesSource](../../src/Kimi.Analyzers/CodeRulesSource.cs) owns token counts and stable source identities;
 [CodeRulesConfiguration](../../src/Kimi.Analyzers/CodeRulesConfiguration.cs) reads options once, and
-[CodeRulesBaseline](../../src/Kimi.Analyzers/CodeRulesBaseline.cs) performs the final sorted merge. Suppression checks
+[CodeRulesBaseline](../../src/Kimi.Analyzers/CodeRulesBaseline.cs) performs the final sorted merge.
+[CodeRulesArchitecture](../../src/Kimi.Analyzers/CodeRulesArchitecture.cs) resolves declaration layers and dependency,
+member and enum policies once per compilation (KR1001–1003); CodeRulesArchitectureTest exercises semantic references.
+Suppression checks
 live in CodeRulesAnalyzer.Suppression.cs. CodeRules*Test classes share CodeRulesTestHelper; the real-csc regression is
 tests/scripts/CodeRulesCompilerTest.ps1. Operational commands and the shared SARIF reader are described in
 [VERIFICATION](VERIFICATION.md#code-rules).

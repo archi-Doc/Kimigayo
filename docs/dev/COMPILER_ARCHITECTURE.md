@@ -30,15 +30,20 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | Backend | MIR, declaration tables, `TyCtxt` | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
 
-`ArchitectureRulesTest` enforces the MIR rows. `MirReadsNoBindingInternals` lets Mir name only the published Binding
-types (`PublishedBindingTypes`; a new view joins with a one-line reason in its commit) and no old Analysis/Emission type.
-`OnlyTheMirBuilderReadsSyntaxAndHir` keeps syntax, HIR and plans out of `Mir/` outside `Mir/Build` (`SemanticsKind`, a
-Type vocabulary in the Parsing namespace, is named through an alias).
+KR1001 and KR1002 enforce the current dependency/member rows through `src/Kimi/CodeRules.globalconfig`. Layers follow
+the longest source-path prefix; `Compiler/*.cs` means direct files only. Every partial declaration contributes its
+layer. References use resolved types and member owners, including aliases, inferred receivers and attributes.
+The explicit MIR builder allow list names Binding's published types, including BoundArgumentOperation returned by
+CallPlan (CR-A3); a new view joins with a reason in its commit. Outside `Mir/Build`, syntax, HIR and plans are forbidden.
+`SemanticsKind` lives in Misc and needs no layer exception. Syntax forbids the Binding type until R6 broadens that
+restriction to the whole layer. Global forbidden member names cover declarations too; typed member selectors cover
+their type family, including overrides and derived Koto slots.
 
 ## Closed vocabularies
 
 MIR has 5 statement, 9 rvalue, 6 terminator (plus the `CheckTarget` attribute), 7 projection, 4 operand and 5 callee
-kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (`ArchitectureRulesTest.VocabularyDoesNotGrow`). A
+kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (KR1003, configured in CodeRules.globalconfig). Enum
+aliases count separately; implicit fields do not. A removed configured enum produces KR9002 for removal from config. A
 form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
 construction or the capability check. A new vocabulary entry or a second Unsupported code is a design change that needs
 a SPEC basis and owner approval.
@@ -103,6 +108,9 @@ The owner authorized intake and implementation of the Code Rules Analyzer on 202
 The following are adopted design rules; build enforcement is introduced by A2–A7, not claimed by intake alone.
 Kimi.Analyzers owns C# rules for `src/Kimi`; compiler behavior, tests, Benchmark and Playground are outside that scope.
 Generated code is excluded. Old Analysis/Emission files receive KR1 and the built-in unused-code rules only.
+
+`CodeRulesArchitecture` owns the resolved dependency/member/vocabulary policy and publishes observations through the
+shared analyzer pipeline. Configuration lists use commas: Roslyn treats semicolons as inline comments (CR-A3).
 
 | Rules | Contract |
 | --- | --- |

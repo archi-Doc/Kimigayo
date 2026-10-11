@@ -184,8 +184,8 @@ internal sealed class CodeRulesBaseline
     }
 
     private static void Stale(Row row, string mode, Action<Diagnostic> report, string reason)
-        => report(Diagnostic.Create(
-            mode == "Verify" ? CodeRule.StaleError : CodeRule.Stale,
+        => report(CodeRule.StaleEntry(
+            mode,
             row.Location,
             reason + " " + row.Key.Rule.Id + " " + row.Key.Scope + " " + row.Key.Anchor));
 

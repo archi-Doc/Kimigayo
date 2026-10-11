@@ -36,6 +36,7 @@ also an AdditionalFile, alongside the baseline TSV. KimiCodeRulesMode defaults t
 and KimiCodeRulesLog (a Kimi-only SARIF 2.1 output); do not set a solution-wide ErrorLog or use Report for verification.
 The shared SARIF reader rejects analyzer exceptions and suppressed KR/IDE0051/IDE0052/IDE0060 diagnostics, including
 suppressed KR9004. CodeRulesConfigurationTest keeps built-in severities out of other configuration files.
+Use commas between configuration list entries; semicolons begin comments in Roslyn's globalconfig parser.
 
 | Command | Effect |
 | --- | --- |

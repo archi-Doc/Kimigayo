@@ -25,6 +25,6 @@ KR3002 | CodeRules | Error | Conditional nesting
 KR3003 | CodeRules | Error | Computed deconstruction
 KR9000 | CodeRules | Info | Complete report
 KR9001 | CodeRules | Info | Observation
-KR9002 | CodeRules | Warning | Stale baseline (Error in Verify)
+KR9002 | CodeRules | Warning | Stale baseline or configuration (Error in Verify)
 KR9003 | CodeRules | Error | Invalid configuration
 KR9004 | CodeRules | Error | Forbidden suppression

@@ -33,10 +33,10 @@ public sealed partial class CodeRulesAnalyzer
         }
     }
 
-    private static void CheckSuppression(CodeRulesSource source, AttributeSyntax attribute, Action<Diagnostic> report, CancellationToken cancellation)
+    private static void CheckSuppression(CodeRulesSource source, AttributeSyntax attribute, IMethodSymbol? constructor, Action<Diagnostic> report, CancellationToken cancellation)
     {
         // Semantic identity also handles aliases and qualified/global-qualified names.
-        if (source.Semantics.GetSymbolInfo(attribute, cancellation).Symbol is not IMethodSymbol constructor ||
+        if (constructor is null ||
             constructor.ContainingType.ContainingNamespace.ToDisplayString() != "System.Diagnostics.CodeAnalysis" ||
             constructor.ContainingType.Name is not ("SuppressMessageAttribute" or "UnconditionalSuppressMessageAttribute"))
         {

@@ -31,10 +31,13 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
         var config = CodeRulesConfiguration.Read(start.Options, start.CancellationToken, errors);
         var baseline = config is null ? null : CodeRulesBaseline.Read(config.Baseline, config.BaselineFile, errors);
         var batches = new List<List<CodeRuleObservation>>();
+        var notices = new List<Diagnostic>();
+        var architecture = config is null || errors.Count != 0 ? null :
+            CodeRulesArchitecture.Read(start.Compilation, config, errors, notices, batches, start.CancellationToken);
         var trees = 0;
         start.RegisterSyntaxTreeAction(context =>
         {
-            if (config is null || errors.Count != 0)
+            if (config is null || architecture is null || errors.Count != 0)
             {
                 return;
             }
@@ -46,16 +49,27 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
             }
 
             var source = new CodeRulesSource(start.Compilation, context.Tree, path, context.CancellationToken);
-            foreach (var node in source.Root.DescendantNodes(descendIntoTrivia: true))
+            var layer = architecture.FileLayer(context.Tree);
+            var checkArchitecture = config.Applies(CodeRule.Find("KR1001")!, path);
+            foreach (var node in source.Root.DescendantNodes(x => x is not DocumentationCommentTriviaSyntax, descendIntoTrivia: true))
             {
                 context.CancellationToken.ThrowIfCancellationRequested();
                 if (node is AttributeSyntax attribute)
                 {
-                    CheckSuppression(source, attribute, context.ReportDiagnostic, context.CancellationToken);
+                    var constructor = source.Semantics.GetSymbolInfo(attribute, context.CancellationToken).Symbol as IMethodSymbol;
+                    CheckSuppression(source, attribute, constructor, context.ReportDiagnostic, context.CancellationToken);
+                    if (checkArchitecture)
+                    {
+                        architecture.CheckReference(source, attribute, constructor, layer);
+                    }
                 }
                 else if (node is PragmaWarningDirectiveTriviaSyntax pragma)
                 {
                     CheckSuppression(pragma, context.ReportDiagnostic);
+                }
+                else if (checkArchitecture)
+                {
+                    architecture.CheckNode(source, node, layer, context.CancellationToken);
                 }
             }
 
@@ -79,6 +93,11 @@ public sealed partial class CodeRulesAnalyzer : DiagnosticAnalyzer
             if (config is null || baseline is null || errors.Count != 0)
             {
                 return;
+            }
+
+            foreach (var notice in notices)
+            {
+                context.ReportDiagnostic(notice);
             }
 
             var observations = new List<CodeRuleObservation>(batches.Sum(x => x.Count));

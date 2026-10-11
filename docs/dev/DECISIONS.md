@@ -83,6 +83,34 @@ rules that result from them.
   Delete the syntax-owned predicate and Binding's reads through it. Measured delta: Binding +48 tokens / +4 lines,
   Parsing -25 tokens / -1 line. Verify rebind invalidation, SyntaxId/HIR reuse, allocation regressions and A0 snapshots.
 
+- **CR-A3** (planning session, two independent designs compared). CodeRulesArchitecture owns one immutable resolved
+  dependency/member/vocabulary policy per compilation. Configuration owns raw lists and locations. Enumerate source
+  types once and publish all declaration layers per original type; partial types cannot hide a forbidden declaration.
+  Resolve configured types once and cache each file's longest-prefix layer (compiler_root matches direct files only).
+  Choose layer arrays over a fixed-width mask: no extra layer-count concept or cap. Reject per-reference display names,
+  syntax reclassification and concurrent symbol caches. SimpleNameSyntax owns normal references; AttributeSyntax owns
+  its terminal name and shares its constructor symbol with suppression checking. Qualification types, type arguments
+  and attribute arguments keep their own references; XML documentation is not a dependency. This replaces the other
+  independent design's complete-name/member-access classifier with fewer syntax-shape decisions.
+  Member selectors match the configured type family, including derived Koto slots and overrides. Global child-walk
+  prohibitions use bare member names, including declarations: removed members need not exist to remain forbidden.
+  Resolve only candidate member names in unconstrained layers. Count each configured enum once, including aliases but
+  excluding implicit fields; a missing enum is located KR9002 (Warning in Enforce/Report, Error in Verify), not invalid
+  input that prevents Report completion. CodeRule owns stale severity and wording for both configuration and baseline.
+  Delete the two MIR dependency tests, vocabulary theory, three migrated source-pattern rows and their exclusive
+  helpers. Retain SemanticSlots only for the test-source ratchet, which is outside analyzer scope. Expected change:
+  350–500 analyzer lines, about 250 test lines and 90–110 deleted test lines; compiler source delta zero. Measure actual
+  csc/analyzer time; do not claim a speedup from replacing tests alone.
+  Actual csc exposed A2's list truncation: Roslyn treats semicolons as inline comments, including in globalconfig.
+  Choose the independent reviewer's comma-separated lists, verified with the actual parser, and replace all list
+  separators together. Reject a separate AdditionalFile parser and escaping/compatibility paths: one file must have
+  one grammar. Tests construct effective options through AnalyzerConfig.Parse/AnalyzerConfigSet from the same text
+  supplied as AdditionalFile; delete their line-splitting approximation. This also preserves both legacy exclusions.
+  Semantic checking then exposed 29 existing builder references to BoundArgumentOperation through CallPlan's published
+  ReceiverOperation/ArgumentOperations. Name that already-public result type in mir_build's allow list only; reject
+  transitive return-type allowance. The other two missed references were Koto's Binding-state decision, moved to its
+  existing fact owner in the separate behavior-preserving CR-A3a commit. Neither repair creates a new language rule.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

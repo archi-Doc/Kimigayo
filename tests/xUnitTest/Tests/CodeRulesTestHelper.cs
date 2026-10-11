@@ -17,37 +17,42 @@ internal static class CodeRulesTestHelper
         .Split(Path.PathSeparator).Select(x => MetadataReference.CreateFromFile(x)).ToArray();
 
     internal static CSharpCompilation Compilation(params string[] sources)
+        => Compilation(sources.Select((source, index) => (source, index == 0 ? SourcePath : SourcePath.Replace("Test", "Partial" + index, StringComparison.Ordinal))).ToArray());
+
+    internal static CSharpCompilation Compilation(params (string Source, string Path)[] sources)
         => CSharpCompilation.Create(
             "CodeRulesFixture",
-            sources.Select((source, index) => CSharpSyntaxTree.ParseText(
-                source, path: Path.Combine(Repository.Root, index == 0 ? SourcePath : SourcePath.Replace("Test", "Partial" + index, StringComparison.Ordinal)))),
+            sources.Select(x => CSharpSyntaxTree.ParseText(x.Source, path: Path.Combine(Repository.Root, x.Path))),
             References,
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary));
 
     internal static AnalyzerOptions Options(string mode = "Enforce", string baseline = "", Action<Dictionary<string, string>>? configure = null)
     {
         var config = File.ReadAllText(Path.Combine(Repository.Root, "src/Kimi/CodeRules.globalconfig"));
-        var values = new Dictionary<string, string>(StringComparer.Ordinal)
+        var path = Path.Combine(Repository.Root, "src/Kimi/CodeRules.globalconfig");
+        var parsed = AnalyzerConfigSet.Create(new[] { AnalyzerConfig.Parse(config, path) }).GlobalConfigOptions.AnalyzerOptions;
+        var values = new Dictionary<string, string>(parsed, StringComparer.Ordinal)
         {
             ["build_property.KimiRepositoryRoot"] = Repository.Root,
             ["build_property.KimiCodeRulesMode"] = mode,
         };
-        foreach (var line in config.Split('\n'))
-        {
-            var parts = line.Split('=', 2, StringSplitOptions.TrimEntries);
-            if (parts.Length == 2 && parts[0].StartsWith(CodeRulesConfiguration.Prefix, StringComparison.Ordinal))
-            {
-                values.Add(parts[0], parts[1]);
-            }
-        }
-
         configure?.Invoke(values);
+        config = "is_global = true\n" + string.Join('\n', values.Where(x => x.Key.StartsWith(CodeRulesConfiguration.Prefix, StringComparison.Ordinal)).Select(x => x.Key + " = " + x.Value));
+        parsed = AnalyzerConfigSet.Create(new[] { AnalyzerConfig.Parse(config, path) }).GlobalConfigOptions.AnalyzerOptions;
+        var effective = new Dictionary<string, string>(parsed, StringComparer.Ordinal)
+        {
+            ["build_property.KimiRepositoryRoot"] = values["build_property.KimiRepositoryRoot"],
+            ["build_property.KimiCodeRulesMode"] = values["build_property.KimiCodeRulesMode"],
+        };
         return new AnalyzerOptions(
             [new TextFile("CodeRules.globalconfig", config), new TextFile("CodeRules.baseline.tsv", baseline)],
-            new OptionsProvider(values));
+            new OptionsProvider(effective));
     }
 
     internal static async Task<ImmutableArray<Diagnostic>> Analyze(string source, AnalyzerOptions? options = null)
+        => await Analyze(Compilation(source), options);
+
+    internal static async Task<ImmutableArray<Diagnostic>> Analyze(CSharpCompilation compilation, AnalyzerOptions? options = null)
     {
         var analyzerOptions = new CompilationWithAnalyzersOptions(
             options ?? Options(),
@@ -55,7 +60,7 @@ internal static class CodeRulesTestHelper
             concurrentAnalysis: true,
             logAnalyzerExecutionTime: false,
             reportSuppressedDiagnostics: true);
-        return await Compilation(source).WithAnalyzers([new CodeRulesAnalyzer()], analyzerOptions).GetAnalyzerDiagnosticsAsync();
+        return await compilation.WithAnalyzers([new CodeRulesAnalyzer()], analyzerOptions).GetAnalyzerDiagnosticsAsync();
     }
 
     private sealed class TextFile(string path, string text) : AdditionalText

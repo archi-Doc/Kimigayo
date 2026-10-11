@@ -8,6 +8,18 @@ namespace XunitTest;
 
 public class CodeRulesConfigurationTest
 {
+    [Fact]
+    public void RoslynPreservesEveryConfiguredListEntry()
+    {
+        var errors = new List<Diagnostic>();
+        var config = CodeRulesConfiguration.Read(CodeRulesTestHelper.Options(), TestContext.Current.CancellationToken, errors)!;
+        Assert.Empty(errors);
+        Assert.Contains("Kimi.Compiler.TyCtxt", config.Lists["allow_types.mir_build"]);
+        Assert.Contains("Kimi.Compiler.Mir.MirCalleeKind:5", config.Lists["vocabularies"]);
+        Assert.Contains("src/Kimi/Compiler/Emission/", config.Lists["scope.density.exclude"]);
+        Assert.False(config.Applies(CodeRule.Find("KR3001")!, "src/Kimi/Compiler/Emission/Emission.cs"));
+    }
+
     [Theory]
     [InlineData("stage", "R99")]
     [InlineData("max_parameters", "0")]

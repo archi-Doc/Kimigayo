@@ -20,13 +20,15 @@ internal sealed class CodeRulesConfiguration
     private readonly Dictionary<string, string[]> lists = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> limits = new(StringComparer.Ordinal);
 
-    private CodeRulesConfiguration(string root, string mode, AdditionalText baselineFile, SourceText baseline, ImmutableDictionary<string, string?> checksums)
+    private CodeRulesConfiguration(string root, string mode, AdditionalText baselineFile, SourceText baseline, AdditionalText configFile, SourceText config, ImmutableDictionary<string, string?> checksums)
     {
         this.Root = root.Replace('\\', '/').TrimEnd('/') + "/";
         this.Mode = mode;
         this.BaselineFile = baselineFile.Path;
         this.Baseline = baseline;
         this.Checksums = checksums;
+        this.ConfigFile = configFile.Path;
+        this.Config = config;
     }
 
     internal string Root { get; }
@@ -42,6 +44,10 @@ internal sealed class CodeRulesConfiguration
     internal ImmutableDictionary<string, string?> Checksums { get; }
 
     internal IReadOnlyDictionary<string, string[]> Lists => this.lists;
+
+    private string ConfigFile { get; }
+
+    private SourceText Config { get; }
 
     internal static CodeRulesConfiguration? Read(AnalyzerOptions options, CancellationToken cancellation, List<Diagnostic> errors)
     {
@@ -71,7 +77,7 @@ internal sealed class CodeRulesConfiguration
         var checksums = ImmutableDictionary<string, string?>.Empty
             .Add("configChecksum", Hex(config.GetChecksum())).Add("configAlgorithm", config.ChecksumAlgorithm.ToString())
             .Add("baselineChecksum", Hex(baseline.GetChecksum())).Add("baselineAlgorithm", baseline.ChecksumAlgorithm.ToString());
-        var result = new CodeRulesConfiguration(root, mode, baselineFile!, baseline, checksums);
+        var result = new CodeRulesConfiguration(root, mode, baselineFile!, baseline, configFile!, config, checksums);
         var requiredLimits = new HashSet<string>(CodeRule.All.Select(x => x.LimitOption).Where(x => x.Length != 0), StringComparer.Ordinal);
         foreach (var key in global.Keys)
         {
@@ -108,7 +114,7 @@ internal sealed class CodeRulesConfiguration
             }
             else if (IsList(name))
             {
-                var entries = value.Split([';'], StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray();
+                var entries = value.Split([','], StringSplitOptions.RemoveEmptyEntries).Select(x => x.Trim()).ToArray();
                 if (entries.Length == 0 || entries.Any(x => x.Length == 0))
                 {
                     errors.Add(Diagnostic.Create(CodeRule.Invalid, Location.None, name + " must contain entries"));
@@ -159,6 +165,21 @@ internal sealed class CodeRulesConfiguration
     }
 
     internal int Limit(CodeRule rule) => rule.LimitOption.Length == 0 ? 0 : this.limits[rule.LimitOption];
+
+    internal Location OptionLocation(string option)
+    {
+        foreach (var line in this.Config.Lines)
+        {
+            var content = line.ToString();
+            var equals = content.IndexOf('=');
+            if (equals >= 0 && content.Substring(0, equals).Trim() == Prefix + option)
+            {
+                return Microsoft.CodeAnalysis.Location.Create(this.ConfigFile, line.Span, this.Config.Lines.GetLinePositionSpan(line.Span));
+            }
+        }
+
+        return Microsoft.CodeAnalysis.Location.Create(this.ConfigFile, default, default);
+    }
 
     internal bool Applies(CodeRule rule, string path)
     {

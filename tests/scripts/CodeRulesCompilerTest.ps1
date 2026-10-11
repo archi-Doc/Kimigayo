@@ -16,6 +16,8 @@ $source = Join-Path $root 'src/Kimi/Fixture.cs'
 $configPath = Join-Path $root 'src/Kimi/CodeRules.globalconfig'
 $baseline = Join-Path $root 'src/Kimi/CodeRules.baseline.tsv'
 $config = [IO.File]::ReadAllText((Join-Path $repo 'src/Kimi/CodeRules.globalconfig'))
+# This isolated suppression fixture does not declare the compiler's architecture types.
+$config = [regex]::Replace($config, '(?m)^kimi_code_rules\.(?:layer\.|deny_|allow_|vocabularies)[^\r\n]*(?:\r?\n|$)', '')
 [IO.File]::WriteAllText($baseline, "# baseline`n")
 # The isolated fixture root is the analyzer's repository; the analyzer does not propagate to its consumers.
 @"

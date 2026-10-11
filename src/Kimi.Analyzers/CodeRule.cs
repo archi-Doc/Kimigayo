@@ -69,10 +69,10 @@ internal sealed class CodeRule
 
     internal static readonly DiagnosticDescriptor Complete = Descriptor("KR9000", "Code rules report complete", "Code rules report complete", DiagnosticSeverity.Info, WellKnownDiagnosticTags.CompilationEnd);
     internal static readonly DiagnosticDescriptor Observation = Descriptor("KR9001", "Code rule observation", "{0}", DiagnosticSeverity.Info);
-    internal static readonly DiagnosticDescriptor Stale = Descriptor("KR9002", "Stale code rules baseline", "{0}; prune the obsolete baseline entry", DiagnosticSeverity.Warning);
+    internal static readonly DiagnosticDescriptor Stale = Descriptor("KR9002", "Stale code rules entry", "{0}; remove or reduce the obsolete entry", DiagnosticSeverity.Warning);
     internal static readonly DiagnosticDescriptor Invalid = Descriptor("KR9003", "Invalid code rules configuration", "{0}; correct the code rules configuration", DiagnosticSeverity.Error);
     internal static readonly DiagnosticDescriptor Suppression = Descriptor("KR9004", "Forbidden code rule suppression", "{0}; remove the suppression", DiagnosticSeverity.Error);
-    internal static readonly DiagnosticDescriptor StaleError = Descriptor("KR9002", "Stale code rules baseline", "{0}; prune the obsolete baseline entry", DiagnosticSeverity.Error);
+    internal static readonly DiagnosticDescriptor StaleError = Descriptor("KR9002", "Stale code rules entry", "{0}; remove or reduce the obsolete entry", DiagnosticSeverity.Error);
     internal static readonly ImmutableArray<DiagnosticDescriptor> Supported = BuildSupported();
 
     internal CodeRule(DiagnosticDescriptor diagnostic, string group, CodeRuleMeasure measure, string limitOption)
@@ -116,6 +116,9 @@ internal sealed class CodeRule
             isEnabledByDefault: true,
             helpLinkUri: "https://github.com/archi-Doc/Kimigayo/blob/dev/docs/dev/COMPILER_ARCHITECTURE.md#code-rules",
             customTags: [WellKnownDiagnosticTags.NotConfigurable, .. tags]);
+
+    internal static Diagnostic StaleEntry(string mode, Location location, string reason)
+        => Microsoft.CodeAnalysis.Diagnostic.Create(mode == "Verify" ? StaleError : Stale, location, reason);
 
     internal Diagnostic Violation(CodeRuleObservation observed, int count, int baseline)
     {
