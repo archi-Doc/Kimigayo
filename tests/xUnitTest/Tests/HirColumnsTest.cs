@@ -259,7 +259,7 @@ public sealed class HirColumnsTest
         var tally = nodes.OfType<FunctionKoto>().Single(static x => x.IsImplicitConstructor);
         Assert.Equal(("Counter", 1), (CallPlan.Of(tally.BaseInitializer!)!.Target.Scope.Owner.SymbolOf()!.Name, AdtDef.Count(AdtDef.ReceiverType(tally)!)));
         Assert.Equal(HirOp.Literal, HirTables.Op(AdtDef.Field(AdtDef.ReceiverType(tally)!, 0).InitializerKoto!));
-        BuiltinForm[] forms = [BuiltinForm.ArrayLiteral, BuiltinForm.IsEmpty, BuiltinForm.Capacity, BuiltinForm.Slice, BuiltinForm.Indices, BuiltinForm.DirectBuffer];
+        BuiltinForm[] forms = [BuiltinForm.ArrayLiteral, BuiltinForm.IsEmpty, BuiltinForm.Capacity, BuiltinForm.Slice, BuiltinForm.Indices];
         Assert.Equal(forms, nodes.Select(static x => IntrinsicDisposition.FormOf(x)).Where(static x => x != BuiltinForm.None));
         Assert.Equal("Some", BoundEnumConstruction.Of(nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
     }
@@ -595,7 +595,7 @@ public sealed class HirColumnsTest
     }
 
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type
-    // that member has, and a dynamic Array literal, a slicing and a direct interpolation their built-in form; an accessor's executing
+    // that member has, and a dynamic Array literal and a slicing their built-in form; an accessor's executing
     // function its result and its receiver and input; a parameter read the function's own parameter; an implicit constructor its receiver,
     // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.2.3.6).
     private static bool ViewsAgree(Koto node, HirOp op)
@@ -613,8 +613,7 @@ public sealed class HirColumnsTest
                 BuiltinForm.Length or BuiltinForm.Capacity => ReferenceEquals(type, BoundType.ISize),
                 BuiltinForm.ArrayLiteral => node is ArrayLiteralKoto && type?.Kind == BoundTypeKind.Array,
                 BuiltinForm.Slice => ElementAccess.IsSlicing(node) && type?.Kind == BoundTypeKind.Slice,
-                BuiltinForm.DirectBuffer => ExpansionPlan.Of(node) is { Kind: ExpansionKind.Format, Direct: true },
-                _ => !(node is ArrayLiteralKoto && type?.Kind == BoundTypeKind.Array) && !(op == HirOp.Index && ElementAccess.IsSlicing(node)) && ExpansionPlan.Of(node) is not { Direct: true },
+                _ => !(node is ArrayLiteralKoto && type?.Kind == BoundTypeKind.Array) && !(op == HirOp.Index && ElementAccess.IsSlicing(node)),
             };
 
         if (op == HirOp.Name && HirTables.ResOf(node) is HirRes.Param or HirRes.PreparedParam)

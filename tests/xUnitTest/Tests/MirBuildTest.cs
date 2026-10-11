@@ -119,12 +119,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain(error.OpaqueSites[0].Source, program.Unsupported);
     }
 
-    // V11: publishing, building and validating an unchanged compilation again allocates nothing.
+    // V11: publishing, building and validating an unchanged compilation again allocates nothing, owning interpolations (Milestone41) included.
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmRebuildAllocatesNothing()
+    [Theory]
+    [InlineData("milestone/Milestone26")]
+    [InlineData("milestone/Milestone41")]
+    public void WarmRebuildAllocatesNothing(string name)
     {
-        var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone26");
+        var (c, _) = SemanticSnapshotTest.Bind(name);
         var (bodies, version) = (c.BuildMir().Bodies.Length, c.BuildMir().Version);
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {

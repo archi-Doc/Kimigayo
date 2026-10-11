@@ -127,10 +127,8 @@ internal sealed partial class MirBuilder
         var handle = HirTables.AdjustOf(test.Left).Acquire == HirAcquire.Temporary ? this.Value(test.Left) : this.Place(test.Left);
         if (Completes(test.Left))
         {
-            var payload = this.body.Project(handle, MirProjectionKind.Deref, 0);
-            var view = compilation.Types.Reference(SemanticsKind.ObjRef, this.body.TypeOf(payload) ?? BoundType.Unit);
             var start = this.arguments.Count;
-            this.arguments.Add(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, payload, view), test));
+            this.arguments.Add(this.Borrow(SemanticsKind.ObjRef, this.body.Project(handle, MirProjectionKind.Deref, 0), test));
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, TypeOf(test.Right)))));
             this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.TypeTest), start, test);
         }

@@ -76,8 +76,7 @@ internal sealed partial class MirBuilder
             var (literal, value, operand) = (position.Literal, this.Temp(BoundType.Boolean, position.Source), MirOperand.Copy(place));
             if (literal.Kind == PatternLiteralKind.String)
             {
-                var text = compilation.Types.Reference(SemanticsKind.Ref, BoundType.String);
-                operand = this.Temporary(text, MirRvalue.Ref(MirRefKind.Shared, place, text), position.Source);
+                operand = this.Borrow(SemanticsKind.Ref, place, position.Source);
             }
 
             var (operands, magnitude) = (this.body.AddOperand(operand), (Int128)literal.Magnitude);

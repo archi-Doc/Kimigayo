@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.InteropServices;
+using System.Text;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -11,6 +12,10 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     private readonly List<(Koto Node, MirPlace Place)> located = []; // The Places the expansions being built located, innermost last.
+    private readonly List<BoundType> formatTypes = []; // The values' Types of the owning interpolations being built, innermost last.
+
+    // The literal bytes a write of an owning interpolation writes (utf8-formatting 5.1); -1 for a value, whose bound its instance decides.
+    private static int Bytes(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto text ? Encoding.UTF8.GetByteCount(text.Literal) : -1;
 
     // SPEC 14.6.2: the Subject acquired by the entry call into the iterator once, then each next() result decomposed as its plan's Some/None
     // match: Some binds the item for the body, None completes the loop with Unit. The body end and a continue clean the iteration up and call
@@ -261,31 +266,101 @@ internal sealed partial class MirBuilder
         this.Pass(MirOperand.Copy(test), 1, fail, node);
     }
 
-    // utf8-formatting 5.3: a $tryWrite: its writer operand acquired once, then its writes in order (CallPlan.Of), each through a Reborrow of
-    // it, stopping at the first failure, then the writer's status. An owning interpolation is not built: its capacity and hints are constants
-    // of its instance without a MIR operand, and its Finish has no declaration before R8 (utf8-formatting 5.1, 5.2).
+    // utf8-formatting 5.2, 5.3: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
+    // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, and a failure goes to its result, the writer's
+    // status. An owning interpolation's is the internal adapter (its second call) over an exclusive borrow of the private buffer FormatCapacity
+    // gives of the capacity its instance estimates from the literal bytes and the values' Types (5.1), on the stack where it is passed directly to
+    // writeLine and its instance bounds it within the limit (6.1); each write follows FormatHint of the later literal bytes and values' Types, a
+    // failure Aborts with KIMI_E_FORMAT, and FormatFinish ends the adapter and takes the buffer's bytes as the string, which leaves the buffer
+    // empty for its cleanup. The three intrinsics are temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo.
     private void Format(MirPlace destination, Koto node)
     {
-        if (node is not MacroKoto { Operand: InvocationKoto { ArgumentNodes: [var writer, ..] } })
+        if (HirTables.Meaning(node) is null)
         {
-            this.Unsupported(node, destination);
+            this.Opaque(node, destination); // Binding rejected a write.
             return;
         }
 
-        var (mark, done, i) = (this.located.Count, this.body.AddBlock(), 0);
-        this.located.Add((CallPlan.Of(node)!.ArgumentOperations[0].Source!, this.Secure(this.Operand(writer), writer).Place));
-        for (; CallPlan.Of(node, i + 1) is not null; i++)
+        var (mark, start, done, first) = (this.located.Count, this.formatTypes.Count, this.body.AddBlock(), node is InterpolatedStringKoto ? 2 : 0);
+        var (storage, bytes, writer, unit) = (CallPlan.Of(node, first)!.ArgumentOperations[0].Source!, 0L, default(MirPlace), default(MirPlace));
+        if (first == 0)
         {
-            var (result, discriminant) = (this.Temp(CallPlan.Of(node, i)!.ReturnType, node), this.Temp(BoundType.ISize, node));
-            this.Call(result, CallPlan.Of(node, i)!, node);
-            this.Set(discriminant, MirRvalue.Discriminant(result), node);
-            this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+            var operand = ((InvocationKoto)((MacroKoto)node).Operand).ArgumentNodes[0];
+            this.located.Add((storage, this.Secure(this.Operand(operand), operand).Place));
+        }
+        else
+        {
+            for (var i = first; CallPlan.Of(node, i) is { } write; i++)
+            {
+                if (Bytes(write) is var count and >= 0)
+                {
+                    bytes += count;
+                }
+                else
+                {
+                    this.formatTypes.Add(write.TypeArguments[0]!);
+                }
+            }
+
+            var (buffer, adapter) = (this.Temp(CallPlan.Of(node)!.ReturnType, node), CallPlan.Of(node, 1)!);
+            this.Estimate(buffer, IntrinsicId.FormatCapacity, bytes, start, this.arguments.Count, node);
+            (writer, unit) = (this.Temp(adapter.ReturnType, node), this.Temp(BoundType.Unit, node));
+            this.Call(writer, adapter, node, null, adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node));
         }
 
-        this.body.Terminate(this.current, MirTerminator.Goto(done, this.Info(node)));
-        this.current = done;
-        this.Call(destination, CallPlan.Of(node, i)!, node);
+        var (later, values, k) = (bytes, start, first);
+        for (; CallPlan.Of(node, k) is { } write && (first > 0 || CallPlan.Of(node, k + 1) is not null); k++)
+        {
+            if (first > 0)
+            {
+                var (count, at) = (Bytes(write), this.arguments.Count);
+                (later, values) = count < 0 ? (later, values + 1) : (later - count, values);
+                this.arguments.Add(this.Borrow(SemanticsKind.Uniq, writer, node));
+                this.Estimate(unit, IntrinsicId.FormatHint, later, values, at, node);
+            }
+
+            var (result, discriminant) = (this.Temp(write.ReturnType, node), this.Temp(BoundType.ISize, node));
+            this.Call(result, write, node, null, first > 0 ? storage : null, first > 0 ? this.Borrow(SemanticsKind.Uniq, writer, node) : default);
+            if (Completes(write.ArgumentOperations[1].Source!))
+            {
+                this.body.Push(this.current, MirStatement.Assign(discriminant, MirRvalue.Discriminant(result), this.Info(node)));
+                this.Pass(MirOperand.Copy(discriminant), 0, done, node);
+            }
+        }
+
+        if (first == 0)
+        {
+            this.body.Terminate(this.current, MirTerminator.Goto(done, this.Info(node)));
+            this.current = done;
+            this.Call(destination, CallPlan.Of(node, k)!, node);
+        }
+        else
+        {
+            this.Fail(done, "KIMI_E_FORMAT", node);
+            if (Completes(node))
+            {
+                this.arguments.Add(MirOperand.Move(writer));
+                this.Estimate(destination, IntrinsicId.FormatFinish, bytes, start, this.arguments.Count - 1, node);
+            }
+        }
+
         CollectionsMarshal.SetCount(this.located, mark);
+        CollectionsMarshal.SetCount(this.formatTypes, start);
+    }
+
+    // An owning interpolation's intrinsic on the operands pushed since at, then its estimate (utf8-formatting 5.1, 6.1): the literal bytes and a
+    // token of the Tuple of the values' Types from a position on, whose bounds its instance sums, and for the buffer and the end whether it is
+    // passed directly to writeLine.
+    private void Estimate(MirPlace destination, IntrinsicId id, long bytes, int from, int at, Koto node)
+    {
+        this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, bytes))));
+        this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, compilation.Types.Tuple(CollectionsMarshal.AsSpan(this.formatTypes)[from..])))));
+        if (id != IntrinsicId.FormatHint)
+        {
+            this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Bool, BoundType.Boolean, ExpansionPlan.Of(node)!.Value.Direct ? 1 : 0))));
+        }
+
+        this.Invoke(destination, MirCallee.Intrinsic(id), at, node);
     }
 
     // SPEC 4.7.4, 12.3.2: a dynamic Array literal: its elements evaluated in order, then the empty Array, an aggregate of no operand,
@@ -298,7 +373,7 @@ internal sealed partial class MirBuilder
             this.arguments.Add(this.Operand(element, type.Components[0]));
         }
 
-        var (count, view) = (this.arguments.Count - start, compilation.Types.Reference(SemanticsKind.Uniq, type));
+        var count = this.arguments.Count - start;
         this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), array);
         if (count > 0 && Completes(array))
         {
@@ -306,7 +381,7 @@ internal sealed partial class MirBuilder
             for (var i = -1; i < count; i++)
             {
                 var at = this.arguments.Count;
-                this.arguments.Add(this.Temporary(view, MirRvalue.Ref(MirRefKind.Uniq, destination, view), array));
+                this.arguments.Add(this.Borrow(SemanticsKind.Uniq, destination, array));
                 this.arguments.Add(i < 0 ? MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, count))) : this.arguments[start + i]);
                 this.Serve(unit, i < 0 ? CompilerFunctionKind.ArrayReserve : CompilerFunctionKind.ArrayAppend, type, [], at, array);
             }
@@ -327,22 +402,21 @@ internal sealed partial class MirBuilder
         }
 
         var type = TypeOf(dictionary);
-        var (shared, exclusive, layout) = (compilation.Types.Reference(SemanticsKind.Ref, type), compilation.Types.Reference(SemanticsKind.Uniq, type), compilation.Library.Function(CompilerFunctionKind.StorageDictionaryLayout)!.Type!);
-        var keys = compilation.Types.Reference(SemanticsKind.Ref, type.Components[0]);
+        var layout = compilation.Library.Function(CompilerFunctionKind.StorageDictionaryLayout)!.Type!;
         ReadOnlySpan<BoundType?> slots = [type.Components[0], type.Components[1]];
         this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         foreach (var entry in dictionary.Entries)
         {
             var (key, value, link, test, fail, start) = (this.Temp(type.Components[0], entry.Key), this.Temp(type.Components[1], entry.Value), this.Temp(BoundType.ISize, entry.Key), this.Temp(BoundType.Boolean, entry.Key), this.body.AddBlock(), this.arguments.Count);
             this.Assign(key, entry.Key);
-            this.arguments.Add(this.Temporary(shared, MirRvalue.Ref(MirRefKind.Shared, destination, shared), entry.Key));
-            this.arguments.Add(this.Temporary(keys, MirRvalue.Ref(MirRefKind.Shared, key, keys), entry.Key));
+            this.arguments.Add(this.Borrow(SemanticsKind.Ref, destination, entry.Key));
+            this.arguments.Add(this.Borrow(SemanticsKind.Ref, key, entry.Key));
             this.Invoke(link, new(MirCalleeKind.Fn, find.Target, compilation.Types.SubstOf(find)), start, entry.Key);
             this.Compare(test, MirBinaryOp.Eq, MirOperand.Copy(link), MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))), fail, entry.Key);
             this.Fail(fail, "KIMI_E_DUPLICATE_KEY", entry.Key);
             this.Assign(value, entry.Value);
             var handle = this.Temp(layout, entry.Value);
-            this.arguments.Add(this.Temporary(exclusive, MirRvalue.Ref(MirRefKind.Uniq, destination, exclusive), entry.Value));
+            this.arguments.Add(this.Borrow(SemanticsKind.Uniq, destination, entry.Value));
             this.Serve(handle, CompilerFunctionKind.StorageDictionaryLayout, null, slots, start, entry.Value);
             this.arguments.Add(MirOperand.Copy(this.body.Project(handle, MirProjectionKind.Field, 0)));
             this.arguments.Add(MirOperand.Move(key));

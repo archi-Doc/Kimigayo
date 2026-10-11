@@ -109,7 +109,7 @@ public class ArchitectureRulesTest
     [InlineData("Kimi.Compiler.HirPlaceKind", 11)]
     [InlineData("Kimi.Compiler.HirCompletion", 3)]
     [InlineData("Kimi.Compiler.ExpansionKind", 7)]
-    [InlineData("Kimi.Compiler.IntrinsicId", 31)] // 30 + the temporary Capacity (owner approval 2026-10-11); R8 removes it and the limit returns to 30.
+    [InlineData("Kimi.Compiler.IntrinsicId", 34)] // 30 + the temporary Capacity and FormatCapacity, FormatHint and FormatFinish (owner approvals 2026-10-11); R8 removes them and the limit returns to 30.
     [InlineData("Kimi.Compiler.Mir.MirStatementKind", 5)]
     [InlineData("Kimi.Compiler.Mir.MirRvalueKind", 9)]
     [InlineData("Kimi.Compiler.Mir.MirTerminatorKind", 6)]

@@ -178,9 +178,8 @@ internal sealed partial class MirBuilder
             this.Assign(text, message);
             if (Completes(message))
             {
-                var view = compilation.Types.Reference(SemanticsKind.Ref, TypeOf(message));
                 this.arguments.Add(MirOperand.Copy(issue));
-                this.arguments.Add(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, text, view), message));
+                this.arguments.Add(this.Borrow(SemanticsKind.Ref, text, message));
                 this.Invoke(this.Temp(BoundType.Unit, message), MirCallee.Intrinsic(IntrinsicId.TestMessage), start, message);
             }
 

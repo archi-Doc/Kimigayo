@@ -133,6 +133,9 @@ internal enum IntrinsicId : byte
     TestTempDirectory,
     StaticEnsure, // SPEC 22.2.3.
     Capacity, // Temporary (owner, 2026-10-11): an Array's or a Dictionary's capacity (SPEC 4.7.4) until R8 makes it a Field read.
+    FormatCapacity, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: an owning interpolation's private buffer of
+    FormatHint, // the capacity its instance estimates, the hint before each write and the adapter's end into the string (utf8-formatting 5.1, 5.2).
+    FormatFinish,
 }
 
 /// <summary>How a call of a compiler function is served (plan 5.8).</summary>
@@ -194,18 +197,16 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
     {
         BuiltinForm.ArrayLiteral => CompilerFunctionKind.ArrayAppend, // Each element into the empty Array, after ArrayReserve of their count.
         BuiltinForm.Slice => CompilerFunctionKind.RawSlice, // From the start its range resolves to against Len.
-        BuiltinForm.DirectBuffer => CompilerFunctionKind.TextFixed, // Over a stack region where the instance bounds the writes, else Text.heap.
         _ => CompilerFunctionKind.None,
     };
 
-    // The built-in form of a published node: a sequence's metadata by its member, a dynamic Array literal, a built-in slicing (an Index
-    // whose Place is a value) and a direct interpolation.
+    // The built-in form of a published node: a sequence's metadata by its member, a dynamic Array literal and a built-in slicing (an Index
+    // whose Place is a value).
     internal static BuiltinForm FormOf(Koto node) => HirTables.Op(node) switch
     {
         HirOp.PrimitiveOp when node is MemberAccessKoto member => Binding.SequenceMember(member),
         HirOp.Aggregate when node is ArrayLiteralKoto { BoundType.Kind: BoundTypeKind.Array } => BuiltinForm.ArrayLiteral,
         HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value => BuiltinForm.Slice,
-        HirOp.Interpolation when ExpansionPlan.Of(node) is { Direct: true } => BuiltinForm.DirectBuffer,
         _ => BuiltinForm.None,
     };
 
@@ -225,5 +226,4 @@ internal enum BuiltinForm : byte
     Capacity, // An Array's or a Dictionary's capacity (SPEC 4.7.4).
     ArrayLiteral, // An Array literal (SPEC 4.7.4, 12.3.2).
     Slice, // A built-in range indexing of a sequence (SPEC 4.6.1, 4.6.5).
-    DirectBuffer, // An interpolation passed directly to writeLine (utf8-formatting 6.1).
 }

@@ -226,6 +226,13 @@ internal sealed partial class MirBuilder
         return MirOperand.Move(temp);
     }
 
+    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved.
+    private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
+    {
+        var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
+        return this.Temporary(view, MirRvalue.Ref(semantics == SemanticsKind.Uniq ? MirRefKind.Uniq : MirRefKind.Shared, place, view), node);
+    }
+
     // SPEC 13.2, 13.3: a built-in operator on its operands, its check Proven where IMPL 21.5.3 omits it; or a sequence's metadata. The left
     // operand is pending while the right one is evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3).
     private void Primitive(MirPlace destination, Koto node, BoundType type)
@@ -271,8 +278,8 @@ internal sealed partial class MirBuilder
         var sequence = this.Place(member.Left);
         if (form == BuiltinForm.Capacity)
         {
-            var (view, start) = (compilation.Types.Reference(SemanticsKind.Ref, this.body.TypeOf(sequence)!), this.arguments.Count);
-            this.arguments.Add(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, sequence, view), member));
+            var start = this.arguments.Count;
+            this.arguments.Add(this.Borrow(SemanticsKind.Ref, sequence, member));
             this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.Capacity), start, member);
             return;
         }
