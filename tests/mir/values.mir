@@ -13,10 +13,9 @@ fn arithmetic @13
   _5: i32 var s @32 s1
   _6: i32 var n @37 s1
   _7: Wrapping<u32> var m @41 s1
-  _8: Never temp @46 s1
-  _9: i32 temp @47 s1
-  _10: i32 temp @48 s1
-  _11: i32 temp @49 s1
+  _8: i32 temp @47 s1
+  _9: i32 temp @48 s1
+  _10: i32 temp @49 s1
   s1: lexical in s0 @20
   bb0:
       StorageLive(_3) @21 s1
@@ -29,13 +28,12 @@ fn arithmetic @13
     * _6 = Neg(copy _1) @39 s1
       StorageLive(_7) @41 s1
     * _7 = Add(copy _2, copy _2) proven @43 s1
-      StorageLive(_8) @46 s1
-      StorageLive(_9) @47 s1
-      StorageLive(_10) @48 s1
-      StorageLive(_11) @49 s1
-    * _11 = Add(copy _3, copy _4) @49 s1
-      _10 = Add(move _11, copy _5) @48 s1
-      _9 = Add(move _10, copy _6) @47 s1
+      StorageLive(_8) @47 s1
+      StorageLive(_9) @48 s1
+      StorageLive(_10) @49 s1
+    * _10 = Add(copy _3, copy _4) @49 s1
+      _9 = Add(move _10, copy _5) @48 s1
+      _8 = Add(move _9, copy _6) @47 s1
       goto bb4 check bb5 @46 s1
   bb1:
       return @13
@@ -47,19 +45,17 @@ fn arithmetic @13
       StorageDead(_3) @21 s1
       goto bb1 @13
   bb3:
-      StorageDead(_11) @49 s1
-      StorageDead(_10) @48 s1
-      StorageDead(_9) @47 s1
-      StorageDead(_8) @46 s1
+      StorageDead(_10) @49 s1
+      StorageDead(_9) @48 s1
+      StorageDead(_8) @47 s1
       goto bb2 @13
   bb4:
-      _0 = move _9 @46 s1
+      _0 = move _8 @46 s1
       goto bb3 @46 s1
   bb5:
-      StorageDead(_11) @49 s1
-      StorageDead(_10) @48 s1
-      StorageDead(_9) @47 s1
-      StorageDead(_8) @46 s1
+      StorageDead(_10) @49 s1
+      StorageDead(_9) @48 s1
+      StorageDead(_8) @47 s1
       StorageDead(_7) @41 s1
       StorageDead(_6) @37 s1
       StorageDead(_5) @32 s1
@@ -77,8 +73,7 @@ fn conversions @54
   _7: i32 var back @75 s1
   _8: u8 var wrapped @80 s1
   _9: i32 var folded @86 s1
-  _10: Never temp @91 s1
-  _11: i64 temp @92 s1
+  _10: i64 temp @92 s1
   s1: lexical in s0 @59
   bb0:
       StorageLive(_4) @60 s1
@@ -93,9 +88,8 @@ fn conversions @54
     * _8 = copy _1 as u8 (Wrap) proven @82 s1
       StorageLive(_9) @86 s1
     * _9 = const 3_i32 @88 s1
-      StorageLive(_10) @91 s1
-      StorageLive(_11) @92 s1
-    * _11 = copy _1 as i64 (Integer) proven @92 s1
+      StorageLive(_10) @92 s1
+    * _10 = copy _1 as i64 (Integer) proven @92 s1
       goto bb4 check bb5 @91 s1
   bb1:
       return @54
@@ -108,15 +102,13 @@ fn conversions @54
       StorageDead(_4) @60 s1
       goto bb1 @54
   bb3:
-      StorageDead(_11) @92 s1
-      StorageDead(_10) @91 s1
+      StorageDead(_10) @92 s1
       goto bb2 @54
   bb4:
-      _0 = move _11 @91 s1
+      _0 = move _10 @91 s1
       goto bb3 @91 s1
   bb5:
-      StorageDead(_11) @92 s1
-      StorageDead(_10) @91 s1
+      StorageDead(_10) @92 s1
       StorageDead(_9) @86 s1
       StorageDead(_8) @80 s1
       StorageDead(_7) @75 s1
@@ -148,8 +140,7 @@ fn aggregates @105
   _3: [3 of i32] var fixed @114 s1
   _4: [4 of u8] var zeros @123 s1
   _5: Shape var dot @131 s1
-  _6: Never temp @136 s1
-  _7: Shape temp @137 s1
+  _6: Shape temp @137 s1
   s1: lexical in s0 @108
   bb0:
       StorageLive(_2) @109 s1
@@ -160,9 +151,8 @@ fn aggregates @105
     * _4 = FixedArray(const 0_u8, const 0_u8, const 0_u8, const 0_u8): [4 of u8] @128 s1
       StorageLive(_5) @131 s1
     * _5 = Adt case 0(): Shape @133 s1
-      StorageLive(_6) @136 s1
-      StorageLive(_7) @137 s1
-    * _7 = Adt case 1(copy _1, copy _2.0): Shape @137 s1
+      StorageLive(_6) @137 s1
+    * _6 = Adt case 1(copy _1, copy _2.0): Shape @137 s1
       goto bb4 check bb5 @136 s1
   bb1:
       return @105
@@ -173,15 +163,13 @@ fn aggregates @105
       StorageDead(_2) @109 s1
       goto bb1 @105
   bb3:
-      StorageDead(_7) @137 s1
-      StorageDead(_6) @136 s1
+      StorageDead(_6) @137 s1
       goto bb2 @105
   bb4:
-      _0 = move _7 @136 s1
+      _0 = move _6 @136 s1
       goto bb3 @136 s1
   bb5:
-      StorageDead(_7) @137 s1
-      StorageDead(_6) @136 s1
+      StorageDead(_6) @137 s1
       StorageDead(_5) @131 s1
       StorageDead(_4) @123 s1
       StorageDead(_3) @114 s1
@@ -215,8 +203,7 @@ fn replace @164
   _4: () temp @174 s1
   _5: string temp @175 s1
   _6: ref/string var view @179 s1
-  _7: Never temp @184 s1
-  _8: string temp @185 s1
+  _7: string temp @185 s1
   s1: lexical in s0 @168
   bb0:
       StorageLive(_3) @169 s1
@@ -234,9 +221,8 @@ fn replace @164
       StorageDead(_4) @174 s1
       StorageLive(_6) @179 s1
     * _6 = &_3: ref/string @181 s1
-      StorageLive(_7) @184 s1
-      StorageLive(_8) @185 s1
-    * _8 = move _3 @186 s1
+      StorageLive(_7) @185 s1
+    * _7 = move _3 @186 s1
       goto bb11 check bb12 @184 s1
   bb3:
       return @164
@@ -253,19 +239,17 @@ fn replace @164
       StorageDead(_3) @169 s1
       goto bb4 @164
   bb9:
-      drop _8 -> bb10 @185 s1
+      drop _7 -> bb10 @185 s1
   bb10:
-      StorageDead(_8) @185 s1
-      StorageDead(_7) @184 s1
+      StorageDead(_7) @185 s1
       goto bb7 @164
   bb11:
-      _0 = move _8 @184 s1
+      _0 = move _7 @184 s1
       goto bb9 @184 s1
   bb12:
-      drop _8 -> bb13 @185 s1
+      drop _7 -> bb13 @185 s1
   bb13:
-      StorageDead(_8) @185 s1
-      StorageDead(_7) @184 s1
+      StorageDead(_7) @185 s1
       StorageDead(_6) @179 s1
       drop _3 -> bb14 @169 s1
   bb14:

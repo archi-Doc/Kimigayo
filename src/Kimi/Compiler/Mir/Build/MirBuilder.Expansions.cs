@@ -200,8 +200,8 @@ internal sealed partial class MirBuilder
 
     // SPEC 4.6.4, 4.6.5: a built-in range selection: the receiver located once and its range resolved against its length, a range written
     // directly at each boundary (omitted: 0 or the length; ^x: the length minus x; a closed end q: q + 1), else the ResolvedRange its key
-    // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice its row
-    // serves (BuiltinForm.Slice: RawSlice) of the elements from the address of element start, any address for none (SPEC 5.6).
+    // is or its key's resolution (First) gives; checked once (0 <= start <= end <= length, else KIMI_E_INDEX_BOUNDS), then the Slice RawSlice
+    // serves (R3 decision 5) of the elements from the address of element start, any address for none (SPEC 5.6).
     private void Slice(MirPlace destination, IndexKoto index)
     {
         var (sequence, range) = (this.Place(index.Left), HirTables.Op(index.Right) == HirOp.Range ? index.Right as RangeKoto : null);
@@ -309,7 +309,7 @@ internal sealed partial class MirBuilder
 
     // utf8-formatting 5.2, 5.3: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
     // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, and a failure goes to its result, the writer's
-    // status. An owning interpolation's is the internal adapter (its second call) over an exclusive borrow of the private buffer FormatCapacity
+    // status. An owning interpolation's is the internal adapter (its second call) over an exclusive borrow of the private buffer FormatBuffer
     // gives of the capacity its instance estimates from the literal bytes and the values' Types (5.1), on the stack where it is passed directly to
     // writeLine and its instance bounds it within the limit (6.1); each write follows FormatHint of the later literal bytes and values' Types, a
     // failure Aborts with KIMI_E_FORMAT, and FormatFinish ends the adapter and takes the buffer's bytes as the string, which leaves the buffer
@@ -351,7 +351,7 @@ internal sealed partial class MirBuilder
             }
 
             var (buffer, adapter) = (this.Temp(CallPlan.Of(node)!.ReturnType, node), CallPlan.Of(node, 1)!);
-            this.Estimate(buffer, IntrinsicId.FormatCapacity, bytes, start, this.arguments.Count, node);
+            this.Estimate(buffer, IntrinsicId.FormatBuffer, bytes, start, this.arguments.Count, node);
             (writer, unit) = (this.Temp(adapter.ReturnType, node), this.Temp(BoundType.Unit, node));
             this.Call(writer, adapter, node, null, adapter.ArgumentOperations[0].Source, this.Borrow(SemanticsKind.Uniq, buffer, node));
         }
@@ -412,7 +412,7 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 4.7.4, 12.3.2: a dynamic Array literal: its elements evaluated in order, then the empty Array, an aggregate of no operand,
-    // reserved for their count and each appended (BuiltinForm.ArrayLiteral, R3 decision 5).
+    // reserved for their count and each appended (ArrayReserve, ArrayAppend: R3 decision 5).
     private void Collection(MirPlace destination, ArrayLiteralKoto array, BoundType type)
     {
         var start = this.arguments.Count;

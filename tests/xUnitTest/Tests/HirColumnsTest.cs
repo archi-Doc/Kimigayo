@@ -239,7 +239,7 @@ public sealed class HirColumnsTest
 
     // SPEC 4.6.1, 4.7.4, 6.2.3.6, 11.2: an accessor's executing function takes its receiver and its input (a static setter only its input),
     // an implicit constructor of a derived structure initializes its Fields and calls the base constructor its omitted base clause selects,
-    // and each built-in form is published with its member or its form.
+    // and each sequence metadata member is published with its form.
     [Fact]
     public void AccessorsConstructorsAndBuiltinFormsArePublished()
     {
@@ -259,7 +259,7 @@ public sealed class HirColumnsTest
         var tally = nodes.OfType<FunctionKoto>().Single(static x => x.IsImplicitConstructor);
         Assert.Equal(("Counter", 1), (CallPlan.Of(tally.BaseInitializer!)!.Target.Scope.Owner.SymbolOf()!.Name, AdtDef.Count(AdtDef.ReceiverType(tally)!)));
         Assert.Equal(HirOp.Literal, HirTables.Op(AdtDef.Field(AdtDef.ReceiverType(tally)!, 0).InitializerKoto!));
-        BuiltinForm[] forms = [BuiltinForm.ArrayLiteral, BuiltinForm.IsEmpty, BuiltinForm.Capacity, BuiltinForm.Slice, BuiltinForm.Indices];
+        BuiltinForm[] forms = [BuiltinForm.IsEmpty, BuiltinForm.Capacity, BuiltinForm.Indices];
         Assert.Equal(forms, nodes.Select(static x => IntrinsicDisposition.FormOf(x)).Where(static x => x != BuiltinForm.None));
         Assert.Equal("Some", BoundEnumConstruction.Of(nodes.OfType<InvocationKoto>().Last())!.Case.Symbol.Name);
     }
@@ -339,8 +339,8 @@ public sealed class HirColumnsTest
         Assert.True(cold > 0 && cold == warm, $"{cold} facts cold, {warm} warm");
     }
 
-    // Reads R3 U1's lookup views at every node, as the MIR builder does: each layer's binder, an enum construction, a built-in form and its
-    // row, an accessor's executing function and every parameter of a body; the count of the facts found.
+    // Reads R3 U1's lookup views at every node, as the MIR builder does: each layer's binder, an enum construction, a built-in form, an
+    // accessor's executing function and every parameter of a body; the count of the facts found.
     private static int ReadViews(Koto[] nodes)
     {
         var found = 0;
@@ -352,7 +352,7 @@ public sealed class HirColumnsTest
                 found += TyCtxt.Layer(type, out type, out var binder) == HirPlaceKind.PairLayer && binder is not null ? 1 : 0;
             }
 
-            found += (BoundEnumConstruction.Of(node) is null ? 0 : 1) + (int)IntrinsicDisposition.Serving(IntrinsicDisposition.FormOf(node));
+            found += (BoundEnumConstruction.Of(node) is null ? 0 : 1) + (int)IntrinsicDisposition.FormOf(node);
             var function = node is PropertyAccessorKoto accessor && HirTables.Op(node) == HirOp.Body ? CallPlan.Accessor(accessor)
                 : node is FunctionKoto && HirTables.Op(node) is HirOp.Body or HirOp.Closure ? HirTables.Symbol(node) : null;
             for (var i = -1; function is not null && i < ((FunctionKoto)function.Declaration).Parameters.Count; i++)
@@ -595,7 +595,7 @@ public sealed class HirColumnsTest
     }
 
     // R3 U1's views at an evaluated node or a body: an enum Case value has its construction; a sequence's metadata its member, of the Type
-    // that member has, and a dynamic Array literal and a slicing their built-in form; an accessor's executing
+    // that member has, and no other node a built-in form; an accessor's executing
     // function its result and its receiver and input; a parameter read the function's own parameter; an implicit constructor its receiver,
     // which every Field's initializer initializes, and its base call exactly where the structure has a base (SPEC 6.2.3.6).
     private static bool ViewsAgree(Koto node, HirOp op)
@@ -611,9 +611,7 @@ public sealed class HirColumnsTest
                 BuiltinForm.Indices => type?.Symbol?.LibraryDeclaration == KimiDeclarationId.ResolvedRange,
                 BuiltinForm.IsEmpty => ReferenceEquals(type, BoundType.Boolean),
                 BuiltinForm.Length or BuiltinForm.Capacity => ReferenceEquals(type, BoundType.ISize),
-                BuiltinForm.ArrayLiteral => node is ArrayLiteralKoto && type?.Kind == BoundTypeKind.Array,
-                BuiltinForm.Slice => ElementAccess.IsSlicing(node) && type?.Kind == BoundTypeKind.Slice,
-                _ => !(node is ArrayLiteralKoto && type?.Kind == BoundTypeKind.Array) && !(op == HirOp.Index && ElementAccess.IsSlicing(node)),
+                _ => true,
             };
 
         if (op == HirOp.Name && HirTables.ResOf(node) is HirRes.Param or HirRes.PreparedParam)

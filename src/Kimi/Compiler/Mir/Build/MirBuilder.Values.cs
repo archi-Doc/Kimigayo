@@ -1,35 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Values: a node's own value into a destination (Into), as its consumer takes it (Assign, Operand, Adapt), each by the node's Op, Adjust
+// Values: a node's own value into a destination (Into), as its consumer takes it (Assign, Operand, Acquire), each by the node's Op, Adjust
 // and PlaceShape.
 internal sealed partial class MirBuilder
 {
-    private static MirBinaryOp? BinaryOp(KotoKind kind) => kind switch
-    {
-        KotoKind.Plus => MirBinaryOp.Add,
-        KotoKind.Minus => MirBinaryOp.Sub,
-        KotoKind.Asterisk => MirBinaryOp.Mul,
-        KotoKind.Slash => MirBinaryOp.Div,
-        KotoKind.Percent => MirBinaryOp.Rem,
-        KotoKind.LessThanLessThan => MirBinaryOp.Shl,
-        KotoKind.GreaterThanGreaterThan => MirBinaryOp.Shr,
-        KotoKind.Ampersand => MirBinaryOp.BitAnd,
-        KotoKind.Bar => MirBinaryOp.BitOr,
-        KotoKind.Caret => MirBinaryOp.BitXor,
-        KotoKind.EqualsEquals => MirBinaryOp.Eq,
-        KotoKind.ExclamationEquals => MirBinaryOp.Ne,
-        KotoKind.LessThan => MirBinaryOp.Lt,
-        KotoKind.LessThanEquals => MirBinaryOp.Le,
-        KotoKind.GreaterThan => MirBinaryOp.Gt,
-        KotoKind.GreaterThanEquals => MirBinaryOp.Ge,
-        _ => null,
-    };
-
     // The value a node's own form produces, into the destination.
     private void Into(MirPlace destination, Koto node)
     {
@@ -38,8 +16,8 @@ internal sealed partial class MirBuilder
             case HirOp.Literal when this.Literal(node) is var constant and >= 0:
                 this.Use(destination, MirOperand.Const(constant), node);
                 break;
-            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function: // SPEC 7.6.4: a constant of its Item Type.
-                this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, TypeOf(node)))), node);
+            case HirOp.Name when HirTables.Symbol(node)?.Kind == BindingSymbolKind.Function && HirTables.Meaning(node) is BoundType item:
+                this.Use(destination, MirOperand.Const(this.body.Const(new(MirConstKind.FnItem, item))), node); // SPEC 7.6.4: a constant of its Item Type.
                 break;
             case HirOp.Group: // Its operand, which the group acquires as the operand's Adjust says.
                 this.Assign(destination, Child(node));
@@ -49,9 +27,6 @@ internal sealed partial class MirBuilder
                 break;
             case HirOp.Call:
                 this.Call(destination, node);
-                break;
-            case HirOp.Jump or HirOp.Continue:
-                this.Transfer(destination, (JumpKoto)node);
                 break;
             case HirOp.If:
                 this.If(destination, (IfKoto)node);
@@ -74,8 +49,8 @@ internal sealed partial class MirBuilder
             case HirOp.Do:
                 this.Do(destination, (DoKoto)node);
                 break;
-            case HirOp.Require: // A statement: it leaves no value.
-                this.Require((RequireKoto)node);
+            case HirOp.Require or HirOp.Defer or HirOp.Discard or HirOp.Jump or HirOp.Continue: // It leaves no value.
+                this.Effect(node);
                 break;
             case HirOp.TestVerification:
                 this.Verification(destination, (TestVerificationKoto)node);
@@ -85,12 +60,6 @@ internal sealed partial class MirBuilder
                 break;
             case HirOp.Unsafe:
                 this.Block(destination, ((UnsafeBlockKoto)node).Body, MirScopeKind.Unsafe);
-                break;
-            case HirOp.Discard: // SPEC 14.2.4: the operand acquired by bare acquisition into a temp, destroyed with the statement's.
-                this.Assign(this.Temp(((DiscardKoto)node).Operand), ((DiscardKoto)node).Operand);
-                break;
-            case HirOp.Defer: // SPEC 16.1: registered here, built where its scope is left.
-                this.Register(Cleanup.Defer, -1, node, this.lexical);
                 break;
             case HirOp.NoInit: // SPEC 4.3.4: the array constructed from no operand, its elements not stored.
                 this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, this.body.TypeOf(destination)!), node);
@@ -125,7 +94,7 @@ internal sealed partial class MirBuilder
             case HirOp.Name or HirOp.Field or HirOp.Index or HirOp.Deref when HirTables.PlaceOf(node).Kind is not (HirPlaceKind.Unset or HirPlaceKind.Value):
                 // SPEC 3.5, 14.2: a Place's value, discarded or taken as a value, is its Place evaluated (an Index checks its bounds) and read
                 // as its Type decides: Copied, a stored exclusive reference Reborrowed, a pair layer by case.
-                this.Use(destination, this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), this.Place(node), null, false, node), node);
+                this.Use(destination, this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), this.Place(node), null, false, node, destination), node);
                 break;
             case HirOp.DictionaryLiteral:
                 this.Dictionary(destination, (DictionaryLiteralKoto)node);
@@ -140,7 +109,7 @@ internal sealed partial class MirBuilder
     }
 
     // The destination takes a node's value as its consumer takes it (its Adjust): a Temporary, or a group's operand, is built into the
-    // destination; any other acquisition is an operand of the destination's Type.
+    // destination; any other acquisition is an operand of the destination's Type, a value it forms (a borrow, an erasure) formed there.
     private void Assign(MirPlace destination, Koto node)
     {
         if (HirTables.AdjustOf(node) is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
@@ -149,18 +118,19 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            this.Use(destination, this.Operand(node, this.body.TypeOf(destination)), node);
+            this.Use(destination, this.Operand(node, this.body.TypeOf(destination), false, destination), node);
         }
     }
 
     // A node's value as its consumer takes it (plan: Adjust to operand): a literal as its constant, another value through a temp, a Place,
-    // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input).
-    private MirOperand Operand(Koto node, BoundType? expected = null, bool input = false)
+    // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input), a value the acquisition
+    // forms in the place given (into) where it has that Type.
+    private MirOperand Operand(Koto node, BoundType? expected = null, bool input = false, MirPlace? into = null)
     {
         var adjust = HirTables.AdjustOf(node);
         if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
-            return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant) : MirOperand.Move(this.Value(node));
+            return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant) : MirOperand.Move(this.Value(node, into));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
@@ -169,7 +139,7 @@ internal sealed partial class MirBuilder
             return MirOperand.Move(this.Unsupported(node, false, expected)); // An Error proof left the acquisition unset; a projected receiver's storage is its Field's (Member).
         }
 
-        return this.Acquire(adjust, adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node), expected, input, node);
+        return this.Acquire(adjust, adjust.Acquire == HirAcquire.Temporary ? this.Value(node) : this.Place(node), expected, input, node, into);
     }
 
     // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (SPEC 8.9; where its Type
@@ -178,7 +148,7 @@ internal sealed partial class MirBuilder
     // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
     // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
-    private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node)
+    private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
         var (adaptation, type) = (adjust.Adaptation, this.body.TypeOf(place) ?? BoundType.Unit);
         var target = expected?.Components is [var referent] ? referent : null;
@@ -189,7 +159,7 @@ internal sealed partial class MirBuilder
                 {
                     HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => MirOperand.PairAcquire(binder, place),
                     HirAcquire.ByCase when !MirTypes.IsExclusive(type) => MirOperand.Copy(place),
-                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, false), node),
+                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, false), node, into),
                     HirAcquire.Copy => MirOperand.Copy(place),
                     _ => MirOperand.Move(place),
                 };
@@ -197,7 +167,7 @@ internal sealed partial class MirBuilder
                 return MirOperand.Copy(this.Follow(place, 16, expected));
             case HirAdaptation.Erasure: // SPEC 7.6.4: of the value its ordinary acquisition gives.
                 var source = this.Acquire(adjust with { Adaptation = HirAdaptation.None }, place, null, input, node);
-                return this.Temporary(expected!, MirRvalue.Cast(MirCastKind.Erasure, this.body.AddOperand(source), expected!) with { Proven = true }, node);
+                return this.Temporary(expected!, MirRvalue.Cast(MirCastKind.Erasure, this.body.AddOperand(source), expected!) with { Proven = true }, node, into);
             case HirAdaptation.ReferenceRead:
                 place = this.Follow(place, 16, target);
                 break;
@@ -207,7 +177,7 @@ internal sealed partial class MirBuilder
         }
 
         var reference = expected ?? compilation.Types.Reference(adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref, this.body.TypeOf(place) ?? BoundType.Unit);
-        return this.Temporary(reference, this.Ref(place, reference, input), node);
+        return this.Temporary(reference, this.Ref(place, reference, input), node, into);
     }
 
     // SPEC 13.5.5.2, 5.4, 6.2.2: a reference of a Type to a Place, the one rule of every borrow: of the Place's layer whose Type is the
@@ -226,10 +196,10 @@ internal sealed partial class MirBuilder
         return MirRvalue.Ref(kind, depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth), reference);
     }
 
-    // An rvalue in a new temp of its Type, moved.
-    private MirOperand Temporary(BoundType type, in MirRvalue rvalue, Koto node)
+    // An rvalue in a new temp of its Type, or in the place given where that has its Type, moved.
+    private MirOperand Temporary(BoundType type, in MirRvalue rvalue, Koto node, MirPlace? into = null)
     {
-        var temp = this.Temp(type, node);
+        var temp = this.Temp(type, node, into);
         this.Set(temp, rvalue, node);
         return MirOperand.Move(temp);
     }
@@ -243,135 +213,6 @@ internal sealed partial class MirBuilder
         var temp = this.Temp(view, node);
         this.body.Push(this.current, MirStatement.Assign(temp, this.Ref(place, view, false), this.Info(node)));
         return MirOperand.Move(temp);
-    }
-
-    // SPEC 13.2, 13.3: a built-in operator on its operands, its check Proven where IMPL 21.5.3 omits it; or a sequence's metadata. The left
-    // operand is pending while the right one is evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3).
-    private void Primitive(MirPlace destination, Koto node, BoundType type)
-    {
-        switch (node)
-        {
-            case MemberAccessKoto member:
-                this.Metadata(destination, member);
-                break;
-            case BinaryKoto binary when BinaryOp(binary.Akind) is { } op:
-                var start = this.arguments.Count;
-                this.arguments.Add(this.Operand(binary.Left));
-                this.arguments.Add(this.Operand(binary.Right));
-                var proven = this.Proven(op, type, this.arguments[^1]);
-                this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
-                break;
-            case UnaryKoto { Akind: KotoKind.PrefixPlus } plus:
-                this.Assign(destination, plus.Operand);
-                break;
-            case UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.Not } unary:
-                var negate = unary.Akind == KotoKind.PrefixMinus;
-                this.Set(destination, MirRvalue.Unary(negate ? MirUnaryOp.Neg : MirUnaryOp.Not, this.body.AddOperand(this.Operand(unary.Operand)), !negate || type.IsFloatingPoint || type.IsWrappingInteger), node);
-                break;
-            default:
-                this.Unsupported(node, destination);
-                break;
-        }
-    }
-
-    // SPEC 4.6.1, 4.6.3: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
-    // end its length), from Len of the receiver; of a Utf8Slice, the one struct Binding serves as a sequence (SequenceMember), Len of its
-    // byte Slice. SPEC 4.7.4: an Array's or a Dictionary's capacity is the temporary intrinsic Capacity of a shared view of the handle
-    // (owner decision 2026-10-11) until R8's representation structs make it a Field read.
-    private void Metadata(MirPlace destination, MemberAccessKoto member)
-    {
-        var form = IntrinsicDisposition.FormOf(member);
-        if (form is not (BuiltinForm.Length or BuiltinForm.IsEmpty or BuiltinForm.Indices or BuiltinForm.Capacity))
-        {
-            this.Unsupported(member, destination);
-            return;
-        }
-
-        var sequence = this.Place(member.Left);
-        if (form == BuiltinForm.Capacity)
-        {
-            var start = this.arguments.Count;
-            this.arguments.Add(this.Borrow(SemanticsKind.Ref, sequence, member));
-            this.Invoke(destination, MirCallee.Intrinsic(IntrinsicId.Capacity), start, member);
-            return;
-        }
-
-        if (AdtDef.IsStruct(this.body.TypeOf(sequence)))
-        {
-            sequence = this.body.Project(sequence, MirProjectionKind.Field, AdtDef.IndexOf(this.body.TypeOf(sequence)!, "value"));
-        }
-
-        var length = form == BuiltinForm.Length ? destination : this.Temp(BoundType.ISize, member);
-        this.Set(length, MirRvalue.Len(sequence), member);
-        if (form != BuiltinForm.Length)
-        {
-            var start = this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize))));
-            this.body.AddOperand(MirOperand.Move(length));
-            this.Set(destination, form == BuiltinForm.IsEmpty ? MirRvalue.Binary(MirBinaryOp.Eq, start, true) : MirRvalue.Aggregate(MirAggregateKind.Adt, start, 2, TypeOf(member)), member);
-        }
-    }
-
-    // SPEC 13.3: `and` and `or` evaluate the right operand only where the left does not decide the result: the left into the destination,
-    // then the branch on it to the right operand or past it.
-    private void Logical(MirPlace destination, BinaryKoto logical)
-    {
-        this.Assign(destination, logical.Left);
-        var (right, join, and) = (this.body.AddBlock(), this.body.AddBlock(), logical.Akind == KotoKind.And);
-        this.Branch(destination, logical.Left, and ? join : right, and ? right : join);
-        this.current = right;
-        this.Assign(destination, logical.Right);
-        this.Join(join, logical.Right);
-        this.current = join;
-    }
-
-    // SPEC 13.5.4, 13.5.7, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks
-    // nothing; a folded direct literal is its constant and evaluates nothing, a fitted literal is its operand, and a Never operand only
-    // diverges. A case adaptation (SPEC 8.9), whose operation each Semantics case selects (an acquisition, a borrow, an address or an object
-    // creation), has no MIR form: the only case-dependent forms are PairLayer and PairAcquire (R3 U16a: an owner decision).
-    private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type)
-    {
-        var binding = (ConversionBinding)HirTables.PlanOf(conversion).Mode;
-        if (HirTables.PlanOf(conversion).Folded is { } folded)
-        {
-            this.Use(destination, MirOperand.Const(this.body.Const(new(type.IsFloatingPoint ? MirConstKind.Float : MirConstKind.Integer, type, folded))), conversion);
-        }
-        else if (binding is ConversionBinding.Literal or ConversionBinding.Abrupt)
-        {
-            this.Assign(binding == ConversionBinding.Literal ? destination : this.Temp(conversion.Left), conversion.Left);
-        }
-        else if (binding == ConversionBinding.CaseAdaptation)
-        {
-            this.Unsupported(conversion, destination);
-        }
-        else
-        {
-            // SPEC 13.5.7: an upcast to a view of another Semantics borrows its operand's payload in the view's mode, then changes the view.
-            var borrowed = HirTables.AdjustOf(conversion.Left).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow && TypeOf(conversion.Left).Components is [var payload]
-                ? compilation.Types.Reference(type.Semantics, payload) : null;
-            var operand = this.Operand(conversion.Left, borrowed);
-            var source = this.TypeOf(operand) ?? type;
-            var kind = binding switch
-            {
-                ConversionBinding.Wrap => MirCastKind.Wrap,
-                ConversionBinding.Bits => MirCastKind.Bits,
-                ConversionBinding.ObjectUpcast => MirCastKind.Upcast,
-                ConversionBinding.Pointer => source.Semantics == SemanticsKind.Raw ? MirCastKind.Pointer : MirCastKind.IntToPointer,
-                _ => source.IsFloatingPoint == type.IsFloatingPoint ? source.IsFloatingPoint ? MirCastKind.Floating : MirCastKind.Integer : MirCastKind.Numeric,
-            };
-
-            // IMPL 21.5.3: an integer conversion whose source range lies within its target's checks nothing (T and Wrapping<T>, u8@u32,
-            // i8@i64), nor does a widening floating-point one or one from an integer to a floating-point Type.
-            var proven = kind switch
-            {
-                MirCastKind.Integer => this.Width(source, out var signed) is var from and > 0 && this.Width(type, out var target) is var to and > 0 &&
-                    (target || !signed) && from - (signed ? 1 : 0) <= to - (target ? 1 : 0),
-                MirCastKind.Floating => ReferenceEquals(type, BoundType.F64),
-                MirCastKind.Numeric => type.IsFloatingPoint,
-                _ => true,
-            };
-
-            this.Set(destination, MirRvalue.Cast(kind, this.body.AddOperand(operand), type) with { Proven = proven }, conversion);
-        }
     }
 
     // SPEC 3.2, 4.3.2, 6.4: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
@@ -487,31 +328,6 @@ internal sealed partial class MirBuilder
         this.Use(target, value, node);
     }
 
-    // IMPL 21.5.3: whether an operation cannot Abort: it checks nothing (a comparison, a bit operation, or an operation of a floating-point,
-    // raw pointer or wrapping Type), or a literal right operand proves its check: a divisor other than 0 and, for a checked signed
-    // quotient, -1; a shift count below the left operand's width.
-    private bool Proven(MirBinaryOp op, BoundType type, in MirOperand right)
-    {
-        var literal = right.Kind == MirOperandKind.Const && this.body.Consts[right.Arg].Kind == MirConstKind.Integer ? this.body.Consts[right.Arg].Bits : (Int128?)null;
-        return op switch
-        {
-            MirBinaryOp.Add or MirBinaryOp.Sub or MirBinaryOp.Mul => type.IsFloatingPoint || type.IsWrappingInteger || type.Semantics == SemanticsKind.Raw,
-            MirBinaryOp.Div or MirBinaryOp.Rem => type.IsFloatingPoint || (literal is { } divisor && divisor != 0 && (divisor != -1 || op == MirBinaryOp.Rem || !type.IsInteger || type.IsUnsignedInteger)),
-            MirBinaryOp.Shl or MirBinaryOp.Shr => literal is { } count && count >= 0 && count < this.Width(type, out _),
-            _ => true,
-        };
-    }
-
-    // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the target's pointer width; 0 for
-    // another Type, such as a Type parameter, whose instance decides it.
-    private int Width(BoundType type, out bool signed)
-    {
-        var integer = type.Underlying;
-        signed = !integer.IsUnsignedInteger;
-        return integer is not { IsInteger: true, Kind: BoundTypeKind.Primitive } ? 0 : integer.Name is "isize" or "usize" ? compilation.PointerWidth
-            : int.TryParse(integer.Name.AsSpan(1), NumberStyles.None, CultureInfo.InvariantCulture, out var width) ? width : 0;
-    }
-
     // SPEC 3.1: a literal's constant, a number's being the value Binding fitted (its plan row's Folded); -1 without one.
     private int Literal(Koto node)
     {
@@ -553,7 +369,14 @@ internal sealed partial class MirBuilder
         }
     }
 
-    private void Use(MirPlace destination, in MirOperand operand, Koto node) => this.Set(destination, MirRvalue.Use(this.body.AddOperand(operand)), node);
+    // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).
+    private void Use(MirPlace destination, in MirOperand operand, Koto node)
+    {
+        if (operand.Kind != MirOperandKind.Move || operand.Place != destination)
+        {
+            this.Set(destination, MirRvalue.Use(this.body.AddOperand(operand)), node);
+        }
+    }
 
     private void Unit(MirPlace destination, Koto node) => this.Use(destination, this.UnitOperand(), node);
 
@@ -563,6 +386,9 @@ internal sealed partial class MirBuilder
 
     private MirPlace Temp(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
         => new(this.Live(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, true), Name: name, Role: role)), this.temporaries));
+
+    // The place given where it has the Type, else a new temp of it.
+    private MirPlace Temp(BoundType type, Koto node, MirPlace? into) => into is { } place && ReferenceEquals(this.body.TypeOf(place), type) ? place : this.Temp(type, node);
 
     // An Unsupported form, or a derived one, in a temp of the Type its consumer expects, else of its own.
     private MirPlace Unsupported(Koto node, bool derived = false, BoundType? type = null)

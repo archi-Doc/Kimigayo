@@ -1,0 +1,94 @@
+fn init @9
+  _0: Point return @9
+  _1: i32 arg x @9
+  _2: i32 arg y @9
+  _3: () temp @12
+  _4: () temp @13 s1
+  _5: i32 temp @14 s1
+  _6: () temp @18 s1
+  _7: i32 temp @19 s1
+  s1: lexical in s0 @12
+  bb0:
+      StorageLive(_3) @12
+      StorageLive(_4) @13 s1
+      StorageLive(_5) @14 s1
+    * _5 = copy _1 @17 s1
+      _0.0 = move _5 @13 s1
+      _4 = const () @13 s1
+      StorageDead(_5) @14 s1
+      StorageDead(_4) @13 s1
+      StorageLive(_6) @18 s1
+      StorageLive(_7) @19 s1
+    * _7 = copy _2 @22 s1
+      _0.1 = move _7 @18 s1
+      _6 = const () @18 s1
+      StorageDead(_7) @19 s1
+      StorageDead(_6) @18 s1
+      _3 = const () @12 s1
+      StorageDead(_3) @12
+      return @12
+fn top-level#0 @23
+  _0: () return @23
+  s1: lexical in s0 @24
+  bb0:
+      _0 = const () @24 s1
+      return @24
+fn addresses @25
+  _0: i32 return @25
+  _1: uniq/Point arg point @25
+  _2: raw/Point var p @30 s1
+  _3: () temp @37 s1
+  _4: () temp @39 s2
+  _5: i32 temp @40 s2
+  _6: i32 var second @46 s2
+  _7: raw/Point temp @49 s2
+  _8: raw/i32 var field @53 s2
+  _9: i32 temp @63 s2
+  s1: lexical in s0 @29
+  s2: unsafe in s1 @38
+  bb0:
+      StorageLive(_2) @30 s1
+    * _2 = &raw (*_1): raw/Point @32 s1
+      StorageLive(_3) @37 s1
+      StorageLive(_4) @39 s2
+      StorageLive(_5) @40 s2
+    * _5 = const 1_i32 @45 s2
+      (*_2).0 = move _5 @39 s2
+      _4 = const () @39 s2
+      StorageDead(_5) @40 s2
+      StorageDead(_4) @39 s2
+      StorageLive(_6) @46 s2
+      StorageLive(_7) @49 s2
+    * _7 = Add(copy _2, const 1_isize) proven @49 s2
+      _6 = copy (*_7).1 @48 s2
+      StorageDead(_7) @49 s2
+      StorageLive(_8) @53 s2
+    * _8 = &raw (*_2).1: raw/i32 @55 s2
+      StorageLive(_9) @63 s2
+    * _9 = Add(copy (*_8), copy _6) @63 s2
+      goto bb6 check bb7 @62 s2
+  bb1:
+      return @25
+  bb2:
+      StorageDead(_2) @30 s1
+      goto bb1 @25
+  bb3:
+      StorageDead(_3) @37 s1
+      goto bb2 @25
+  bb4:
+      StorageDead(_8) @53 s2
+      StorageDead(_6) @46 s2
+      goto bb3 @25
+  bb5:
+      StorageDead(_9) @63 s2
+      goto bb4 @25
+  bb6:
+      _0 = move _9 @62 s2
+      goto bb5 @62 s2
+  bb7:
+      StorageDead(_9) @63 s2
+      StorageDead(_8) @53 s2
+      StorageDead(_6) @46 s2
+      StorageDead(_3) @37 s1
+      StorageDead(_2) @30 s1
+      unreachable @29

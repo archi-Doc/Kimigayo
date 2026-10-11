@@ -1,0 +1,6 @@
+func effects(flag: bool, text: string) -> ()
+    require flag else => return
+    defer => Console.writeLine("done")
+    _ = text@move
+    if flag => Console.writeLine("flag")
+    return

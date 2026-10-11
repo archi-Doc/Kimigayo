@@ -125,9 +125,7 @@ internal sealed partial class MirBuilder
                 var (type, adjust, place) = (symbol.Type ?? BoundType.Unit, HirTables.AdjustOf(binding), this.selected[start + i]);
                 var mutable = binding is SyntaxFormKoto { IsMutablePattern: true } || (binding is IdentifierNameKoto name && loop?.IsMutableSlot(name) == true);
                 var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, true), mutable, symbol.Name)), this.lexical);
-                var value = adjust.Adaptation == HirAdaptation.None ? MirRvalue.Use(this.body.AddOperand(this.Acquire(adjust, place, null, false, binding)))
-                    : this.Ref(place, type, false);
-                this.Set(new(local), value, binding);
+                this.Use(new(local), this.Acquire(adjust, place, type, false, binding, new(local)), binding);
                 this.locals[symbol] = local;
             }
         }

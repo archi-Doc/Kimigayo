@@ -1,0 +1,121 @@
+fn init @9
+  _0: Key return @9
+  _1: i32 arg value @9
+  _2: () temp @11
+  _3: () temp @11
+  _4: i32 temp @12
+  bb0:
+      StorageLive(_2) @11
+      StorageLive(_3) @11
+      StorageLive(_4) @12
+    * _4 = copy _1 @15
+      _0.0 = move _4 @11
+      _3 = const () @11
+      StorageDead(_4) @12
+      StorageDead(_3) @11
+      _2 = const () @11
+      StorageDead(_2) @11
+      return @11
+fn equals @16
+  _0: bool return @16
+  _1: ref/Key arg self @16
+  _2: ref/Key arg other @16
+  bb0:
+    * _0 = Eq(copy (*_1).0, copy (*_2).0) proven @22
+      return @22
+fn compare @29
+  _0: i32 return @29
+  _1: ref/Key arg self @29
+  _2: ref/Key arg other @29
+  bb0:
+    * _0 = Sub(copy (*_1).0, copy (*_2).0) @35
+      return @35
+fn top-level#0 @42
+  _0: () return @42
+  s1: lexical in s0 @43
+  bb0:
+      _0 = const () @43 s1
+      return @43
+fn order @44
+  _0: bool return @44
+  _1: ref/Key arg a @44
+  _2: ref/Key arg b @44
+  _3: bool temp @55
+  _4: i32 temp @58
+  bb0:
+    * _0 = equals(copy _1, copy _2) -> bb1 @51
+  bb1:
+      switch copy _0 [0: bb2, otherwise: bb3] @51
+  bb2:
+      StorageLive(_3) @55
+      _3 = equals(copy _1, copy _2) -> bb4 @55
+  bb3:
+      StorageDead(_4) @58
+      StorageDead(_3) @55
+      return @50
+  bb4:
+      _0 = Not(move _3) proven @55
+      switch copy _0 [0: bb6, otherwise: bb5] @55
+  bb5:
+      StorageLive(_4) @58
+      _4 = compare(copy _1, copy _2) -> bb7 @58
+  bb6:
+      goto bb3 @54
+  bb7:
+      _0 = Lt(move _4, const 0_i32) proven @58
+      goto bb6 @58
+fn generic @61
+  _0: bool return @61
+  _1: ref/T arg left @61
+  _2: ref/T arg right @61
+  _3: bool temp @73 s1
+  _4: i32 temp @73 s1
+  s1: lexical in s0 @71
+  bb0:
+      StorageLive(_3) @73 s1
+      StorageLive(_4) @73 s1
+    * _4 = requirement compare of Comparable(copy _1, copy _2) -> bb1 @73 s1
+  bb1:
+      _3 = Ge(move _4, const 0_i32) proven @73 s1
+      goto bb4 check bb5 @72 s1
+  bb2:
+      return @61
+  bb3:
+      StorageDead(_4) @73 s1
+      StorageDead(_3) @73 s1
+      goto bb2 @61
+  bb4:
+      _0 = move _3 @72 s1
+      goto bb3 @72 s1
+  bb5:
+      StorageDead(_4) @73 s1
+      StorageDead(_3) @73 s1
+      unreachable @71
+fn text @76
+  _0: bool return @76
+  _1: string arg name @76
+  _2: string arg other @76
+  _3: ref/string temp @82
+  _4: ref/string temp @83
+  _5: ref/string temp @85
+  bb0:
+      StorageLive(_3) @82
+    * _3 = &_1: ref/string @82
+      StorageLive(_4) @83
+      _4 = &_2: ref/string @83
+      _0 = Eq(move _3, move _4) proven @81
+      switch copy _0 [0: bb1, otherwise: bb2] @81
+  bb1:
+      StorageLive(_5) @85
+      _5 = &_1: ref/string @85
+      _0 = Eq(move _5, const "kimi") proven @84
+      goto bb2 @84
+  bb2:
+      StorageDead(_5) @85
+      StorageDead(_4) @83
+      StorageDead(_3) @82
+      drop _2 -> bb3 @76
+  bb3:
+      drop _1 -> bb4 @76
+  bb4:
+      return @80

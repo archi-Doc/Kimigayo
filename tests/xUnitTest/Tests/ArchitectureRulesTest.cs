@@ -14,7 +14,7 @@ public class ArchitectureRulesTest
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
     // The Binding types the MIR builder may name: the published tables, plans and declaration facts. Frozen at the R2b exit; R3 U1 adds
-    // the builder's gaps (BuiltinForm, the key of the builder-only intrinsic rows, and CompilerFunctionKind, the intrinsic table's own key),
+    // the builder's gaps (BuiltinForm, a sequence's metadata member, and CompilerFunctionKind, the intrinsic table's own key),
     // R3 U13 TestDefinition (the syntax-level #Test marker that keys a test's body), R3 U14 DefaultDecl (U1's view of a default, the key of
     // its template, which the list missed); only the declaration views deferred to their first
     // reader (ImplTable, VTableDef, UniversalRelations, EffectBoundTable, AvailableBounds; R4/R5) join it.
@@ -110,7 +110,7 @@ public class ArchitectureRulesTest
     [InlineData("Kimi.Compiler.HirPlaceKind", 11)]
     [InlineData("Kimi.Compiler.HirCompletion", 3)]
     [InlineData("Kimi.Compiler.ExpansionKind", 7)]
-    [InlineData("Kimi.Compiler.IntrinsicId", 34)] // 30 + the temporary Capacity and FormatCapacity, FormatHint and FormatFinish (owner approvals 2026-10-11); R8 removes them and the limit returns to 30.
+    [InlineData("Kimi.Compiler.IntrinsicId", 34)] // 30 + the temporary Capacity and FormatBuffer, FormatHint and FormatFinish (owner approvals 2026-10-11); R8 removes them and the limit returns to 30.
     [InlineData("Kimi.Compiler.Mir.MirStatementKind", 5)]
     [InlineData("Kimi.Compiler.Mir.MirRvalueKind", 9)]
     [InlineData("Kimi.Compiler.Mir.MirTerminatorKind", 6)]

@@ -137,34 +137,25 @@ public partial class Compilation
         return records == 0;
     }
 
-    // The MIR records the mir pipeline publishes, added to the list when one is given: construction records and validator findings in the
-    // source modules. The library's are gated by the MIR corpus test (V9) until it builds without them (R3).
+    // The MIR records the mir pipeline publishes, added to the list when one is given: construction records and validator findings, the
+    // library's as well as the source modules'.
     private int MirRecords(List<Problem>? into)
     {
-        var count = 0;
-        if (this.mir is { } program)
+        if (this.mir is not { } program)
         {
-            foreach (var record in program.Records)
-            {
-                Add(record.Code, record.Subject);
-            }
+            return 0;
+        }
 
+        if (into is not null)
+        {
+            into.AddRange(program.Records);
             foreach (var finding in program.Findings)
             {
-                Add(DiagnosticCode.InternalInvariant_Kd, finding.Subject);
+                into.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
             }
         }
 
-        return count;
-
-        void Add(DiagnosticCode code, SourceRef site)
-        {
-            if (site.Module < this.SourceModules.Length)
-            {
-                into?.Add(new(code, site));
-                count++;
-            }
-        }
+        return program.Records.Count + program.Findings.Count;
     }
 }
 

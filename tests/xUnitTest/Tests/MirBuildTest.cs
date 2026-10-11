@@ -286,6 +286,43 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
+    // V11: a body of N statement groups of the common forms (a local from a call, a condition with an update, a match with a binding, a
+    // loop with a transfer, an interpolation) grows its MIR and its cold build's allocation linearly with N, and a warm rebuild allocates
+    // nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void BodiesScaleLinearly()
+    {
+        var (sizes, work, allocated) = (new[] { 16, 32, 64 }, new long[3], new long[3]);
+        Compilation c = null!;
+        for (var i = 0; i < sizes.Length; i++)
+        {
+            var text = new StringBuilder("enum Shape\n    Dot\n    Line(i32)\nfunc touch(n: i32) -> i32 => n\nfunc work(flag: bool, shape: Shape) -> i32\n    var total = 0\n");
+            for (var n = 0; n < sizes[i]; n++)
+            {
+                text.Append($"    let v{n} = touch({n})\n    if flag and v{n} > 0 => total += v{n}\n    match shape\n        .Line(let x) => total += x\n        _ => ()\n");
+                text.Append("    while total > 1000\n        total -= 1\n        if flag => exit\n    Console.writeLine(\"\\(total)\")\n");
+            }
+
+            c = Compile(text.Append("    return total\n").ToString());
+            var before = GC.GetAllocatedBytesForCurrentThread();
+            var program = c.BuildMir();
+            var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "work" });
+            allocated[i] = GC.GetAllocatedBytesForCurrentThread() - before;
+            work[i] = body.Blocks.Length + body.Statements.Length;
+            Assert.True(!body.HasOpaque && program.Records.Count == 0 && program.Findings.Count == 0, $"{sizes[i]} groups");
+        }
+
+        output.WriteLine($"N {string.Join(", ", sizes)}: MIR size {string.Join(", ", work)}, cold build allocation {string.Join(", ", allocated)}");
+        Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
+        Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold build allocation {string.Join(", ", allocated)}");
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
+    }
+
     // Plan 5.6.1, SPEC 8.9, 8.10, 13.5.5.1: one body serves every Semantics case. Under each view of tests/mir/cases (one binder, two
     // binders, a Closure, which has its enclosing function's binders, a default template and its copy, which names the omitting caller's
     // binder), a PairLayer step is its Place itself in the owner case and the referent of the case's reference otherwise, and a

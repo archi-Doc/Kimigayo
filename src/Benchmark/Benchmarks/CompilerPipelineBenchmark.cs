@@ -7,10 +7,13 @@ using Kimi.Compiler;
 
 namespace Benchmark;
 
-/// <summary>Measures fresh compilation; the phase runner uses the same five-stage pipeline.</summary>
+/// <summary>Measures fresh compilation; the phase runner uses the same six-stage pipeline.</summary>
 [Config(typeof(BenchmarkConfig))]
 public class CompilerPipelineBenchmark
 {
+    /// <summary>The number of measurement boundaries: one before each stage and one after the last.</summary>
+    internal const int Boundaries = 7;
+
     private string source = string.Empty;
 
     /// <summary>Gets or sets the number of helper functions and calls from main.</summary>
@@ -22,6 +25,9 @@ public class CompilerPipelineBenchmark
     public bool Branches { get; set; }
 
     internal string Source => this.source;
+
+    /// <summary>Gets the number of MIR bodies each compilation builds: the source's and the library's.</summary>
+    internal int MirBodies { get; private set; }
 
     /// <summary>Constructs the input outside measurement and validates full emission.</summary>
     [GlobalSetup]
@@ -48,7 +54,7 @@ public class CompilerPipelineBenchmark
         builder.Append("    return\n");
         this.source = builder.ToString();
         using var writer = new StringWriter();
-        this.Compile(writer);
+        this.MirBodies = this.Compile(writer).BuildMir().Bodies.Length;
         Require(writer.GetStringBuilder().Length > 0, "Emission produced no IR.");
     }
 
@@ -56,12 +62,13 @@ public class CompilerPipelineBenchmark
     [Benchmark]
     public void FreshCompileToIr() => this.Compile(TextWriter.Null);
 
-    // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once.
+    // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. The MIR is built as the mir pipeline's
+    // Analyze builds it, before the old analysis, which still decides (R3-R5).
     internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)
     {
-        if (!(timestamps.IsEmpty && allocations.IsEmpty) && (timestamps.Length != 6 || allocations.Length != 6))
+        if (!(timestamps.IsEmpty && allocations.IsEmpty) && (timestamps.Length != Boundaries || allocations.Length != Boundaries))
         {
-            throw new ArgumentException("Five-stage measurements require six timestamp and allocation boundaries.");
+            throw new ArgumentException("Six-stage measurements require seven timestamp and allocation boundaries.");
         }
 
         Capture(0, timestamps, allocations);
@@ -75,14 +82,18 @@ public class CompilerPipelineBenchmark
         Require(result.Binding.CheckStartup(OutputKind.Application).IsComplete, "Startup failed.");
         Capture(2, timestamps, allocations);
 
-        Require(result.Ownership.Analyze().IsVerified, "Ownership verification failed.");
+        var mir = result.BuildMir();
+        Require(mir.Records.Count == 0 && mir.Findings.Count == 0, "MIR construction or validation failed.");
         Capture(3, timestamps, allocations);
 
-        Require(result.Emission.TryPrepare(out var module, out var failure), failure);
+        Require(result.Ownership.Analyze().IsVerified, "Ownership verification failed.");
         Capture(4, timestamps, allocations);
 
-        module.WriteIr(output);
+        Require(result.Emission.TryPrepare(out var module, out var failure), failure);
         Capture(5, timestamps, allocations);
+
+        module.WriteIr(output);
+        Capture(6, timestamps, allocations);
         return result;
     }
 

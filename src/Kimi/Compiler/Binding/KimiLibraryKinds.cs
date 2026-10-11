@@ -133,7 +133,7 @@ internal enum IntrinsicId : byte
     TestTempDirectory,
     StaticEnsure, // SPEC 22.2.3.
     Capacity, // Temporary (owner, 2026-10-11): an Array's or a Dictionary's capacity (SPEC 4.7.4) until R8 makes it a Field read.
-    FormatCapacity, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: an owning interpolation's private buffer of
+    FormatBuffer, // Temporary (owner, 2026-10-11) until R8 writes the internal adapter in Kimigayo: an owning interpolation's private buffer of
     FormatHint, // the capacity its instance estimates, the hint before each write and the adapter's end into the string (utf8-formatting 5.1, 5.2).
     FormatFinish,
 }
@@ -190,33 +190,16 @@ internal readonly record struct IntrinsicDisposition(DispositionKind Kind, Intri
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
-    // The builder-only rows (R3 decision 5): the existing compiler function that serves a built-in form, whose own row is its disposition
-    // (a Body R8 writes over the representation structs, which the legacy helpers serve until then); None where MIR states the form itself
-    // (Len, Len == 0, the ResolvedRange aggregate) or, for Capacity, the temporary IntrinsicId.Capacity reads it until R8.
-    internal static CompilerFunctionKind Serving(BuiltinForm form) => form switch
-    {
-        BuiltinForm.ArrayLiteral => CompilerFunctionKind.ArrayAppend, // Each element into the empty Array, after ArrayReserve of their count.
-        BuiltinForm.Slice => CompilerFunctionKind.RawSlice, // From the start its range resolves to against Len.
-        _ => CompilerFunctionKind.None,
-    };
-
-    // The built-in form of a published node: a sequence's metadata by its member, a dynamic Array literal and a built-in slicing (an Index
-    // whose Place is a value).
-    internal static BuiltinForm FormOf(Koto node) => HirTables.Op(node) switch
-    {
-        HirOp.PrimitiveOp when node is MemberAccessKoto member => Binding.SequenceMember(member),
-        HirOp.Aggregate when node is ArrayLiteralKoto { BoundType.Kind: BoundTypeKind.Array } => BuiltinForm.ArrayLiteral,
-        HirOp.Index when HirTables.PlaceOf(node).Kind == HirPlaceKind.Value => BuiltinForm.Slice,
-        _ => BuiltinForm.None,
-    };
+    // The built-in form of a published node: a sequence's metadata by its member.
+    internal static BuiltinForm FormOf(Koto node)
+        => HirTables.Op(node) == HirOp.PrimitiveOp && node is MemberAccessKoto member ? Binding.SequenceMember(member) : BuiltinForm.None;
 
     private static IntrinsicDisposition Intrinsic(IntrinsicId id) => new(DispositionKind.Intrinsic, id);
 
     private static IntrinsicDisposition Fail(string code) => new(DispositionKind.Intrinsic, IntrinsicId.Fail, code);
 }
 
-/// <summary>A built-in form with neither a call Binding selected nor an intrinsic of its own (R3 decision 5):
-/// <see cref="IntrinsicDisposition.FormOf"/> gives a node's, <see cref="IntrinsicDisposition.Serving"/> its builder-only row.</summary>
+/// <summary>A sequence's metadata member, which Binding serves without a call: <see cref="IntrinsicDisposition.FormOf"/> gives a node's.</summary>
 internal enum BuiltinForm : byte
 {
     None,
@@ -224,6 +207,4 @@ internal enum BuiltinForm : byte
     IsEmpty,
     Indices, // The ResolvedRange from 0 to the length (SPEC 4.6.3).
     Capacity, // An Array's or a Dictionary's capacity (SPEC 4.7.4).
-    ArrayLiteral, // An Array literal (SPEC 4.7.4, 12.3.2).
-    Slice, // A built-in range indexing of a sequence (SPEC 4.6.1, 4.6.5).
 }

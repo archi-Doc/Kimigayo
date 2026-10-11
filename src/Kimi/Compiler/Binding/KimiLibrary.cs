@@ -327,8 +327,8 @@ public sealed partial class KimiLibrary
     public BindingSymbol? GetSymbol(KimiDeclarationId id)
         => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.symbols[index] : null;
 
-    // The declaration of a compiler function, which the MIR builder calls where a builder-only row serves a built-in form by it
-    // (IntrinsicDisposition.Serving); null for None and the compiler-only $abort.
+    // The declaration of a compiler function, which the MIR builder calls where that function serves a built-in form (an Array literal, a
+    // slicing, a Dictionary literal); null for None and the compiler-only $abort.
     internal BindingSymbol? Function(CompilerFunctionKind kind)
     {
         foreach (ref readonly var entry in KimiLibraryCatalog.Entries)

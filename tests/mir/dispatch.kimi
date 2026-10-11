@@ -1,0 +1,14 @@
+open struct Shape
+    public var size: i32
+    public virtual func area(self: objref/Self) -> i32 => self.size
+    protected init(size: i32) => self.size = size
+struct Square : Shape
+    public init(size: i32) : base(size) => ()
+    override func area(self: objref/Self) -> i32 => base.area() * self.size
+func measure(shape: objref/Shape) -> i32 => shape.area()
+func make() -> i32
+    let square = Kimi.Intrinsics.makeObj<Square>(Square.init(3))
+    let view = square@objref/Shape
+    let total = measure(view) + measure(square@objref/Shape)
+    let moved: obj/Shape = square@move@obj/Shape
+    return total + moved.size

@@ -1,0 +1,12 @@
+func grow(values: uniq/Array<i32>, x: i32) -> isize
+    values.append(x)
+    values[0] = x
+    return values.length
+func lookup(table: ref/Dictionary<string, i32>, key: string) -> i32 => table[key]
+func iterate(values: ref/Array<i32>) -> i32
+    var sum = 0
+    for value in values
+        sum += value
+    for i in 0..3
+        sum += i
+    return sum

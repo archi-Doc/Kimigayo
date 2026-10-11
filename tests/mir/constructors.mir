@@ -75,8 +75,7 @@ fn make @54
   _4: Leaf temp @81 s1
   _5: rc/Plain var counted @87 s1
   _6: Plain temp @95 s1
-  _7: Never temp @99 s1
-  _8: i32 temp @100 s1
+  _7: i32 temp @100 s1
   s1: lexical in s0 @56
   bb0:
       StorageLive(_1) @57 s1
@@ -101,9 +100,8 @@ fn make @54
       _5 = intrinsic MakeRc<Plain>(move _6) -> bb7 @89 s1
   bb7:
       StorageDead(_6) @95 s1
-      StorageLive(_7) @99 s1
-      StorageLive(_8) @100 s1
-    * _8 = Add(copy _1.0, copy _2.0) @100 s1
+      StorageLive(_7) @100 s1
+    * _7 = Add(copy _1.0, copy _2.0) @100 s1
       goto bb14 check bb15 @99 s1
   bb8:
       return @54
@@ -120,15 +118,13 @@ fn make @54
       StorageDead(_1) @57 s1
       goto bb8 @54
   bb13:
-      StorageDead(_8) @100 s1
-      StorageDead(_7) @99 s1
+      StorageDead(_7) @100 s1
       goto bb9 @54
   bb14:
-      _0 = move _8 @99 s1
+      _0 = move _7 @99 s1
       goto bb13 @99 s1
   bb15:
-      StorageDead(_8) @100 s1
-      StorageDead(_7) @99 s1
+      StorageDead(_7) @100 s1
       drop _5 -> bb16 @87 s1
   bb16:
       StorageDead(_5) @87 s1

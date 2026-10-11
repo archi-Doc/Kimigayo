@@ -254,7 +254,7 @@ public class KimiLibraryShapeTest
     }
 
     // Plan 5.8: the intrinsic table gives every compiler function one disposition; an intrinsic serves at most one of them, except Fail,
-    // which carries a fixed SPEC 22.5.4 code; there are at most 30 intrinsics, and the temporary Capacity, FormatCapacity, FormatHint and
+    // which carries a fixed SPEC 22.5.4 code; there are at most 30 intrinsics, and the temporary Capacity, FormatBuffer, FormatHint and
     // FormatFinish (owner approvals 2026-10-11) until R8.
     [Fact]
     public void EveryCompilerFunctionHasOneDisposition()
@@ -274,15 +274,12 @@ public class KimiLibraryShapeTest
         Assert.True(Enum.GetValues<IntrinsicId>().Length <= 34);
     }
 
-    // R3 decision 5: the builder-only rows serve a dynamic Array literal and a built-in slicing as existing compiler functions, a Body or an
-    // intrinsic other than Fail, whose declarations the library gives by kind; MIR states the metadata itself.
+    // R3 decision 5: the MIR builder serves a built-in form (an Array literal, a slicing, a Dictionary literal) by an existing compiler
+    // function, whose declaration the library gives by kind.
     [Fact]
-    public void BuiltinFormsAreServedByExistingCompilerFunctions()
+    public void CompilerFunctionsHaveTheirDeclarations()
     {
         var library = Library.Value.Library;
-        var rows = Enum.GetValues<BuiltinForm>().Select(static x => (Form: x, Function: IntrinsicDisposition.Serving(x))).Where(static x => x.Function != CompilerFunctionKind.None).ToArray();
-        Assert.Equal([(BuiltinForm.ArrayLiteral, CompilerFunctionKind.ArrayAppend), (BuiltinForm.Slice, CompilerFunctionKind.RawSlice)], rows);
-        Assert.All(rows, static x => Assert.NotEqual(IntrinsicId.Fail, IntrinsicDisposition.Of(x.Function).Id));
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             Assert.True(entry.Function == CompilerFunctionKind.None || ReferenceEquals(library.Function(entry.Function), library.GetSymbol(entry.Id)), entry.Id.ToString());

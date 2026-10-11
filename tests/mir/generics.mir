@@ -1,0 +1,151 @@
+fn top-level#0 @2
+  _0: () return @2
+  s1: lexical in s0 @3
+  bb0:
+      _0 = const () @3 s1
+      return @3
+fn largest @4
+  _0: T return @4
+  _1: ref/Array<T> arg values @4
+  _2: T arg fallback @4
+  _3: T var mut best @19 s1
+  _4: () temp @22 s1
+  _5: ArrayIterator<T> temp @22 s1
+  _6: Option<ref/T> temp (Subject) @22 s1
+  _7: uniq/ArrayIterator<T> temp @52 s1
+  _8: isize temp @59 s1
+  _9: ref/T var value @23 s2
+  _10: () temp @25 s2
+  _11: () temp @26 s3
+  _12: bool temp @27 s3
+  _13: i32 temp @27 s3
+  _14: ref/T temp @29 s3
+  _15: () temp @31 s4
+  _16: T temp @32 s4
+  _17: isize temp @60 s1
+  _18: T temp @37 s1
+  s1: lexical in s0 @18
+  s2: lexical in s1 @22
+  s3: lexical in s2 @25
+  s4: lexical in s3 @30
+  bb0:
+      StorageLive(_3) @19 s1
+    * _3 = copy _2 @21 s1
+      StorageLive(_4) @22 s1
+      StorageLive(_5) @22 s1
+    * _5 = iterate(copy _1) -> bb1 @22 s1
+  bb1:
+      goto bb2 @22 s1
+  bb2:
+      StorageLive(_6) @22 s1
+      StorageLive(_7) @52 s1
+      _7 = &uniq two-phase _5: uniq/ArrayIterator<T> @52 s1
+      _6 = next(move _7) -> bb6 @22 s1
+  bb3:
+      StorageDead(_5) @22 s1
+      StorageDead(_4) @22 s1
+      StorageLive(_18) @37 s1
+    * _18 = copy _3 @37 s1
+      goto bb25 check bb26 @36 s1
+  bb4:
+      StorageLive(_17) @60 s1
+      _17 = discriminant(_6) @60 s1
+      switch copy _17 [1: bb16, otherwise: bb5] @60 s1
+  bb5:
+      unreachable @22 s1
+  bb6:
+      StorageLive(_8) @59 s1
+      _8 = discriminant(_6) @59 s1
+      switch copy _8 [0: bb7, otherwise: bb4] @59 s1
+  bb7:
+      StorageLive(_9) @23 s2
+      _9 = copy (_6 as case 0).0 @23 s2
+      StorageLive(_10) @25 s2
+      StorageLive(_11) @26 s3
+      StorageLive(_12) @27 s3
+      StorageLive(_13) @27 s3
+      StorageLive(_14) @29 s3
+    * _14 = &_3: ref/T @29 s3
+      _13 = requirement compare of Comparable(copy _9, move _14) -> bb11 @27 s3
+  bb8:
+      StorageDead(_11) @26 s3
+      _10 = const () @25 s3
+      StorageDead(_10) @25 s2
+      goto bb15 @25 s2
+  bb9:
+      StorageDead(_12) @27 s3
+      StorageLive(_15) @31 s4
+      StorageLive(_16) @32 s4
+    * _16 = copy (*_9) @33 s4
+      drop _3 -> bb12 @31 s4
+  bb10:
+      StorageDead(_12) @27 s3
+      _11 = const () @26 s3
+      goto bb8 @26 s3
+  bb11:
+      _12 = Gt(move _13, const 0_i32) proven @27 s3
+      StorageDead(_14) @29 s3
+      StorageDead(_13) @27 s3
+      switch copy _12 [0: bb10, otherwise: bb9] @27 s3
+  bb12:
+      _3 = move _16 @31 s4
+      _15 = const () @31 s4
+      drop _16 -> bb13 @32 s4
+  bb13:
+      StorageDead(_16) @32 s4
+      StorageDead(_15) @31 s4
+      _11 = const () @30 s4
+      goto bb8 @30 s3
+  bb14:
+      StorageDead(_8) @59 s1
+      StorageDead(_7) @52 s1
+      StorageDead(_6) @22 s1
+      goto bb2 @4
+  bb15:
+      StorageDead(_9) @23 s2
+      goto bb14 @4
+  bb16:
+      _4 = const () @22 s1
+      goto bb17 @22 s1
+  bb17:
+      StorageDead(_17) @60 s1
+      StorageDead(_8) @59 s1
+      StorageDead(_7) @52 s1
+      StorageDead(_6) @22 s1
+      goto bb3 @4
+  bb18:
+      return @4
+  bb19:
+      drop _2 -> bb20 @4
+  bb20:
+      goto bb18 @4
+  bb21:
+      drop _3 -> bb22 @19 s1
+  bb22:
+      StorageDead(_3) @19 s1
+      goto bb19 @4
+  bb23:
+      drop _18 -> bb24 @37 s1
+  bb24:
+      StorageDead(_18) @37 s1
+      goto bb21 @4
+  bb25:
+      _0 = move _18 @36 s1
+      goto bb23 @36 s1
+  bb26:
+      drop _18 -> bb27 @37 s1
+  bb27:
+      StorageDead(_18) @37 s1
+      drop _3 -> bb28 @19 s1
+  bb28:
+      StorageDead(_3) @19 s1
+      drop _2 -> bb29 @4
+  bb29:
+      unreachable @18
+fn use @38
+  _0: i64 return @38
+  _1: ref/Array<i64> arg values @38
+  bb0:
+    * _0 = largest<i64>(copy _1, const 0_i64) -> bb1 @44
+  bb1:
+      return @44

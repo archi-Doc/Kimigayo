@@ -19,6 +19,7 @@ internal sealed partial class MirBuilder
     private readonly List<int> component = []; // The nodes whose component is open (Tarjan's stack).
     private readonly List<DefaultDecl> edges = []; // The defaults omitted in the defaults being visited, innermost last.
     private readonly List<int> folded = []; // A copy's scopes, locals and blocks in this body.
+    private ulong prepared; // The prepared parameters the template being built reads (bit i: p_i; past 64, all).
     private Edges? walker;
 
     // Tarjan's algorithm over the omission graph: a default, then each default a call in it omits. A component is built where it closes,
@@ -67,20 +68,23 @@ internal sealed partial class MirBuilder
         {
             this.Body(new(function, MirBodyKind.DefaultTemplate, decl.Index), decl.Function, function, type, decl.Expression);
             ref var node = ref CollectionsMarshal.AsSpan(this.omissions)[index];
-            (node.Body, node.Failed) = (this.body, this.body.HasOpaque || this.program.Findings.Count > findings);
+            (node.Body, node.Failed, node.Reads) = (this.body, this.body.HasOpaque || this.program.Findings.Count > findings, this.prepared);
         }
     }
 
-    // SPEC 7.2.3: an explicit argument of a call that omits defaults acquired into a pending slot of its parameter's Type.
-    private MirOperand Pending(in MirOperand operand, BoundType? type, Koto node)
+    // SPEC 7.2.3: the pending slot of an explicit argument of a call that omits defaults, of its parameter's Type, which takes the argument
+    // (Pending) where its acquisition did not form it there.
+    private MirPlace Slot(BoundType? type, Koto node) => this.Temp(type ?? TypeOf(node), node, MirLocalRole.PendingSlot);
+
+    private MirOperand Pending(MirPlace slot, in MirOperand operand, Koto node)
     {
-        var slot = this.Temp(type ?? this.TypeOf(operand) ?? BoundType.Unit, node, MirLocalRole.PendingSlot);
         this.Use(slot, operand, node);
         return MirOperand.Move(slot);
     }
 
     // SPEC 7.2.3: the omitted defaults of a call, each into a pending slot of its parameter's Type in parameter order, from shared borrows
-    // of the earlier parameters' slots: a copy of its template, a call of a recursive template, or an Opaque value reading those slots where
+    // of the earlier parameters' slots (a copy, of those its template reads): a copy of its template, a call of a recursive template
+    // (every slot, its arguments), or an Opaque value reading those slots where
     // its template failed (no record) or the copy would take the body past the limit (the call's Resource record). A default that does not
     // complete reaches no later default and no callee (SPEC 15.6.7): false, building going on for the checks only.
     private bool Defaults(CallPlan call, BindingSymbol function, Subst? subst, int start, Koto node)
@@ -110,7 +114,8 @@ internal sealed partial class MirBuilder
             {
                 for (var i = 0; i < decl.Index; i++)
                 {
-                    this.arguments.Add(this.Borrow(SemanticsKind.Ref, this.arguments[start + MirCallee.Position(function, i)].Place, node));
+                    var read = template.Recursive || (template.Reads & (1UL << Math.Min(i, 63))) != 0;
+                    this.arguments.Add(read ? this.Borrow(SemanticsKind.Ref, this.arguments[start + MirCallee.Position(function, i)].Place, node) : default);
                 }
 
                 if (template.Recursive)
@@ -138,8 +143,8 @@ internal sealed partial class MirBuilder
     // call, its locals after this body's (its result the slot, its parameters the borrows from at), its entry block the current one (the
     // builder targets no entry block) and its returns going on after it; each Type applied and each callee's substitution composed
     // (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent
-    // acquisition its case's (Acquire), and each static and constant added again. A Type or callee the call does not instantiate is
-    // unsupported at the call.
+    // acquisition its case's (Acquire), each static and constant added again, and a Drop the instance's Type does not need left out. A Type
+    // or callee the call does not instantiate is unsupported at the call.
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
     {
         var (map, failed, after) = (this.folded, false, this.body.AddBlock());
@@ -195,7 +200,9 @@ internal sealed partial class MirBuilder
                 Source = FoldInfo(terminator.Source), Target = Target(terminator.Target), CheckTarget = Target(terminator.CheckTarget), Operand = operand, Start = first,
                 Place = place, Callee = terminator.Callee with { Subst = composed ?? terminator.Callee.Subst },
             };
-            this.body.Terminate(this.current, terminator.Kind == MirTerminatorKind.Return ? MirTerminator.Goto(after, copied.Source) : copied);
+            // The copy keeps a Drop where its instance's Type may need one (MirTypes.MayNeedDrop, the rule every Drop is built by).
+            var kept = terminator.Kind != MirTerminatorKind.Drop || MirTypes.MayNeedDrop(this.body.TypeOf(place));
+            this.body.Terminate(this.current, terminator.Kind == MirTerminatorKind.Return ? MirTerminator.Goto(after, copied.Source) : kept ? copied : MirTerminator.Goto(copied.Target, copied.Source));
         }
 
         this.current = after;
@@ -255,8 +262,8 @@ internal sealed partial class MirBuilder
     }
 
     // A node of the omission graph: its default, Tarjan's low link, whether its component is open, whether it is recursive, and its
-    // template and whether that failed.
-    private record struct Omission(DefaultDecl Decl, int Low, bool Open = true, bool Recursive = false, MirBody? Body = null, bool Failed = false);
+    // template, whether that failed and the prepared parameters it reads.
+    private record struct Omission(DefaultDecl Decl, int Low, bool Open = true, bool Recursive = false, MirBody? Body = null, bool Failed = false, ulong Reads = 0);
 
     // The defaults the calls of a default omit, appended to the edges; a Closure's body is a body of its own.
     private sealed class Edges(MirBuilder builder) : KotoVisitor

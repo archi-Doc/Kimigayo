@@ -35,19 +35,16 @@ fn nothing @16
 fn run @18
   _0: () return @18
   _1: () temp @20 s1
-  _2: () temp @22 s1
-  _3: i32 temp @23 s1
+  _2: i32 temp @23 s1
   s1: lexical in s0 @19
   bb0:
       StorageLive(_1) @20 s1
     * _1 = nothing() -> bb1 @20 s1
   bb1:
       StorageDead(_1) @20 s1
-      StorageLive(_2) @22 s1
-      StorageLive(_3) @23 s1
-    * _3 = twice(const 1_i32) -> bb2 @23 s1
+      StorageLive(_2) @23 s1
+    * _2 = twice(const 1_i32) -> bb2 @23 s1
   bb2:
-      StorageDead(_3) @23 s1
-      StorageDead(_2) @22 s1
+      StorageDead(_2) @23 s1
       _0 = const () @19 s1
       return @19

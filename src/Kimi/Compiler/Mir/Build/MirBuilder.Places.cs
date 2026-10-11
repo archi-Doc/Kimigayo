@@ -109,7 +109,9 @@ internal sealed partial class MirBuilder
     {
         if (this.locals.TryGetValue(symbol, out var local))
         {
-            return this.body.Locals[local].Role == MirLocalRole.PreparedInput ? this.body.Project(new(local), MirProjectionKind.Deref, 0) : new(local);
+            var prepared = this.body.Locals[local].Role == MirLocalRole.PreparedInput;
+            this.prepared |= prepared ? 1UL << Math.Min(local - 1, 63) : 0;
+            return prepared ? this.body.Project(new(local), MirProjectionKind.Deref, 0) : new(local);
         }
 
         var captures = this.receiver > 0 && this.declaration is FunctionKoto { IsAnonymous: true } closure ? BoundClosure.Of(closure)?.Captures : null;
@@ -220,15 +222,16 @@ internal sealed partial class MirBuilder
         return this.body.Project(result, MirProjectionKind.Deref, 0);
     }
 
-    // A value held in a temp where its consumer needs a Place, unless an expansion holds it already.
-    private MirPlace Value(Koto node)
+    // A value held in a temp where its consumer needs a Place, or in the place given where that has its Type, unless an expansion holds it
+    // already.
+    private MirPlace Value(Koto node, MirPlace? into = null)
     {
         if (this.Located(node) is { } located)
         {
             return located;
         }
 
-        var temp = this.Temp(node);
+        var temp = this.Temp(TypeOf(node), node, into);
         this.Into(temp, node);
         return temp;
     }

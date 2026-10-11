@@ -64,8 +64,9 @@ internal sealed partial class MirBuilder
         {
             // A direct base call's receiver is its implementation's (the selection adapted it to the slot's declaring Type).
             var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : TyCtxt.Signature(direct!, subst, direct!.ReceiverIndex, out _);
-            var operand = this.Operand(receiver, ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter, true);
-            this.arguments[start] = defaults ? this.Pending(operand, parameter, receiver) : operand;
+            var slot = defaults ? this.Slot(parameter, receiver) : (MirPlace?)null;
+            var operand = this.Operand(receiver, ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter, true, slot);
+            this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
             completes &= Completes(receiver);
         }
 
@@ -75,8 +76,9 @@ internal sealed partial class MirBuilder
             {
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
-                    var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true);
-                    this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = defaults ? this.Pending(operand, argument.ParameterType, argument.Source!) : operand;
+                    var slot = defaults ? this.Slot(argument.ParameterType, argument.Source!) : (MirPlace?)null;
+                    var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true, slot);
+                    this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = slot is { } place ? this.Pending(place, operand, argument.Source!) : operand;
                     completes &= Completes(argument.Source!);
                 }
             }

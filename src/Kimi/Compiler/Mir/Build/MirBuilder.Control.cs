@@ -92,7 +92,7 @@ internal sealed partial class MirBuilder
     // pending since its target began), then branches: at run time to its result's placement and on through its target's drop tree to the
     // target its plan row names (a function's return block, built at its first return), for the checks to the code after it. An operand
     // that does not complete leaves no transfer.
-    private void Transfer(MirPlace destination, JumpKoto jump)
+    private void Transfer(JumpKoto jump)
     {
         var (plan, index) = (HirTables.PlanOf(jump).Plan, this.targets.Count - 1);
         while (index >= 0 && !ReferenceEquals(this.targets[index].Node, plan))
@@ -102,7 +102,7 @@ internal sealed partial class MirBuilder
 
         if (index < 0)
         {
-            this.Unsupported(jump, destination); // A target not built yet: a for, a match or a defer.
+            this.Unsupported(jump); // A target not built yet: a for, a match or a defer.
             return;
         }
 

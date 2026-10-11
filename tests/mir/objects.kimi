@@ -1,0 +1,10 @@
+struct Cell
+    public var value: i32
+    public init(value: i32) => self.value = value
+func shared() -> i32
+    let counted = Kimi.Intrinsics.makeRc(Cell.init(1))
+    let copy = Kimi.Intrinsics.clone(counted@ref)
+    let atomic = Kimi.Intrinsics.makeArc(Cell.init(2))
+    let owned = Kimi.Intrinsics.makeObj(Cell.init(3))
+    let view = owned@objref
+    return counted.value + copy.value + atomic.value + view.value

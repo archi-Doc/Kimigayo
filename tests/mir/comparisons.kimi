@@ -1,0 +1,11 @@
+struct Key
+    Self is Comparable
+    public let value: i32
+    public init(value: i32) => self.value = value
+    public func equals(self: ref/Self, other: ref/Self) -> bool => self.value == other.value
+    public func compare(self: ref/Self, other: ref/Self) -> i32 => self.value - other.value
+func order(a: ref/Key, b: ref/Key) -> bool => a == b or a != b and a < b
+func generic<T>(left: ref/T, right: ref/T) -> bool
+    T is Comparable
+    return left >= right
+func text(name: string, other: string) -> bool => name == other or name == "kimi"

@@ -137,7 +137,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         (this.declaration, this.scope, this.statementStart) = (declaration, 0, false);
         this.locals.Clear();
         this.targets.Clear();
-        (this.temporaries, this.lexical, this.scopeIds) = (-1, -1, 0);
+        (this.temporaries, this.lexical, this.scopeIds, this.prepared) = (-1, -1, 0, 0);
         this.scopes.Clear();
         this.registrations.Clear();
         this.trees.Clear();
@@ -236,8 +236,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.CloseScope(temporaries);
     }
 
-    // A block item for its effect, its temporaries ending with it (SPEC 3.6.2): a local's declaration, or a value into a temp; a declaration
-    // builds nothing here.
+    // A block item for its effect, its temporaries ending with it (SPEC 3.6.2): a local's declaration, a form that leaves no value, or a
+    // value into a temp; a declaration builds nothing here.
     private void Statement(Koto item)
     {
         this.statementStart = true;
@@ -249,6 +249,9 @@ internal sealed partial class MirBuilder(Compilation compilation)
             case HirOp.Let:
                 this.Let((VariableKoto)item);
                 break;
+            case HirOp.Require or HirOp.Defer or HirOp.Discard or HirOp.Jump or HirOp.Continue:
+                this.Effect(item);
+                break;
             default:
                 this.Into(this.Temp(item), item);
                 break;
@@ -256,6 +259,28 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
         this.CloseScope(temporaries);
         this.statementStart = false;
+    }
+
+    // A form that leaves no value, built for its effect without a destination: a require (SPEC 14.11); a defer (SPEC 16.1), registered here
+    // and built where its scope is left; a discard (SPEC 14.2.4), its operand acquired by bare acquisition into a temp destroyed with the
+    // statement's; a transfer (SPEC 14.5).
+    private void Effect(Koto node)
+    {
+        switch (node)
+        {
+            case RequireKoto require:
+                this.Require(require);
+                break;
+            case DiscardKoto discard:
+                this.Assign(this.Temp(discard.Operand), discard.Operand);
+                break;
+            case JumpKoto jump:
+                this.Transfer(jump);
+                break;
+            default:
+                this.Register(Cleanup.Defer, -1, node, this.lexical);
+                break;
+        }
     }
 
     // The value a body or a block's last item leaves in the destination: the item as its consumer takes it, a block's own result, or the
