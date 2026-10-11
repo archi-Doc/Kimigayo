@@ -328,14 +328,15 @@ public class MinimalEmissionTest
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
-        c.Ownership.Analyze();
+        c.Analyze();
         return c;
     }
 
     internal static string Describe(Compilation c, string? error)
-        => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Ownership={c.Ownership.Result}; " +
+        => $"{error}; Binding={c.Binding.Result}; Startup={c.Binding.Startup}; Analysis={c.Analysis}; " +
             string.Join(", ", c.Binding.Issues) + "; " + string.Join(", ", c.Ownership.Issues) + "; " +
             (c.Ownership.ControlFlow is { } flow ? string.Join(", ", flow.Issues) + "; " + string.Join(", ", flow.PendingBinding) : string.Empty) + "; " +
+            (c.Pipeline == CompilerPipeline.Mir ? string.Join(", ", c.Problems.Skip(c.Ownership.Issues.Count).Select(x => $"{x.Code} {HirTables.Op(c.SyntaxOf(x.Subject))}")) + "; " : string.Empty) +
             string.Join(", ", c.Ownership.Bodies.SelectMany(x => x.Operations).Select(x => $"{x.Kind}:{x.Place}:{x.Source.Akind}"));
 
     // SPEC 8.4.5: an effect bound rejects its conformance at Binding for the Loans and calls, and after ownership analysis

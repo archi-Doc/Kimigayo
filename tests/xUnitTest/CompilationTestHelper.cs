@@ -56,7 +56,7 @@ internal static class CompilationTestHelper
     internal static string WriteIr(Compilation c)
     {
         using var writer = new StringWriter();
-        if (!c.Emission.WriteIr(writer, out var error))
+        if (!c.WriteIr(writer, out var error))
         {
             Assert.Fail(MinimalEmissionTest.Describe(c, error));
         }

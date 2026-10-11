@@ -57,7 +57,7 @@ internal sealed class TestCatalog
     {
         this.Cases.Clear();
         this.Sites.Clear();
-        if (!compilation.IsTestBuild || !compilation.Binding.Result.IsComplete || !compilation.Ownership.Result.IsVerified)
+        if (!compilation.IsTestBuild || !compilation.Binding.Result.IsComplete || !compilation.Analysis.IsVerified)
         {
             throw new InvalidOperationException("Discovery requires complete test semantic verification.");
         }
@@ -97,6 +97,11 @@ internal sealed class TestCatalog
             "kimi-test-artifact-v1", Compilation.CompilerVersion, compilation.BuildMetadata!.TargetTriple,
             compilation.BuildMetadata.LanguageVersion, this.ProjectId, project.KimiOptions.Debug.ToString(), project.ProjectFile.Optimization,
         };
+        if (compilation.Pipeline == CompilerPipeline.Mir)
+        {
+            inputs.AddRange(["pipeline", "mir"]); // Plan 12.1: the pipeline is part of the effective configuration (R3–R5).
+        }
+
         var aliases = Compilation.EffectiveAliases(project.ProjectFile.Alias).ToArray();
         Section("aliases", aliases.Length);
         inputs.AddRange(aliases);

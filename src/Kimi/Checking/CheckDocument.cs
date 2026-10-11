@@ -47,7 +47,7 @@ public sealed record CheckDocument(string Schema, string Compiler, CheckUnitDesc
             sources[i] = new(source.Path, source.IsInput, source.IsInput && hashes.TryGetValue(source.Path, out var hash) ? hash : null);
         }
 
-        return new(SchemaName, Compilation.CompilerVersion, new(project, target, mode, debug), output.Outcome, output.Accepted, output.Presence, sources, output.Diagnostics);
+        return new(SchemaName, Compilation.CompilerIdentity, new(project, target, mode, debug), output.Outcome, output.Accepted, output.Presence, sources, output.Diagnostics);
     }
 }
 

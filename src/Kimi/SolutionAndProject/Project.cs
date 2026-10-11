@@ -493,13 +493,11 @@ public partial class Project
         compilation.Binding.ReportDiagnostics();
         var startup = compilation.IsTestBuild ? compilation.Binding.CheckTestStartup() : compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
         compilation.Binding.ReportStartupDiagnostics();
-        var ownership = compilation.Ownership.Analyze();
-        var controlFlow = compilation.Ownership.ControlFlow!;
-        controlFlow.ReportDiagnostics();
-        compilation.Ownership.ReportDiagnostics();
+        var analysis = compilation.Analyze();
+        compilation.ReportAnalysis();
 
         // SPEC 23.3.3: acceptance reads the error state of every front-end partition, never the displayed list.
-        var accepted = binding.IsComplete && startup.IsComplete && ownership.IsVerified && !compilation.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
+        var accepted = binding.IsComplete && startup.IsComplete && analysis.IsVerified && !compilation.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
         if (accepted && prepared is not null)
         {
             compilation.Tests.Discover(compilation);

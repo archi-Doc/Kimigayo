@@ -27,8 +27,7 @@ public sealed class MirModelTest
         Assert.Equal(Enumerable.Range(0, modules.Length).Select(static x => (ushort)x), modules.Select(static x => x.Syntax.Module));
         foreach (var node in KotoTree.Walk(c.Kotonoha.RootKoto).Concat(KotoTree.Walk(c.Library.Kotonoha.RootKoto).Take(500)))
         {
-            var reference = SourceRef.Of(node);
-            Assert.Same(node, modules[reference.Module].Syntax.Nodes[reference.Id]);
+            Assert.Same(node, c.SyntaxOf(SourceRef.Of(node)));
         }
     }
 

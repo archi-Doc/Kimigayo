@@ -35,7 +35,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                     counts[1] += body.HasOpaque ? 1 : 0;
                     foreach (var site in body.OpaqueSites)
                     {
-                        counts[3] += HirTables.Op(Node(c, site.Source)) == HirOp.Error ? 1 : 0;
+                        counts[3] += HirTables.Op(c.SyntaxOf(site.Source)) == HirOp.Error ? 1 : 0;
                     }
                 }
             }
@@ -43,7 +43,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             foreach (var site in program.Unsupported.Where(x => x.Module == module.Syntax.Module))
             {
                 counts[2]++;
-                var key = Key(Node(c, site));
+                var key = Key(c.SyntaxOf(site));
                 sites[key] = sites.GetValueOrDefault(key) + 1;
             }
 
@@ -94,10 +94,10 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Equal([1, 2], compare.OpaqueRoots.ToArray());
         Assert.Equal(MirTerminatorKind.Return, compare.Blocks.ToArray().Last(static x => x.Terminator.Kind != MirTerminatorKind.Unreachable).Terminator.Kind);
 
-        var field = Node(c, Assert.Single(program.Unsupported, x => x.Module == 0 && Node(c, x) is PropertyKoto));
-        Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => ReferenceEquals(Node(c, y.Source), field))));
+        var field = c.SyntaxOf(Assert.Single(program.Unsupported, x => x.Module == 0 && c.SyntaxOf(x) is PropertyKoto));
+        Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => ReferenceEquals(c.SyntaxOf(y.Source), field))));
         var error = bodies["g"];
-        Assert.Equal(HirOp.Error, HirTables.Op(Node(c, error.OpaqueSites[0].Source)));
+        Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(error.OpaqueSites[0].Source)));
         Assert.DoesNotContain(error.OpaqueSites[0].Source, program.Unsupported);
     }
 
@@ -125,9 +125,6 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         c.Binding.CheckStartup(OutputKind.Application);
         return c;
     }
-
-    internal static Koto Node(Compilation c, SourceRef source)
-        => (source.Module < c.SourceModules.Length ? c.SourceModules[source.Module] : c.Library.Kotonoha).Syntax.Nodes[source.Id]!;
 
     // The census key of a record: its Op, a Name's Res, a call's callee kind or the part of the call not built yet, and an Adjust the
     // builder does not take yet.

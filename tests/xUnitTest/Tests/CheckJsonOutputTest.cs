@@ -88,7 +88,7 @@ public sealed class CheckJsonOutputTest : IDisposable
         var project = this.WriteProject("App", "main.kimi", Broken);
         var document = CheckJsonOutput.Create(new KimiOptions(), [project], TestContext.Current.CancellationToken);
         Assert.Equal(CheckDocument.SchemaName, document.Schema);
-        Assert.Equal(Compilation.CompilerVersion, document.Compiler);
+        Assert.Equal(Compilation.CompilerIdentity, document.Compiler);
         Assert.Equal(new CheckUnitDescription(project, WindowsProfile.Target, CheckMode.Product, false), document.Unit);
         Assert.Equal(CheckOutcome.Completed, document.Outcome);
         Assert.False(document.Accepted);
