@@ -73,6 +73,16 @@ rules that result from them.
   excludes unrelated members from top-level collisions. A declaration without an ID is not a file identity.
   Incomplete declarations produce no member anchor; a successful compiler build remains mandatory for Report use.
 
+- **CR-A3a** (planning session, two independent designs compared). A3's semantic dependency check exposed Koto's
+  direct reads of Binding.IsRunning/Result, missed by the old call-only regex. HirTables owns HasCurrentBinding's
+  existing fact: move the complete predicate there, using State(node), and keep Koto as an R6 forwarding property.
+  Binding.ObjectViews and SemanticQuery read the owner directly. Preserve the exact short-circuit order: do not obtain
+  Compilation.Binding before confirming Resolved, because that getter lazily allocates Binding. No state or cache is
+  added. Reject relaxing the dependency rule or moving the predicate into SemanticQuery, which requires a query-instance
+  access path from syntax. Prepare this behavior-preserving structure in a separate commit before A3 enforcement.
+  Delete the syntax-owned predicate and Binding's reads through it. Measured delta: Binding +48 tokens / +4 lines,
+  Parsing -25 tokens / -1 line. Verify rebind invalidation, SyntaxId/HIR reuse, allocation regressions and A0 snapshots.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

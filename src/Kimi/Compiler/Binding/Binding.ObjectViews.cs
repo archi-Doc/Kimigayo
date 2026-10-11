@@ -17,7 +17,7 @@ public sealed partial class Binding
     internal bool TryGetObjectErasure(Koto use, out ObjectErasureEvidence evidence)
     {
         evidence = default;
-        return use.HasCurrentBinding && this.objectErasures is not null && this.objectErasures.TryGetValue(use, out evidence);
+        return HirTables.HasCurrentBinding(use) && this.objectErasures is not null && this.objectErasures.TryGetValue(use, out evidence);
     }
 
     internal BoundType PayloadReadReference(ConversionKoto source, BoundType payload)

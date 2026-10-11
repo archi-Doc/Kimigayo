@@ -58,6 +58,10 @@ internal struct HirTables
 
     internal static BindingState State(Koto node) => node.SyntaxOwner is { } table ? table.Hir.States[node.SyntaxId] : default;
 
+    // Resolve the state first: Compilation.Binding is lazy and must remain uncreated for unresolved nodes.
+    internal static bool HasCurrentBinding(Koto node) => State(node) == BindingState.Resolved &&
+        (node.CodeContext.Compilation.Binding.IsRunning || node.CodeContext.Compilation.Binding.Result != default);
+
     internal static BindingFailure Failure(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Failures[node.SyntaxId] : default;
 
     internal static object? Meaning(Koto node) => node.SyntaxOwner is { } table ? table.Hir.Meanings[node.SyntaxId] : null;

@@ -506,8 +506,7 @@ public abstract class Koto
         internal set => HirTables.Of(this).Symbols[this.SyntaxId] = value;
     }
 
-    internal bool HasCurrentBinding => this.BindingState == BindingState.Resolved &&
-        (this.CodeContext.Compilation.Binding.IsRunning || this.CodeContext.Compilation.Binding.Result != default);
+    internal bool HasCurrentBinding => HirTables.HasCurrentBinding(this);
 
     internal BoundType? ErasedFunctionType
     {

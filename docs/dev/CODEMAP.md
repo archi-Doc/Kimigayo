@@ -20,6 +20,9 @@ tests/scripts/CodeRulesCompilerTest.ps1. Operational commands and the shared SAR
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 
+`HirTables.HasCurrentBinding` owns whether a resolved node's Binding facts are current; SemanticQuery and Binding read
+it directly. Koto's R6 forwarding property preserves syntax-side readers and the original lazy-initialization order.
+
 Phase and dependency rules, the canonical component of each concern, structure limits and the compiler reduction stage ledger are in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md); the design decisions behind them are in [DECISIONS.md](DECISIONS.md).
 Whole-value updates share `OwnershipAnalysis.Updates.WholeValueUpdate`; the distinct `OwnershipOperationKind`
 `ReplaceBorrowed`/`ExchangeBorrowed`/`SwapBorrowed` entries feed initialization, `OwnershipBody.Updates` and
