@@ -97,6 +97,41 @@ the statement or nesting limit states its reason and bound in the code. Mir and 
 violations are fixed, except syntax-class decisions in the MIR builder, which reach 0 by the end of R6. The analyzer
 (units A0–A8, before R4) turns these limits into build errors over a shrinking baseline; until then review applies them.
 
+## Code rules
+
+The owner authorized intake and implementation of the Code Rules Analyzer on 2026-10-12 (DECISIONS CR-A0).
+The following are adopted design rules; build enforcement is introduced by A2–A7, not claimed by intake alone.
+Kimi.Analyzers owns C# rules for `src/Kimi`; compiler behavior, tests, Benchmark and Playground are outside that scope.
+Generated code is excluded. Old Analysis/Emission files receive KR1 and the built-in unused-code rules only.
+
+| Rules | Contract |
+| --- | --- |
+| KR1001–1003 | Enforce configured dependency/member restrictions and closed vocabularies; A3 preserves existing checks, with no baseline |
+| KR1004 | No Koto-keyed dictionary, set or weak table outside Syntax; Binding's baseline reaches zero at R7 exit |
+| KR1005 | No boolean `Supports*` method or property |
+| KR1006 | No Koto type test or KotoKind comparison/pattern in Mir/Build; baseline reaches zero at R6 exit |
+| KR1007 | Transitional declarations name their removal stage and reason; overdue declarations fail |
+| KR1008 | No unfiltered catch-all outside CLI, LSP and test-runner boundaries |
+| KR2001–2005, KR2010 | Parameter limits above; no failure-text out parameter; source-declared call boolean literals are named |
+| KR2006–2009 | Statement, nesting, logical-chain and file-token limits above |
+| KR3001–3002 | At most 160 UTF-16 units per physical line (whole multiline-string lines excluded); no nested conditional expression |
+| KR3003 | Computed tuple literals do not initialize an all-new-local `var (...)` deconstruction; existing-variable assignments are outside this rule |
+| IDE0051, IDE0052, IDE0060 | Remove unused/unread private members and unused parameters, preserving behavior; no baseline |
+
+One baseline row identifies a rule, its innermost named Type (file for file-wide records), and a member, local-function,
+node or line anchor. Member/file measurements cannot rise above the greater of the ordinary limit and their recorded
+value; node/line counts cannot rise. Partial-file moves preserve Type-scoped keys. Obsolete entries must be pruned.
+KR1001–1003 and KR1007 never have baselines; extend their scope only after the newly covered violations reach zero.
+KR1002's UnwrapParentheses prohibition expands outside Parsing/Binding at R7 exit.
+Syntax's prohibition on the Binding type expands to the whole Binding layer at R6 exit.
+
+Only statement and nesting limits admit CodeRuleException, with an explicit bound and nonempty reason; an exception
+and baseline cannot cover the same member/rule. All KR descriptors are NotConfigurable. Enforce reports stale rows as
+warnings, Verify as errors, and Report publishes complete observations for scripts; verification checks suppression.
+Configuration changes, new/increased baseline rows, new/increased exceptions and later removal stages require owner
+approval recorded by `Code-Rules-Approved`; pruning and reduced exception bounds/removal stages do not. The adopted
+A2–A7 configuration and initial baselines are authorized by the proposal and this intake. Mechanical evasions fail review.
+
 ## Rules during the migration
 
 - **Freeze (D5).** From R0 until R6 completes, the old Analysis and Emission paths receive no new accepted forms or

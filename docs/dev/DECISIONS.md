@@ -32,6 +32,15 @@ rules that result from them.
   makes equivalent work faster or reduces compiler code with a reasonable increase in memory, measured and recorded.
   Supersedes plan §18 P11 and §14-8. Native allocation counts and O2 run time may not regress.
 
+## Code rules (2026-10-12)
+
+- **CR-A0** (owner). Begin the adopted Code Rules Analyzer A0–A8 before R4. KR3003 covers only
+  all-new-local `var (...)` deconstruction declarations with computed tuple elements. Existing-variable assignments
+  are excluded: even uncaptured, syntactically independent locals change observably when a later RHS throws or reads
+  a ref alias. Rejected: extending capture/dependency checks into an effect/alias proof; it adds machinery for a density
+  rule. Compare diagnostics, semantic/HIR/MIR snapshots and generated IR, not DLL bytes (commit metadata differs).
+  Intake changes architecture policy only; A1–A8 introduce implementation and enforcement.
+
 ## R2b (2026-10-11, main session, as recommended)
 
 - **R2b-D1** `BoundType` stays the Type representation until R7; `TyCtxt` owns interning and `Subst` converts.

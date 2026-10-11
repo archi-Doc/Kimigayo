@@ -304,3 +304,15 @@ The user adopted `Proposals/2026-10-10 Compiler Size Reduction and Single MIR Pl
   - IMPL appendix A §A.8 (R1f, 2026-10-10): from §6.2 rule 2 (the OCC sentence), §6.3 (the PendingExclusive set; the OCC branch of the `OmittedBaseOutcome` distinction) and §11 row 5, the implementation location. A conformance whose only unproven part is a witness of uncomputed ObjectCallCompatible status is one location-only `Unsupported_Kd` at its declaration (an inherited conformance at the derived Type's base clause, once a failing check needs it); the checks resting on it are derived; a use that reaches no conformance reports at the use. An unused inherited conformance reports nothing. The SPEC is unchanged (§23.3.6.1 and §23.3.6.4 already state the rule). The `ImplDecl` state is not yet read by other conformances' verification or agreement, which keep the Unknown proof until R7. `OmittedBaseOutcome.Unsupported` remains for its non-OCC sources until the §6.2 rule 3 unit.
 
   Open: the remaining §11 rows, including the D3 Note reduction (R1b-2), IMPL §21 generation-time reporting (R1, R6) and the later stages.
+
+## 2026-10-12 — Code Rules Analyzer
+
+- `Proposals/2026-10-11 Code Rules Analyzer.md`: 一部取り込み (A0, owner instruction 2026-10-12).
+  Integrated policy: §§1.2–1.4, 3.2–3.7, 4 and 9 map to COMPILER_ARCHITECTURE's Structure limits and Code rules;
+  the decision is DECISIONS CR-A0. Before intake, the owner narrowed §4.3 KR3003 to all-new-local `var (...)`
+  declarations; existing-variable assignments and their capture/dependency analysis were removed because exceptions
+  and ref aliases invalidate the claimed sequential equivalence. These integrated policy clauses are frozen.
+  No SPEC/IMPL language rule changes. Intake does not claim build enforcement or new language support.
+  A0 measurements are recorded in PLAN_HISTORY and its evidence directory.
+  Open: A1–A8 implementation, token-cap conversion (§5), operational verification (§6), and the
+  later-stage scope extensions (§6.4). Future policy corrections belong in the owning architecture/decision documents.
