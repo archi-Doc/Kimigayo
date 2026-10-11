@@ -90,6 +90,22 @@ Each source entry records SHA-256 of the actual bytes and the Git-normalized blo
 
 The association requires a successful Verify summary and exact path/blob equality with the committed tree under the same manifest policy; missing untracked inputs and additional committed sources fail. `commit-match.json` records the full commit and manifest hash. Git line-ending/filter normalization is explicit: it is not a claim that a checkout's raw bytes equal a commit's bytes. Later PLAN/history bookkeeping can share the same verified source manifest. The manifests are evidence, not an isolated or hermetic build: SDK/runtime, external package contents and tools outside the repository remain external; use `-VerifyToolchain` for the separately recorded native-toolchain identity check. Manifest and commit-matching regressions run with `./tests/scripts/VerificationInputsTest.ps1`.
 
+## Behavior-preserving commits
+
+A restructuring commit (AGENTS, Implementation Design) shows that behavior is unchanged against the run of the commit
+before it, on the same inputs and configuration:
+
+- the diagnostic snapshot: `-DiagnosticSnapshot -DiagnosticBaseline <previous run>/diagnostic-snapshot.json`, which must
+  report no difference;
+- the semantic snapshot: `SemanticSnapshotTest` with `KIMI_SEMANTIC_SNAPSHOT=check` against the previous baseline
+  (`KIMI_SEMANTIC_BASELINE`), with `KIMI_SEMANTIC_HIR=1` and `KIMI_SEMANTIC_MIR=1` when Binding or MIR code changes;
+- the generated IR: the `.ll` files under the run's `fixtures-<Configuration>` evidence equal the previous run's (compare
+  runs from the same worktree path, since the IR records source paths).
+
+A commit that only adds or moves files outside `src/Kimi` and changes no source compiled into `Kimi.dll` may show instead
+that `Kimi.dll` is byte-identical (deterministic build). A difference means the commit changes behavior: split it, or
+treat it as a behavior change with its own tests.
+
 ## Specification acceptance and support boundaries
 
 Derive expected acceptance and rejection from the owning SPEC rules before selecting an implementation path. A specification-valid form that currently reports Unsupported is an implementation boundary, not a language rejection. Name and record that boundary with its PLAN owner. When implementing it, replace the temporary rejection with native acceptance and retain the independently invalid counterpart; a passing Milestone Program alone does not close neighboring implementation work.

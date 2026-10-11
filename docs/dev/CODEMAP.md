@@ -6,7 +6,7 @@ Navigation for compiler changes, not a specification or support matrix. Required
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.
 
-Phase and dependency rules, the canonical component of each concern, structure limits and the compiler reduction stage ledger are in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md).
+Phase and dependency rules, the canonical component of each concern, structure limits and the compiler reduction stage ledger are in [COMPILER_ARCHITECTURE.md](COMPILER_ARCHITECTURE.md); the design decisions behind them are in [DECISIONS.md](DECISIONS.md).
 Whole-value updates share `OwnershipAnalysis.Updates.WholeValueUpdate`; the distinct `OwnershipOperationKind`
 `ReplaceBorrowed`/`ExchangeBorrowed`/`SwapBorrowed` entries feed initialization, `OwnershipBody.Updates` and
 `BodyLowering.Updates`. `WholeValueTest` checks storage-form agreement and source-independent initialization.
