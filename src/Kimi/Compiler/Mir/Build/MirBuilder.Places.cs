@@ -27,7 +27,7 @@ internal sealed partial class MirBuilder
             HirPlaceKind.Index or HirPlaceKind.ConstIndex when CallPlan.Of(node) is null => this.Element((IndexKoto)node, shape.Kind),
             HirPlaceKind.CallResult => this.Referent(node),
             HirPlaceKind.Value => this.Value(node),
-            _ => this.Unsupported(node), // A Pattern binding's payload (U11), an element a key resolves (U12).
+            _ => this.Unsupported(node), // An element a key resolves (U12).
         };
 
         return this.Follow(place, shape.Layers);

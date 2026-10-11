@@ -40,8 +40,12 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var source = call.ReceiverOperation.Source ?? call.CalleeValue;
-        var value = function is null ? this.Operand(source, null, true) : default;
+        var (source, pending) = (call.ReceiverOperation.Source ?? call.CalleeValue, this.arguments.Count);
+        if (function is null)
+        {
+            this.arguments.Add(this.Operand(source, null, true)); // The callee value, pending while the arguments are evaluated.
+        }
+
         var (start, completes) = (this.arguments.Count, function is not null || Completes(source));
         CollectionsMarshal.SetCount(this.arguments, start + count);
         CollectionsMarshal.AsSpan(this.arguments)[start..].Clear(); // No stale operand reads as pending (Transfer).
@@ -65,7 +69,7 @@ internal sealed partial class MirBuilder
 
         if (!completes)
         {
-            this.arguments.RemoveRange(start, count);
+            this.arguments.RemoveRange(pending, this.arguments.Count - pending);
             return;
         }
 
@@ -75,7 +79,8 @@ internal sealed partial class MirBuilder
             this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.String, BoundType.String, Value: disposition.Code))));
         }
 
-        var operands = this.Flush(start);
+        var (operands, value) = (this.Flush(start), function is null ? this.arguments[pending] : default);
+        this.arguments.RemoveRange(pending, start - pending);
         var subst = compilation.Types.SubstOf(call);
         var callee = disposition.Kind == DispositionKind.Intrinsic ? MirCallee.Intrinsic(disposition.Id, subst) : call.Kind switch
         {
@@ -90,5 +95,22 @@ internal sealed partial class MirBuilder
         var next = this.body.AddBlock();
         this.body.Terminate(this.current, MirTerminator.Call(callee, operands, this.body.Operands.Length - operands, result, diverges ? -1 : next, this.Info(node), diverges ? next : -1, value));
         this.current = next;
+    }
+
+    // SPEC 13.6.1: a runtime Type test is the intrinsic typeTest of a shared view of the handle's payload and the target Type's token; an
+    // operand that does not complete tests nothing.
+    private void TypeTest(MirPlace destination, IsKoto test)
+    {
+        var handle = HirTables.AdjustOf(test.Left).Acquire == HirAcquire.Temporary ? this.Value(test.Left) : this.Place(test.Left);
+        if (Completes(test.Left))
+        {
+            var payload = this.body.Project(handle, MirProjectionKind.Deref, 0);
+            var view = compilation.Types.Reference(SemanticsKind.ObjRef, this.body.TypeOf(payload) ?? BoundType.Unit);
+            var start = this.body.AddOperand(this.Temporary(view, MirRvalue.Ref(MirRefKind.Shared, payload, view), test));
+            this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, TypeOf(test.Right)))));
+            var next = this.body.AddBlock();
+            this.body.Terminate(this.current, MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.TypeTest), start, 2, destination, next, this.Info(test)));
+            this.current = next;
+        }
     }
 }

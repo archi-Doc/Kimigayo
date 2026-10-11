@@ -95,12 +95,12 @@ internal enum HirCompletion : byte
 /// <param name="Adaptation">The implicit adaptation that gives the parent another Type.</param>
 internal readonly record struct HirAdjust(HirAcquire Acquire, HirAdaptation Adaptation)
 {
-    // A Pattern binding (SPEC 15.1.6): Copied, moved, by case, or borrowed in the mode its path grants.
+    // A Pattern binding (SPEC 15.1.6): Copied, or borrowed in the mode its path grants; an owned part whose Copy is not proven is
+    // transferred, which an instance whose Type is Copy performs as a Copy.
     internal static HirAdjust Of(PatternAcquisition acquisition, PatternAccessMode access) => acquisition switch
     {
         PatternAcquisition.Copy => new(HirAcquire.Copy, HirAdaptation.None),
-        PatternAcquisition.Move => new(HirAcquire.Move, HirAdaptation.None),
-        PatternAcquisition.CopyOrMove => new(HirAcquire.ByCase, HirAdaptation.None),
+        PatternAcquisition.Move or PatternAcquisition.CopyOrMove => new(HirAcquire.Move, HirAdaptation.None),
         PatternAcquisition.Borrow => new(HirAcquire.None, access == PatternAccessMode.Exclusive ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow),
         _ => default,
     };

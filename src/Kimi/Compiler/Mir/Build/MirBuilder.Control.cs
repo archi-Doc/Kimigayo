@@ -161,14 +161,32 @@ internal sealed partial class MirBuilder
     private bool IsTemp(MirPlace place) => place is { Projection: 0, Root: >= 0 } && this.body.Locals[place.Root].Kind == MirLocalKind.Temp;
 
     // SPEC 14.2.3, 3.6.2: a condition evaluated once into a bool, its temporaries cleaned up, then the branch on the bool, whose storage
-    // ends in each successor (Enter).
-    private MirPlace Test(Koto condition, int whenFalse, int whenTrue)
+    // ends in each successor (Enter). A match guard's candidates (SPEC 14.8.3) are shared borrows of the Places its Pattern selected among
+    // its temporaries, pending so that a transfer ends them, and the Subject is read after their cleanup: it stays protected until then.
+    private MirPlace Test(Koto condition, int whenFalse, int whenTrue, BoundMatch? plan = null, int pattern = 0, int start = 0)
     {
         var tested = this.OpenScope(false);
         var test = this.Temp(BoundType.Boolean, condition);
-        var temporaries = this.OpenScope(false);
+        var (temporaries, mark) = (this.OpenScope(false), this.arguments.Count);
+        for (var i = pattern; plan is not null && i < plan.Positions[pattern].End; i++)
+        {
+            if (plan.Positions[i] is { CandidateSymbol: { Type: { } type } candidate, Source: var source })
+            {
+                var reference = this.Temp(type, source, MirLocalRole.GuardCandidate, candidate.Name);
+                this.Set(reference, MirRvalue.Ref(MirRefKind.Shared, this.Follow(this.selected[start + i], 16, type.Components[0]), type), source);
+                this.arguments.Add(MirOperand.Move(reference));
+                this.locals[candidate] = reference.Root;
+            }
+        }
+
         this.Assign(test, condition);
+        this.arguments.RemoveRange(mark, this.arguments.Count - mark);
         this.CloseScope(temporaries);
+        if (plan is not null)
+        {
+            this.body.Push(this.current, MirStatement.Of(MirStatementKind.FakeRead, this.selected[start + pattern], this.Info(condition)));
+        }
+
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, false);
         return test;

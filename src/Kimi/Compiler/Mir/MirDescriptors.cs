@@ -122,7 +122,8 @@ internal static class MirDescriptors
         IntrinsicId.RawInitialize or IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 2),
         IntrinsicId.MoveBytes => Row(MirAccess.None, MirEffect.None, 3),
         IntrinsicId.Stride => Row(MirAccess.None, MirEffect.None, 0),
-        IntrinsicId.ReinterpretLoan or IntrinsicId.ErasedWriter or IntrinsicId.Clone or IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 1),
+        IntrinsicId.ReinterpretLoan or IntrinsicId.ErasedWriter or IntrinsicId.Clone => Row(MirAccess.None, MirEffect.None, 1),
+        IntrinsicId.TypeTest => Row(MirAccess.None, MirEffect.None, 2), // The payload's shared view and the target Type's token (SPEC 13.6.1).
         IntrinsicId.DestroyValues or IntrinsicId.FormatFloat or IntrinsicId.ErasedReserve or IntrinsicId.FormatInteger128 => Row(MirAccess.None),
         IntrinsicId.Abort or IntrinsicId.Fail => Row(MirAccess.None, MirEffect.Abort, 1, true),
         IntrinsicId.TestRequireAbort => Row(MirAccess.None, MirEffect.Abort, -1, true),

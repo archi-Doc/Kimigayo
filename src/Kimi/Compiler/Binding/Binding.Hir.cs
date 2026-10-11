@@ -361,8 +361,8 @@ public sealed partial class Binding
                     this.Take((node as BinaryKoto)?.Right);
                     break;
                 case BinaryKoto or UnaryKoto or RangeKoto when op is HirOp.PrimitiveOp or HirOp.Logical or HirOp.Range:
-                    this.Take(node is BinaryKoto binary ? binary.Left : node is RangeKoto range ? range.Start : ((UnaryKoto)node).Operand);
-                    this.Take((node as BinaryKoto)?.Right ?? (node as RangeKoto)?.End);
+                    this.Take(node is BinaryKoto binary ? binary.Left : node is RangeKoto range ? range.Start : ((UnaryKoto)node).Operand, inspect: op == HirOp.PrimitiveOp);
+                    this.Take((node as BinaryKoto)?.Right ?? (node as RangeKoto)?.End, inspect: op == HirOp.PrimitiveOp);
                     break;
                 case TupleLiteralKoto or ArrayLiteralKoto:
                     foreach (var element in node is TupleLiteralKoto tuple ? tuple.Elements : ((ArrayLiteralKoto)node).Elements)
@@ -468,13 +468,21 @@ public sealed partial class Binding
 
         // A consumed child: an adaptation Binding recorded at the node itself (at its fixed expected Type, or as a receiver) wins over its
         // consumer's operation. A Place adapted or used in place is not acquired, an adapted value is a Temporary, and an unadapted one taken
-        // by value is acquired by the bare rule.
-        private void Take(Koto? child, HirAdaptation adaptation = HirAdaptation.None, bool inPlace = false)
+        // by value is acquired by the bare rule. A built-in operator's operand that is not Copy, a comparison's, is inspected through a shared
+        // Loan from its evaluation instead (SPEC 13.4): a Place in place, a value other than a literal in its temporary.
+        private void Take(Koto? child, HirAdaptation adaptation = HirAdaptation.None, bool inPlace = false, bool inspect = false)
         {
             if (child is not null)
             {
                 adaptation = binding.adaptations.TryGetValue(child, out var recorded) ? HirAdjust.Of(recorded, child.BoundType) : adaptation;
-                this.Write(child, new(adaptation != HirAdaptation.None || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary : this.Bare(child), adaptation));
+                var acquire = adaptation != HirAdaptation.None || inPlace ? this.IsPlace(child) ? HirAcquire.None : HirAcquire.Temporary : this.Bare(child);
+                if (inspect && adaptation == HirAdaptation.None && (acquire is HirAcquire.Move or HirAcquire.Reborrow or HirAcquire.ByCase ||
+                    (acquire == HirAcquire.Temporary && child is not StringLiteralKoto && child.BoundType is { } type && binding.ProveCopy(type, child) != ConstraintProof.Proven)))
+                {
+                    (acquire, adaptation) = (acquire == HirAcquire.Temporary ? acquire : HirAcquire.None, HirAdaptation.SharedBorrow);
+                }
+
+                this.Write(child, new(acquire, adaptation));
             }
         }
 

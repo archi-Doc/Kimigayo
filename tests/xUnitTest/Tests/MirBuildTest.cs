@@ -80,12 +80,13 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // Plan 6.2: a form without a building rule is one record at its location, however many bodies meet it, and an Opaque value naming the
-    // locals its syntax touches; Binding's Error is a derived Opaque without a record; building goes on after both.
+    // locals its syntax touches; Binding's Error is a derived Opaque without a record; building goes on after both. The omitted default
+    // stays unbuilt until the default templates (R3 U14).
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = Compile("struct Point\n    public var x: i32 = 7\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            "func f(a: i32, b: i32) -> i32\n    let c = match a\n        0 => b\n        _ => a\n    return b\nfunc g() -> i32 => missing\n");
+            "func scale(x: i32, factor: i32 = 2) -> i32 => x * factor\nfunc f(a: i32, b: i32) -> i32\n    let c = scale(a + b)\n    return b\nfunc g() -> i32 => missing\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g").ToDictionary(static x => x.Key.Decl!.Name);

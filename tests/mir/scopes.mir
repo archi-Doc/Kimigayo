@@ -480,8 +480,10 @@ fn conditionTemporaries @100
   _2: () temp @104 s1
   _3: bool temp @105 s1
   _4: string temp @106 s1
-  _5: Never temp @110 s2
-  _6: Never temp @112 s1
+  _5: ref/string temp @106 s1
+  _6: ref/string temp @108 s1
+  _7: Never temp @110 s2
+  _8: Never temp @112 s1
   s1: lexical in s0 @103
   s2: lexical in s1 @109
   bb0:
@@ -491,18 +493,24 @@ fn conditionTemporaries @100
     * _4 = make() -> bb4 @106 s1
   bb1:
       StorageDead(_2) @104 s1
-      StorageLive(_6) @112 s1
+      StorageLive(_8) @112 s1
     * goto bb14 check bb15 @112 s1
   bb2:
       StorageDead(_3) @105 s1
-      StorageLive(_5) @110 s2
+      StorageLive(_7) @110 s2
     * goto bb11 check bb12 @110 s2
   bb3:
       StorageDead(_3) @105 s1
       _2 = const () @104 s1
       goto bb1 @104 s1
   bb4:
-      _3 = Eq(move _4, move _1) proven @105 s1
+      StorageLive(_5) @106 s1
+      _5 = &_4: ref/string @106 s1
+      StorageLive(_6) @108 s1
+      _6 = &_1: ref/string @108 s1
+      _3 = Eq(move _5, move _6) proven @105 s1
+      StorageDead(_6) @108 s1
+      StorageDead(_5) @106 s1
       drop _4 -> bb5 @106 s1
   bb5:
       StorageDead(_4) @106 s1
@@ -517,22 +525,22 @@ fn conditionTemporaries @100
       StorageDead(_2) @104 s1
       goto bb7 @100
   bb10:
-      StorageDead(_5) @110 s2
+      StorageDead(_7) @110 s2
       goto bb9 @100
   bb11:
       _0 = const 1_i32 @110 s2
       goto bb10 @110 s2
   bb12:
-      StorageDead(_5) @110 s2
+      StorageDead(_7) @110 s2
       unreachable check bb1 @109 s1
   bb13:
-      StorageDead(_6) @112 s1
+      StorageDead(_8) @112 s1
       goto bb7 @100
   bb14:
       _0 = const 2_i32 @112 s1
       goto bb13 @112 s1
   bb15:
-      StorageDead(_6) @112 s1
+      StorageDead(_8) @112 s1
       drop _1 -> bb16 @100
   bb16:
       unreachable @103

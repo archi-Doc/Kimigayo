@@ -56,6 +56,12 @@ internal sealed partial class MirBuilder
             case HirOp.If:
                 this.If(destination, (IfKoto)node);
                 break;
+            case HirOp.Match or HirOp.Try:
+                this.Match(destination, (MatchKoto)node);
+                break;
+            case HirOp.RuntimeTypeTest:
+                this.TypeTest(destination, (IsKoto)node);
+                break;
             case HirOp.Loop:
                 this.Loop(destination, (LoopKoto)node);
                 break;
@@ -137,11 +143,8 @@ internal sealed partial class MirBuilder
 
         switch (adjust.Acquire)
         {
-            case HirAcquire.Copy or HirAcquire.Move:
-                return new(adjust.Acquire == HirAcquire.Copy ? MirOperandKind.Copy : MirOperandKind.Move, this.Place(node));
-            case HirAcquire.ByCase:
-                var pair = this.Place(node);
-                return MirOperand.PairAcquire(this.Binder(this.body.TypeOf(pair)), pair);
+            case HirAcquire.Copy or HirAcquire.Move or HirAcquire.ByCase:
+                return this.Acquire(adjust.Acquire, this.Place(node));
             case HirAcquire.Reborrow:
                 return this.Temporary(TypeOf(node), MirRvalue.Ref(MirRefKind.Uniq, this.body.Project(this.Place(node), MirProjectionKind.Deref, 0), TypeOf(node)), node);
             case HirAcquire.Temporary or HirAcquire.None:
@@ -150,6 +153,10 @@ internal sealed partial class MirBuilder
                 return MirOperand.Move(this.Unsupported(node));
         }
     }
+
+    // A Place Copied, moved or acquired as its pair layer's case decides.
+    private MirOperand Acquire(HirAcquire acquire, MirPlace place)
+        => acquire == HirAcquire.ByCase ? MirOperand.PairAcquire(this.Binder(this.body.TypeOf(place)), place) : new(acquire == HirAcquire.Copy ? MirOperandKind.Copy : MirOperandKind.Move, place);
 
     // SPEC 10.2: an adapted Place, or value in a temp: the Scalar its reference layers end in, Copied; a Closure or function item erased to
     // its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a shared or exclusive
@@ -203,7 +210,8 @@ internal sealed partial class MirBuilder
         return MirOperand.Move(temp);
     }
 
-    // SPEC 13.2, 13.3: a built-in operator on its operands, its check Proven where IMPL 21.5.3 omits it; or a sequence's metadata.
+    // SPEC 13.2, 13.3: a built-in operator on its operands, its check Proven where IMPL 21.5.3 omits it; or a sequence's metadata. The left
+    // operand is pending while the right one is evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3).
     private void Primitive(MirPlace destination, Koto node, BoundType type)
     {
         switch (node)
@@ -212,10 +220,11 @@ internal sealed partial class MirBuilder
                 this.Metadata(destination, member);
                 break;
             case BinaryKoto binary when BinaryOp(binary.Akind) is { } op:
-                var (left, right) = (this.Operand(binary.Left), this.Operand(binary.Right));
-                var start = this.body.AddOperand(left);
-                this.body.AddOperand(right);
-                this.Set(destination, MirRvalue.Binary(op, start, this.Proven(op, type, right)), node);
+                var start = this.arguments.Count;
+                this.arguments.Add(this.Operand(binary.Left));
+                this.arguments.Add(this.Operand(binary.Right));
+                var proven = this.Proven(op, type, this.arguments[^1]);
+                this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
                 break;
             case UnaryKoto { Akind: KotoKind.PrefixPlus } plus:
                 this.Assign(destination, plus.Operand);
@@ -473,7 +482,8 @@ internal sealed partial class MirBuilder
 
     private MirPlace Temp(Koto node) => this.Temp(TypeOf(node), node);
 
-    private MirPlace Temp(BoundType type, Koto node) => new(this.Live(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, true))), this.temporaries));
+    private MirPlace Temp(BoundType type, Koto node, MirLocalRole role = MirLocalRole.None, string? name = null)
+        => new(this.Live(this.body.AddLocal(new(type, MirLocalKind.Temp, this.Info(node, true), Name: name, Role: role)), this.temporaries));
 
     // An Unsupported form, or a derived one, in a temp.
     private MirPlace Unsupported(Koto node, bool derived = false)
