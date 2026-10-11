@@ -35,6 +35,30 @@ internal static class MirTypes
     /// <returns>Whether it is an exclusive reference.</returns>
     internal static bool IsExclusive(BoundType? type) => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
 
+    /// <summary>Gets whether two Types agree, the one Type agreement of MIR: equal but for the Origins and Origin arguments of either Type
+    /// and its components, which an assignment or a call relates instead of equating (SPEC 15.3) and the ownership analysis checks (R4).
+    /// Interned Types that carry no Origin agree only when identical; an unknown Type (null) agrees with any.</summary>
+    /// <param name="left">A Type.</param>
+    /// <param name="right">The other Type.</param>
+    /// <returns>Whether they agree.</returns>
+    internal static bool Agree(BoundType? left, BoundType? right)
+    {
+        if (ReferenceEquals(left, right) || left is null || right is null)
+        {
+            return true;
+        }
+
+        var agree = (left.CarriesOrigin || right.CarriesOrigin) && left.Kind == right.Kind && left.Semantics == right.Semantics && ReferenceEquals(left.Symbol, right.Symbol) &&
+            left.Length == right.Length && ReferenceEquals(left.LengthExpression, right.LengthExpression) && left.ResultMode == right.ResultMode &&
+            ReferenceEquals(left.ClosureContext, right.ClosureContext) && left.Components.Count == right.Components.Count && left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments);
+        for (var i = 0; agree && i < left.Components.Count; i++)
+        {
+            agree = Agree(left.Components[i], right.Components[i]);
+        }
+
+        return agree;
+    }
+
     /// <summary>Gets whether a value of a Type holds a raw pointer, an rc handle or a Weak of one at any depth, so that reading it from an
     /// immutable static obtains authority from the environment (SPEC 8.4.10.2); a referent reached through the value counts too.</summary>
     /// <param name="type">The Type.</param>

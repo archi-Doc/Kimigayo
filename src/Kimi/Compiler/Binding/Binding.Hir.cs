@@ -136,6 +136,10 @@ public sealed partial class Binding
         // The operand a parent projects, updates, groups or borrows.
         private static Koto? Operand(Koto? parent) => (parent as BinaryKoto)?.Left ?? (parent as UnaryKoto)?.Operand;
 
+        // SPEC 13.5.7: an object upcast to a view (objref, objuniq) of an operand of another Semantics borrows the operand in the view's mode.
+        private static HirAdaptation ViewBorrow(Koto node) => node is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true } view } upcast &&
+            upcast.Left.BoundType?.Semantics != view.Semantics ? view.Semantics == SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow : HirAdaptation.None;
+
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length.
         private HirPosition PositionOf(Koto node)
@@ -348,14 +352,15 @@ public sealed partial class Binding
                 case VariableKoto or PropertyKoto:
                     this.Take(node is VariableKoto variable ? variable.InitializerKoto : ((PropertyKoto)node).InitializerKoto);
                     break;
-                case ParenthesizedKoto or MacroKoto or LabeledKoto when op == HirOp.Group:
-                    this.Write(node is LabeledKoto label ? label.Target : ((UnaryKoto)node).Operand, new(HirAcquire.None, HirAdaptation.None)); // Its group acquires it.
+                case ParenthesizedKoto or MacroKoto or LabeledKoto when op == HirOp.Group: // Its group acquires it, an erasure recorded at it included.
+                    var grouped = node is LabeledKoto label ? label.Target : ((UnaryKoto)node).Operand;
+                    this.Write(grouped, HirTables.ErasedType(grouped) is null ? new(HirAcquire.None, HirAdaptation.None) : new(this.Bare(grouped), HirAdaptation.Erasure));
                     break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
                     this.Write(transfer.Left, new(HirAcquire.Move, HirAdaptation.None));
                     break;
                 case ConversionKoto or DereferenceKoto or IsKoto: // A borrow, a followed referent and a runtime test take their operand in place.
-                    this.Take(node is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)node).Left, inPlace: op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest);
+                    this.Take(node is DereferenceKoto dereference ? dereference.Operand : ((BinaryKoto)node).Left, ViewBorrow(node), op is HirOp.Borrow or HirOp.Deref or HirOp.RuntimeTypeTest);
                     break;
                 case MemberAccessKoto member when op is HirOp.Field or HirOp.PrimitiveOp: // A stored Field or Tuple element, or a sequence's metadata.
                     this.Take(member.Left, binding.receiverOperations.TryGetValue(member, out var receiver) ? HirAdjust.Of(receiver) : HirAdaptation.None, true);

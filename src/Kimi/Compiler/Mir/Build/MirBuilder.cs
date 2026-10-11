@@ -61,21 +61,12 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private static bool Rejected(Koto node) => HirTables.Op(node) is HirOp.Error or HirOp.Literal || HirTables.Meaning(node) is null ||
         (HirTables.Symbol(node)?.Declaration is { } declaration && HirTables.Op(declaration) == HirOp.Error);
 
-    // The parameter slot a body reads at an argument position (SPEC 7.3): the receiver first (a constructor's or destructor's self at -1,
-    // else the self parameter at its written slot), then the other parameters in slot order; false past the last.
+    // The parameter slot a body reads at an argument position (MirCallee.Slot; a constructor's or destructor's self at -1); false past the last.
     private static bool Slot(BindingSymbol function, int position, out int slot)
     {
         var special = CallPlan.Parameter(function, -1) is not null;
-        var receiver = function.ReceiverIndex;
-        slot = special ? position - 1 : receiver < 0 || position > receiver ? position : position == 0 ? receiver : position - 1;
+        slot = special ? position - 1 : MirCallee.Slot(function, position);
         return position < ((FunctionKoto)function.Declaration).Parameters.Count + (special ? 1 : 0);
-    }
-
-    // The argument position of a parameter slot a call passes, Slot's inverse; a constructor's self is the call's destination.
-    private static int Position(BindingSymbol? function, int slot)
-    {
-        var receiver = function?.ReceiverIndex ?? -1;
-        return receiver < 0 || slot > receiver ? slot : slot == receiver ? 0 : slot + 1;
     }
 
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
@@ -283,7 +274,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         else
         {
             this.Statement(item);
-            if (HirTables.CompletionOf(container) == HirCompletion.Completes)
+            if (HirTables.CompletionOf(container) == HirCompletion.Completes && ReferenceEquals(this.body.TypeOf(destination), BoundType.Unit))
             {
                 this.Unit(destination, container);
             }

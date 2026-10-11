@@ -114,7 +114,8 @@ internal sealed partial class MirBuilder
     // once. Reading and writing are selected independently: a Property's custom getter (First) and setter (Second, taking the result as its
     // Evaluated argument) are called on its receiver, located once, and a standard accessor reads or writes its storage, as a Place target is
     // read and written in place. The old value is read by a built-in operation, or by a user arithmetic call (CallPlan.Of) with the secured
-    // operand, whose result replaces it.
+    // operand, whose result replaces it. A compound assignment gives Unit; an increment or decrement its old value (postfix) or its result
+    // (prefix), SPEC 13.2, the Property not read again.
     private void Update(MirPlace destination, Koto node)
     {
         var (target, right) = node is BinaryKoto update ? (update.Left, update.Right) : (((UnaryKoto)node).Operand, null);
@@ -155,6 +156,12 @@ internal sealed partial class MirBuilder
             this.Call(read, getter, target, null, given, operand);
         }
 
+        var postfix = node.Akind is KotoKind.PostfixIncrement or KotoKind.PostfixDecrement;
+        if (postfix)
+        {
+            this.Use(destination, MirOperand.Copy(read), node);
+        }
+
         var result = plan.Second is null && arithmetic is null ? storage : this.Temp(arithmetic?.ReturnType ?? this.body.TypeOf(read)!, node);
         if (arithmetic is not null)
         {
@@ -169,17 +176,22 @@ internal sealed partial class MirBuilder
             this.Set(result, MirRvalue.Binary(op, operands, this.Proven(op, this.body.TypeOf(read)!, value)), node);
         }
 
+        if (right is null && !postfix)
+        {
+            this.Use(destination, MirOperand.Copy(result), node);
+        }
+
         if (plan.Second is { } setter)
         {
-            this.Call(destination, setter, node, null, setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result));
+            this.Call(right is null ? this.Temp(BoundType.Unit, node) : destination, setter, node, null, setter.ArgumentOperations[plan.Evaluated].Source, MirOperand.Move(result));
         }
-        else
+        else if (arithmetic is not null)
         {
-            if (arithmetic is not null)
-            {
-                this.Overwrite(storage, MirOperand.Move(result), node);
-            }
+            this.Overwrite(storage, MirOperand.Move(result), node);
+        }
 
+        if (right is not null && plan.Second is null)
+        {
             this.Unit(destination, node);
         }
 
@@ -231,7 +243,7 @@ internal sealed partial class MirBuilder
         var pointer = this.Temp(compilation.Types.Pointer(element), index);
         var (some, empty, join) = (this.body.AddBlock(), this.body.AddBlock(), this.body.AddBlock());
         this.body.Terminate(this.current, MirTerminator.SwitchInt(MirOperand.Copy(count), this.body.AddCase(0, empty), 1, some, this.Info(index)));
-        this.body.Push(some, MirStatement.Assign(pointer, MirRvalue.Ref(MirRefKind.Raw, this.body.Project(sequence, MirProjectionKind.Index, start.Root), this.body.TypeOf(pointer)!), this.Info(index)));
+        this.body.Push(some, MirStatement.Assign(pointer, this.Ref(this.body.Project(sequence, MirProjectionKind.Index, start.Root), this.body.TypeOf(pointer)!, false), this.Info(index)));
         this.body.Push(empty, MirStatement.Assign(pointer, MirRvalue.Use(this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, this.body.TypeOf(pointer)!))))), this.Info(index)));
         this.body.Terminate(some, MirTerminator.Goto(join, this.Info(index)));
         this.body.Terminate(empty, MirTerminator.Goto(join, this.Info(index)));
@@ -316,6 +328,13 @@ internal sealed partial class MirBuilder
         {
             var operand = ((InvocationKoto)((MacroKoto)node).Operand).ArgumentNodes[0];
             this.located.Add((storage, this.Secure(this.Operand(operand), operand).Place));
+            if (!Completes(operand))
+            {
+                this.body.Terminate(this.current, MirTerminator.Goto(done, this.Info(node))); // No writer is acquired (SPEC 15.6.7).
+                this.current = done;
+                CollectionsMarshal.SetCount(this.located, mark);
+                return;
+            }
         }
         else
         {

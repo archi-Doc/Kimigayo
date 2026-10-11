@@ -9,8 +9,27 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.6.9); a constructor's builds its
-    // object in the destination (SPEC 6.2.3.2).
-    private void Call(MirPlace destination, Koto node) => this.Call(destination, ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!, node);
+    // object in the destination (SPEC 6.2.3.2). SPEC 13.4.1: a comparison operator's Contract call gives equals' bool, negated for !=, or
+    // compare's i32 compared with zero.
+    private void Call(MirPlace destination, Koto node)
+    {
+        var call = ExpansionPlan.Of(node)?.Second ?? CallPlan.Of(node)!;
+        if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (> MirBinaryOp.Eq and MirBinaryOp relation))
+        {
+            this.Call(destination, call, node);
+            return;
+        }
+
+        var result = this.Temp(call.ReturnType, node);
+        this.Call(result, call, node);
+        var start = this.body.AddOperand(MirOperand.Move(result));
+        if (relation != MirBinaryOp.Ne)
+        {
+            this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, call.ReturnType))));
+        }
+
+        this.Set(destination, relation == MirBinaryOp.Ne ? MirRvalue.Unary(MirUnaryOp.Not, start, true) : MirRvalue.Binary(relation, start, true), node);
+    }
 
     // SPEC 7.3, 7.6.3: a call of the function, requirement, virtual slot or callable value Binding selected: a value call's callee in its
     // receiver mode, the receiver, then the arguments in their order (an assignment's secured value first, SPEC 13.7.1), each as its Adjust
@@ -32,7 +51,7 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var (source, pending) = (call.ReceiverOperation.Source ?? call.CalleeValue, this.arguments.Count);
+        var (source, pending, subst) = (call.ReceiverOperation.Source ?? call.CalleeValue, this.arguments.Count, compilation.Types.SubstOf(call));
         if (function is null)
         {
             this.arguments.Add(this.Operand(source, call.ReceiverOperation.AdaptedType, true)); // The callee value, pending while the arguments are evaluated.
@@ -43,8 +62,10 @@ internal sealed partial class MirBuilder
         CollectionsMarshal.AsSpan(this.arguments)[start..].Clear(); // No stale operand reads as pending (Transfer).
         if (receiver is not null)
         {
-            var operand = this.Operand(receiver, call.ReceiverOperation.AdaptedType ?? call.ReceiverOperation.ParameterType, true);
-            this.arguments[start] = defaults ? this.Pending(operand, call.ReceiverOperation.ParameterType, receiver) : operand;
+            // A direct base call's receiver is its implementation's (the selection adapted it to the slot's declaring Type).
+            var parameter = ReferenceEquals(direct, function) ? call.ReceiverOperation.ParameterType : TyCtxt.Signature(direct!, subst, direct!.ReceiverIndex, out _);
+            var operand = this.Operand(receiver, ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter, true);
+            this.arguments[start] = defaults ? this.Pending(operand, parameter, receiver) : operand;
             completes &= Completes(receiver);
         }
 
@@ -55,13 +76,12 @@ internal sealed partial class MirBuilder
                 if (ReferenceEquals(argument.Source, first) == (pass == 0))
                 {
                     var operand = ReferenceEquals(argument.Source, given) ? value : this.Operand(argument.Source!, argument.AdaptedType ?? argument.ParameterType, true);
-                    this.arguments[start + Position(function, argument.ParameterIndex)] = defaults ? this.Pending(operand, argument.ParameterType, argument.Source!) : operand;
+                    this.arguments[start + MirCallee.Position(function, argument.ParameterIndex)] = defaults ? this.Pending(operand, argument.ParameterType, argument.Source!) : operand;
                     completes &= Completes(argument.Source!);
                 }
             }
         }
 
-        var subst = compilation.Types.SubstOf(call);
         if (!completes || (defaults && !this.Defaults(call, function!, subst, start, node)))
         {
             this.arguments.RemoveRange(pending, this.arguments.Count - pending);

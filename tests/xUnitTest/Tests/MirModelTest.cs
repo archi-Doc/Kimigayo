@@ -14,7 +14,9 @@ public sealed class MirModelTest
 {
     internal const string Source = "open struct Base\n    public var tag: i32 = 0\n    public init() => ()\nstruct Point : Base\n    public var x: i32 = 0\n" +
         "    public var y: bool = false\n    public init() => ()\nenum Shape\n    Dot\n    Line(i32, i32)\nfunc f() -> i32 => 1\n" +
-        "func g<s/T>(value: s/T) -> s/T\n    s is owner or uniq\n    T is Copy\n    return value\n";
+        "func g<s/T>(value: s/T) -> s/T\n    s is owner or uniq\n    T is Copy\n    return value\nfunc h(a: i32, flag: bool) -> bool => flag\n" +
+        "func d(a: i32, b: bool = true) -> i32 => a\nstruct Meter\n    public var value: i32 = 0\n    public init() => ()\n" +
+        "    public func scaled(by: i32, self: ref/Self) -> i32 => by\n";
 
     private static readonly SourceInfo At = default;
 

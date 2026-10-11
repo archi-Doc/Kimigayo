@@ -101,11 +101,8 @@ internal sealed partial class MirBuilder
             case HirOp.Logical:
                 this.Logical(destination, (BinaryKoto)node);
                 break;
-            case HirOp.Borrow: // SPEC 13.5.5.2, 5.4: the operand's Place borrowed in the mode of the node's Type, or its address.
-                var reference = TypeOf(node);
-                var kind = (ConversionBinding)HirTables.PlanOf(node).Mode == ConversionBinding.Address ? MirRefKind.Raw
-                    : MirTypes.IsExclusive(reference) ? MirRefKind.Uniq : MirRefKind.Shared;
-                this.Set(destination, MirRvalue.Ref(kind, this.Place(Child(node)), reference), node);
+            case HirOp.Borrow: // SPEC 13.5.5.2, 5.4: the operand's Place borrowed as the node's Type says, or its address.
+                this.Set(destination, this.Ref(this.Place(Child(node)), TypeOf(node), false), node);
                 break;
             case HirOp.Convert:
                 this.Convert(destination, (BinaryKoto)node, TypeOf(node));
@@ -192,7 +189,7 @@ internal sealed partial class MirBuilder
                 {
                     HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => MirOperand.PairAcquire(binder, place),
                     HirAcquire.ByCase when !MirTypes.IsExclusive(type) => MirOperand.Copy(place),
-                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, MirRvalue.Ref(MirRefKind.Uniq, this.body.Project(place, MirProjectionKind.Deref, 0), type), node),
+                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, false), node),
                     HirAcquire.Copy => MirOperand.Copy(place),
                     _ => MirOperand.Move(place),
                 };
@@ -207,22 +204,26 @@ internal sealed partial class MirBuilder
             case HirAdaptation.PayloadProjection:
                 place = this.body.Project(place, MirProjectionKind.Deref, 0);
                 break;
-            case HirAdaptation.BaseBorrow:
-                place = this.Follow(place, 16);
-                var depth = 0;
-                for (var layer = this.body.TypeOf(place); layer is not null && !ReferenceEquals(layer, target); layer = AdtDef.Base(layer))
-                {
-                    depth++;
-                }
-
-                place = depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth);
-                break;
         }
 
-        var exclusive = adaptation == HirAdaptation.ExclusiveBorrow || (adaptation is HirAdaptation.ReferenceRead or HirAdaptation.BaseBorrow or HirAdaptation.PayloadProjection &&
-            MirTypes.IsExclusive(expected));
-        var reference = expected ?? compilation.Types.Reference(exclusive ? SemanticsKind.Uniq : SemanticsKind.Ref, this.body.TypeOf(place) ?? BoundType.Unit);
-        return this.Temporary(reference, MirRvalue.Ref(!exclusive ? MirRefKind.Shared : input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq, place, reference), node);
+        var reference = expected ?? compilation.Types.Reference(adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref, this.body.TypeOf(place) ?? BoundType.Unit);
+        return this.Temporary(reference, this.Ref(place, reference, input), node);
+    }
+
+    // SPEC 13.5.5.2, 5.4, 6.2.2: a reference of a Type to a Place, the one rule of every borrow: of the Place's layer whose Type is the
+    // reference's referent (an object borrow's payload, a reborrow's referent) or its base that is (a base view), in its Type's mode (raw: an
+    // address); an exclusive borrow of a call's input is two-phase, reserved here and activated at the Call (SPEC 15.6.7).
+    private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
+    {
+        var kind = reference.Semantics == SemanticsKind.Raw ? MirRefKind.Raw : !MirTypes.IsExclusive(reference) ? MirRefKind.Shared : input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq;
+        var (referent, depth) = (reference.Components is [var target] ? target : null, 0);
+        place = referent is null ? place : this.Follow(place, 16, referent);
+        for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agree(layer, referent); layer = AdtDef.Base(layer))
+        {
+            depth = AdtDef.Base(layer) is null ? 0 : depth + 1;
+        }
+
+        return MirRvalue.Ref(kind, depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth), reference);
     }
 
     // An rvalue in a new temp of its Type, moved.
@@ -240,7 +241,7 @@ internal sealed partial class MirBuilder
     {
         var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
         var temp = this.Temp(view, node);
-        this.body.Push(this.current, MirStatement.Assign(temp, MirRvalue.Ref(semantics == SemanticsKind.Uniq ? MirRefKind.Uniq : MirRefKind.Shared, place, view), this.Info(node)));
+        this.body.Push(this.current, MirStatement.Assign(temp, this.Ref(place, view, false), this.Info(node)));
         return MirOperand.Move(temp);
     }
 
@@ -344,7 +345,10 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            var operand = this.Operand(conversion.Left);
+            // SPEC 13.5.7: an upcast to a view of another Semantics borrows its operand's payload in the view's mode, then changes the view.
+            var borrowed = HirTables.AdjustOf(conversion.Left).Adaptation is HirAdaptation.SharedBorrow or HirAdaptation.ExclusiveBorrow && TypeOf(conversion.Left).Components is [var payload]
+                ? compilation.Types.Reference(type.Semantics, payload) : null;
+            var operand = this.Operand(conversion.Left, borrowed);
             var source = this.TypeOf(operand) ?? type;
             var kind = binding switch
             {
@@ -464,7 +468,7 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var value = this.Temp(assignment.Left);
+        var value = this.Temp(Completes(assignment.Left) ? assignment.Left : assignment.Right); // Of the Type it is placed at, if it is placed.
         this.Assign(value, assignment.Right);
         this.Overwrite(this.Place(assignment.Left), MirOperand.Move(value), assignment);
         this.Unit(destination, assignment);

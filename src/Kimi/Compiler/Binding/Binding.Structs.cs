@@ -20,14 +20,15 @@ public sealed partial class Binding
         => this.InstantiateStorageType(type, call.Target, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // A declared Type in the instance a substitution of the target's slots makes, which TyCtxt.Apply delegates to until R7 moves it there:
-    // its slots, then its stored Origins substituted, normalized in the target's Constraint scope, its closures closed, its storage prepared.
-    internal BoundType? InstantiateStorageType(BoundType type, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    // its slots, then its stored Origins substituted, normalized in the target's Constraint scope (a Contract's Self the conforming Type self),
+    // its closures closed, its storage prepared.
+    internal BoundType? InstantiateStorageType(BoundType type, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs, BoundType? self = null)
     {
         var result = this.MemberType(type, declaring) is { } member && this.SubstituteType(member, target.Declaration, types, lengths) is { } substituted
             ? this.SubstituteStoredOrigins(substituted, target.Declaration is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : target.Declaration, origins, inputs) : null;
         if (result is not null)
         {
-            result = this.ContractType(result, this.ConstraintScope(target.Declaration));
+            result = this.ContractType(result, this.ConstraintScope(target.Declaration), self);
         }
 
         result = result is null ? null : this.CloseClosureTypes(result, target, declaring, types, lengths, origins, inputs);

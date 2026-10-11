@@ -71,7 +71,7 @@ internal sealed partial class MirBuilder
     // SPEC 3.4.1, 13.5.5.1: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type.
     private MirPlace Follow(MirPlace place, int count, BoundType? target = null)
     {
-        for (; count > 0 && !ReferenceEquals(this.body.TypeOf(place), target) && TyCtxt.Layer(this.body.TypeOf(place), out _, out _) is var kind and not HirPlaceKind.Value; count--)
+        for (; count > 0 && !(target is not null && MirTypes.Agree(this.body.TypeOf(place), target)) && TyCtxt.Layer(this.body.TypeOf(place), out _, out _) is var kind and not HirPlaceKind.Value; count--)
         {
             place = this.Layer(place, kind);
         }

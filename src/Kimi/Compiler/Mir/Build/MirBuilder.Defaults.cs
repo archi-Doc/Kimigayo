@@ -97,7 +97,7 @@ internal sealed partial class MirBuilder
                 this.roots.Clear();
                 for (var i = 0; i < decl.Index; i++)
                 {
-                    this.roots.Add(this.arguments[start + Position(function, i)].Place.Root);
+                    this.roots.Add(this.arguments[start + MirCallee.Position(function, i)].Place.Root);
                 }
 
                 this.Site(node, slot, completes);
@@ -110,7 +110,7 @@ internal sealed partial class MirBuilder
             {
                 for (var i = 0; i < decl.Index; i++)
                 {
-                    this.arguments.Add(this.Borrow(SemanticsKind.Ref, this.arguments[start + Position(function, i)].Place, node));
+                    this.arguments.Add(this.Borrow(SemanticsKind.Ref, this.arguments[start + MirCallee.Position(function, i)].Place, node));
                 }
 
                 if (template.Recursive)
@@ -128,7 +128,7 @@ internal sealed partial class MirBuilder
                 return false;
             }
 
-            this.arguments[start + Position(function, decl.Index)] = MirOperand.Move(slot);
+            this.arguments[start + MirCallee.Position(function, decl.Index)] = MirOperand.Move(slot);
         }
 
         return true;

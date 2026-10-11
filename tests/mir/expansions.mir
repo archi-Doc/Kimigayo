@@ -609,8 +609,8 @@ fn update @182
     * _9 = &(*_1): ref/Box @194 s1
       _8 = level.Get(move _9) -> bb2 @193 s1
   bb2:
+      _7 = copy _8 @192 s1
       (*_1).1 = Add(copy _8, const 1_i32) @192 s1
-      _7 = const () @192 s1
       StorageDead(_9) @194 s1
       StorageDead(_8) @193 s1
       StorageDead(_7) @192 s1

@@ -217,7 +217,7 @@ internal sealed partial class MirBuilder
             if (plan.Positions[i] is { CandidateSymbol: { Type: { } type } candidate, Source: var source })
             {
                 var reference = this.Temp(type, source, MirLocalRole.GuardCandidate, candidate.Name);
-                this.Set(reference, MirRvalue.Ref(MirRefKind.Shared, this.Follow(this.selected[start + i], 16, type.Components[0]), type), source);
+                this.Set(reference, this.Ref(this.selected[start + i], type, false), source);
                 this.arguments.Add(MirOperand.Move(reference));
                 this.locals[candidate] = reference.Root;
             }
